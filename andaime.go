@@ -9,17 +9,19 @@ import(
 )
 
 var (
-    PROJECT_NAME string = "bacalhau-by-andaime"
-    TARGET_PLATFORM string = "gcp"
-    NUMBER_OF_ORCHESTRATOR_NODES  int = 1
-    NUMBER_OF_COMPUTE_NODES       int = 2
-)
+    PROJECT_SETTINGS = map[string]interface{}{
+        "ProjectName":             "bacalhau-by-andaime",
+        "TargetPlatform":          "gcp",
+        "NumberOfOrchestratorNodes":  1,
+        "NumberOfComputeNodes":       2,
+    }
 
-var (
-	PROJECT_NAME_SET_BY string = "default"
-	TARGET_PLATFORM_SET_BY string = "default"
-	NUMBER_OF_ORCHESTRATOR_NODES_SET_BY string = "default"
-	NUMBER_OF_COMPUTE_NODES_SET_BY string = "default"
+    SET_BY = map[string]string{
+        "ProjectName":             "default",
+        "TargetPlatform":          "default",
+        "NumberOfOrchestratorNodes":  "default",
+        "NumberOfComputeNodes":       "default",
+    }
 )
 
 func main(){
@@ -60,8 +62,8 @@ func main(){
 			fmt.Println(`Setting "PROJECT_NAME" from environment variable`)
 		}
 
-		PROJECT_NAME = os.Getenv("PROJECT_NAME")
-		PROJECT_NAME_SET_BY = "environent variable"
+		PROJECT_SETTINGS["ProjectName"] = os.Getenv("PROJECT_NAME")
+		SET_BY["ProjectName"] = "environent variable"
 
 	}
 
@@ -70,8 +72,8 @@ func main(){
 			fmt.Println(`Setting "TARGET_PLATFORM" from environment variable`)
 		}
 
-		TARGET_PLATFORM = os.Getenv("TARGET_PLATFORM")
-		TARGET_PLATFORM_SET_BY = "environent variable"
+		PROJECT_SETTINGS["TargetPlatform"] = os.Getenv("TARGET_PLATFORM")
+		SET_BY["TargetPlatform"] = "environent variable"
 
 	}
 
@@ -80,8 +82,8 @@ func main(){
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from environment variable`)
 		}
 
-		NUMBER_OF_ORCHESTRATOR_NODES, _ = strconv.Atoi( os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES") )
-		NUMBER_OF_ORCHESTRATOR_NODES_SET_BY = "environent variable"
+		PROJECT_SETTINGS["NumberOfOrchestratorNodes"], _ = strconv.Atoi( os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES") )
+		SET_BY["NumberOfOrchestratorNodes"] = "environent variable"
 
 	}
 
@@ -91,8 +93,8 @@ func main(){
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from environment variable`)
 		}
 
-		NUMBER_OF_COMPUTE_NODES, _ = strconv.Atoi( os.Getenv("NUMBER_OF_COMPUTE_NODES") )
-		NUMBER_OF_COMPUTE_NODES_SET_BY = "environent variable"
+		PROJECT_SETTINGS["NumberOfComputeNodes"], _ = strconv.Atoi( os.Getenv("NUMBER_OF_COMPUTE_NODES") )
+		SET_BY["NumberOfComputeNodes"] = "environent variable"
 
 	}
 
@@ -114,8 +116,8 @@ func main(){
 				fmt.Println(`Setting "PROJECT_NAME" from configuration file`)
 			}
 
-			PROJECT_NAME = configJson["PROJECT_NAME"].(string)
-			PROJECT_NAME_SET_BY = "configuration file"
+			PROJECT_SETTINGS["ProjectName"] = configJson["PROJECT_NAME"].(string)
+			SET_BY["ProjectName"] = "configuration file"
 
 		}
 
@@ -125,8 +127,8 @@ func main(){
 				fmt.Println(`Setting "TARGET_PLATFORM" from configuration file`)
 			}
 
-			TARGET_PLATFORM = configJson["TARGET_PLATFORM"].(string)
-			TARGET_PLATFORM_SET_BY = "configuration file"
+			PROJECT_SETTINGS["TargetPlatform"] = configJson["TARGET_PLATFORM"].(string)
+			SET_BY["TargetPlatform"] = "configuration file"
 
 		}
 
@@ -136,8 +138,8 @@ func main(){
 				fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from configuration file`)
 			}
 
-			NUMBER_OF_ORCHESTRATOR_NODES= int(configJson["NUMBER_OF_ORCHESTRATOR_NODES"].(float64))
-			NUMBER_OF_ORCHESTRATOR_NODES_SET_BY = "configuration file"
+			PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = int(configJson["NUMBER_OF_ORCHESTRATOR_NODES"].(float64))
+			SET_BY["NumberOfOrchestratorNodes"] = "configuration file"
 		}
 
 		if configJson["NUMBER_OF_COMPUTE_NODES"] != nil{
@@ -146,8 +148,8 @@ func main(){
 				fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from configuration file`)
 			}
 
-			NUMBER_OF_COMPUTE_NODES = int(configJson["NUMBER_OF_COMPUTE_NODES"].(float64))
-			NUMBER_OF_COMPUTE_NODES_SET_BY = "configuration file"
+			PROJECT_SETTINGS["NumberOfComputeNodes"] = int(configJson["NUMBER_OF_COMPUTE_NODES"].(float64))
+			SET_BY["NumberOfComputeNodes"] = "configuration file"
 
 		}
 
@@ -159,8 +161,8 @@ func main(){
 			fmt.Println(`Setting "PROJECT_NAME" by flag`)
 		}
 
-		PROJECT_NAME = PROJECT_NAME_FLAG
-		PROJECT_NAME_SET_BY = "flag --project-name"
+		PROJECT_SETTINGS["ProjectName"] = PROJECT_NAME_FLAG
+		SET_BY["ProjectName"] = "flag --project-name"
 
 	}
 	
@@ -170,8 +172,8 @@ func main(){
 			fmt.Println(`Setting "TARGET_PLATFORM" by flag`)
 		}
 
-		TARGET_PLATFORM = TARGET_PLATFORM_FLAG
-		TARGET_PLATFORM_SET_BY = "flag --target-platform"
+		PROJECT_SETTINGS["TargetPlatform"] = TARGET_PLATFORM_FLAG
+		SET_BY["TargetPlatform"] = "flag --target-platform"
 
 	}
 
@@ -180,8 +182,8 @@ func main(){
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" by flag`)
 		}
 
-		NUMBER_OF_ORCHESTRATOR_NODES = NUMBER_OF_ORCHESTRATOR_NODES_FLAG
-		NUMBER_OF_ORCHESTRATOR_NODES_SET_BY = "flag --orchestrator-nodes"
+		PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = NUMBER_OF_ORCHESTRATOR_NODES_FLAG
+		SET_BY["NumberOfOrchestratorNodes"] = "flag --orchestrator-nodes"
 
 	}
 
@@ -191,15 +193,15 @@ func main(){
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES_FLAG" by flag`)
 		}
 
-		NUMBER_OF_COMPUTE_NODES = NUMBER_OF_COMPUTE_NODES_FLAG
-		NUMBER_OF_COMPUTE_NODES_SET_BY = "flag --compute-nodes"
+		PROJECT_SETTINGS["NumberOfComputeNodes"] = NUMBER_OF_COMPUTE_NODES_FLAG
+		SET_BY["NumberOfComputeNodes"] = "flag --compute-nodes"
 	}
 
 	fmt.Println("Project configuration:\n")
-	fmt.Printf("\tProject name: \"%s\" (set by %s)\n", PROJECT_NAME, PROJECT_NAME_SET_BY )
-	fmt.Printf("\tTarget Platform: \"%s\" (set by %s)\n", TARGET_PLATFORM, TARGET_PLATFORM_SET_BY )
-	fmt.Printf("\tNo. of Orchestrator Nodes: %s (set by %s)\n", strconv.Itoa(NUMBER_OF_ORCHESTRATOR_NODES), NUMBER_OF_ORCHESTRATOR_NODES_SET_BY )
-	fmt.Printf("\tNo. of Compute Nodes: %s (set by %s)\n", strconv.Itoa(NUMBER_OF_COMPUTE_NODES), NUMBER_OF_COMPUTE_NODES_SET_BY )
+	fmt.Printf("\tProject name: \"%s\" (set by %s)\n", PROJECT_SETTINGS["ProjectName"], SET_BY["ProjectName"] )
+	fmt.Printf("\tTarget Platform: \"%s\" (set by %s)\n", PROJECT_SETTINGS["TargetPlatform"], SET_BY["TargetPlatform"] )
+	fmt.Printf("\tNo. of Orchestrator Nodes: %d (set by %s)\n", PROJECT_SETTINGS["NumberOfOrchestratorNodes"], SET_BY["NumberOfOrchestratorNodes"])
+	fmt.Printf("\tNo. of Compute Nodes: %d (set by %s)\n", PROJECT_SETTINGS["NumberOfComputeNodes"], SET_BY["NumberOfComputeNodes"] )
 	fmt.Print("\n")
 
 }
