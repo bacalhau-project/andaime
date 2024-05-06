@@ -9,6 +9,7 @@ import(
 )
 
 var (
+	VERBOSE_MODE_FLAG bool = false
     PROJECT_SETTINGS = map[string]interface{}{
         "ProjectName":             "bacalhau-by-andaime",
         "TargetPlatform":          "gcp",
@@ -22,39 +23,13 @@ var (
         "NumberOfOrchestratorNodes":  "default",
         "NumberOfComputeNodes":       "default",
     }
+	PROJECT_NAME_FLAG                  string
+	TARGET_PLATFORM_FLAG               string
+	NUMBER_OF_ORCHESTRATOR_NODES_FLAG  int
+	NUMBER_OF_COMPUTE_NODES_FLAG       int
 )
 
-func main(){
-	fmt.Println("\n== Andaime ==\n")
-
-	// Order of business:
-	// 1. Check whether there are any env vars in the existing directory	
-	// 1a. If so, set the appropriate parameters in the project
-	// 2. Check if there is a config file
-	// 2a. If so, overwrite any env vars, and set remaining parameters from file
-	// 3. Check if there are any flags set on the binary
-	// 3a. If so, overwrite all prev. values, and set from flags.
-	// 4. If key variables are missing, start the questions
-
-
-	// Parse flags first, but set later so we can check whether
-	// or not the user has passed the --verbose flag
-
-	var (
-		VERBOSE_MODE_FLAG                       bool
-		PROJECT_NAME_FLAG                  string
-		TARGET_PLATFORM_FLAG               string
-		NUMBER_OF_ORCHESTRATOR_NODES_FLAG  int
-		NUMBER_OF_COMPUTE_NODES_FLAG       int
-	)
-
-	flag.BoolVar(&VERBOSE_MODE_FLAG, "verbose", false, "Generate verbose output throughout execution")
-	flag.StringVar(&PROJECT_NAME_FLAG, "project-name", "", "Set project name")
-    flag.StringVar(&TARGET_PLATFORM_FLAG, "target-platform", "", "Set target platform")
-    flag.IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG, "orchestrator-nodes", -1, "Set number of orchestrator nodes")
-    flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
-
-	flag.Parse()
+func ProcessEnvVars(){
 
 	if os.Getenv("PROJECT_NAME") != ""{
 
@@ -98,17 +73,38 @@ func main(){
 
 	}
 
+}
+
+func ProcessConfigFile() error{
+	
+	_, err := os.Stat("./config.json")
+
+	if os.IsNotExist(err){
+		
+		if VERBOSE_MODE_FLAG == true{
+			fmt.Println("./config.json does not exist. Skipping...")
+		}
+
+		return nil
+
+	}
+
 	config_file, config_err := os.ReadFile("./config.json")
 
 	if config_err != nil {
-		fmt.Println("Could not read configuration file:", config_err)		
+		fmt.Println("Could not read configuration file:", config_err)	
+		return config_err	
 	}
 	
-	if config_file != nil{
+	if config_file != nil {
 		
 		var configJson map[string]interface{}
 	
-		_ = json.Unmarshal(config_file, &configJson)
+		config_err = json.Unmarshal(config_file, &configJson)
+
+		if config_err != nil{
+			return config_err
+		}
 
 		if configJson["PROJECT_NAME"] != nil{
 			
@@ -155,6 +151,12 @@ func main(){
 
 	}
 
+	return config_err
+
+}
+
+func ProcessFlags(){
+	
 	if PROJECT_NAME_FLAG != ""{
 
 		if VERBOSE_MODE_FLAG == true{	
@@ -196,6 +198,41 @@ func main(){
 		PROJECT_SETTINGS["NumberOfComputeNodes"] = NUMBER_OF_COMPUTE_NODES_FLAG
 		SET_BY["NumberOfComputeNodes"] = "flag --compute-nodes"
 	}
+
+}
+
+func main(){
+	fmt.Println("\n== Andaime ==\n")
+
+	// Order of business:
+	// 1. Check whether there are any env vars in the existing directory	
+	// 1a. If so, set the appropriate parameters in the project
+	// 2. Check if there is a config file
+	// 2a. If so, overwrite any env vars, and set remaining parameters from file
+	// 3. Check if there are any flags set on the binary
+	// 3a. If so, overwrite all prev. values, and set from flags.
+	// 4. If key variables are missing, start the questions
+
+
+	// Parse flags first, but set later so we can check whether
+	// or not the user has passed the --verbose flag
+
+	flag.BoolVar(&VERBOSE_MODE_FLAG, "verbose", false, "Generate verbose output throughout execution")
+	flag.StringVar(&PROJECT_NAME_FLAG, "project-name", "", "Set project name")
+    flag.StringVar(&TARGET_PLATFORM_FLAG, "target-platform", "", "Set target platform")
+    flag.IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG, "orchestrator-nodes", -1, "Set number of orchestrator nodes")
+    flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
+
+	flag.Parse()
+
+	ProcessEnvVars()
+	configErr := ProcessConfigFile()
+
+	if configErr != nil{
+		fmt.Println("Error reading configuration file:", configErr)
+	}
+
+	ProcessFlags()
 
 	fmt.Println("Project configuration:\n")
 	fmt.Printf("\tProject name: \"%s\" (set by %s)\n", PROJECT_SETTINGS["ProjectName"], SET_BY["ProjectName"] )
