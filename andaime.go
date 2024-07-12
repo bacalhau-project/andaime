@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -492,6 +496,14 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 			return instanceInfo
 		}
 
+		// Read and encode startup scripts
+		userData, err := readStartupScripts("startup_scripts")
+		if err != nil {
+			fmt.Printf("Unable to read startup scripts: %v\n", err)
+			return instanceInfo
+		}
+		encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
+
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(amiID),
@@ -506,6 +518,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 					Groups:                   []*string{sgID},
 				},
 			},
+			UserData: aws.String(encodedUserData),
 			TagSpecifications: []*ec2.TagSpecification{
 				{
 					ResourceType: aws.String("instance"),
@@ -908,221 +921,214 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 }
 
 func listResources() {
-    regions, err := getAllRegions()
-    if err != nil {
-        fmt.Printf("Unable to get list of regions: %v\n", err)
-        return
-    }
+	regions, err := getAllRegions()
+	if err != nil {
+		fmt.Printf("Unable to get list of regions: %v\n", err)
+		return
+	}
 
-    resourceTypes := []string{"VPC", "Subnet", "Internet Gateway", "Route Table", "Security Group", "Instance"}
-    resourcesByRegion := make(map[string]map[string][]string)
+	resourceTypes := []string{"VPC", "Subnet", "Internet Gateway", "Route Table", "Security Group", "Instance"}
+	resourcesByRegion := make(map[string]map[string][]string)
 
-    var wg sync.WaitGroup
+	var wg sync.WaitGroup
+	totalNodes := 0
+	totalRegions := 0
 
-    for _, region := range regions {
-        wg.Add(1)
-        go func(region string) {
-            defer wg.Done()
-            sess := session.Must(session.NewSessionWithOptions(session.Options{
-                Profile: AWS_PROFILE_FLAG,
-                Config:  aws.Config{Region: aws.String(region)},
-            }))
-            ec2Svc := ec2.New(sess)
+	for _, region := range regions {
+		wg.Add(1)
+		go func(region string) {
+			defer wg.Done()
+			sess := session.Must(session.NewSessionWithOptions(session.Options{
+				Profile: AWS_PROFILE_FLAG,
+				Config:  aws.Config{Region: aws.String(region)},
+			}))
+			ec2Svc := ec2.New(sess)
 
-            resources := make(map[string][]string)
-            for _, resourceType := range resourceTypes {
-                resources[resourceType] = listTaggedResources(ec2Svc, resourceType, region)
-            }
+			resources := make(map[string][]string)
+			for _, resourceType := range resourceTypes {
+				resources[resourceType] = listTaggedResources(ec2Svc, resourceType, region)
+			}
 
-            if len(resources["VPC"]) > 0 || len(resources["Subnet"]) > 0 || len(resources["Internet Gateway"]) > 0 || len(resources["Route Table"]) > 0 || len(resources["Security Group"]) > 0 || len(resources["Instance"]) > 0 {
-                resourcesByRegion[region] = resources
-            }
-        }(region)
-    }
+			if len(resources["VPC"]) > 0 || len(resources["Subnet"]) > 0 || len(resources["Internet Gateway"]) > 0 || len(resources["Route Table"]) > 0 || len(resources["Security Group"]) > 0 || len(resources["Instance"]) > 0 {
+				resourcesByRegion[region] = resources
+			}
+		}(region)
+	}
 
-    wg.Wait()
+	wg.Wait()
 
-    totalNodes := 0
-    totalRegions := 0
+	fmt.Println("\n== Resources Report ==")
+	for region, resources := range resourcesByRegion {
+		
+		fmt.Println("\n=======================")
+		fmt.Println("||")
+		fmt.Printf("|| Resources in region: %s\n", region)
+		fmt.Println("||")
+		fmt.Println("=======================\n")
 
-    fmt.Println("\n== Resources Report ==")
-    for region, resources := range resourcesByRegion {
-        fmt.Println("\n=======================")
-        fmt.Println("||")
-        fmt.Printf("|| Resources in region: %s\n", region)
-        fmt.Println("||")
-        fmt.Println("=======================\n")
+		for resourceType, resourceList := range resources {
+			if len(resourceList) > 0 {
+				fmt.Printf("\t%s:\n", resourceType)
+				for _, resourceID := range resourceList {
+					fmt.Printf("\t\t- %s\n", resourceID)
+				}
+				fmt.Printf("\n")
+			}
+		}
 
-        for resourceType, resourceList := range resources {
-            if len(resourceList) > 0 {
-                fmt.Printf("\t%s:\n", resourceType)
-                for _, resourceID := range resourceList {
-                    fmt.Printf("\t\t- %s\n", resourceID)
-                    if resourceType == "Instance" {
-                        totalNodes++
-                    }
-                }
-                fmt.Printf("\n")
-            }
-        }
+		totalRegions++
+		totalNodes += len(resources["Instance"])
 
-        totalRegions++
-        fmt.Printf("\n\n")
-    }
+		fmt.Printf("\n\n")
+	}
 
-    fmt.Printf("%d nodes in %d regions\n", totalNodes, totalRegions)
+	fmt.Printf("%d nodes in %d regions\n", totalNodes, totalRegions)
 }
 
 func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []string {
-    var resourceList []string
-    retryPolicy := 3
-    for i := 0; i < retryPolicy; i++ {
-        switch resourceType {
-        case "VPC":
-            vpcs, err := svc.DescribeVpcs(&ec2.DescribeVpcsInput{
-                Filters: []*ec2.Filter{
-                    {
-                        Name:   aws.String("tag:project"),
-                        Values: []*string{aws.String("andaime")},
-                    },
-                },
-            })
-            if err != nil {
-                if isRetryableError(err) && i < retryPolicy-1 {
-                    time.Sleep(2 * time.Second)
-                    continue
-                }
-                fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
-                return nil
-            }
-            for _, vpc := range vpcs.Vpcs {
-                resourceList = append(resourceList, *vpc.VpcId)
-            }
+	var resourceList []string
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		switch resourceType {
+		case "VPC":
+			vpcs, err := svc.DescribeVpcs(&ec2.DescribeVpcsInput{
+				Filters: []*ec2.Filter{
+					{
+						Name:   aws.String("tag:project"),
+						Values: []*string{aws.String("andaime")},
+					},
+				},
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
+				return nil
+			}
+			for _, vpc := range vpcs.Vpcs {
+				resourceList = append(resourceList, *vpc.VpcId)
+			}
 
-        case "Subnet":
-            subnets, err := svc.DescribeSubnets(&ec2.DescribeSubnetsInput{
-                Filters: []*ec2.Filter{
-                    {
-                        Name:   aws.String("tag:project"),
-                        Values: []*string{aws.String("andaime")},
-                    },
-                },
-            })
-            if err != nil {
-                if isRetryableError(err) && i < retryPolicy-1 {
-                    time.Sleep(2 * time.Second)
-                    continue
-                }
-                fmt.Printf("Unable to describe subnets in region %s: %v\n", region, err)
-                return nil
-            }
-            for _, subnet := range subnets.Subnets {
-                resourceList = append(resourceList, *subnet.SubnetId)
-            }
+		case "Subnet":
+			subnets, err := svc.DescribeSubnets(&ec2.DescribeSubnetsInput{
+				Filters: []*ec2.Filter{
+					{
+						Name:   aws.String("tag:project"),
+						Values: []*string{aws.String("andaime")},
+					},
+				},
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				fmt.Printf("Unable to describe subnets in region %s: %v\n", region, err)
+				return nil
+			}
+			for _, subnet := range subnets.Subnets {
+				resourceList = append(resourceList, *subnet.SubnetId)
+			}
 
-        case "Internet Gateway":
-            igws, err := svc.DescribeInternetGateways(&ec2.DescribeInternetGatewaysInput{
-                Filters: []*ec2.Filter{
-                    {
-                        Name:   aws.String("tag:project"),
-                        Values: []*string{aws.String("andaime")},
-                    },
-                },
-            })
-            if err != nil {
-                if isRetryableError(err) && i < retryPolicy-1 {
-                    time.Sleep(2 * time.Second)
-                    continue
-                }
-                fmt.Printf("Unable to describe internet gateways in region %s: %v\n", region, err)
-                return nil
-            }
-            for _, igw := range igws.InternetGateways {
-                resourceList = append(resourceList, *igw.InternetGatewayId)
-            }
+		case "Internet Gateway":
+			igws, err := svc.DescribeInternetGateways(&ec2.DescribeInternetGatewaysInput{
+				Filters: []*ec2.Filter{
+					{
+						Name:   aws.String("tag:project"),
+						Values: []*string{aws.String("andaime")},
+					},
+				},
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				fmt.Printf("Unable to describe internet gateways in region %s: %v\n", region, err)
+				return nil
+			}
+			for _, igw := range igws.InternetGateways {
+				resourceList = append(resourceList, *igw.InternetGatewayId)
+			}
 
-        case "Route Table":
-            routeTables, err := svc.DescribeRouteTables(&ec2.DescribeRouteTablesInput{
-                Filters: []*ec2.Filter{
-                    {
-                        Name:   aws.String("tag:project"),
-                        Values: []*string{aws.String("andaime")},
-                    },
-                },
-            })
-            if err != nil {
-                if isRetryableError(err) && i < retryPolicy-1 {
-                    time.Sleep(2 * time.Second)
-                    continue
-                }
-                fmt.Printf("Unable to describe route tables in region %s: %v\n", region, err)
-                return nil
-            }
-            for _, routeTable := range routeTables.RouteTables {
-                resourceList = append(resourceList, *routeTable.RouteTableId)
-            }
+		case "Route Table":
+			routeTables, err := svc.DescribeRouteTables(&ec2.DescribeRouteTablesInput{
+				Filters: []*ec2.Filter{
+					{
+						Name:   aws.String("tag:project"),
+						Values: []*string{aws.String("andaime")},
+					},
+				},
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				fmt.Printf("Unable to describe route tables in region %s: %v\n", region, err)
+				return nil
+			}
+			for _, routeTable := range routeTables.RouteTables {
+				resourceList = append(resourceList, *routeTable.RouteTableId)
+			}
 
-        case "Security Group":
-            sgs, err := svc.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
-                Filters: []*ec2.Filter{
-                    {
-                        Name:   aws.String("tag:project"),
-                        Values: []*string{aws.String("andaime")},
-                    },
-                },
-            })
-            if err != nil {
-                if isRetryableError(err) && i < retryPolicy-1 {
-                    time.Sleep(2 * time.Second)
-                    continue
-                }
-                fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
-                return nil
-            }
-            for _, sg := range sgs.SecurityGroups {
-                resourceList = append(resourceList, *sg.GroupId)
-            }
+		case "Security Group":
+			sgs, err := svc.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
+				Filters: []*ec2.Filter{
+					{
+						Name:   aws.String("tag:project"),
+						Values: []*string{aws.String("andaime")},
+					},
+				},
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
+				return nil
+			}
+			for _, sg := range sgs.SecurityGroups {
+				resourceList = append(resourceList, *sg.GroupId)
+			}
 
-        case "Instance":
-            instances, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
-                Filters: []*ec2.Filter{
-                    {
-                        Name:   aws.String("tag:project"),
-                        Values: []*string{aws.String("andaime")},
-                    },
-                    {
-                        Name: aws.String("instance-state-name"),
-                        Values: []*string{
-                            aws.String("running"),
-                            aws.String("stopped"),
-                        },
-                    },
-                },
-            })
-            if err != nil {
-                if isRetryableError(err) && i < retryPolicy-1 {
-                    time.Sleep(2 * time.Second)
-                    continue
-                }
-                fmt.Printf("Unable to describe instances in region %s: %v\n", region, err)
-                return nil
-            }
-            for _, reservation := range instances.Reservations {
-                for _, instance := range reservation.Instances {
-                    publicIP := "No public IP"
-                    if instance.PublicIpAddress != nil {
-                        publicIP = *instance.PublicIpAddress
-                    }
-                    instanceInfo := fmt.Sprintf("ID: %s, Type: %s, Public IPv4: %s",
-                        *instance.InstanceId, *instance.InstanceType, publicIP)
-                    resourceList = append(resourceList, instanceInfo)
-                }
-            }
-        }
-        break
-    }
+		case "Instance":
+			instances, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
+				Filters: []*ec2.Filter{
+					{
+						Name:   aws.String("tag:project"),
+						Values: []*string{aws.String("andaime")},
+					},
+					{
+						Name: aws.String("instance-state-name"),
+						Values: []*string{
+							aws.String("running"),
+							aws.String("stopped"),
+						},
+					},
+				},
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				fmt.Printf("Unable to describe instances in region %s: %v\n", region, err)
+				return nil
+			}
+			for _, reservation := range instances.Reservations {
+				for _, instance := range reservation.Instances {
+					resourceList = append(resourceList, fmt.Sprintf("ID: %s, Type: %s, IPv4: %s", *instance.InstanceId, *instance.InstanceType, *instance.PublicIpAddress))
+				}
+			}
+		}
+		break
+	}
 
-    return resourceList
+	return resourceList
 }
 
 func isRetryableError(err error) bool {
@@ -1133,6 +1139,32 @@ func isRetryableError(err error) bool {
 		}
 	}
 	return false
+}
+
+func readStartupScripts(dir string) (string, error) {
+	var combinedScript strings.Builder
+
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name() < files[j].Name()
+	})
+
+	for _, file := range files {
+		if !file.IsDir() {
+			content, err := ioutil.ReadFile(filepath.Join(dir, file.Name()))
+			if err != nil {
+				return "", err
+			}
+			combinedScript.Write(content)
+			combinedScript.WriteString("\n")
+		}
+	}
+
+	return combinedScript.String(), nil
 }
 
 func ProcessEnvVars() {
