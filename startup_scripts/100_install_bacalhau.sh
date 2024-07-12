@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-BACALHAU_INSTALL_ID=${BACALHAU_INSTALL_ID:-"BACA14A0-eeee-eeee-eeee-eeeeeeeeeeee"}
+BACALHAU_INSTALL_ID=${BACALHAU_INSTALL_ID:-"BACA14A0-eeee-eeee-eeee-194519911992"}
 
 # Replace the last 12 characters of the BACALHAU_INSTALL_ID with random 12 characters
 BACALHAU_INSTALL_ID=$(echo "${BACALHAU_INSTALL_ID}" | \

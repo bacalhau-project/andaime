@@ -57,11 +57,11 @@ func getUbuntuAMIId(svc *ec2.EC2) (string, error) {
 		Filters: []*ec2.Filter{
 			{
 				Name:   aws.String("name"),
-				Values: aws.StringSlice([]string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-*"}),
+				Values: aws.StringSlice([]string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"}),
 			},
 			{
 				Name:   aws.String("architecture"),
-				Values: aws.StringSlice([]string{"arm64"}),
+				Values: aws.StringSlice([]string{"x86_64"}),
 			},
 			{
 				Name:   aws.String("state"),
@@ -123,7 +123,7 @@ func createResources(regions []string, instanceCount int) {
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
 			ec2Svc := ec2.New(sess)
-			instanceType := "t4g.nano"
+			instanceType := "t2.medium"
 			az, err := getAvailableZoneForInstanceType(ec2Svc, instanceType)
 			if err != nil {
 				fmt.Printf("Instance type %s is not available in region %s: %v\n", instanceType, region, err)
@@ -507,7 +507,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(amiID),
-			InstanceType: aws.String("t4g.nano"),
+			InstanceType: aws.String("t2.medium"),
 			MaxCount:     aws.Int64(1),
 			MinCount:     aws.Int64(1),
 			NetworkInterfaces: []*ec2.InstanceNetworkInterfaceSpecification{
@@ -1149,23 +1149,49 @@ func readStartupScripts(dir string) (string, error) {
 		return "", err
 	}
 
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Name() < files[j].Name()
-	})
+	// Create a slice to hold the file names with their order
+	type orderedFile struct {
+		order int
+		name  string
+	}
+
+	var orderedFiles []orderedFile
 
 	for _, file := range files {
 		if !file.IsDir() {
-			content, err := ioutil.ReadFile(filepath.Join(dir, file.Name()))
-			if err != nil {
-				return "", err
+			parts := strings.SplitN(file.Name(), "_", 2)
+			if len(parts) < 2 {
+				continue
 			}
-			combinedScript.Write(content)
-			combinedScript.WriteString("\n")
+			order, err := strconv.Atoi(parts[0])
+			if err != nil {
+				continue
+			}
+			orderedFiles = append(orderedFiles, orderedFile{order: order, name: file.Name()})
 		}
+	}
+
+	// Sort the files by the order
+	sort.Slice(orderedFiles, func(i, j int) bool {
+		return orderedFiles[i].order < orderedFiles[j].order
+	})
+
+	combinedScript.WriteString("#!/bin/bash\n")
+
+	// Read and concatenate the content of the files in order
+	for _, orderedFile := range orderedFiles {
+		fmt.Println(orderedFile.name)
+		content, err := ioutil.ReadFile(filepath.Join(dir, orderedFile.name))
+		if err != nil {
+			return "", err
+		}
+		combinedScript.Write(content)
+		combinedScript.WriteString("\n")
 	}
 
 	return combinedScript.String(), nil
 }
+
 
 func ProcessEnvVars() {
 
