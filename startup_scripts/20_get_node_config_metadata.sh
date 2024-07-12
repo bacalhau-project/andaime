@@ -33,6 +33,8 @@ MEMORY_GB=$(awk "BEGIN {printf \"%.1f\", $MEMORY_TOTAL / 1024}")
 # Get total disk size
 DISK_SIZE=$(df -BG / | awk 'NR==2 {print $2}' | sed 's/G//')
 
+ORCHESTRATORS="nats://{{.OrchestratorIPs}}:4222"
+
 # Write environment variables to /etc/node-config
 cat << EOF > /etc/node-config
 EC2_INSTANCE_FAMILY=$INSTANCE_FAMILY
@@ -41,6 +43,7 @@ EC2_MEMORY_GB=$MEMORY_GB
 EC2_DISK_GB=$DISK_SIZE
 ORCHESTRATORS=$ORCHESTRATORS
 TOKEN=$TOKEN
+PROJECT_NAME={{.ProjectName}}
 EOF
 
 chmod 644 /etc/node-config

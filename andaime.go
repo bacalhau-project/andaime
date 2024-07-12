@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -25,6 +26,18 @@ type InstanceInfo struct {
 	InstanceID string
 	Region     string
 	PublicIP   string
+}
+
+// Struct to hold template data
+type TemplateData struct {
+	ProjectName              string
+	TargetPlatform           string
+	NumberOfOrchestratorNodes int
+	NumberOfComputeNodes      int
+	TargetRegions            string
+	AwsProfile               string
+	OrchestratorIPs          string
+	NodeType                 string
 }
 
 var (
@@ -52,7 +65,7 @@ var (
 	AWS_PROFILE_FLAG                   string
 )
 
-func getUbuntuAMIId(svc *ec2.EC2) (string, error) {
+func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	describeImagesInput := &ec2.DescribeImagesInput{
 		Filters: []*ec2.Filter{
 			{
@@ -97,10 +110,11 @@ func getUbuntuAMIId(svc *ec2.EC2) (string, error) {
 
 func DeployOnAWS() {
 	targetRegions := strings.Split(TARGET_REGIONS_FLAG, ",")
-	noOfInstances := PROJECT_SETTINGS["NumberOfComputeNodes"].(int) + PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
+	noOfOrchestratorNodes := PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
+	noOfComputeNodes := PROJECT_SETTINGS["NumberOfComputeNodes"].(int)
 
 	if command == "create" {
-		createResources(targetRegions, noOfInstances)
+		createResources(targetRegions, noOfOrchestratorNodes, noOfComputeNodes)
 	} else if command == "destroy" {
 		destroyResources()
 	} else if command == "list" {
@@ -110,10 +124,11 @@ func DeployOnAWS() {
 	}
 }
 
-func createResources(regions []string, instanceCount int) {
+func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes int) {
 	var wg sync.WaitGroup
+	var orchestratorIPs []string
 
-	// Create VPCs and Security Groups in all regions first
+	// Ensure VPC and Security Groups exist
 	for _, region := range regions {
 		wg.Add(1)
 		go func(region string) {
@@ -132,12 +147,42 @@ func createResources(regions []string, instanceCount int) {
 			createVPCAndSG(ec2Svc, region, az)
 		}(region)
 	}
-
 	wg.Wait()
-	fmt.Println("VPCs and Security Groups created in all regions.")
 
-	// Create EC2 instances in a round-robin fashion
-	createInstancesRoundRobin(regions, instanceCount)
+	// Create Orchestrator nodes first
+	for i := 0; i < noOfOrchestratorNodes; i++ {
+		wg.Add(1)
+		go func(region string) {
+			defer wg.Done()
+			sess := session.Must(session.NewSessionWithOptions(session.Options{
+				Profile: AWS_PROFILE_FLAG,
+				Config:  aws.Config{Region: aws.String(region)},
+			}))
+			ec2Svc := ec2.New(sess)
+			instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator")
+			orchestratorIPs = append(orchestratorIPs, instanceInfo.PublicIP)
+		}(regions[i%len(regions)])
+	}
+	wg.Wait()
+
+	orchestratorIPsStr := strings.Join(orchestratorIPs, ",")
+
+	fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPsStr)
+
+	// Create Compute nodes next
+	for i := 0; i < noOfComputeNodes; i++ {
+		wg.Add(1)
+		go func(region string) {
+			defer wg.Done()
+			sess := session.Must(session.NewSessionWithOptions(session.Options{
+				Profile: AWS_PROFILE_FLAG,
+				Config:  aws.Config{Region: aws.String(region)},
+			}))
+			ec2Svc := ec2.New(sess)
+			createInstanceInRegionWithOrchestratorIPs(ec2Svc, region, orchestratorIPsStr)
+		}(regions[i%len(regions)])
+	}
+	wg.Wait()
 }
 
 func getAvailableZoneForInstanceType(svc *ec2.EC2, instanceType string) (string, error) {
@@ -363,7 +408,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 	}
 }
 
-func createInstancesRoundRobin(regions []string, instanceCount int) {
+func createInstancesRoundRobin(regions []string, instanceCount int, orchestratorIPs string) {
 	instanceCreated := 0
 	regionIndex := 0
 	numRegions := len(regions)
@@ -381,7 +426,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int) {
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
 			ec2Svc := ec2.New(sess)
-			instanceInfo := createInstanceInRegion(ec2Svc, region)
+			instanceInfo := createInstanceInRegionWithOrchestratorIPs(ec2Svc, region, orchestratorIPs)
 			instanceChannel <- instanceInfo
 		}(region)
 
@@ -403,7 +448,11 @@ func createInstancesRoundRobin(regions []string, instanceCount int) {
 	}
 }
 
-func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
+func createInstanceInRegionWithOrchestratorIPs(svc *ec2.EC2, region string, orchestratorIPs string) InstanceInfo {
+	return createInstanceInRegion(svc, region, "compute", orchestratorIPs)
+}
+
+func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orchestratorIPs ...string) InstanceInfo {
 	retryPolicy := 3
 	var instanceInfo InstanceInfo
 
@@ -485,8 +534,20 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 		}
 		sgID := sgs.SecurityGroups[0].GroupId
 
+		// Get the instance architecture
+		instanceType := "t2.medium"
+		instanceTypeDetails, err := svc.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
+			InstanceTypes: []*string{aws.String(instanceType)},
+		})
+		if err != nil {
+			fmt.Printf("Unable to describe instance type %s: %v\n", instanceType, err)
+			return instanceInfo
+		}
+
+		architecture := *instanceTypeDetails.InstanceTypes[0].ProcessorInfo.SupportedArchitectures[0]
+
 		// Get the Ubuntu 22.04 AMI ID
-		amiID, err := getUbuntuAMIId(svc)
+		amiID, err := getUbuntuAMIId(svc, architecture)
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
 				time.Sleep(2 * time.Second)
@@ -497,7 +558,21 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 		}
 
 		// Read and encode startup scripts
-		userData, err := readStartupScripts("startup_scripts")
+		templateData := TemplateData{
+			ProjectName:              PROJECT_SETTINGS["ProjectName"].(string),
+			TargetPlatform:           PROJECT_SETTINGS["TargetPlatform"].(string),
+			NumberOfOrchestratorNodes: PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int),
+			NumberOfComputeNodes:      PROJECT_SETTINGS["NumberOfComputeNodes"].(int),
+			TargetRegions:            TARGET_REGIONS_FLAG,
+			AwsProfile:               AWS_PROFILE_FLAG,
+			NodeType:                 nodeType,
+		}
+
+		if nodeType == "compute" && len(orchestratorIPs) > 0 {
+			templateData.OrchestratorIPs = orchestratorIPs[0]
+		}
+
+		userData, err := readStartupScripts("startup_scripts", templateData)
 		if err != nil {
 			fmt.Printf("Unable to read startup scripts: %v\n", err)
 			return instanceInfo
@@ -507,7 +582,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(amiID),
-			InstanceType: aws.String("t2.medium"),
+			InstanceType: aws.String(instanceType),
 			MaxCount:     aws.Int64(1),
 			MinCount:     aws.Int64(1),
 			NetworkInterfaces: []*ec2.InstanceNetworkInterfaceSpecification{
@@ -529,7 +604,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string) InstanceInfo {
 						},
 						{
 							Key:   aws.String("Name"),
-							Value: aws.String("Bacalhau-Node"),
+							Value: aws.String(fmt.Sprintf("Bacalhau-Node-%s", nodeType)),
 						},
 					},
 				},
@@ -942,7 +1017,7 @@ func listResources() {
 				Profile: AWS_PROFILE_FLAG,
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
-			ec2Svc := ec2.New(sess)
+			 ec2Svc := ec2.New(sess)
 
 			resources := make(map[string][]string)
 			for _, resourceType := range resourceTypes {
@@ -1141,7 +1216,7 @@ func isRetryableError(err error) bool {
 	return false
 }
 
-func readStartupScripts(dir string) (string, error) {
+func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 	var combinedScript strings.Builder
 
 	files, err := ioutil.ReadDir(dir)
@@ -1180,18 +1255,28 @@ func readStartupScripts(dir string) (string, error) {
 
 	// Read and concatenate the content of the files in order
 	for _, orderedFile := range orderedFiles {
-		fmt.Println(orderedFile.name)
 		content, err := ioutil.ReadFile(filepath.Join(dir, orderedFile.name))
 		if err != nil {
 			return "", err
 		}
-		combinedScript.Write(content)
+
+		tmpl, err := template.New("script").Parse(string(content))
+		if err != nil {
+			return "", err
+		}
+
+		var script strings.Builder
+		err = tmpl.Execute(&script, templateData)
+		if err != nil {
+			return "", err
+		}
+
+		combinedScript.WriteString(script.String())
 		combinedScript.WriteString("\n")
 	}
 
 	return combinedScript.String(), nil
 }
-
 
 func ProcessEnvVars() {
 

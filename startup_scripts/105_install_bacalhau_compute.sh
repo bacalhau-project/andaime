@@ -11,6 +11,8 @@ set -euo pipefail
 
 LOG_FILE="/var/log/bacalhau_compute_start.log"
 
+NODE_TYPE="{{.NodeType}}"
+
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
@@ -45,17 +47,23 @@ start_bacalhau() {
         ORCHESTRATORS="${ORCHESTRATORS}"
     fi
 
+
     # Start Bacalhau
-    /usr/local/bin/bacalhau serve \
-        --node-type compute \
-        --orchestrators "${ORCHESTRATORS}" \
-        --job-selection-accept-networked=true \
-        --labels "${LABELS}" \
-        >> "${LOG_FILE}" 2>&1 &
-    
-    local PID=$!
-    log "Bacalhau compute node started with PID ${PID}"
-    log "Labels: ${LABELS}"
+    if [[ "$NODE_TYPE" == "orchestrator" ]]; then
+        echo "isOrchestrator is set."
+        bacalhau serve --node-type requester
+    else
+        /usr/local/bin/bacalhau serve \
+            --node-type compute \
+            --orchestrators "${ORCHESTRATORS}" \
+            --job-selection-accept-networked=true \
+            --labels "${LABELS}" \
+            >> "${LOG_FILE}" 2>&1 &
+        
+        local PID=$!
+        log "Bacalhau compute node started with PID ${PID}"
+        log "Labels: ${LABELS}"
+    fi
 }
 
 stop_bacalhau() {
