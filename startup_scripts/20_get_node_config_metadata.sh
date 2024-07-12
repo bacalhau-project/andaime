@@ -33,7 +33,7 @@ MEMORY_GB=$(awk "BEGIN {printf \"%.1f\", $MEMORY_TOTAL / 1024}")
 # Get total disk size
 DISK_SIZE=$(df -BG / | awk 'NR==2 {print $2}' | sed 's/G//')
 
-ORCHESTRATORS="nats://{{.OrchestratorIPs}}:4222"
+ORCHESTRATORS="{{.OrchestratorIPs}}"
 
 # Write environment variables to /etc/node-config
 cat << EOF > /etc/node-config

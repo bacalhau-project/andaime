@@ -159,13 +159,13 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
 			ec2Svc := ec2.New(sess)
-			instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator")
+			instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator", nil)
 			orchestratorIPs = append(orchestratorIPs, instanceInfo.PublicIP)
 		}(regions[i%len(regions)])
 	}
 	wg.Wait()
 
-	orchestratorIPsStr := strings.Join(orchestratorIPs, ",")
+	orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
 
 	fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPsStr)
 
@@ -179,10 +179,18 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
 			ec2Svc := ec2.New(sess)
-			createInstanceInRegionWithOrchestratorIPs(ec2Svc, region, orchestratorIPsStr)
+			createInstanceInRegion(ec2Svc, region, "compute", orchestratorIPs)
 		}(regions[i%len(regions)])
 	}
 	wg.Wait()
+}
+
+func formatOrchestratorIPs(orchestratorIPs []string) string {
+	var formattedIPs []string
+	for _, ip := range orchestratorIPs {
+		formattedIPs = append(formattedIPs, fmt.Sprintf("nats://%s:4222", ip))
+	}
+	return strings.Join(formattedIPs, ",")
 }
 
 func getAvailableZoneForInstanceType(svc *ec2.EC2, instanceType string) (string, error) {
@@ -408,7 +416,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 	}
 }
 
-func createInstancesRoundRobin(regions []string, instanceCount int, orchestratorIPs string) {
+func createInstancesRoundRobin(regions []string, instanceCount int, orchestratorIPs []string) {
 	instanceCreated := 0
 	regionIndex := 0
 	numRegions := len(regions)
@@ -426,7 +434,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
 			ec2Svc := ec2.New(sess)
-			instanceInfo := createInstanceInRegionWithOrchestratorIPs(ec2Svc, region, orchestratorIPs)
+			instanceInfo := createInstanceInRegion(ec2Svc, region, "compute", orchestratorIPs)
 			instanceChannel <- instanceInfo
 		}(region)
 
@@ -448,11 +456,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 	}
 }
 
-func createInstanceInRegionWithOrchestratorIPs(svc *ec2.EC2, region string, orchestratorIPs string) InstanceInfo {
-	return createInstanceInRegion(svc, region, "compute", orchestratorIPs)
-}
-
-func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orchestratorIPs ...string) InstanceInfo {
+func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orchestratorIPs []string) InstanceInfo {
 	retryPolicy := 3
 	var instanceInfo InstanceInfo
 
@@ -569,7 +573,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		}
 
 		if nodeType == "compute" && len(orchestratorIPs) > 0 {
-			templateData.OrchestratorIPs = orchestratorIPs[0]
+			templateData.OrchestratorIPs = formatOrchestratorIPs(orchestratorIPs)
 		}
 
 		userData, err := readStartupScripts("startup_scripts", templateData)
@@ -1435,6 +1439,10 @@ func ProcessFlags() {
 
 		PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = NUMBER_OF_ORCHESTRATOR_NODES_FLAG
 		SET_BY["NumberOfOrchestratorNodes"] = "flag --orchestrator-nodes"
+
+		if NUMBER_OF_ORCHESTRATOR_NODES_FLAG > 1 {
+			PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = 1
+		}
 
 	}
 

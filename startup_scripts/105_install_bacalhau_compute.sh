@@ -28,8 +28,13 @@ fi
 
 check_orchestrators() {
     if [ -z "${ORCHESTRATORS:-}" ]; then
-        log "Error: ORCHESTRATORS environment variable is not set."
-        exit 1
+
+        if [[ "$NODE_TYPE" == "compute" ]]; then
+            # bacalhau serve --node-type requester
+            log "Error: ORCHESTRATORS environment variable is not set."
+            exit 1
+        fi
+
     fi
 }
 
@@ -50,7 +55,6 @@ start_bacalhau() {
 
     # Start Bacalhau
     if [[ "$NODE_TYPE" == "orchestrator" ]]; then
-        echo "isOrchestrator is set."
         bacalhau serve --node-type requester
     else
         /usr/local/bin/bacalhau serve \
