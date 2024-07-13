@@ -92,6 +92,7 @@ linters:
 # Options for analysis running.
 run:
   go: "1.21"
+  skip-dirs-use-default: true
   skip-dirs:
     - experimental$
     - vendor$
