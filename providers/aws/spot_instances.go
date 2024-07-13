@@ -12,15 +12,23 @@ import (
 
 // SpotInstanceConfig holds the configuration for creating spot instances
 type SpotInstanceConfig struct {
-	KeyPairName   string
-	InstanceType  string
-	VPCCIDRBlock  string
-	VPCTagKey     string
-	VPCTagValue   string
+	KeyPairName  string
+	InstanceType string
+	VPCCIDRBlock string
+	VPCTagKey    string
+	VPCTagValue  string
 }
 
 // CreateSpotInstancesInRegion creates spot instances in the specified AWS region
-func CreateSpotInstancesInRegion(ctx context.Context, cfg aws.Config, region string, orchestrators []string, token string, instancesPerRegion int, config SpotInstanceConfig) ([]string, error) {
+func CreateSpotInstancesInRegion(
+	ctx context.Context,
+	cfg aws.Config,
+	region string,
+	orchestrators []string,
+	token string,
+	instancesPerRegion int,
+	config SpotInstanceConfig,
+) ([]string, error) {
 	client := ec2.NewFromConfig(cfg)
 
 	// Ensure key pair exists
@@ -35,7 +43,7 @@ func CreateSpotInstancesInRegion(ctx context.Context, cfg aws.Config, region str
 	}
 
 	// Create Internet Gateway
-	igwID, err := createInternetGateway(ctx, client, vpcID)
+	_, err = createInternetGateway(ctx, client, vpcID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Internet Gateway: %w", err)
 	}
@@ -55,12 +63,6 @@ func ensureKeyPairExists(ctx context.Context, client *ec2.Client, keyPairName st
 		// Key pair exists
 		log.Printf("Key pair '%s' already exists.", keyPairName)
 		return nil
-	}
-
-	// If the error is not because the key doesn't exist, return the error
-	var notFoundErr *types.InvalidKeyPairNotFound
-	if !aws.IsErrorMessageContains(err, "InvalidKeyPair.NotFound") {
-		return fmt.Errorf("error describing key pair: %w", err)
 	}
 
 	// TODO: Implement key pair creation logic

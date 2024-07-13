@@ -23,6 +23,7 @@ goprintffuncname
 gosec
 gosimple
 govet
+hostnames
 igws
 ineffassign
 Infof
@@ -42,5 +43,6 @@ testdata
 tmpl
 typecheck
 unconvert
+VPCCIDR
 Warnf
 zerolog

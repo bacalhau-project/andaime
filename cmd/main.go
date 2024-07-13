@@ -94,7 +94,7 @@ func deploy(cfg Config) error {
 	return nil
 }
 
-func deleteDeployment(cfg Config, tag string) error {
+func deleteDeployment(_ Config, _ string) error {
 	// Implement deletion logic here
 	return fmt.Errorf("deletion not implemented yet")
 }

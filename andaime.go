@@ -1,7 +1,6 @@
 package main
 
 import (
-	"andaime/cmd"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -20,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/bacalhau-project/andaime/cmd"
 )
 
 // Struct to hold instance information

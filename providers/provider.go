@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 )
 
 // CloudProvider defines the interface for cloud-specific operations
