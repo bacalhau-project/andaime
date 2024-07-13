@@ -114,10 +114,10 @@ func DeployOnAWS() {
 	noOfOrchestratorNodes := PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
 	noOfComputeNodes := PROJECT_SETTINGS["NumberOfComputeNodes"].(int)
 
-	// Ensure VPC and Security Groups exist
-	ensureVPCAndSGsExist(targetRegions)
-
+	
 	if command == "create" {
+		// Ensure VPC and Security Groups exist
+		ensureVPCAndSGsExist(targetRegions)
 		createResources(targetRegions, noOfOrchestratorNodes, noOfComputeNodes)
 	} else if command == "destroy" {
 		destroyResources()
