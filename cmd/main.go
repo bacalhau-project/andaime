@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -7,9 +7,8 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/your-project/providers"
-	"github.com/your-project/providers/aws"
-	"gopkg.in/yaml.v3"
+	"github.com/bacalhau-project/andaime/providers/aws"
+	"sigs.k8s.io/yaml"
 )
 
 type Config struct {
@@ -71,7 +70,7 @@ func deploy(cfg Config) error {
 				if err != nil {
 					return fmt.Errorf("failed to load AWS config: %w", err)
 				}
-				
+
 				// You'll need to implement this function in the aws package
 				instances, err := aws.CreateSpotInstancesInRegion(
 					context.TODO(),

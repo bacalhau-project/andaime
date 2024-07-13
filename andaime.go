@@ -1234,7 +1234,7 @@ func isRetryableError(err error) bool {
 func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 	var combinedScript strings.Builder
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return "", err
 	}
