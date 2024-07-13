@@ -65,3 +65,44 @@ func TestGetLatestUbuntuImage(t *testing.T) {
 		})
 	}
 }
+package aws
+
+import (
+	"context"
+	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/stretchr/testify/assert"
+)
+
+type MockEC2Client struct {
+	DescribeImagesFunc func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error)
+}
+
+func (m *MockEC2Client) DescribeImages(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+	return m.DescribeImagesFunc(ctx, params, optFns...)
+}
+
+func TestGetUbuntuAMIId(t *testing.T) {
+	mockClient := &MockEC2Client{
+		DescribeImagesFunc: func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+			return &ec2.DescribeImagesOutput{
+				Images: []types.Image{
+					{
+						ImageId:      aws.String("ami-12345678"),
+						CreationDate: aws.String("2023-01-01T00:00:00.000Z"),
+					},
+					{
+						ImageId:      aws.String("ami-87654321"),
+						CreationDate: aws.String("2023-02-01T00:00:00.000Z"),
+					},
+				},
+			}, nil
+		},
+	}
+
+	amiID, err := getUbuntuAMIId(mockClient, "x86_64")
+	assert.NoError(t, err)
+	assert.Equal(t, "ami-87654321", amiID)
+}
