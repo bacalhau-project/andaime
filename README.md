@@ -15,7 +15,7 @@ Andaime (Poruguese for "scaffolding", pronounced An-Dye-Me) is a command-line to
 Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/andaime.git
+git clone https://github.com/bacalhau-project/andaime.git
 cd andaime
 ```
 
