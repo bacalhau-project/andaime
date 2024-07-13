@@ -30,43 +30,43 @@ type InstanceInfo struct {
 
 // Struct to hold template data
 type TemplateData struct {
-	ProjectName              string
-	TargetPlatform           string
+	ProjectName               string
+	TargetPlatform            string
 	NumberOfOrchestratorNodes int
 	NumberOfComputeNodes      int
-	TargetRegions            string
-	AwsProfile               string
-	OrchestratorIPs          string
-	NodeType                 string
+	TargetRegions             string
+	AwsProfile                string
+	OrchestratorIPs           string
+	NodeType                  string
 }
 
 var (
 	VERBOSE_MODE_FLAG bool = false
-	PROJECT_SETTINGS      = map[string]interface{}{
-		"ProjectName":              "bacalhau-by-andaime",
-		"TargetPlatform":           "aws",
+	PROJECT_SETTINGS       = map[string]interface{}{
+		"ProjectName":               "bacalhau-by-andaime",
+		"TargetPlatform":            "aws",
 		"NumberOfOrchestratorNodes": 1,
 		"NumberOfComputeNodes":      2,
 	}
 
 	SET_BY = map[string]string{
-		"ProjectName":              "default",
-		"TargetPlatform":           "default",
+		"ProjectName":               "default",
+		"TargetPlatform":            "default",
 		"NumberOfOrchestratorNodes": "default",
 		"NumberOfComputeNodes":      "default",
 	}
-	PROJECT_NAME_FLAG                  string
-	TARGET_PLATFORM_FLAG               string
-	NUMBER_OF_ORCHESTRATOR_NODES_FLAG  int
-	NUMBER_OF_COMPUTE_NODES_FLAG       int
-	TARGET_REGIONS_FLAG                string
-	ORCHESTRATOR_IP_FLAG               string
-	command                            string
-	helpFlag                           bool
-	AWS_PROFILE_FLAG                   string
+	PROJECT_NAME_FLAG                 string
+	TARGET_PLATFORM_FLAG              string
+	NUMBER_OF_ORCHESTRATOR_NODES_FLAG int
+	NUMBER_OF_COMPUTE_NODES_FLAG      int
+	TARGET_REGIONS_FLAG               string
+	ORCHESTRATOR_IP_FLAG              string
+	command                           string
+	helpFlag                          bool
+	AWS_PROFILE_FLAG                  string
 )
 
-func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
+func getUbuntuAMIId(svc *ec2.EC2, _ string) (string, error) {
 	describeImagesInput := &ec2.DescribeImagesInput{
 		Filters: []*ec2.Filter{
 			{
@@ -114,7 +114,6 @@ func DeployOnAWS() {
 	noOfOrchestratorNodes := PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
 	noOfComputeNodes := PROJECT_SETTINGS["NumberOfComputeNodes"].(int)
 
-	
 	if command == "create" {
 		// Ensure VPC and Security Groups exist
 		ensureVPCAndSGsExist(targetRegions)
@@ -284,8 +283,8 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 
 			// Create Subnet
 			subnetOutput, err := svc.CreateSubnet(&ec2.CreateSubnetInput{
-				CidrBlock: aws.String("10.0.1.0/24"),
-				VpcId:     vpcID,
+				CidrBlock:        aws.String("10.0.1.0/24"),
+				VpcId:            vpcID,
 				AvailabilityZone: aws.String(availabilityZone),
 				TagSpecifications: []*ec2.TagSpecification{
 					{
@@ -573,13 +572,13 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 
 		// Read and encode startup scripts
 		templateData := TemplateData{
-			ProjectName:              PROJECT_SETTINGS["ProjectName"].(string),
-			TargetPlatform:           PROJECT_SETTINGS["TargetPlatform"].(string),
+			ProjectName:               PROJECT_SETTINGS["ProjectName"].(string),
+			TargetPlatform:            PROJECT_SETTINGS["TargetPlatform"].(string),
 			NumberOfOrchestratorNodes: PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int),
 			NumberOfComputeNodes:      PROJECT_SETTINGS["NumberOfComputeNodes"].(int),
-			TargetRegions:            TARGET_REGIONS_FLAG,
-			AwsProfile:               AWS_PROFILE_FLAG,
-			NodeType:                 nodeType,
+			TargetRegions:             TARGET_REGIONS_FLAG,
+			AwsProfile:                AWS_PROFILE_FLAG,
+			NodeType:                  nodeType,
 		}
 
 		if nodeType == "compute" && len(orchestratorIPs) > 0 {
@@ -924,7 +923,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					SubnetId: subnet.SubnetId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete subnet %s in region %s: %v\n", *subnet.SubnetId, region)
+					fmt.Printf("Unable to delete subnet %s in region %s: %v\n", *subnet.SubnetId, region, err)
 					continue
 				}
 				fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
@@ -951,7 +950,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					RouteTableId: routeTable.RouteTableId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete route table %s in region %s: %v\n", *routeTable.RouteTableId, region)
+					fmt.Printf("Unable to delete route table %s in region %s: %v\n", *routeTable.RouteTableId, region, err)
 					continue
 				}
 				fmt.Printf("Deleted route table %s in region %s\n", *routeTable.RouteTableId, region)
@@ -1031,7 +1030,7 @@ func listResources() {
 				Profile: AWS_PROFILE_FLAG,
 				Config:  aws.Config{Region: aws.String(region)},
 			}))
-			 ec2Svc := ec2.New(sess)
+			ec2Svc := ec2.New(sess)
 
 			resources := make(map[string][]string)
 			for _, resourceType := range resourceTypes {
@@ -1048,12 +1047,13 @@ func listResources() {
 
 	fmt.Println("\n== Resources Report ==")
 	for region, resources := range resourcesByRegion {
-		
+
 		fmt.Println("\n=======================")
 		fmt.Println("||")
 		fmt.Printf("|| Resources in region: %s\n", region)
 		fmt.Println("||")
-		fmt.Println("=======================\n")
+		fmt.Println("=======================")
+		fmt.Println("")
 
 		for resourceType, resourceList := range resources {
 			if len(resourceList) > 0 {
@@ -1277,7 +1277,7 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 		tmpl, err := template.New("script").Parse(string(content))
 		if err != nil {
 			return "", err
-			}
+		}
 
 		var script strings.Builder
 		err = tmpl.Execute(&script, templateData)
@@ -1484,7 +1484,9 @@ func PrintUsage() {
 }
 
 func main() {
-	fmt.Println("\n== Andaime ==\n")
+	fmt.Println("\n== Andaime ==")
+	fmt.Println("=======================")
+	fmt.Println("")
 
 	if len(os.Args) < 2 {
 		PrintUsage()
@@ -1527,7 +1529,9 @@ func main() {
 
 	if command == "create" {
 
-		fmt.Println("Project configuration:\n")
+		fmt.Println("Project configuration:")
+		fmt.Println("=======================")
+		fmt.Println("")
 		fmt.Printf("\tProject name: \"%s\" (set by %s)\n", PROJECT_SETTINGS["ProjectName"], SET_BY["ProjectName"])
 		fmt.Printf("\tTarget Platform: \"%s\" (set by %s)\n", PROJECT_SETTINGS["TargetPlatform"], SET_BY["TargetPlatform"])
 		fmt.Printf("\tNo. of Orchestrator Nodes: %d (set by %s)\n", PROJECT_SETTINGS["NumberOfOrchestratorNodes"], SET_BY["NumberOfOrchestratorNodes"])
