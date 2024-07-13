@@ -2,7 +2,7 @@
 # Andaime
 _A CLI tool for generating an MVP for running a private Bacalhau cluster._
 
-Andaime (Poruguese for "scaffolding", pronounced An-Dye-Me) is a command-line tool for managing AWS resources for the Bacalhau project. It allows you to create, list, and destroy AWS infrastructure components, including VPCs, subnets, internet gateways, route tables, security groups, and EC2 instances.
+Andaime (Poruguese for "scaffolding", pronounced An-Dye-Me) is a command-line tool for managing AWS resources that can run a Bacalhau Network. It allows you to create, list, and destroy AWS infrastructure components, including VPCs, subnets, internet gateways, route tables, security groups, and EC2 instances.
 
 ## Prerequisites
 
