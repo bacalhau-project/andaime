@@ -60,6 +60,7 @@ var (
 	NUMBER_OF_ORCHESTRATOR_NODES_FLAG  int
 	NUMBER_OF_COMPUTE_NODES_FLAG       int
 	TARGET_REGIONS_FLAG                string
+	ORCHESTRATOR_IP_FLAG               string
 	command                            string
 	helpFlag                           bool
 	AWS_PROFILE_FLAG                   string
@@ -113,6 +114,9 @@ func DeployOnAWS() {
 	noOfOrchestratorNodes := PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
 	noOfComputeNodes := PROJECT_SETTINGS["NumberOfComputeNodes"].(int)
 
+	// Ensure VPC and Security Groups exist
+	ensureVPCAndSGsExist(targetRegions)
+
 	if command == "create" {
 		createResources(targetRegions, noOfOrchestratorNodes, noOfComputeNodes)
 	} else if command == "destroy" {
@@ -124,11 +128,9 @@ func DeployOnAWS() {
 	}
 }
 
-func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes int) {
+func ensureVPCAndSGsExist(regions []string) {
 	var wg sync.WaitGroup
-	var orchestratorIPs []string
 
-	// Ensure VPC and Security Groups exist
 	for _, region := range regions {
 		wg.Add(1)
 		go func(region string) {
@@ -148,26 +150,34 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		}(region)
 	}
 	wg.Wait()
+}
 
-	// Create Orchestrator nodes first
-	for i := 0; i < noOfOrchestratorNodes; i++ {
-		wg.Add(1)
-		go func(region string) {
-			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
-			ec2Svc := ec2.New(sess)
-			instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator", nil)
-			orchestratorIPs = append(orchestratorIPs, instanceInfo.PublicIP)
-		}(regions[i%len(regions)])
+func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes int) {
+	var wg sync.WaitGroup
+	var orchestratorIPs []string
+
+	if ORCHESTRATOR_IP_FLAG == "" {
+		// Create Orchestrator nodes first
+		for i := 0; i < noOfOrchestratorNodes; i++ {
+			wg.Add(1)
+			go func(region string) {
+				defer wg.Done()
+				sess := session.Must(session.NewSessionWithOptions(session.Options{
+					Profile: AWS_PROFILE_FLAG,
+					Config:  aws.Config{Region: aws.String(region)},
+				}))
+				ec2Svc := ec2.New(sess)
+				instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator", nil)
+				orchestratorIPs = append(orchestratorIPs, instanceInfo.PublicIP)
+			}(regions[i%len(regions)])
+		}
+		wg.Wait()
+
+		orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
+		fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPsStr)
+	} else {
+		orchestratorIPs = append(orchestratorIPs, ORCHESTRATOR_IP_FLAG)
 	}
-	wg.Wait()
-
-	orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
-
-	fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPsStr)
 
 	// Create Compute nodes next
 	for i := 0; i < noOfComputeNodes; i++ {
@@ -914,7 +924,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					SubnetId: subnet.SubnetId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete subnet %s in region %s: %v\n", *subnet.SubnetId, region, err)
+					fmt.Printf("Unable to delete subnet %s in region %s: %v\n", *subnet.SubnetId, region)
 					continue
 				}
 				fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
@@ -941,7 +951,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					RouteTableId: routeTable.RouteTableId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete route table %s in region %s: %v\n", *routeTable.RouteTableId, region, err)
+					fmt.Printf("Unable to delete route table %s in region %s: %v\n", *routeTable.RouteTableId, region)
 					continue
 				}
 				fmt.Printf("Deleted route table %s in region %s\n", *routeTable.RouteTableId, region)
@@ -1267,7 +1277,7 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 		tmpl, err := template.New("script").Parse(string(content))
 		if err != nil {
 			return "", err
-		}
+			}
 
 		var script strings.Builder
 		err = tmpl.Execute(&script, templateData)
@@ -1456,6 +1466,11 @@ func ProcessFlags() {
 		SET_BY["NumberOfComputeNodes"] = "flag --compute-nodes"
 	}
 
+	if ORCHESTRATOR_IP_FLAG != "" {
+		if VERBOSE_MODE_FLAG == true {
+			fmt.Println(`Setting "ORCHESTRATOR_IP" by flag`)
+		}
+	}
 }
 
 func PrintUsage() {
@@ -1497,6 +1512,7 @@ func main() {
 	flag.IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG, "orchestrator-nodes", -1, "Set number of orchestrator nodes")
 	flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
 	flag.StringVar(&TARGET_REGIONS_FLAG, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
+	flag.StringVar(&ORCHESTRATOR_IP_FLAG, "orchestrator-ip", "", "IP address of existing orchestrator node")
 	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 
