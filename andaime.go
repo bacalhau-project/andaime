@@ -1,6 +1,7 @@
 package main
 
 import (
+	"andaime/cmd"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -1472,41 +1473,19 @@ func ProcessFlags() {
 		}
 	}
 }
-
-import (
-	"cmd"
-)
-
-...
-
-func main() {
-	...
-	if len(os.Args) < 2 {
-		cmd.PrintUsage()
-		os.Exit(1)
-	}
-
-	command = os.Args[1]
-	if command == "--help" || command == "-h" {
-		cmd.PrintUsage()
-		os.Exit(0)
-	}
-	...
-}
-
 func main() {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")
 
 	if len(os.Args) < 2 {
-		PrintUsage()
+		cmd.PrintUsage()
 		os.Exit(1)
 	}
 
 	command = os.Args[1]
 	if command == "--help" || command == "-h" {
-		PrintUsage()
+		cmd.PrintUsage()
 		os.Exit(0)
 	}
 
@@ -1532,7 +1511,7 @@ func main() {
 	flag.Parse()
 
 	if helpFlag {
-		PrintUsage()
+		cmd.PrintUsage()
 		os.Exit(0)
 	}
 

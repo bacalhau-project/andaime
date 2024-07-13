@@ -4,3 +4,6 @@ claude-engineer
 .venv
 
 original/**
+.aider*
+
+.env
