@@ -1,23 +1,25 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	"github.com/bacalhau-project/andaime/providers/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	cfgFile                       string
-	projectName                   string
-	targetPlatform                string
-	numberOfOrchestratorNodes     int
-	numberOfComputeNodes          int
-	targetRegions                 string
-	orchestratorIP                string
-	awsProfile                    string
-	verboseMode                   bool
+	cfgFile                   string
+	projectName               string
+	targetPlatform            string
+	numberOfOrchestratorNodes int
+	numberOfComputeNodes      int
+	targetRegions             string
+	orchestratorIP            string
+	awsProfile                string
+	verboseMode               bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -53,8 +55,11 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List resources for Bacalhau nodes",
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement list functionality
-		fmt.Println("List command called")
+		fmt.Println("Listing Ubuntu AMIs...")
+		if err := aws.GetAndPrintUbuntuAMIs(context.Background()); err != nil {
+			fmt.Println("Error listing Ubuntu AMIs:", err)
+			os.Exit(1)
+		}
 	},
 }
 

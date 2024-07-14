@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"errors"
 )
 
 // CloudProvider defines the interface for cloud-specific operations
@@ -19,6 +18,3 @@ type ImageInfo struct {
 	Name         string
 	CreationDate string
 }
-
-// ErrNoImagesFound is returned when no images are found matching the criteria
-var ErrNoImagesFound = errors.New("no images found")

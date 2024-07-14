@@ -4,13 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daaronch/andaime/utils"
-)
-
-import (
-	"context"
-	"fmt"
-
+	"github.com/bacalhau-project/andaime/utils"
 )
 
 func GetAndPrintUbuntuAMIs(ctx context.Context) error {
@@ -38,18 +32,6 @@ func (p *AWSProvider) GetUbuntuAMIs(ctx context.Context) (map[string]string, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to get AWS regions: %w", err)
 	}
-
-	ubuntuAMIs := make(map[string]string)
-	for _, region := range regions {
-		amiID, err := p.GetLatestUbuntuImage(ctx, region)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get AMI for region %s: %w", region, err)
-		}
-		ubuntuAMIs[region] = amiID
-	}
-
-	return ubuntuAMIs, nil
-}
 
 	ubuntuAMIs := make(map[string]string)
 	for _, region := range regions {
