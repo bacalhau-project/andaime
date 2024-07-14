@@ -45,6 +45,12 @@ func (p *AWSProvider) GetUbuntuAMIs(ctx context.Context) (map[string]string, err
 	return ubuntuAMIs, nil
 }
 
+package aws
+
+import (
+	"fmt"
+)
+
 func PrintUbuntuAMIs(amis map[string]string) {
 	fmt.Println("UBUNTU_AMIS = {")
 	for region, amiID := range amis {
