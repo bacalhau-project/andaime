@@ -63,8 +63,7 @@ func TestGetLatestUbuntuImage(t *testing.T) {
 			if (err != nil) != (tt.expectedError != nil) {
 				t.Errorf("Expected error %v, got %v", tt.expectedError, err)
 			}
-		})
-		{
+		},
 			name: "DescribeImages error",
 			mockResponse: &ec2.DescribeImagesOutput{
 				Images: []types.Image{},
