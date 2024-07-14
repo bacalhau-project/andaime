@@ -5,7 +5,12 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/utils"
-)
+func main() {
+	ctx := context.Background()
+	if err := aws.GetAndPrintUbuntuAMIs(ctx); err != nil {
+		panic(err)
+	}
+}
 
 func GetAndPrintUbuntuAMIs(ctx context.Context) error {
 	regions, err := utils.GetAWSRegions()
