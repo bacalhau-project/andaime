@@ -21,6 +21,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
+var VERSION_NUMBER string = "v0.0.1"
+
 //go:embed startup_scripts/*
 var startupScriptsFS embed.FS
 
@@ -1526,7 +1528,6 @@ func PrintUsage() {
 }
 
 func main() {
-	fmt.Println("\n== Andaime ==\n")
 
 	if len(os.Args) < 2 {
 		PrintUsage()
@@ -1566,6 +1567,14 @@ func main() {
 	}
 
 	ProcessFlags()
+
+	
+	if command == "version" {
+		fmt.Println(VERSION_NUMBER)
+		os.Exit(0)
+	}
+	
+	fmt.Println("\n== Andaime ==\n")
 
 	if command == "create" {
 
