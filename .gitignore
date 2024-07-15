@@ -2,3 +2,4 @@ andaime
 config.json
 claude-engineer
 .venv
+.DS_Store
