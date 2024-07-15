@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+
 	"os"
 	"path/filepath"
 	"sort"
@@ -1270,7 +1270,7 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 
 	// Read and concatenate the content of the files in order
 	for _, orderedFile := range orderedFiles {
-		content, err := ioutil.ReadFile(filepath.Join(dir, orderedFile.name))
+		content, err := os.ReadFile(filepath.Join(dir, orderedFile.name))
 		if err != nil {
 			return "", err
 		}

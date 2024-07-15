@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"bytes"
-	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func ExecuteCommand(root *cobra.Command, args ...string) (output string, err error) {
@@ -18,4 +16,3 @@ func ExecuteCommand(root *cobra.Command, args ...string) (output string, err err
 
 	return buf.String(), err
 }
-

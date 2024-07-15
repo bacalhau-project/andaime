@@ -27,12 +27,3 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	return &config, nil
 }
-
-func GetAWSRegions() ([]string, error) {
-	config, err := LoadConfig("config.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-
-	return config.AWS.Regions, nil
-}

@@ -2,28 +2,25 @@ package aws
 
 import (
 	"context"
+	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/providers"
 )
 
-type AWSProvider struct {
-	client EC2Client
-}
-
-func NewAWSProvider() *AWSProvider {
-	cfg, err := config.LoadDefaultConfig(context.Background())
-	if err != nil {
-		// In a real-world scenario, we might want to handle this error more gracefully
-		panic(err)
-	}
-	client := ec2.NewFromConfig(cfg)
-	return &AWSProvider{client: client}
-}
+// ubuntuAMICache stores the latest Ubuntu AMI ID for each region.
+var ubuntuAMICache = make(map[string]string)
+var cacheLock = &sync.Mutex{}
 
 func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (string, error) {
+	cacheLock.Lock()
+	if ami, ok := ubuntuAMICache[region]; ok {
+		cacheLock.Unlock()
+		return ami, nil
+	}
+	cacheLock.Unlock()
+
 	input := &ec2.DescribeImagesInput{
 		Owners: []string{"099720109477"}, // Canonical's AWS account ID
 		Filters: []ec2types.Filter{
@@ -46,7 +43,7 @@ func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (
 		},
 	}
 
-	result, err := p.client.DescribeImages(ctx, input)
+	result, err := p.EC2Client.DescribeImages(ctx, input)
 	if err != nil {
 		return "", err
 	}
@@ -63,7 +60,12 @@ func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (
 		}
 	}
 
-	return *latestImage.ImageId, nil
+	amiID := *latestImage.ImageId
+	cacheLock.Lock()
+	ubuntuAMICache[region] = amiID
+	cacheLock.Unlock()
+
+	return amiID, nil
 }
 
 func stringPtr(s string) *string {

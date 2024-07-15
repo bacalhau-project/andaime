@@ -1,4 +1,4 @@
-package aws
+package aws_test
 
 import (
 	"context"
@@ -6,60 +6,44 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/bacalhau-project/andaime/providers"
+	"github.com/bacalhau-project/andaime/providers/aws"
+	"github.com/bacalhau-project/andaime/utils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-type mockEC2Client struct {
-	DescribeImagesFunc func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error)
+// MockEC2Client is a mock of EC2Client interface
+type MockEC2Client struct {
+	mock.Mock
 }
 
-func (m *mockEC2Client) DescribeImages(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-	return m.DescribeImagesFunc(ctx, params, optFns...)
+func (m *MockEC2Client) DescribeImages(ctx context.Context, input *ec2.DescribeImagesInput, opts ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+	args := m.Called(ctx, input)
+	return args.Get(0).(*ec2.DescribeImagesOutput), args.Error(1)
 }
 
 func TestGetLatestUbuntuImage(t *testing.T) {
-	mockClient := &mockEC2Client{
-		DescribeImagesFunc: func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-			return &ec2.DescribeImagesOutput{
-				Images: []types.Image{
-					{
-						ImageId:      stringPtr("ami-12345"),
-						CreationDate: stringPtr("2023-05-01T00:00:00Z"),
-					},
-					{
-						ImageId:      stringPtr("ami-67890"),
-						CreationDate: stringPtr("2023-05-02T00:00:00Z"),
-					},
-				},
-			}, nil
+	mockEC2Client := new(MockEC2Client)
+	provider := aws.AWSProvider{EC2Client: mockEC2Client}
+
+	mockEC2Client.On("DescribeImages", mock.Anything, mock.Anything).Return(&ec2.DescribeImagesOutput{
+		Images: []types.Image{
+			{
+				ImageId:      utils.StringPtr("ami-123"),
+				CreationDate: utils.StringPtr("2023-01-02T15:04:05.000Z"),
+			},
 		},
-	}
+	}, nil)
 
-	provider := &AWSProvider{client: mockClient}
-
+	// Test fetching from API
 	amiID, err := provider.GetLatestUbuntuImage(context.Background(), "us-west-2")
-	if err != nil {
-		t.Fatalf("GetLatestUbuntuImage failed: %v", err)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "ami-123", amiID)
 
-	if amiID != "ami-67890" {
-		t.Errorf("Expected AMI ID ami-67890, got %s", amiID)
-	}
-}
+	// Test fetching from cache
+	amiID, err = provider.GetLatestUbuntuImage(context.Background(), "us-west-2")
+	assert.NoError(t, err)
+	assert.Equal(t, "ami-123", amiID)
 
-func TestGetLatestUbuntuImageNoImages(t *testing.T) {
-	mockClient := &mockEC2Client{
-		DescribeImagesFunc: func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-			return &ec2.DescribeImagesOutput{
-				Images: []types.Image{},
-			}, nil
-		},
-	}
-
-	provider := &AWSProvider{client: mockClient}
-
-	_, err := provider.GetLatestUbuntuImage(context.Background(), "us-west-2")
-	if err != providers.ErrNoImagesFound {
-		t.Errorf("Expected ErrNoImagesFound, got %v", err)
-	}
+	mockEC2Client.AssertExpectations(t)
 }

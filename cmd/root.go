@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/bacalhau-project/andaime/providers/aws"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,6 +22,10 @@ var (
 	awsProfile                string
 	verboseMode               bool
 )
+
+type CloudProvider struct {
+	awsProvider aws.AWSProviderInterface
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -55,27 +60,54 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List resources for Bacalhau nodes",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Listing Ubuntu AMIs...")
-		if err := aws.GetAndPrintUbuntuAMIs(context.Background()); err != nil {
-			fmt.Println("Error listing Ubuntu AMIs:", err)
-			os.Exit(1)
-		}
+		// TODO: Implement list functionality
+		fmt.Println("List command called")
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		fmt.Println(err)
+func initConfig() {
+	if cfgFile != "" {
+		// Use config file from the flag.
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Println("Unable to find home directory:", err)
+			os.Exit(1)
+		}
+
+		// Search config in home directory with name ".andaime" (without extension).
+		viper.AddConfigPath(home)
+		viper.SetConfigName(".andaime")
+	}
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+		fmt.Println("Using config file:", viper.ConfigFileUsed())
+	} else if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		// Config file was found but another error was produced
+		fmt.Println("Error reading config file:", err)
 		os.Exit(1)
 	}
 }
 
-func init() {
+func SetupRootCommand() {
 	cobra.OnInitialize(initConfig)
 
+	// Setup flags
+	setupFlags()
+
+	// Add commands
+	rootCmd.AddCommand(createCmd, destroyCmd, listCmd)
+
+	// Dynamically initialize required cloud providers based on configuration
+	initializeCloudProviders()
+}
+
+func setupFlags() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
 
@@ -86,32 +118,34 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&targetRegions, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
 	rootCmd.PersistentFlags().StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
 	rootCmd.PersistentFlags().StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
-
-	rootCmd.AddCommand(createCmd)
-	rootCmd.AddCommand(destroyCmd)
-	rootCmd.AddCommand(listCmd)
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
+func initializeCloudProviders() *CloudProvider {
+	cloudProvider := &CloudProvider{}
 
-		// Search config in home directory with name ".andaime" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".andaime")
+	// Example: Initialize AWS provider
+	if shouldInitAWS() {
+		if err := initAWSProvider(cloudProvider); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to initialize AWS provider: %v\n", err)
+			os.Exit(1)
+		}
 	}
+	// TODO: Instantiate GCP
+	// TODO: Instantiate Azure
+	return cloudProvider
+}
 
-	viper.AutomaticEnv() // read in environment variables that match
-
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+// initAWSProvider initializes the AWS provider with the given profile and region
+func initAWSProvider(c *CloudProvider) error {
+	awsProvider, err := aws.NewAWSProviderFunc(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
+	c.awsProvider = awsProvider
+	return nil
+}
+
+func shouldInitAWS() bool {
+	// TODO: Detect if AWS should be instantiated
+	return true
 }

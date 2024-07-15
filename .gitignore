@@ -1,11 +1,13 @@
 andaime
 config.json
-claude-engineer
+*claude-engineer*
+Chat_*
 .venv
 
-original/**
 .aider*
 
 .env
 
 vendor/**
+
+original/**

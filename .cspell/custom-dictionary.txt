@@ -39,6 +39,7 @@ Retryable
 sess
 sirupsen
 staticcheck
+stretchr
 stylecheck
 testdata
 tmpl
