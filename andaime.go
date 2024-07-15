@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"embed"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +20,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
+
+//go:embed startup_scripts/*
+var startupScriptsFS embed.FS
 
 // Struct to hold instance information
 type InstanceInfo struct {
@@ -1233,7 +1236,7 @@ func isRetryableError(err error) bool {
 func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 	var combinedScript strings.Builder
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := startupScriptsFS.ReadDir(dir)
 	if err != nil {
 		return "", err
 	}
@@ -1269,7 +1272,7 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 
 	// Read and concatenate the content of the files in order
 	for _, orderedFile := range orderedFiles {
-		content, err := ioutil.ReadFile(filepath.Join(dir, orderedFile.name))
+		content, err := startupScriptsFS.ReadFile(filepath.Join(dir, orderedFile.name))
 		if err != nil {
 			return "", err
 		}
@@ -1277,7 +1280,7 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 		tmpl, err := template.New("script").Parse(string(content))
 		if err != nil {
 			return "", err
-			}
+		}
 
 		var script strings.Builder
 		err = tmpl.Execute(&script, templateData)
