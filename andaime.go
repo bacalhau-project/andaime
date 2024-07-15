@@ -107,8 +107,10 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 			latestImage = image
 		}
 	}
+	if VERBOSE_MODE_FLAG == true {
+		fmt.Printf("Using AMI ID: %s\n", *latestImage.ImageId)
+	}
 
-	fmt.Printf("Using AMI ID: %s\n", *latestImage.ImageId)
 	return *latestImage.ImageId, nil
 }
 
@@ -176,8 +178,8 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		}
 		wg.Wait()
 
-		orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
-		fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPsStr)
+		// orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
+		fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPs)
 	} else {
 		orchestratorIPs = append(orchestratorIPs, ORCHESTRATOR_IP_FLAG)
 	}
@@ -251,7 +253,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 		var vpcID *string
 
 		if len(vpcs.Vpcs) > 0 {
-			fmt.Printf("VPC already exists in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("VPC already exists in region %s\n", region)
+			}
 			vpcID = vpcs.Vpcs[0].VpcId
 		} else {
 			// Create VPC
@@ -283,7 +287,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			}
 
 			vpcID = vpcOutput.Vpc.VpcId
-			fmt.Printf("Created VPC in region %s with ID %s\n", region, *vpcID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created VPC in region %s with ID %s\n", region, *vpcID)
+			}
 
 			// Create Subnet
 			subnetOutput, err := svc.CreateSubnet(&ec2.CreateSubnetInput{
@@ -315,7 +321,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				return
 			}
 			subnetID := subnetOutput.Subnet.SubnetId
-			fmt.Printf("Created Subnet in region %s with ID %s\n", region, *subnetID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created Subnet in region %s with ID %s\n", region, *subnetID)
+			}
 
 			// Create Internet Gateway
 			igwOutput, err := svc.CreateInternetGateway(&ec2.CreateInternetGatewayInput{
@@ -344,7 +352,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				return
 			}
 			igwID := igwOutput.InternetGateway.InternetGatewayId
-			fmt.Printf("Created Internet Gateway in region %s with ID %s\n", region, *igwID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created Internet Gateway in region %s with ID %s\n", region, *igwID)
+			}
 
 			// Attach Internet Gateway to VPC
 			_, err = svc.AttachInternetGateway(&ec2.AttachInternetGatewayInput{
@@ -359,7 +369,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				fmt.Printf("Unable to attach internet gateway to VPC in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Attached Internet Gateway to VPC in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Attached Internet Gateway to VPC in region %s\n", region)
+			}
 
 			// Create Route Table
 			routeTableOutput, err := svc.CreateRouteTable(&ec2.CreateRouteTableInput{
@@ -389,7 +401,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				return
 			}
 			routeTableID := routeTableOutput.RouteTable.RouteTableId
-			fmt.Printf("Created Route Table in region %s with ID %s\n", region, *routeTableID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created Route Table in region %s with ID %s\n", region, *routeTableID)
+			}
 
 			// Create Route to Internet Gateway
 			_, err = svc.CreateRoute(&ec2.CreateRouteInput{
@@ -405,7 +419,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				fmt.Printf("Unable to create route to internet gateway in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Created route to Internet Gateway in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created route to Internet Gateway in region %s\n", region)
+			}
 
 			// Associate Subnet with Route Table
 			_, err = svc.AssociateRouteTable(&ec2.AssociateRouteTableInput{
@@ -420,7 +436,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				fmt.Printf("Unable to associate subnet with route table in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Associated Subnet with Route Table in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Associated Subnet with Route Table in region %s\n", region)
+			}
 		}
 
 		// Create Security Group if it doesn't exist
@@ -463,9 +481,11 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 		instances = append(instances, instanceInfo)
 	}
 
-	fmt.Println("Created instances:")
-	for _, instance := range instances {
-		fmt.Printf("Region: %s, Instance ID: %s, Public IPv4: %s\n", instance.Region, instance.InstanceID, instance.PublicIP)
+	if VERBOSE_MODE_FLAG == true {
+		fmt.Println("Created instances:")
+		for _, instance := range instances {
+			fmt.Printf("Region: %s, Instance ID: %s, Public IPv4: %s\n", instance.Region, instance.InstanceID, instance.PublicIP)
+		}
 	}
 }
 
@@ -662,6 +682,10 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 			publicIP = *instance.PublicIpAddress
 		}
 
+		if VERBOSE_MODE_FLAG == true {
+			fmt.Printf("Compute node created in %s, with Instance ID '%s' and public IP address: %s\n", region, instanceID, publicIP)
+		}
+
 		instanceInfo = InstanceInfo{
 			InstanceID: instanceID,
 			Region:     region,
@@ -751,8 +775,9 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 				return nil
 			}
 		}
-
-		fmt.Printf("Created security group in region %s\n", region)
+		if VERBOSE_MODE_FLAG == true {
+			fmt.Printf("Created security group in region %s\n", region)
+		}
 		return sgID
 	}
 	return nil
@@ -843,7 +868,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				fmt.Printf("Unable to terminate instances in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Terminated instances in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Terminated instances in region %s\n", region)
+			}
 
 			// Wait until instances are terminated
 			err = svc.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
@@ -886,7 +913,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				fmt.Printf("Unable to delete security group %s in region %s: %v\n", *sg.GroupId, region, err)
 				continue
 			}
-			fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
+			}
 		}
 
 		// Describe VPCs with the tag "project=andaime"
@@ -930,7 +959,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					fmt.Printf("Unable to delete subnet %s in region %s: %v\n", *subnet.SubnetId, region)
 					continue
 				}
-				fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
+				}
 			}
 
 			// Describe and delete route tables
@@ -957,7 +988,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					fmt.Printf("Unable to delete route table %s in region %s: %v\n", *routeTable.RouteTableId, region)
 					continue
 				}
-				fmt.Printf("Deleted route table %s in region %s\n", *routeTable.RouteTableId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf("Deleted route table %s in region %s\n", *routeTable.RouteTableId, region)
+				}
 			}
 
 			// Detach Internet Gateway
@@ -982,7 +1015,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					fmt.Printf("Unable to detach internet gateway %s from VPC %s in region %s: %v\n", *igw.InternetGatewayId, *vpc.VpcId, region, err)
 					continue
 				}
-				fmt.Printf("Detached internet gateway %s from VPC %s in region %s\n", *igw.InternetGatewayId, *vpc.VpcId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf("Detached internet gateway %s from VPC %s in region %s\n", *igw.InternetGatewayId, *vpc.VpcId, region)
+				}
 
 				// Delete Internet Gateway
 				_, err = svc.DeleteInternetGateway(&ec2.DeleteInternetGatewayInput{
@@ -992,7 +1027,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					fmt.Printf("Unable to delete internet gateway %s in region %s: %v\n", *igw.InternetGatewayId, region, err)
 					continue
 				}
-				fmt.Printf("Deleted internet gateway %s in region %s\n", *igw.InternetGatewayId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf("Deleted internet gateway %s in region %s\n", *igw.InternetGatewayId, region)
+				}
 			}
 
 			_, err = svc.DeleteVpc(&ec2.DeleteVpcInput{
@@ -1006,7 +1043,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				fmt.Printf("Unable to delete VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
 				continue
 			}
-			fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
+			}
 		}
 		break
 	}
