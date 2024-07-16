@@ -229,6 +229,7 @@ func (d *Display) renderTable() {
 	}
 	d.statusesMu.Unlock()
 }
+
 func (d *Display) padText(text string, width int) string {
 	if len(text) >= width {
 		return text[:width]
@@ -238,8 +239,15 @@ func (d *Display) padText(text string, width int) string {
 
 func (d *Display) Start(sigChan chan os.Signal) {
 	if d.testMode {
+		// Simulate running the application without starting tview
+		go func() {
+			d.startHighlightTimer()
+			<-d.stopChan
+			close(d.quit)
+		}()
 		return
 	}
+
 	go func() {
 		d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyCtrlC {
@@ -295,7 +303,6 @@ func (d *Display) printFinalTableState() {
 
 	// Function to print a row separator
 	printSeparator := func() {
-		fmt.Print("\r") // Carriage return to move to the beginning of the line
 		for col, width := range colWidths {
 			if col == 0 {
 				fmt.Print("+")
@@ -308,24 +315,22 @@ func (d *Display) printFinalTableState() {
 
 	// Clear screen and move cursor to top-left
 	fmt.Print("\033[2J\033[H")
-	fmt.Println()
-	printSeparator() // Print separator after the header
+
+	printSeparator() // Print top separator
 
 	// Print header row
-	fmt.Print("\r")                           // Carriage return to move to the beginning of the line
-	for col, header := range DisplayColumns { // Assuming the first row is the header
-		fmt.Printf("| %-*s ", colWidths[col], header.Text)
+	for col, cell := range d.lastTableState[0] {
+		fmt.Printf("| %-*s ", colWidths[col], cell)
 	}
 	fmt.Println("|")
+	printSeparator() // Print separator after header
 
 	// Print the table
-	printSeparator()
-	for _, row := range d.lastTableState {
-		fmt.Print("\r") // Carriage return to move to the beginning of the line
+	for _, row := range d.lastTableState[1:] {
 		for col, cell := range row {
 			fmt.Printf("| %-*s ", colWidths[col], cell)
 		}
 		fmt.Println("|")
+		printSeparator() // Print separator after each row
 	}
-	printSeparator()
 }

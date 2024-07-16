@@ -1,6 +1,7 @@
 package display
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ var statuses = []*Status{
 }
 
 func TestDisplay(t *testing.T) {
-	d := NewDisplay(0)
+	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
 
 	// Create a channel to receive os.Signal
 	sigChan := make(chan os.Signal, 1)
@@ -75,10 +76,14 @@ func TestDisplay(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Error("Timed out waiting for display to stop")
 	}
+
+	// Reset terminal state
+	fmt.Print("\033[0m")
+	fmt.Print("\033[?25h") // Show cursor
 }
 
 func TestHighlightFading(t *testing.T) {
-	d := NewDisplay(0)
+	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
 
 	// Test initial color (dark green)
 	initialColor := d.getHighlightColor(d.fadeSteps)
@@ -103,43 +108,28 @@ func TestHighlightFading(t *testing.T) {
 }
 
 func TestUpdateStatus(t *testing.T) {
-	d := NewDisplay(0)
+	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
 
-	status := &Status{
-		ID:             "1",
-		Type:           "EC2",
-		Region:         "us-west-2",
-		Zone:           "us-west-2a",
-		Status:         "Running",
-		DetailedStatus: "Healthy",
-		ElapsedTime:    5 * time.Second,
-		InstanceID:     "i-1234567890abcdef0",
-		PublicIP:       "203.0.113.1",
-		PrivateIP:      "10.0.0.1",
+	for _, status := range statuses {
+		d.UpdateStatus(status)
 	}
-
-	d.UpdateStatus(status)
 
 	d.statusesMu.RLock()
-	updatedStatus, exists := d.statuses[status.ID]
+	for _, status := range statuses {
+		updatedStatus, exists := d.statuses[status.ID]
+		if !exists {
+			t.Errorf("Status with ID %s was not added to the map", status.ID)
+		}
+		if updatedStatus.HighlightCycles != d.fadeSteps {
+			t.Errorf("HighlightCycles not set correctly for ID %s. Expected %d, got %d", status.ID, d.fadeSteps, updatedStatus.HighlightCycles)
+		}
+
+		// Update the same status again
+		d.UpdateStatus(status)
+		updatedStatus, _ = d.statuses[status.ID]
+		if updatedStatus.HighlightCycles != d.fadeSteps {
+			t.Errorf("HighlightCycles not reset on update for ID %s. Expected %d, got %d", status.ID, d.fadeSteps, updatedStatus.HighlightCycles)
+		}
+	}
 	d.statusesMu.RUnlock()
-
-	if !exists {
-		t.Errorf("Status was not added to the map")
-	}
-
-	if updatedStatus.HighlightCycles != d.fadeSteps {
-		t.Errorf("HighlightCycles not set correctly. Expected %d, got %d", d.fadeSteps, updatedStatus.HighlightCycles)
-	}
-
-	// Update the same status again
-	d.UpdateStatus(status)
-
-	d.statusesMu.RLock()
-	updatedStatus, _ = d.statuses[status.ID]
-	d.statusesMu.RUnlock()
-
-	if updatedStatus.HighlightCycles != d.fadeSteps {
-		t.Errorf("HighlightCycles not reset on update. Expected %d, got %d", d.fadeSteps, updatedStatus.HighlightCycles)
-	}
 }
