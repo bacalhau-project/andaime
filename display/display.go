@@ -55,13 +55,20 @@ type DisplayColumn struct {
 	DataFunc func(status Status) string
 }
 
+//nolint:gomnd
 var DisplayColumns = []DisplayColumn{
 	{Text: "ID", Width: 10, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.ID }},
 	{Text: "Type", Width: 10, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.Type }},
 	{Text: "Region", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.Region }},
 	{Text: "Zone", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.Zone }},
-	{Text: "Status", Width: 30, Color: tcell.ColorRed, DataFunc: func(status Status) string { return fmt.Sprintf("%s (%s)", status.Status, status.DetailedStatus) }},
-	{Text: "Elapsed", Width: 10, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.ElapsedTime.Round(time.Second).String() }},
+	{Text: "Status",
+		Width:    30,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status Status) string { return fmt.Sprintf("%s (%s)", status.Status, status.DetailedStatus) }},
+	{Text: "Elapsed",
+		Width:    10,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status Status) string { return status.ElapsedTime.Round(time.Second).String() }},
 	{Text: "Instance ID", Width: 20, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.InstanceID }},
 	{Text: "Public IP", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.PublicIP }},
 	{Text: "Private IP", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.PrivateIP }},
@@ -69,10 +76,6 @@ var DisplayColumns = []DisplayColumn{
 
 func NewDisplay(totalTasks int) *Display {
 	return newDisplayInternal(totalTasks, false)
-}
-
-func NewTestDisplay(totalTasks int) *Display {
-	return newDisplayInternal(totalTasks, true)
 }
 
 func newDisplayInternal(totalTasks int, testMode bool) *Display {
@@ -88,14 +91,15 @@ func newDisplayInternal(totalTasks int, testMode bool) *Display {
 		testMode:           testMode,
 	}
 
+	d.DebugLog = *logger.Get()
 	d.setupTable()
 	d.setupLayout()
-	d.DebugLog = *logger.Get()
 
 	return d
 }
 
 func (d *Display) setupTable() {
+	d.DebugLog.Debug("Setting up table")
 	d.table.SetFixed(1, len(DisplayColumns))
 	d.table.SetBordersColor(tcell.ColorWhite)
 
@@ -111,6 +115,7 @@ func (d *Display) setupTable() {
 }
 
 func (d *Display) setupLayout() {
+	d.DebugLog.Debug("Setting up layout")
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.table, 0, 1, true)
 
@@ -118,18 +123,21 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) {
+	d.DebugLog.Debugf("UpdateStatus called with %s", status.ID)
 	d.statusesMu.RLock()
 	existingStatus, exists := d.statuses[status.ID]
 	d.statusesMu.RUnlock()
 
 	newStatus := *status // Create a copy of the status
 	if !exists {
+		d.DebugLog.Debugf("Adding new status: %s", status.ID)
 		d.statusesMu.Lock()
 		d.completedTasks++
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	} else if *existingStatus != newStatus {
+		d.DebugLog.Debugf("Updating existing status: %s", status.ID)
 		d.statusesMu.Lock()
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
@@ -146,10 +154,11 @@ func (d *Display) getHighlightColor(cycles int) tcell.Color {
 		return tcell.ColorDefault
 	}
 
-	// Start with dark green
-	baseR, baseG, baseB := uint8(0), uint8(100), uint8(0)
+	// Convert HighlightColor to RGB
+	baseR, baseG, baseB := HighlightColor.RGB()
+
 	// End with white
-	targetR, targetG, targetB := uint8(255), uint8(255), uint8(255)
+	targetR, targetG, targetB := tcell.ColorWhite.RGB()
 
 	stepR := float64(targetR-baseR) / float64(d.fadeSteps)
 	stepG := float64(targetG-baseG) / float64(d.fadeSteps)
@@ -164,16 +173,24 @@ func (d *Display) getHighlightColor(cycles int) tcell.Color {
 }
 
 func (d *Display) startHighlightTimer() {
+	if d.testMode {
+		return // Don't start the timer in test mode
+	}
+	d.DebugLog.Debug("Starting highlight timer")
 	go func() {
 		ticker := time.NewTicker(HighlightTimer)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
+				d.DebugLog.Debug("Highlight timer tick")
 				d.app.QueueUpdateDraw(func() {
+					d.DebugLog.Debug("QueueUpdateDraw in timer tick started")
 					d.renderTable()
+					d.DebugLog.Debug("QueueUpdateDraw in timer tick completed")
 				})
 			case <-d.stopChan:
+				d.DebugLog.Debug("Highlight timer stopped")
 				return
 			}
 		}
@@ -181,6 +198,7 @@ func (d *Display) startHighlightTimer() {
 }
 
 func (d *Display) renderTable() {
+	d.DebugLog.Debug("Rendering table started")
 	d.statusesMu.RLock()
 	statusesCopy := make(map[string]*Status, len(d.statuses))
 	for id, status := range d.statuses {
@@ -188,6 +206,8 @@ func (d *Display) renderTable() {
 		statusesCopy[id] = &statusCopy
 	}
 	d.statusesMu.RUnlock()
+
+	d.DebugLog.Debugf("Statuses copied: %d statuses", len(statusesCopy))
 
 	statuses := make([]*Status, 0, len(statusesCopy))
 	for _, status := range statusesCopy {
@@ -197,6 +217,8 @@ func (d *Display) renderTable() {
 	sort.Slice(statuses, func(i, j int) bool {
 		return statuses[i].ID < statuses[j].ID
 	})
+
+	d.DebugLog.Debug("Statuses sorted")
 
 	d.lastTableState = make([][]string, len(statuses)+1)
 	d.lastTableState[0] = make([]string, len(DisplayColumns))
@@ -220,6 +242,8 @@ func (d *Display) renderTable() {
 		}
 	}
 
+	d.DebugLog.Debug("Table cells set")
+
 	d.statusesMu.Lock()
 	for id, status := range d.statuses {
 		if status.HighlightCycles > 0 {
@@ -228,6 +252,7 @@ func (d *Display) renderTable() {
 		}
 	}
 	d.statusesMu.Unlock()
+	d.DebugLog.Debug("Table rendered")
 }
 
 func (d *Display) padText(text string, width int) string {
@@ -238,13 +263,9 @@ func (d *Display) padText(text string, width int) string {
 }
 
 func (d *Display) Start(sigChan chan os.Signal) {
+	d.DebugLog.Debug("Starting display")
 	if d.testMode {
-		// Simulate running the application without starting tview
-		go func() {
-			d.startHighlightTimer()
-			<-d.stopChan
-			close(d.quit)
-		}()
+		d.startHighlightTimer()
 		return
 	}
 
@@ -266,6 +287,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 
 	go func() {
 		<-d.stopChan
+		d.DebugLog.Debug("Stop signal received, stopping app")
 		d.app.QueueUpdateDraw(func() {
 			d.app.Stop()
 		})
@@ -274,18 +296,30 @@ func (d *Display) Start(sigChan chan os.Signal) {
 }
 
 func (d *Display) Stop() {
+	d.DebugLog.Debug("Stopping display")
 	d.stopOnce.Do(func() {
 		close(d.stopChan)
-		d.WaitForStop()
+		if !d.testMode {
+			d.WaitForStop()
+		} else {
+			close(d.quit) // Close quit channel immediately in test mode
+		}
 		d.printFinalTableState()
 	})
 }
 
 func (d *Display) WaitForStop() {
-	<-d.quit
+	d.DebugLog.Debug("Waiting for display to stop")
+	select {
+	case <-d.quit:
+		d.DebugLog.Debug("Display stopped")
+	case <-time.After(5 * time.Second): //nolint:gomnd
+		d.DebugLog.Debug("Timeout waiting for display to stop")
+	}
 }
 
 func (d *Display) printFinalTableState() {
+	d.DebugLog.Debug("Printing final table state")
 	if len(d.lastTableState) == 0 {
 		fmt.Println("No data to display")
 		return
@@ -307,7 +341,7 @@ func (d *Display) printFinalTableState() {
 			if col == 0 {
 				fmt.Print("+")
 			}
-			fmt.Print(strings.Repeat("-", width+2))
+			fmt.Print(strings.Repeat("-", width+2)) //nolint:gomnd
 			fmt.Print("+")
 		}
 		fmt.Println()
@@ -331,6 +365,5 @@ func (d *Display) printFinalTableState() {
 			fmt.Printf("| %-*s ", colWidths[col], cell)
 		}
 		fmt.Println("|")
-		printSeparator() // Print separator after each row
 	}
 }

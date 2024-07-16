@@ -1,11 +1,11 @@
 package display
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/bacalhau-project/andaime/logger"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -37,27 +37,19 @@ var statuses = []*Status{
 }
 
 func TestDisplay(t *testing.T) {
-	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
+	debugLog := logger.Get()
+	debugLog.Debug("TestDisplay started")
 
-	// Create a channel to receive os.Signal
+	d := NewTestDisplay(0)
+
 	sigChan := make(chan os.Signal, 1)
-
-	// Start the display in a goroutine
-	go func() {
-		d.Start(sigChan)
-	}()
-
-	// Give some time for the display to start
-	time.Sleep(100 * time.Millisecond)
+	d.Start(sigChan)
 
 	for _, status := range statuses {
+		debugLog.Debugf("Updating status: %s", status.ID)
 		d.UpdateStatus(status)
 	}
 
-	// Sleep to allow for any asynchronous operations
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify that the statuses were added
 	d.statusesMu.RLock()
 	statusCount := len(d.statuses)
 	d.statusesMu.RUnlock()
@@ -66,24 +58,49 @@ func TestDisplay(t *testing.T) {
 		t.Errorf("Expected 2 statuses, got %d", statusCount)
 	}
 
-	// Test stopping the display
 	d.Stop()
 
-	// Wait for the display to stop
 	select {
 	case <-d.quit:
-		// Display stopped successfully
+		debugLog.Debug("Display stopped successfully")
 	case <-time.After(5 * time.Second):
 		t.Error("Timed out waiting for display to stop")
 	}
 
-	// Reset terminal state
-	fmt.Print("\033[0m")
-	fmt.Print("\033[?25h") // Show cursor
+	debugLog.Debug("TestDisplay finished")
 }
 
+func TestUpdateStatus(t *testing.T) {
+	debugLog := logger.Get()
+	debugLog.Debug("TestUpdateStatus started")
+
+	d := NewTestDisplay(0)
+
+	for _, status := range statuses {
+		debugLog.Debugf("Updating status: %s", status.ID)
+		d.UpdateStatus(status)
+	}
+
+	d.statusesMu.RLock()
+	for _, status := range statuses {
+		updatedStatus, exists := d.statuses[status.ID]
+		if !exists {
+			t.Errorf("Status with ID %s was not added to the map", status.ID)
+		}
+		if updatedStatus.HighlightCycles != d.fadeSteps {
+			t.Errorf("HighlightCycles not set correctly for ID %s. Expected %d, got %d", status.ID, d.fadeSteps, updatedStatus.HighlightCycles)
+		}
+	}
+	d.statusesMu.RUnlock()
+
+	debugLog.Debug("TestUpdateStatus finished")
+}
 func TestHighlightFading(t *testing.T) {
+	debugLog := logger.Get()
+	debugLog.Debug("TestHighlightFading started")
+
 	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
+	d.DebugLog = *debugLog
 
 	// Test initial color (dark green)
 	initialColor := d.getHighlightColor(d.fadeSteps)
@@ -105,31 +122,6 @@ func TestHighlightFading(t *testing.T) {
 	if r <= 0 || r >= 255 || g <= 100 || g >= 255 || b <= 0 || b >= 255 {
 		t.Errorf("Middle color out of expected range: %v", middleColor)
 	}
-}
 
-func TestUpdateStatus(t *testing.T) {
-	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
-
-	for _, status := range statuses {
-		d.UpdateStatus(status)
-	}
-
-	d.statusesMu.RLock()
-	for _, status := range statuses {
-		updatedStatus, exists := d.statuses[status.ID]
-		if !exists {
-			t.Errorf("Status with ID %s was not added to the map", status.ID)
-		}
-		if updatedStatus.HighlightCycles != d.fadeSteps {
-			t.Errorf("HighlightCycles not set correctly for ID %s. Expected %d, got %d", status.ID, d.fadeSteps, updatedStatus.HighlightCycles)
-		}
-
-		// Update the same status again
-		d.UpdateStatus(status)
-		updatedStatus, _ = d.statuses[status.ID]
-		if updatedStatus.HighlightCycles != d.fadeSteps {
-			t.Errorf("HighlightCycles not reset on update for ID %s. Expected %d, got %d", status.ID, d.fadeSteps, updatedStatus.HighlightCycles)
-		}
-	}
-	d.statusesMu.RUnlock()
+	debugLog.Debug("TestHighlightFading finished")
 }

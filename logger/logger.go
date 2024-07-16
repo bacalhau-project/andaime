@@ -3,7 +3,9 @@ package logger
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
+	"testing"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -20,22 +22,75 @@ type Logger struct {
 	*zap.Logger
 }
 
-// InitProduction initializes the global logger with production configuration
+// getLogLevel reads the LOG_LEVEL environment variable and returns the corresponding zapcore.Level.
+func getLogLevel() zapcore.Level {
+	logLevelEnv := os.Getenv("LOG_LEVEL")
+	switch strings.ToUpper(logLevelEnv) {
+	case "DEBUG":
+		return zapcore.DebugLevel
+	case "INFO":
+		return zapcore.InfoLevel
+	case "WARN":
+		return zapcore.WarnLevel
+	case "ERROR":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel // Default to info level if LOG_LEVEL is not set or recognized
+	}
+}
+
+// InitProduction initializes the global logger for production use.
 func InitProduction() {
 	once.Do(func() {
-		logger, err := zap.NewProduction()
+		logLevel := getLogLevel()
+
+		var config zap.Config
+		if logLevel == zapcore.DebugLevel {
+			config = zap.NewDevelopmentConfig()
+		} else {
+			config = zap.NewProductionConfig()
+		}
+
+		// Adjust the log level in the config
+		config.Level = zap.NewAtomicLevelAt(logLevel)
+
+		logger, err := config.Build()
 		if err != nil {
-			fmt.Printf("Failed to initialize production logger: %v\n", err)
+			fmt.Printf("Failed to initialize logger: %v\n", err)
 			os.Exit(1)
 		}
 		globalLogger = logger
 	})
 }
 
-// InitTest initializes the global logger for testing
+type testingWriter struct {
+	tb zaptest.TestingT
+}
+
+func (tw *testingWriter) Write(p []byte) (n int, err error) {
+	// Attempt to assert tb to *testing.T to access the Log method directly.
+	if t, ok := tw.tb.(*testing.T); ok {
+		t.Log(string(p))
+	} else {
+		fmt.Print(string(p))
+	}
+	return len(p), nil
+}
+
+// InitTest initializes the global logger for testing, respecting LOG_LEVEL.
 func InitTest(tb zaptest.TestingT) {
 	once.Do(func() {
-		globalLogger = zaptest.NewLogger(tb)
+		logLevel := getLogLevel()
+
+		core := zapcore.NewCore(
+			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
+			zapcore.AddSync(&testingWriter{tb: tb}),
+			zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+				return lvl >= logLevel
+			}),
+		)
+
+		globalLogger = zap.New(core)
 	})
 }
 
@@ -80,6 +135,36 @@ func (l *Logger) Fatal(msg string, fields ...zap.Field) {
 // Sync flushes any buffered log entries
 func (l *Logger) Sync() error {
 	return l.Logger.Sync()
+}
+
+// Debugf logs a formatted message at DebugLevel
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Debug(msg)
+}
+
+// Infof logs a formatted message at InfoLevel
+func (l *Logger) Infof(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Info(msg)
+}
+
+// Warnf logs a formatted message at WarnLevel
+func (l *Logger) Warnf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Warn(msg)
+}
+
+// Errorf logs a formatted message at ErrorLevel
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Error(msg)
+}
+
+// Fatalf logs a formatted message at FatalLevel and then calls os.Exit(1)
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Fatal(msg)
 }
 
 // NewNopLogger returns a no-op Logger

@@ -4,6 +4,7 @@ awserr
 bacalhau
 bodyclose
 chans
+Debugf
 depguard
 dupl
 errcheck
