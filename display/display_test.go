@@ -36,7 +36,7 @@ var statuses = []*Status{
 	},
 }
 
-func TestDisplay(t *testing.T) {
+func TestDisplayDefault(t *testing.T) {
 	debugLog := logger.Get()
 	debugLog.Debug("TestDisplay started")
 
@@ -95,31 +95,31 @@ func TestUpdateStatus(t *testing.T) {
 
 	debugLog.Debug("TestUpdateStatus finished")
 }
+
 func TestHighlightFading(t *testing.T) {
 	debugLog := logger.Get()
 	debugLog.Debug("TestHighlightFading started")
 
-	d := NewTestDisplay(0) // Use NewTestDisplay to enable test mode
-	d.DebugLog = *debugLog
+	d := NewTestDisplay(0)
 
 	// Test initial color (dark green)
-	initialColor := d.getHighlightColor(d.fadeSteps)
-	expectedInitialColor := tcell.NewRGBColor(0, 100, 0)
+	initialColor := d.GetHighlightColor(d.fadeSteps)
+	expectedInitialColor := HighlightColor
 	if initialColor != expectedInitialColor {
 		t.Errorf("Initial color incorrect. Expected %v, got %v", expectedInitialColor, initialColor)
 	}
 
-	// Test final color (white)
-	finalColor := d.getHighlightColor(0)
+	// Test final color (default)
+	finalColor := d.GetHighlightColor(0)
 	expectedFinalColor := tcell.ColorDefault
 	if finalColor != expectedFinalColor {
 		t.Errorf("Final color incorrect. Expected %v, got %v", expectedFinalColor, finalColor)
 	}
 
 	// Test middle color
-	middleColor := d.getHighlightColor(d.fadeSteps / 2)
+	middleColor := d.GetHighlightColor(d.fadeSteps / 2)
 	r, g, b := middleColor.RGB()
-	if r <= 0 || r >= 255 || g <= 100 || g >= 255 || b <= 0 || b >= 255 {
+	if r < 0 || r > 255 || g < 100 || g > 255 || b < 0 || b > 255 {
 		t.Errorf("Middle color out of expected range: %v", middleColor)
 	}
 

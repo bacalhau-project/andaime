@@ -102,6 +102,7 @@ func (d *Display) setupTable() {
 	d.DebugLog.Debug("Setting up table")
 	d.table.SetFixed(1, len(DisplayColumns))
 	d.table.SetBordersColor(tcell.ColorWhite)
+	d.table.SetBorders(true)
 
 	for col, header := range DisplayColumns {
 		cell := tview.NewTableCell(header.Text).
@@ -366,4 +367,5 @@ func (d *Display) printFinalTableState() {
 		}
 		fmt.Println("|")
 	}
+	printSeparator() // Print bottom separator
 }
