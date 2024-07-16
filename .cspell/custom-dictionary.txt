@@ -12,6 +12,7 @@ exportloopref
 Fatalf
 funcs
 funlen
+gdamore
 gochecknoinits
 goconst
 gocritic
@@ -40,14 +41,17 @@ nolintlint
 practise
 predeclared
 Retryable
+rivo
 sess
 sirupsen
 sshutils
 staticcheck
 stretchr
 stylecheck
+tcell
 testdata
 tmpl
+tview
 typecheck
 unconvert
 VPCCIDR

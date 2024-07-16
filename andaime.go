@@ -1473,7 +1473,7 @@ func ProcessFlags() {
 		}
 	}
 }
-func main() {
+func andaime_main() {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")

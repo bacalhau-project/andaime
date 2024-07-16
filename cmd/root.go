@@ -23,6 +23,11 @@ var (
 	verboseMode               bool
 )
 
+var (
+	NumberOfDefaultOrchestratorNodes = 1
+	NumberOfDefaultComputeNodes      = 2
+)
+
 type CloudProvider struct {
 	awsProvider aws.AWSProviderInterface
 }
@@ -94,7 +99,7 @@ func initConfig() {
 	}
 }
 
-func SetupRootCommand() {
+func SetupRootCommand() *cobra.Command {
 	cobra.OnInitialize(initConfig)
 
 	// Setup flags
@@ -102,9 +107,17 @@ func SetupRootCommand() {
 
 	// Add commands
 	rootCmd.AddCommand(createCmd, destroyCmd, listCmd)
+	getBetaCmd(rootCmd)
 
 	// Dynamically initialize required cloud providers based on configuration
 	initializeCloudProviders()
+
+	return rootCmd
+}
+
+// Execute adds all child commands to the root command and sets flags appropriately.
+func Execute() error {
+	return SetupRootCommand().Execute()
 }
 
 func setupFlags() {
@@ -113,8 +126,11 @@ func setupFlags() {
 
 	rootCmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
 	rootCmd.PersistentFlags().StringVar(&targetPlatform, "target-platform", "", "Set target platform")
-	rootCmd.PersistentFlags().IntVar(&numberOfOrchestratorNodes, "orchestrator-nodes", 1, "Set number of orchestrator nodes")
-	rootCmd.PersistentFlags().IntVar(&numberOfComputeNodes, "compute-nodes", 2, "Set number of compute nodes")
+	rootCmd.PersistentFlags().IntVar(&numberOfOrchestratorNodes,
+		"orchestrator-nodes",
+		NumberOfDefaultOrchestratorNodes,
+		"Set number of orchestrator nodes")
+	rootCmd.PersistentFlags().IntVar(&numberOfComputeNodes, "compute-nodes", numberOfComputeNodes, "Set number of compute nodes")
 	rootCmd.PersistentFlags().StringVar(&targetRegions, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
 	rootCmd.PersistentFlags().StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
 	rootCmd.PersistentFlags().StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
