@@ -3,8 +3,15 @@ package utils
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v2"
+)
+
+var (
+	NumberOfSSHRetries      = 3
+	TimeInBetweenSSHRetries = 2 * time.Second
+	SSHTimeOut              = 30 * time.Second
 )
 
 type Config struct {

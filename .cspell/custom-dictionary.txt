@@ -1,7 +1,9 @@
 Andaime
+andaimeconfig
 awserr
 bacalhau
 bodyclose
+chans
 depguard
 dupl
 errcheck
@@ -19,10 +21,12 @@ gofmt
 goimports
 golangci
 gomnd
+gomock
 goprintffuncname
 gosec
 gosimple
 govet
+hostkey
 hostnames
 igws
 ineffassign
@@ -38,6 +42,7 @@ predeclared
 Retryable
 sess
 sirupsen
+sshutils
 staticcheck
 stretchr
 stylecheck
@@ -47,4 +52,5 @@ typecheck
 unconvert
 VPCCIDR
 Warnf
+zaptest
 zerolog
