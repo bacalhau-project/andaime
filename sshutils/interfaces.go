@@ -16,7 +16,10 @@ type SSHClient interface {
 type SSHSession interface {
 	Run(cmd string) error
 	CombinedOutput(cmd string) ([]byte, error)
+	StdinPipe() (io.WriteCloser, error)
 	Close() error
+	Start(cmd string) error
+	Wait() error
 }
 
 // SFTPClient interface defines the methods we need for SFTP operations

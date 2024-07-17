@@ -11,3 +11,5 @@ Chat_*
 vendor/**
 
 original/**
+.vscode
+status.txt

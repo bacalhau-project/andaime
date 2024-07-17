@@ -11,9 +11,12 @@ import (
 
 	"github.com/bacalhau-project/andaime/logger"
 	"github.com/bacalhau-project/andaime/utils"
-	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
+
+type SSHDialer interface {
+	Dial(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)
+}
 
 type SSHConfig struct {
 	Host             string
@@ -23,9 +26,10 @@ type SSHConfig struct {
 	Timeout          time.Duration
 	Logger           *logger.Logger
 	SSHClientFactory SSHClientFactory
+	SSHDialer        SSHDialer
 }
 
-func NewSSHConfig(host string, port int, user string) (*SSHConfig, error) {
+func NewSSHConfig(host string, port int, user string, dialer SSHDialer) (*SSHConfig, error) {
 	privateKey, err := getSSHKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSH key: %w", err)
@@ -38,38 +42,49 @@ func NewSSHConfig(host string, port int, user string) (*SSHConfig, error) {
 		PrivateKey:       privateKey,
 		Timeout:          utils.SSHTimeOut,
 		Logger:           logger.Get(),
-		SSHClientFactory: &DefaultSSHClientFactory{},
+		SSHDialer:        dialer,
+		SSHClientFactory: NewDefaultSSHClientFactory(dialer),
 	}, nil
 }
 
 type SSHClientFactory interface {
-	NewSSHClient(network, addr string, config *ssh.ClientConfig) (SSHClient, error)
+	NewSSHClient(network, addr string, config *ssh.ClientConfig, dialer SSHDialer) (SSHClient, error)
 }
 
-type sshClientWrapper struct {
-	*ssh.Client
+type SSHClientWrapper struct {
+	Client *ssh.Client
 }
 
-func (w *sshClientWrapper) NewSession() (SSHSession, error) {
+func (w *SSHClientWrapper) NewSession() (SSHSession, error) {
 	session, err := w.Client.NewSession()
 	if err != nil {
 		return nil, err
 	}
-	return &sshSessionWrapper{Session: session}, nil
+	return &SSHSessionWrapper{Session: session}, nil
 }
 
-type sshSessionWrapper struct {
+func (w *SSHClientWrapper) Close() error {
+	return w.Client.Close()
+}
+
+type SSHSessionWrapper struct {
 	*ssh.Session
 }
 
-type DefaultSSHClientFactory struct{}
+type DefaultSSHClientFactory struct {
+	dialer SSHDialer
+}
 
-func (f *DefaultSSHClientFactory) NewSSHClient(network, addr string, config *ssh.ClientConfig) (SSHClient, error) {
-	client, err := ssh.Dial(network, addr, config)
+func NewDefaultSSHClientFactory(dialer SSHDialer) *DefaultSSHClientFactory {
+	return &DefaultSSHClientFactory{dialer: dialer}
+}
+
+func (f *DefaultSSHClientFactory) NewSSHClient(network, addr string, config *ssh.ClientConfig, dialer SSHDialer) (SSHClient, error) {
+	client, err := dialer.Dial(network, addr, config)
 	if err != nil {
 		return nil, err
 	}
-	return &sshClientWrapper{Client: client}, nil
+	return &SSHClientWrapper{Client: client}, nil
 }
 
 func (c *SSHConfig) Connect() (SSHClient, error) {
@@ -101,7 +116,7 @@ func (c *SSHConfig) Connect() (SSHClient, error) {
 		Timeout:         c.Timeout,
 	}
 
-	return c.SSHClientFactory.NewSSHClient("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), config)
+	return c.SSHClientFactory.NewSSHClient("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), config, c.SSHDialer)
 }
 
 func (c *SSHConfig) ExecuteCommand(client SSHClient, command string) (string, error) {
@@ -127,38 +142,55 @@ func (c *SSHConfig) ExecuteCommand(client SSHClient, command string) (string, er
 
 	return output, err
 }
-
 func (c *SSHConfig) PushFile(client SSHClient, localPath, remotePath string) error {
 	c.Logger.Info("Pushing file",
 		logger.String("localPath", localPath),
 		logger.String("remotePath", remotePath),
 	)
-	sshClient, ok := client.(*sshClientWrapper)
-	if !ok {
-		return fmt.Errorf("invalid client type")
-	}
 
-	sftpClient, err := sftp.NewClient(sshClient.Client)
+	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create SFTP client: %w", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer sftpClient.Close()
+	defer session.Close()
 
+	remoteCmd := fmt.Sprintf("cat > %s", remotePath)
+	// Create a pipe for the session's stdin
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+	defer stdin.Close()
+
+	// Start the remote command
+	err = session.Start(remoteCmd)
+	if err != nil {
+		return fmt.Errorf("failed to start remote command: %w", err)
+	}
+
+	// Open the local file
 	localFile, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %w", err)
 	}
 	defer localFile.Close()
 
-	remoteFile, err := sftpClient.Create(remotePath)
-	if err != nil {
-		return fmt.Errorf("failed to create remote file: %w", err)
-	}
-	defer remoteFile.Close()
-
-	_, err = io.Copy(remoteFile, localFile)
+	// Copy the local file contents to the remote command's stdin
+	_, err = io.Copy(stdin, localFile)
 	if err != nil {
 		return fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	// Close the stdin pipe to signal end of input
+	err = stdin.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close stdin pipe: %w", err)
+	}
+
+	// Wait for the remote command to finish
+	err = session.Wait()
+	if err != nil {
+		return fmt.Errorf("failed to wait for remote command: %w", err)
 	}
 
 	return nil
@@ -277,4 +309,10 @@ func (c *SSHConfig) getHostKeyCallback() (ssh.HostKeyCallback, error) {
 		return nil, err
 	}
 	return ssh.FixedHostKey(hostKey), nil
+}
+
+type DefaultSSHDialer struct{}
+
+func (d *DefaultSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	return ssh.Dial(network, addr, config)
 }

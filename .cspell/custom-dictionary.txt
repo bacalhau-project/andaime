@@ -34,6 +34,7 @@ igws
 ineffassign
 Infof
 logutils
+maxint
 nakedret
 nats
 noctx
@@ -51,6 +52,7 @@ stretchr
 stylecheck
 tcell
 testdata
+testuser
 tmpl
 tview
 typecheck
