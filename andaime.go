@@ -69,6 +69,11 @@ var (
 	command                            string
 	helpFlag                           bool
 	AWS_PROFILE_FLAG                   string
+	INSTANCE_TYPE                      string
+	COMPUTE_INSTANCE_TYPE              string
+	ORCHESTRATOR_INSTANCE_TYPE         string
+	VALID_ARCHITECTURES =              []string{"arm64", "x86_64"}
+	BOOT_VOLUME_SIZE_FLAG              int
 )
 
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
@@ -76,11 +81,11 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 		Filters: []*ec2.Filter{
 			{
 				Name:   aws.String("name"),
-				Values: aws.StringSlice([]string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"}),
+				Values: aws.StringSlice([]string{"ubuntu/images/hvm-ssd/ubuntu-*"}),
 			},
 			{
 				Name:   aws.String("architecture"),
-				Values: aws.StringSlice([]string{"x86_64"}),
+				Values: aws.StringSlice([]string{arch}),
 			},
 			{
 				Name:   aws.String("state"),
@@ -98,17 +103,25 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	}
 
 	if len(result.Images) == 0 {
-		fmt.Println("No Ubuntu 22.04 AMIs found")
+		fmt.Println("No Ubuntu AMIs found")
 		return "", err
 	}
 
-	// Get the latest image (you might want to add more logic to select the right one)
-	latestImage := result.Images[0]
+	// Filter the results to find the latest image that matches the desired pattern
+	var latestImage *ec2.Image
 	for _, image := range result.Images {
-		if *image.CreationDate > *latestImage.CreationDate {
-			latestImage = image
+		if strings.Contains(*image.Name, "ubuntu-jammy-22.04") {
+			if latestImage == nil || *image.CreationDate > *latestImage.CreationDate {
+				latestImage = image
+			}
 		}
 	}
+
+	if latestImage == nil {
+		fmt.Println("No matching Ubuntu 22.04 AMIs found")
+		return "", fmt.Errorf("no matching Ubuntu 22.04 AMIs found")
+	}
+
 	if VERBOSE_MODE_FLAG == true {
 		fmt.Printf("Using AMI ID: %s\n", *latestImage.ImageId)
 	}
@@ -575,15 +588,44 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 
 		// Get the instance architecture
 		instanceType := "t2.medium"
+
+		if nodeType == "orchestrator" && ORCHESTRATOR_INSTANCE_TYPE != ""{
+			instanceType = ORCHESTRATOR_INSTANCE_TYPE
+		}
+
+		if nodeType == "compute" && COMPUTE_INSTANCE_TYPE != "" {
+			instanceType = COMPUTE_INSTANCE_TYPE
+		}
+
+		fmt.Printf("Chosen instance type for '%s' node: %s\n", nodeType, instanceType)
+
 		instanceTypeDetails, err := svc.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
 			InstanceTypes: []*string{aws.String(instanceType)},
 		})
+
 		if err != nil {
 			fmt.Printf("Unable to describe instance type %s: %v\n", instanceType, err)
 			return instanceInfo
 		}
 
-		architecture := *instanceTypeDetails.InstanceTypes[0].ProcessorInfo.SupportedArchitectures[0]
+		var architecture string
+		for _, arch := range instanceTypeDetails.InstanceTypes[0].ProcessorInfo.SupportedArchitectures {
+			for _, validArch := range VALID_ARCHITECTURES {
+				if *arch == validArch {
+					architecture = *arch
+					break
+				}
+			}
+			if architecture != "" {
+				break
+			}
+		}
+
+		fmt.Printf("selected arch type %s\n", architecture)
+		if architecture == "" {
+			fmt.Printf("No valid architecture found for instance type %s\n", instanceType)
+			return instanceInfo
+		}
 
 		// Get the Ubuntu 22.04 AMI ID
 		amiID, err := getUbuntuAMIId(svc, architecture)
@@ -618,12 +660,24 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		}
 		encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
 
+		bootVolumeSize := int64(BOOT_VOLUME_SIZE_FLAG) // Example: 50 GiB
+
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(amiID),
 			InstanceType: aws.String(instanceType),
 			MaxCount:     aws.Int64(1),
 			MinCount:     aws.Int64(1),
+			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+				{
+					DeviceName: aws.String("/dev/sda1"), // This might need to be adjusted based on the AMI
+					Ebs: &ec2.EbsBlockDevice{
+						VolumeSize:          aws.Int64(bootVolumeSize),
+						DeleteOnTermination: aws.Bool(true),
+						VolumeType:          aws.String("gp2"), // General Purpose SSD
+					},
+				},
+			},
 			NetworkInterfaces: []*ec2.InstanceNetworkInterfaceSpecification{
 				{
 					AssociatePublicIpAddress: aws.Bool(true),
@@ -1557,6 +1611,10 @@ func main() {
 	flag.StringVar(&TARGET_REGIONS_FLAG, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
 	flag.StringVar(&ORCHESTRATOR_IP_FLAG, "orchestrator-ip", "", "IP address of existing orchestrator node")
 	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
+	flag.StringVar(&INSTANCE_TYPE, "instance-type", "t2.medium", "The instance type for both the compute and orchestrator nodes")
+	flag.StringVar(&COMPUTE_INSTANCE_TYPE, "compute-instance-type", "", "The instance type for the compute nodes. Overrides --instance-type for compute nodes.")
+	flag.StringVar(&ORCHESTRATOR_INSTANCE_TYPE, "orchestrator-instance-type", "", "The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.")
+	flag.IntVar(&BOOT_VOLUME_SIZE_FLAG, "volume-size", 8, "The volume size of each node created (Gigabytes). Default: 8")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 
 	flag.Parse()
