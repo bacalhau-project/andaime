@@ -1506,7 +1506,7 @@ func ProcessFlags() {
 		}
 	}
 }
-func andaime_main(cmd string, args ...[]string) {
+func andaime_main(cmd string, _ ...[]string) {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")

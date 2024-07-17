@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	rand "math/rand/v2"
 	"os"
 	"os/signal"
 	"sync"
@@ -104,7 +104,7 @@ func generateEvents(ctx context.Context, statusChan chan<- *display.Status, tota
 }
 
 func createRandomStatus() *display.Status {
-	id := fmt.Sprintf("i-%06d", rand.Intn(1000000))
+	id := fmt.Sprintf("i-%06d", rand.IntN(1000000))
 	return &display.Status{
 		ID:             id,
 		Type:           "EC2",
@@ -120,7 +120,7 @@ func createRandomStatus() *display.Status {
 }
 
 func updateRandomStatus(status *display.Status) {
-	status.ElapsedTime += time.Duration(rand.Intn(10)) * time.Second
+	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second
 	status.Status = randomStatus()
 	status.DetailedStatus = randomDetailedStatus(status.Status)
 }
@@ -129,7 +129,7 @@ func getRandomStatus(statuses map[string]*display.Status) *display.Status {
 	if len(statuses) == 0 {
 		return nil
 	}
-	i := rand.Intn(len(statuses))
+	i := rand.IntN(len(statuses))
 	for _, status := range statuses {
 		if i == 0 {
 			return status
@@ -141,16 +141,16 @@ func getRandomStatus(statuses map[string]*display.Status) *display.Status {
 
 func randomRegion() string {
 	regions := []string{"us-west-1", "us-west-2", "us-east-1", "us-east-2", "eu-west-1", "eu-central-1", "ap-southeast-1", "ap-northeast-1"}
-	return regions[rand.Intn(len(regions))]
+	return regions[rand.IntN(len(regions))]
 }
 
 func randomZone() string {
-	return "zone-" + string(rune('a'+rand.Intn(3)))
+	return "zone-" + string(rune('a'+rand.IntN(3)))
 }
 
 func randomStatus() string {
 	statuses := []string{"Pending", "Running", "Stopping", "Stopped", "Terminated"}
-	return statuses[rand.Intn(len(statuses))]
+	return statuses[rand.IntN(len(statuses))]
 }
 
 func randomDetailedStatus(status string) string {
@@ -171,5 +171,5 @@ func randomDetailedStatus(status string) string {
 }
 
 func randomIP() string {
-	return fmt.Sprintf("%d.%d.%d.%d", rand.Intn(256), rand.Intn(256), rand.Intn(256), rand.Intn(256))
+	return fmt.Sprintf("%d.%d.%d.%d", rand.IntN(256), rand.IntN(256), rand.IntN(256), rand.IntN(256))
 }
