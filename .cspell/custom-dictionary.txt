@@ -22,6 +22,7 @@ errcheck
 Errorf
 exportloopref
 Fatalf
+forbidigo
 funcs
 funlen
 gdamore

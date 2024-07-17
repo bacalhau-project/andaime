@@ -19,10 +19,24 @@ git clone https://github.com/bacalhau-project/andaime.git
 cd andaime
 ```
 
-Build the project:
+You can build the project with the Go compiler:
 ```bash
 go build ./...
 ```
+
+or, using the `makefile`
+
+```bash
+make build
+```
+
+If you wish to build for all supported platforms (Linux and macOS on `arm64` and `amd64` arch), you can run the following:
+
+```bash
+make release
+```
+
+This will build and tarball Andaime for all of the aforementioned targets in a `./releases` directory with the filenames of `andaime-${OS}-${ARCHITECTURE}.tar.gz`.
 
 ## Usage
 Commands

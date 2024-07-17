@@ -1,11 +1,11 @@
 package cmd
 
 import (
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
-
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +21,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/spf13/cobra"
 )
+
+var VersionNumber string = "v0.0.1"
+
+//go:embed startup_scripts/*
+var startupScriptsFS embed.FS
 
 // Struct to hold instance information
 type InstanceInfo struct {
@@ -65,6 +70,11 @@ var (
 	command                           string
 	helpFlag                          bool
 	AWS_PROFILE_FLAG                  string
+	INSTANCE_TYPE                     string
+	COMPUTE_INSTANCE_TYPE             string
+	ORCHESTRATOR_INSTANCE_TYPE        string
+	VALID_ARCHITECTURES               = []string{"arm64", "x86_64"}
+	BOOT_VOLUME_SIZE_FLAG             int
 )
 
 func getMainCmd() *cobra.Command {
@@ -100,16 +110,16 @@ func getMainCmd() *cobra.Command {
 	return mainCmd
 }
 
-func getUbuntuAMIId(svc *ec2.EC2, _ string) (string, error) {
+func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	describeImagesInput := &ec2.DescribeImagesInput{
 		Filters: []*ec2.Filter{
 			{
 				Name:   aws.String("name"),
-				Values: aws.StringSlice([]string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"}),
+				Values: aws.StringSlice([]string{"ubuntu/images/hvm-ssd/ubuntu-*"}),
 			},
 			{
 				Name:   aws.String("architecture"),
-				Values: aws.StringSlice([]string{"x86_64"}),
+				Values: aws.StringSlice([]string{arch}),
 			},
 			{
 				Name:   aws.String("state"),
@@ -127,19 +137,29 @@ func getUbuntuAMIId(svc *ec2.EC2, _ string) (string, error) {
 	}
 
 	if len(result.Images) == 0 {
-		fmt.Println("No Ubuntu 22.04 AMIs found")
+		fmt.Println("No Ubuntu AMIs found")
 		return "", err
 	}
 
-	// Get the latest image (you might want to add more logic to select the right one)
-	latestImage := result.Images[0]
+	// Filter the results to find the latest image that matches the desired pattern
+	var latestImage *ec2.Image
 	for _, image := range result.Images {
-		if *image.CreationDate > *latestImage.CreationDate {
-			latestImage = image
+		if strings.Contains(*image.Name, "ubuntu-jammy-22.04") {
+			if latestImage == nil || *image.CreationDate > *latestImage.CreationDate {
+				latestImage = image
+			}
 		}
 	}
 
-	fmt.Printf("Using AMI ID: %s\n", *latestImage.ImageId)
+	if latestImage == nil {
+		fmt.Println("No matching Ubuntu 22.04 AMIs found")
+		return "", fmt.Errorf("no matching Ubuntu 22.04 AMIs found")
+	}
+
+	if VERBOSE_MODE_FLAG == true {
+		fmt.Printf("Using AMI ID: %s\n", *latestImage.ImageId)
+	}
+
 	return *latestImage.ImageId, nil
 }
 
@@ -176,7 +196,12 @@ func ensureVPCAndSGsExist(regions []string) {
 			instanceType := "t2.medium"
 			az, err := getAvailableZoneForInstanceType(ec2Svc, instanceType)
 			if err != nil {
-				fmt.Printf("Instance type %s is not available in region %s: %v\n", instanceType, region, err)
+				fmt.Printf(
+					"Instance type %s is not available in region %s: %v\n",
+					instanceType,
+					region,
+					err,
+				)
 				return
 			}
 			createVPCAndSG(ec2Svc, region, az)
@@ -206,8 +231,8 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		}
 		wg.Wait()
 
-		orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
-		fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPsStr)
+		// orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
+		fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPs)
 	} else {
 		orchestratorIPs = append(orchestratorIPs, ORCHESTRATOR_IP_FLAG)
 	}
@@ -281,7 +306,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 		var vpcID *string
 
 		if len(vpcs.Vpcs) > 0 {
-			fmt.Printf("VPC already exists in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("VPC already exists in region %s\n", region)
+			}
 			vpcID = vpcs.Vpcs[0].VpcId
 		} else {
 			// Create VPC
@@ -313,7 +340,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			}
 
 			vpcID = vpcOutput.Vpc.VpcId
-			fmt.Printf("Created VPC in region %s with ID %s\n", region, *vpcID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created VPC in region %s with ID %s\n", region, *vpcID)
+			}
 
 			// Create Subnet
 			subnetOutput, err := svc.CreateSubnet(&ec2.CreateSubnetInput{
@@ -345,7 +374,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				return
 			}
 			subnetID := subnetOutput.Subnet.SubnetId
-			fmt.Printf("Created Subnet in region %s with ID %s\n", region, *subnetID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created Subnet in region %s with ID %s\n", region, *subnetID)
+			}
 
 			// Create Internet Gateway
 			igwOutput, err := svc.CreateInternetGateway(&ec2.CreateInternetGatewayInput{
@@ -374,7 +405,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				return
 			}
 			igwID := igwOutput.InternetGateway.InternetGatewayId
-			fmt.Printf("Created Internet Gateway in region %s with ID %s\n", region, *igwID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created Internet Gateway in region %s with ID %s\n", region, *igwID)
+			}
 
 			// Attach Internet Gateway to VPC
 			_, err = svc.AttachInternetGateway(&ec2.AttachInternetGatewayInput{
@@ -389,7 +422,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				fmt.Printf("Unable to attach internet gateway to VPC in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Attached Internet Gateway to VPC in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Attached Internet Gateway to VPC in region %s\n", region)
+			}
 
 			// Create Route Table
 			routeTableOutput, err := svc.CreateRouteTable(&ec2.CreateRouteTableInput{
@@ -419,7 +454,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				return
 			}
 			routeTableID := routeTableOutput.RouteTable.RouteTableId
-			fmt.Printf("Created Route Table in region %s with ID %s\n", region, *routeTableID)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created Route Table in region %s with ID %s\n", region, *routeTableID)
+			}
 
 			// Create Route to Internet Gateway
 			_, err = svc.CreateRoute(&ec2.CreateRouteInput{
@@ -435,7 +472,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				fmt.Printf("Unable to create route to internet gateway in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Created route to Internet Gateway in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Created route to Internet Gateway in region %s\n", region)
+			}
 
 			// Associate Subnet with Route Table
 			_, err = svc.AssociateRouteTable(&ec2.AssociateRouteTableInput{
@@ -450,7 +489,9 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 				fmt.Printf("Unable to associate subnet with route table in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Associated Subnet with Route Table in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Associated Subnet with Route Table in region %s\n", region)
+			}
 		}
 
 		// Create Security Group if it doesn't exist
@@ -493,13 +534,25 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 		instances = append(instances, instanceInfo)
 	}
 
-	fmt.Println("Created instances:")
-	for _, instance := range instances {
-		fmt.Printf("Region: %s, Instance ID: %s, Public IPv4: %s\n", instance.Region, instance.InstanceID, instance.PublicIP)
+	if VERBOSE_MODE_FLAG == true {
+		fmt.Println("Created instances:")
+		for _, instance := range instances {
+			fmt.Printf(
+				"Region: %s, Instance ID: %s, Public IPv4: %s\n",
+				instance.Region,
+				instance.InstanceID,
+				instance.PublicIP,
+			)
+		}
 	}
 }
 
-func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orchestratorIPs []string) InstanceInfo {
+func createInstanceInRegion(
+	svc *ec2.EC2,
+	region string,
+	nodeType string,
+	orchestratorIPs []string,
+) InstanceInfo {
 	retryPolicy := 3
 	var instanceInfo InstanceInfo
 
@@ -583,15 +636,44 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 
 		// Get the instance architecture
 		instanceType := "t2.medium"
+
+		if nodeType == "orchestrator" && ORCHESTRATOR_INSTANCE_TYPE != "" {
+			instanceType = ORCHESTRATOR_INSTANCE_TYPE
+		}
+
+		if nodeType == "compute" && COMPUTE_INSTANCE_TYPE != "" {
+			instanceType = COMPUTE_INSTANCE_TYPE
+		}
+
+		fmt.Printf("Chosen instance type for '%s' node: %s\n", nodeType, instanceType)
+
 		instanceTypeDetails, err := svc.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
 			InstanceTypes: []*string{aws.String(instanceType)},
 		})
+
 		if err != nil {
 			fmt.Printf("Unable to describe instance type %s: %v\n", instanceType, err)
 			return instanceInfo
 		}
 
-		architecture := *instanceTypeDetails.InstanceTypes[0].ProcessorInfo.SupportedArchitectures[0]
+		var architecture string
+		for _, arch := range instanceTypeDetails.InstanceTypes[0].ProcessorInfo.SupportedArchitectures {
+			for _, validArch := range VALID_ARCHITECTURES {
+				if *arch == validArch {
+					architecture = *arch
+					break
+				}
+			}
+			if architecture != "" {
+				break
+			}
+		}
+
+		fmt.Printf("selected arch type %s\n", architecture)
+		if architecture == "" {
+			fmt.Printf("No valid architecture found for instance type %s\n", instanceType)
+			return instanceInfo
+		}
 
 		// Get the Ubuntu 22.04 AMI ID
 		amiID, err := getUbuntuAMIId(svc, architecture)
@@ -626,12 +708,26 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		}
 		encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
 
+		bootVolumeSize := int64(BOOT_VOLUME_SIZE_FLAG) // Example: 50 GiB
+
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(amiID),
 			InstanceType: aws.String(instanceType),
 			MaxCount:     aws.Int64(1),
 			MinCount:     aws.Int64(1),
+			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+				{
+					DeviceName: aws.String(
+						"/dev/sda1",
+					), // This might need to be adjusted based on the AMI
+					Ebs: &ec2.EbsBlockDevice{
+						VolumeSize:          aws.Int64(bootVolumeSize),
+						DeleteOnTermination: aws.Bool(true),
+						VolumeType:          aws.String("gp2"), // General Purpose SSD
+					},
+				},
+			},
 			NetworkInterfaces: []*ec2.InstanceNetworkInterfaceSpecification{
 				{
 					AssociatePublicIpAddress: aws.Bool(true),
@@ -673,7 +769,12 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 			InstanceIds: []*string{&instanceID},
 		})
 		if err != nil {
-			fmt.Printf("Error waiting for instance %s to run in region %s: %v\n", instanceID, region, err)
+			fmt.Printf(
+				"Error waiting for instance %s to run in region %s: %v\n",
+				instanceID,
+				region,
+				err,
+			)
 			return instanceInfo
 		}
 
@@ -690,6 +791,15 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		publicIP := "No public IP"
 		if instance.PublicIpAddress != nil {
 			publicIP = *instance.PublicIpAddress
+		}
+
+		if VERBOSE_MODE_FLAG == true {
+			fmt.Printf(
+				"Compute node created in %s, with Instance ID '%s' and public IP address: %s\n",
+				region,
+				instanceID,
+				publicIP,
+			)
 		}
 
 		instanceInfo = InstanceInfo{
@@ -777,12 +887,18 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 					time.Sleep(2 * time.Second)
 					continue
 				}
-				fmt.Printf("Unable to authorize inbound traffic on port %d in region %s: %v\n", port, region, err)
+				fmt.Printf(
+					"Unable to authorize inbound traffic on port %d in region %s: %v\n",
+					port,
+					region,
+					err,
+				)
 				return nil
 			}
 		}
-
-		fmt.Printf("Created security group in region %s\n", region)
+		if VERBOSE_MODE_FLAG == true {
+			fmt.Printf("Created security group in region %s\n", region)
+		}
 		return sgID
 	}
 	return nil
@@ -873,14 +989,20 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				fmt.Printf("Unable to terminate instances in region %s: %v\n", region, err)
 				return
 			}
-			fmt.Printf("Terminated instances in region %s\n", region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Terminated instances in region %s\n", region)
+			}
 
 			// Wait until instances are terminated
 			err = svc.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
 				InstanceIds: instanceIds,
 			})
 			if err != nil {
-				fmt.Printf("Error waiting for instances to terminate in region %s: %v\n", region, err)
+				fmt.Printf(
+					"Error waiting for instances to terminate in region %s: %v\n",
+					region,
+					err,
+				)
 				return
 			}
 		}
@@ -913,10 +1035,17 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					time.Sleep(2 * time.Second)
 					continue
 				}
-				fmt.Printf("Unable to delete security group %s in region %s: %v\n", *sg.GroupId, region, err)
+				fmt.Printf(
+					"Unable to delete security group %s in region %s: %v\n",
+					*sg.GroupId,
+					region,
+					err,
+				)
 				continue
 			}
-			fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
+			}
 		}
 
 		// Describe VPCs with the tag "project=andaime"
@@ -949,7 +1078,12 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				},
 			})
 			if err != nil {
-				fmt.Printf("Unable to describe subnets for VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
+				fmt.Printf(
+					"Unable to describe subnets for VPC %s in region %s: %v\n",
+					*vpc.VpcId,
+					region,
+					err,
+				)
 				continue
 			}
 			for _, subnet := range subnets.Subnets {
@@ -957,10 +1091,17 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					SubnetId: subnet.SubnetId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete subnet %s in region %s: %v\n", *subnet.SubnetId, region, err)
+					fmt.Printf(
+						"Unable to delete subnet %s in region %s: %v\n",
+						*subnet.SubnetId,
+						region,
+						err,
+					)
 					continue
 				}
-				fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
+				}
 			}
 
 			// Describe and delete route tables
@@ -973,7 +1114,12 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				},
 			})
 			if err != nil {
-				fmt.Printf("Unable to describe route tables for VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
+				fmt.Printf(
+					"Unable to describe route tables for VPC %s in region %s: %v\n",
+					*vpc.VpcId,
+					region,
+					err,
+				)
 				continue
 			}
 			for _, routeTable := range routeTables.RouteTables {
@@ -984,10 +1130,21 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					RouteTableId: routeTable.RouteTableId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete route table %s in region %s: %v\n", *routeTable.RouteTableId, region, err)
+					fmt.Printf(
+						"Unable to delete route table %s in region %s: %v\n",
+						*routeTable.RouteTableId,
+						region,
+						err,
+					)
 					continue
 				}
-				fmt.Printf("Deleted route table %s in region %s\n", *routeTable.RouteTableId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf(
+						"Deleted route table %s in region %s\n",
+						*routeTable.RouteTableId,
+						region,
+					)
+				}
 			}
 
 			// Detach Internet Gateway
@@ -1000,7 +1157,12 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				},
 			})
 			if err != nil {
-				fmt.Printf("Unable to describe internet gateways for VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
+				fmt.Printf(
+					"Unable to describe internet gateways for VPC %s in region %s: %v\n",
+					*vpc.VpcId,
+					region,
+					err,
+				)
 				continue
 			}
 			for _, igw := range igws.InternetGateways {
@@ -1009,20 +1171,44 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					VpcId:             vpc.VpcId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to detach internet gateway %s from VPC %s in region %s: %v\n", *igw.InternetGatewayId, *vpc.VpcId, region, err)
+					fmt.Printf(
+						"Unable to detach internet gateway %s from VPC %s in region %s: %v\n",
+						*igw.InternetGatewayId,
+						*vpc.VpcId,
+						region,
+						err,
+					)
 					continue
 				}
-				fmt.Printf("Detached internet gateway %s from VPC %s in region %s\n", *igw.InternetGatewayId, *vpc.VpcId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf(
+						"Detached internet gateway %s from VPC %s in region %s\n",
+						*igw.InternetGatewayId,
+						*vpc.VpcId,
+						region,
+					)
+				}
 
 				// Delete Internet Gateway
 				_, err = svc.DeleteInternetGateway(&ec2.DeleteInternetGatewayInput{
 					InternetGatewayId: igw.InternetGatewayId,
 				})
 				if err != nil {
-					fmt.Printf("Unable to delete internet gateway %s in region %s: %v\n", *igw.InternetGatewayId, region, err)
+					fmt.Printf(
+						"Unable to delete internet gateway %s in region %s: %v\n",
+						*igw.InternetGatewayId,
+						region,
+						err,
+					)
 					continue
 				}
-				fmt.Printf("Deleted internet gateway %s in region %s\n", *igw.InternetGatewayId, region)
+				if VERBOSE_MODE_FLAG == true {
+					fmt.Printf(
+						"Deleted internet gateway %s in region %s\n",
+						*igw.InternetGatewayId,
+						region,
+					)
+				}
 			}
 
 			_, err = svc.DeleteVpc(&ec2.DeleteVpcInput{
@@ -1036,7 +1222,9 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				fmt.Printf("Unable to delete VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
 				continue
 			}
-			fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
+			if VERBOSE_MODE_FLAG == true {
+				fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
+			}
 		}
 		break
 	}
@@ -1049,7 +1237,14 @@ func listResources() {
 		return
 	}
 
-	resourceTypes := []string{"VPC", "Subnet", "Internet Gateway", "Route Table", "Security Group", "Instance"}
+	resourceTypes := []string{
+		"VPC",
+		"Subnet",
+		"Internet Gateway",
+		"Route Table",
+		"Security Group",
+		"Instance",
+	}
 	resourcesByRegion := make(map[string]map[string][]string)
 
 	var wg sync.WaitGroup
@@ -1071,7 +1266,11 @@ func listResources() {
 				resources[resourceType] = listTaggedResources(ec2Svc, resourceType, region)
 			}
 
-			if len(resources["VPC"]) > 0 || len(resources["Subnet"]) > 0 || len(resources["Internet Gateway"]) > 0 || len(resources["Route Table"]) > 0 || len(resources["Security Group"]) > 0 || len(resources["Instance"]) > 0 {
+			if len(resources["VPC"]) > 0 || len(resources["Subnet"]) > 0 ||
+				len(resources["Internet Gateway"]) > 0 ||
+				len(resources["Route Table"]) > 0 ||
+				len(resources["Security Group"]) > 0 ||
+				len(resources["Instance"]) > 0 {
 				resourcesByRegion[region] = resources
 			}
 		}(region)
@@ -1244,7 +1443,15 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			}
 			for _, reservation := range instances.Reservations {
 				for _, instance := range reservation.Instances {
-					resourceList = append(resourceList, fmt.Sprintf("ID: %s, Type: %s, IPv4: %s", *instance.InstanceId, *instance.InstanceType, *instance.PublicIpAddress))
+					resourceList = append(
+						resourceList,
+						fmt.Sprintf(
+							"ID: %s, Type: %s, IPv4: %s",
+							*instance.InstanceId,
+							*instance.InstanceType,
+							*instance.PublicIpAddress,
+						),
+					)
 				}
 			}
 		}
@@ -1267,7 +1474,7 @@ func isRetryableError(err error) bool {
 func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 	var combinedScript strings.Builder
 
-	files, err := os.ReadDir(dir)
+	files, err := startupScriptsFS.ReadDir(dir)
 	if err != nil {
 		return "", err
 	}
@@ -1303,7 +1510,7 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 
 	// Read and concatenate the content of the files in order
 	for _, orderedFile := range orderedFiles {
-		content, err := os.ReadFile(filepath.Join(dir, orderedFile.name))
+		content, err := startupScriptsFS.ReadFile(filepath.Join(dir, orderedFile.name))
 		if err != nil {
 			return "", err
 		}
@@ -1354,7 +1561,9 @@ func ProcessEnvVars() {
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from environment variable`)
 		}
 
-		PROJECT_SETTINGS["NumberOfOrchestratorNodes"], _ = strconv.Atoi(os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES"))
+		PROJECT_SETTINGS["NumberOfOrchestratorNodes"], _ = strconv.Atoi(
+			os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES"),
+		)
 		SET_BY["NumberOfOrchestratorNodes"] = "environment variable"
 
 	}
@@ -1365,7 +1574,9 @@ func ProcessEnvVars() {
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from environment variable`)
 		}
 
-		PROJECT_SETTINGS["NumberOfComputeNodes"], _ = strconv.Atoi(os.Getenv("NUMBER_OF_COMPUTE_NODES"))
+		PROJECT_SETTINGS["NumberOfComputeNodes"], _ = strconv.Atoi(
+			os.Getenv("NUMBER_OF_COMPUTE_NODES"),
+		)
 		SET_BY["NumberOfComputeNodes"] = "environment variable"
 
 	}
@@ -1431,7 +1642,9 @@ func ProcessConfigFile() error {
 				fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from configuration file`)
 			}
 
-			PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = int(configJson["NUMBER_OF_ORCHESTRATOR_NODES"].(float64))
+			PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = int(
+				configJson["NUMBER_OF_ORCHESTRATOR_NODES"].(float64),
+			)
 			SET_BY["NumberOfOrchestratorNodes"] = "configuration file"
 		}
 
@@ -1441,7 +1654,9 @@ func ProcessConfigFile() error {
 				fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from configuration file`)
 			}
 
-			PROJECT_SETTINGS["NumberOfComputeNodes"] = int(configJson["NUMBER_OF_COMPUTE_NODES"].(float64))
+			PROJECT_SETTINGS["NumberOfComputeNodes"] = int(
+				configJson["NUMBER_OF_COMPUTE_NODES"].(float64),
+			)
 			SET_BY["NumberOfComputeNodes"] = "configuration file"
 
 		}
@@ -1513,7 +1728,7 @@ func andaime_main(cmd string, _ ...[]string) {
 
 	// Assign it to the global value
 	command = cmd
-
+	command = os.Args[1]
 	if command == "--help" || command == "-h" {
 		PrintUsage()
 		os.Exit(0)
@@ -1526,14 +1741,63 @@ func andaime_main(cmd string, _ ...[]string) {
 		fmt.Println("Error reading configuration file:", configErr)
 	}
 
-	flag.BoolVar(&VERBOSE_MODE_FLAG, "verbose", false, "Generate verbose output throughout execution")
+	flag.BoolVar(
+		&VERBOSE_MODE_FLAG,
+		"verbose",
+		false,
+		"Generate verbose output throughout execution",
+	)
 	flag.StringVar(&PROJECT_NAME_FLAG, "project-name", "", "Set project name")
 	flag.StringVar(&TARGET_PLATFORM_FLAG, "target-platform", "", "Set target platform")
-	flag.IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG, "orchestrator-nodes", -1, "Set number of orchestrator nodes")
+	flag.IntVar(
+		&NUMBER_OF_ORCHESTRATOR_NODES_FLAG,
+		"orchestrator-nodes",
+		-1,
+		"Set number of orchestrator nodes",
+	)
 	flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
-	flag.StringVar(&TARGET_REGIONS_FLAG, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
-	flag.StringVar(&ORCHESTRATOR_IP_FLAG, "orchestrator-ip", "", "IP address of existing orchestrator node")
-	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
+	flag.StringVar(
+		&TARGET_REGIONS_FLAG,
+		"target-regions",
+		"us-east-1",
+		"Comma-separated list of target AWS regions",
+	)
+	flag.StringVar(
+		&ORCHESTRATOR_IP_FLAG,
+		"orchestrator-ip",
+		"",
+		"IP address of existing orchestrator node",
+	)
+	flag.StringVar(
+		&AWS_PROFILE_FLAG,
+		"aws-profile",
+		"default",
+		"AWS profile to use for credentials",
+	)
+	flag.StringVar(
+		&INSTANCE_TYPE,
+		"instance-type",
+		"t2.medium",
+		"The instance type for both the compute and orchestrator nodes",
+	)
+	flag.StringVar(
+		&COMPUTE_INSTANCE_TYPE,
+		"compute-instance-type",
+		"",
+		"The instance type for the compute nodes. Overrides --instance-type for compute nodes.",
+	)
+	flag.StringVar(
+		&ORCHESTRATOR_INSTANCE_TYPE,
+		"orchestrator-instance-type",
+		"",
+		"The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.",
+	)
+	flag.IntVar(
+		&BOOT_VOLUME_SIZE_FLAG,
+		"volume-size",
+		8,
+		"The volume size of each node created (Gigabytes). Default: 8",
+	)
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 
 	flag.Parse()
@@ -1545,15 +1809,39 @@ func andaime_main(cmd string, _ ...[]string) {
 
 	ProcessFlags()
 
+	if command == "version" {
+		fmt.Println(VersionNumber)
+		os.Exit(0)
+	}
+
+	fmt.Println("\n== Andaime ==")
+	fmt.Println()
+
 	if command == "create" {
 
 		fmt.Println("Project configuration:")
 		fmt.Println("=======================")
 		fmt.Println("")
-		fmt.Printf("\tProject name: \"%s\" (set by %s)\n", PROJECT_SETTINGS["ProjectName"], SET_BY["ProjectName"])
-		fmt.Printf("\tTarget Platform: \"%s\" (set by %s)\n", PROJECT_SETTINGS["TargetPlatform"], SET_BY["TargetPlatform"])
-		fmt.Printf("\tNo. of Orchestrator Nodes: %d (set by %s)\n", PROJECT_SETTINGS["NumberOfOrchestratorNodes"], SET_BY["NumberOfOrchestratorNodes"])
-		fmt.Printf("\tNo. of Compute Nodes: %d (set by %s)\n", PROJECT_SETTINGS["NumberOfComputeNodes"], SET_BY["NumberOfComputeNodes"])
+		fmt.Printf(
+			"\tProject name: \"%s\" (set by %s)\n",
+			PROJECT_SETTINGS["ProjectName"],
+			SET_BY["ProjectName"],
+		)
+		fmt.Printf(
+			"\tTarget Platform: \"%s\" (set by %s)\n",
+			PROJECT_SETTINGS["TargetPlatform"],
+			SET_BY["TargetPlatform"],
+		)
+		fmt.Printf(
+			"\tNo. of Orchestrator Nodes: %d (set by %s)\n",
+			PROJECT_SETTINGS["NumberOfOrchestratorNodes"],
+			SET_BY["NumberOfOrchestratorNodes"],
+		)
+		fmt.Printf(
+			"\tNo. of Compute Nodes: %d (set by %s)\n",
+			PROJECT_SETTINGS["NumberOfComputeNodes"],
+			SET_BY["NumberOfComputeNodes"],
+		)
 		fmt.Printf("\tAWS Profile: \"%s\"\n", AWS_PROFILE_FLAG)
 		fmt.Print("\n")
 
