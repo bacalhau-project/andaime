@@ -8,7 +8,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.26
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.93.0
 	github.com/gdamore/tcell/v2 v2.7.1
-	github.com/pkg/sftp v1.13.6
 	github.com/rivo/tview v0.0.0-20240625185742-b0a7293b8130
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
@@ -37,7 +36,6 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/kr/fs v0.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect

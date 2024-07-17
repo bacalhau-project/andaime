@@ -28,6 +28,7 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 		rootCmd.AddCommand(betaCmd)
 
 		betaCmd.AddCommand(getTestDisplayCmd())
+		betaCmd.AddCommand(createCmd, destroyCmd, listCmd)
 	})
 	return betaCmd
 }

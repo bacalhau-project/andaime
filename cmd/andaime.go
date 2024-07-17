@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"encoding/base64"
@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/bacalhau-project/andaime/cmd"
+	"github.com/spf13/cobra"
 )
 
 // Struct to hold instance information
@@ -66,6 +66,39 @@ var (
 	helpFlag                          bool
 	AWS_PROFILE_FLAG                  string
 )
+
+func getMainCmd() *cobra.Command {
+	mainCmd := &cobra.Command{
+		Use:   "main",
+		Short: "Main functionality for managing Bacalhau nodes",
+	}
+
+	mainCmd.AddCommand(
+		&cobra.Command{
+			Use:   "create",
+			Short: "Create resources for Bacalhau nodes",
+			Run: func(cmd *cobra.Command, args []string) {
+				andaime_main("create", args)
+			},
+		},
+		&cobra.Command{
+			Use:   "destroy",
+			Short: "Destroy resources for Bacalhau nodes",
+			Run: func(cmd *cobra.Command, args []string) {
+				andaime_main("destroy", args)
+			},
+		},
+		&cobra.Command{
+			Use:   "list",
+			Short: "List resources for Bacalhau nodes",
+			Run: func(cmd *cobra.Command, args []string) {
+				andaime_main("list", args)
+			},
+		},
+	)
+
+	return mainCmd
+}
 
 func getUbuntuAMIId(svc *ec2.EC2, _ string) (string, error) {
 	describeImagesInput := &ec2.DescribeImagesInput{
@@ -1473,23 +1506,18 @@ func ProcessFlags() {
 		}
 	}
 }
-func andaime_main() {
+func andaime_main(cmd string, args ...[]string) {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")
 
-	if len(os.Args) < 2 {
-		cmd.PrintUsage()
-		os.Exit(1)
-	}
+	// Assign it to the global value
+	command = cmd
 
-	command = os.Args[1]
 	if command == "--help" || command == "-h" {
-		cmd.PrintUsage()
+		PrintUsage()
 		os.Exit(0)
 	}
-
-	os.Args = append(os.Args[:1], os.Args[2:]...) // Remove the command from the args
 
 	ProcessEnvVars()
 	configErr := ProcessConfigFile()
@@ -1511,7 +1539,7 @@ func andaime_main() {
 	flag.Parse()
 
 	if helpFlag {
-		cmd.PrintUsage()
+		PrintUsage()
 		os.Exit(0)
 	}
 
