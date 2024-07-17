@@ -73,6 +73,7 @@ var (
 	COMPUTE_INSTANCE_TYPE              string
 	ORCHESTRATOR_INSTANCE_TYPE         string
 	VALID_ARCHITECTURES =              []string{"arm64", "x86_64"}
+	BOOT_VOLUME_SIZE_FLAG              int
 )
 
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
@@ -659,7 +660,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		}
 		encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
 
-		bootVolumeSize := int64(50) // Example: 50 GiB
+		bootVolumeSize := int64(BOOT_VOLUME_SIZE_FLAG) // Example: 50 GiB
 
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
@@ -1613,6 +1614,7 @@ func main() {
 	flag.StringVar(&INSTANCE_TYPE, "instance-type", "t2.medium", "The instance type for both the compute and orchestrator nodes")
 	flag.StringVar(&COMPUTE_INSTANCE_TYPE, "compute-instance-type", "", "The instance type for the compute nodes. Overrides --instance-type for compute nodes.")
 	flag.StringVar(&ORCHESTRATOR_INSTANCE_TYPE, "orchestrator-instance-type", "", "The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.")
+	flag.IntVar(&BOOT_VOLUME_SIZE_FLAG, "volume-size", 8, "The volume size of each node created (Gigabytes). Default: 8")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 
 	flag.Parse()
