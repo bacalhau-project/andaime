@@ -659,12 +659,24 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		}
 		encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
 
+		bootVolumeSize := int64(50) // Example: 50 GiB
+
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(amiID),
 			InstanceType: aws.String(instanceType),
 			MaxCount:     aws.Int64(1),
 			MinCount:     aws.Int64(1),
+			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+				{
+					DeviceName: aws.String("/dev/sda1"), // This might need to be adjusted based on the AMI
+					Ebs: &ec2.EbsBlockDevice{
+						VolumeSize:          aws.Int64(bootVolumeSize),
+						DeleteOnTermination: aws.Bool(true),
+						VolumeType:          aws.String("gp2"), // General Purpose SSD
+					},
+				},
+			},
 			NetworkInterfaces: []*ec2.InstanceNetworkInterfaceSpecification{
 				{
 					AssociatePublicIpAddress: aws.Bool(true),
