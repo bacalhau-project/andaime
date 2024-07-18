@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/bacalhau-project/andaime/utils"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -25,22 +25,26 @@ var (
 // DeployVM creates an Azure VM with the specified configuration
 func DeployVM(ctx context.Context,
 	projectID, uniqueID string,
-	clients *ClientInterfaces,
+	client AzureClient,
 	resourceGroupName, location, vmName, vmSize string,
 	diskSizeGB int32,
 	ports []int,
-	sshPublicKey string,
+	sshKeyPath string,
 ) error {
 	// TODO: Implement resource tracking system
 
 	tags := generateTags(uniqueID, projectID)
+	SSHPublicKey, SSHPrivateKey, err := utils.GetSSHKeysFromPath(sshKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to get SSH keys: %v", err)
+	}
 
 	// Create Virtual Network and Subnet
 	subnet, err := createVirtualNetwork(
 		ctx,
 		projectID,
 		uniqueID,
-		clients.VirtualNetworksClient,
+		client,
 		resourceGroupName,
 		vmName+"-vnet",
 		vmName+"-subnet",
@@ -56,7 +60,7 @@ func DeployVM(ctx context.Context,
 		ctx,
 		projectID,
 		uniqueID,
-		clients.PublicIPAddressesClient,
+		client,
 		resourceGroupName,
 		vmName+"-ip",
 		location,
@@ -71,7 +75,7 @@ func DeployVM(ctx context.Context,
 		ctx,
 		projectID,
 		uniqueID,
-		clients.SecurityGroupsClient,
+		client,
 		resourceGroupName,
 		vmName+"-nsg",
 		location,
@@ -87,7 +91,7 @@ func DeployVM(ctx context.Context,
 		ctx,
 		projectID,
 		uniqueID,
-		clients.NetworkInterfacesClient,
+		client,
 		resourceGroupName,
 		vmName+"-nic",
 		location,
@@ -105,13 +109,13 @@ func DeployVM(ctx context.Context,
 		ctx,
 		projectID,
 		uniqueID,
-		clients.VirtualMachinesClient,
+		client,
 		resourceGroupName,
 		vmName,
 		location,
 		*nic.ID,
 		diskSizeGB,
-		sshPublicKey,
+		string(SSHPublicKey),
 		tags,
 	)
 	if err != nil {
@@ -123,7 +127,7 @@ func DeployVM(ctx context.Context,
 	if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
 		publicIPAddress = *publicIP.Properties.IPAddress
 	}
-	err = waitForSSH(publicIPAddress, "azureuser", []byte(sshPublicKey))
+	err = waitForSSH(publicIPAddress, "azureuser", SSHPrivateKey)
 	if err != nil {
 		return fmt.Errorf("failed to establish SSH connection: %v", err)
 	}
@@ -190,7 +194,7 @@ func waitForSSH(publicIP string, username string, privateKey []byte) error {
 // createVirtualNetwork creates a virtual network and subnet
 func createVirtualNetwork(ctx context.Context,
 	projectID, uniqueID string,
-	client VirtualNetworksClientAPI,
+	client AzureClient,
 	resourceGroupName, vnetName, subnetName, location string,
 	tags map[string]*string) (*armnetwork.Subnet, error) {
 	subnet := armnetwork.Subnet{
@@ -213,29 +217,13 @@ func createVirtualNetwork(ctx context.Context,
 		},
 	}
 
-	pollerResp, err := client.BeginCreateOrUpdate(ctx, resourceGroupName, vnetName, vnet, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start creating virtual network: %v", err)
-	}
-
-	resp, err := pollerResp.PollUntilDone(ctx, nil)
+	createdVNet, err := client.CreateVirtualNetwork(ctx, resourceGroupName, vnetName, vnet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual network: %v", err)
 	}
 
-	// Check if resp is valid
-	if resp.VirtualNetwork.Properties == nil || resp.VirtualNetwork.Properties.Subnets == nil {
-		return nil, fmt.Errorf("failed to create virtual network: invalid response")
-	}
-
-	getResp, err := client.Get(ctx, resourceGroupName, vnetName, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get virtual network: %v", err)
-	}
-
-	if getResp.Properties != nil && getResp.Properties.Subnets != nil &&
-		len(getResp.Properties.Subnets) > 0 {
-		return getResp.Properties.Subnets[0], nil
+	if createdVNet.Properties != nil && createdVNet.Properties.Subnets != nil && len(createdVNet.Properties.Subnets) > 0 {
+		return createdVNet.Properties.Subnets[0], nil
 	}
 
 	return nil, fmt.Errorf("subnet not found in the created virtual network")
@@ -244,8 +232,9 @@ func createVirtualNetwork(ctx context.Context,
 // createPublicIP creates a public IP address
 func createPublicIP(
 	ctx context.Context,
-	projectID, uniqueID string,
-	client PublicIPAddressesClientAPI,
+	projectID string,
+	uniqueID string,
+	client AzureClient,
 	resourceGroupName, ipName, location string,
 	tags map[string]*string,
 ) (*armnetwork.PublicIPAddress, error) {
@@ -259,24 +248,19 @@ func createPublicIP(
 
 	ensureTags(tags, projectID, uniqueID)
 
-	poller, err := client.BeginCreateOrUpdate(ctx, resourceGroupName, ipName, publicIP, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start creating public IP: %v", err)
-	}
-
-	resp, err := poller.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{Frequency: pollingDelay})
+	createdIP, err := client.CreatePublicIP(ctx, resourceGroupName, ipName, publicIP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create public IP: %v", err)
 	}
 
-	return &resp.PublicIPAddress, nil
+	return &createdIP, nil
 }
 
 // createNIC creates a network interface with both public and private IP
 func createNIC(
 	ctx context.Context,
 	projectID, uniqueID string,
-	client NetworkInterfacesClientAPI,
+	client AzureClient,
 	resourceGroupName, nicName, location string,
 	subnet *armnetwork.Subnet,
 	publicIP *armnetwork.PublicIPAddress,
@@ -305,27 +289,19 @@ func createNIC(
 		},
 	}
 
-	pollerResp, err := client.BeginCreateOrUpdate(ctx, resourceGroupName, nicName, nic, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start creating network interface: %v", err)
-	}
-
-	resp, err := pollerResp.PollUntilDone(
-		ctx,
-		&runtime.PollUntilDoneOptions{Frequency: pollingDelay},
-	)
+	createdNIC, err := client.CreateNetworkInterface(ctx, resourceGroupName, nicName, nic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network interface: %v", err)
 	}
 
-	return &resp.Interface, nil
+	return &createdNIC, nil
 }
 
 // createVM creates the virtual machine
 func createVM(
 	ctx context.Context,
 	projectID, uniqueID string,
-	client VirtualMachinesClientAPI,
+	client AzureClient,
 	resourceGroupName, vmName, location, nicID string,
 	diskSizeGB int32,
 	sshPublicKey string,
@@ -383,12 +359,7 @@ func createVM(
 		},
 	}
 
-	pollerResp, err := client.BeginCreateOrUpdate(ctx, resourceGroupName, vmName, vm, nil)
-	if err != nil {
-		return fmt.Errorf("failed to start creating virtual machine: %v", err)
-	}
-
-	_, err = pollerResp.PollUntilDone(ctx, nil)
+	_, err := client.CreateVirtualMachine(ctx, resourceGroupName, vmName, vm)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machine: %v", err)
 	}
@@ -396,20 +367,11 @@ func createVM(
 	return nil
 }
 
-// SecurityGroupsClientAPI defines the methods we need from SecurityGroupsClient
-type SecurityGroupsClientAPI interface {
-	BeginCreateOrUpdate(ctx context.Context,
-		resourceGroupName string,
-		networkSecurityGroupName string,
-		parameters armnetwork.SecurityGroup,
-		options *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) //nolint:lll
-}
-
 // createNSG creates a network security group with the specified open ports
 func createNSG(
 	ctx context.Context,
 	projectID, uniqueID string,
-	client SecurityGroupsClientAPI,
+	client AzureClient,
 	resourceGroupName, nsgName, location string,
 	ports []int,
 	tags map[string]*string,
@@ -443,18 +405,10 @@ func createNSG(
 		},
 	}
 
-	pollerResp, err := client.BeginCreateOrUpdate(ctx, resourceGroupName, nsgName, nsg, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start creating network security group: %v", err)
-	}
-
-	resp, err := pollerResp.PollUntilDone(
-		ctx,
-		&runtime.PollUntilDoneOptions{Frequency: pollingDelay},
-	)
+	createdNSG, err := client.CreateNetworkSecurityGroup(ctx, resourceGroupName, nsgName, nsg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network security group: %v", err)
 	}
 
-	return &resp.SecurityGroup, nil
+	return &createdNSG, nil
 }

@@ -26,7 +26,7 @@ func DeployResources(config *viper.Viper) error {
 	allowedPorts := config.GetIntSlice("allowed_ports")
 
 	// Create Azure clients
-	clients, err := NewClientInterfaces(subscriptionID)
+	client, err := NewAzureClient(subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to create Azure clients: %v", err)
 	}
@@ -35,7 +35,7 @@ func DeployResources(config *viper.Viper) error {
 	err = DeployVM(context.Background(),
 		projectID,
 		uniqueID,
-		clients,
+		client,
 		resourceGroup,
 		location,
 		vmName,

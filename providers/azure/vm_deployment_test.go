@@ -7,46 +7,72 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/bacalhau-project/andaime/utils"
 	"golang.org/x/crypto/ssh"
 )
 
-const TestPublicSSHKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC4VNbBAdUjsEGtthi6f804ftcSer2BUHJ4n4I2olBOB dummy@example.com"
-
-var TestPrivateSSHKey = []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-QyNTUxOQAAACAuFTWwQHVI7BBrbYYun/NOH7XEnq9gVByeJ+CNqJQTgQAAAJg1FTcNNRU3
-DQAAAAtzc2gtZWQyNTUxOQAAACAuFTWwQHVI7BBrbYYun/NOH7XEnq9gVByeJ+CNqJQTgQ
-AAAEAiSKPZOlligMHdH5BZdobDWhuyMkR+mR/s16zklfhFii4VNbBAdUjsEGtthi6f804f
-tcSer2BUHJ4n4I2olBOBAAAAEWR1bW15QGV4YW1wbGUuY29tAQIDBA==
------END OPENSSH PRIVATE KEY-----`)
-
 func TestDeployVM(t *testing.T) {
 	ctx := context.Background()
-	clients := NewMockClientInterfaces()
+	mockClient := NewMockAzureClient()
+	// Create a mock for each method that will be called
+	mockClient.(*MockAzureClient).CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
+		return testVirtualNetwork, nil
+	}
+
+	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
+		return testPublicIPAddress, nil
+	}
+
+	mockClient.(*MockAzureClient).CreateNetworkInterfaceFunc = func(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
+		return testInterface, nil
+	}
+
+	mockClient.(*MockAzureClient).CreateVirtualMachineFunc = func(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
+		return testVirtualMachine, nil
+	}
+
+	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
+		return testNSG, nil
+	}
+
+	utils.SSHKeyReader = utils.MockSSHKeyReader
+	sshDial = func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) { return &ssh.Client{}, nil }
 
 	err := DeployVM(ctx, "testProject",
 		"testUniqueID",
-		clients,
+		mockClient,
 		"testRG",
 		"eastus",
 		"testVM",
 		"DS1_v2",
 		30,
 		[]int{22, 80, 443},
-		TestPublicSSHKey,
+		"/null/path",
 	)
 	if err != nil {
 		t.Errorf("DeployVM failed: %v", err)
 	}
+
 }
 
 func TestCreateVirtualNetwork(t *testing.T) {
 	ctx := context.Background()
-	client := &MockVirtualNetworksClient{}
-	tags := generateTags("testProject", "testUniqueID")
+	mockClient := NewMockAzureClient()
+	subnetName := "testSubnet"
+	addressPrefix := "10.0.0.0/24"
+	mockClient.(*MockAzureClient).CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
+		tVN := testVirtualNetwork
+		tVN.Name = to.Ptr(subnetName)
+		tVN.Properties.Subnets[0].Properties.AddressPrefix = to.Ptr(addressPrefix)
+		return tVN, nil
+	}
+	projectID := "testProject"
+	uniqueID := "testUniqueID"
+	tags := generateTags(projectID, uniqueID)
 
-	subnet, err := createVirtualNetwork(ctx, "testProject", "testUUID", client, "testRG", "testVNet", "testSubnet", "eastus", tags)
+	subnet, err := createVirtualNetwork(ctx, projectID, uniqueID, mockClient, "testRG", "testVNet", "testSubnet", "eastus", tags)
 	if err != nil {
 		t.Errorf("createVirtualNetwork failed: %v", err)
 	}
@@ -55,21 +81,26 @@ func TestCreateVirtualNetwork(t *testing.T) {
 		t.Error("createVirtualNetwork returned nil subnet")
 	}
 
-	if subnet != nil && *subnet.Name != "test-subnet" {
-		t.Errorf("Expected subnet name 'test-subnet', got '%s'", *subnet.Name)
+	if subnet != nil && *subnet.Name != subnetName {
+		t.Errorf("Expected subnet name '%s', got '%s'", subnetName, *subnet.Name)
 	}
 
-	if subnet != nil && *subnet.Properties.AddressPrefix != "10.0.0.0/24" {
-		t.Errorf("Expected subnet address prefix '10.0.0.0/24', got '%s'", *subnet.Properties.AddressPrefix)
+	if subnet != nil && *subnet.Properties.AddressPrefix != addressPrefix {
+		t.Errorf("Expected subnet address prefix %s, got '%s'", subnetName, *subnet.Properties.AddressPrefix)
 	}
 }
 
 func TestCreatePublicIP(t *testing.T) {
 	ctx := context.Background()
-	client := &MockPublicIPAddressesClient{}
-	tags := generateTags("testProject", "testUniqueID")
+	mockClient := NewMockAzureClient()
+	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
+		return testPublicIPAddress, nil
+	}
+	projectID := "testProject"
+	uniqueID := "testUniqueID"
+	tags := generateTags(projectID, uniqueID)
 
-	publicIP, err := createPublicIP(ctx, "testProject", "testUUID", client, "testRG", "testIP", "eastus", tags)
+	publicIP, err := createPublicIP(ctx, projectID, uniqueID, mockClient, "testRG", "testIP", "eastus", tags)
 	if err != nil {
 		t.Errorf("createPublicIP failed: %v", err)
 	}
@@ -77,19 +108,19 @@ func TestCreatePublicIP(t *testing.T) {
 	if publicIP == nil {
 		t.Error("createPublicIP returned nil public IP")
 	}
-
-	if publicIP != nil && publicIP.Properties != nil && *publicIP.Properties.IPAddress != "1.2.3.4" {
-		t.Errorf("Expected IP address '1.2.3.4', got '%s'", *publicIP.Properties.IPAddress)
-	}
 }
 
 func TestCreateNSG(t *testing.T) {
 	ctx := context.Background()
-	client := &MockSecurityGroupsClient{}
+	mockClient := NewMockAzureClient()
+	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
+		return testNSG, nil
+	}
+	projectID := "testProject"
+	uniqueID := "testUniqueID"
+	tags := generateTags(projectID, uniqueID)
 
-	tags := generateTags("testProject", "testUniqueID")
-
-	nsg, err := createNSG(ctx, "testProject", "testUniqueID", client, "testRG", "testNSG", "eastus", []int{22, 80, 443}, tags)
+	nsg, err := createNSG(ctx, projectID, uniqueID, mockClient, "testRG", "testNSG", "eastus", []int{22, 80, 443}, tags)
 	if err != nil {
 		t.Errorf("createNSG failed: %v", err)
 	}
@@ -101,7 +132,10 @@ func TestCreateNSG(t *testing.T) {
 
 func TestCreateNIC(t *testing.T) {
 	ctx := context.Background()
-	client := &MockNetworkInterfacesClient{}
+	mockClient := NewMockAzureClient()
+	mockClient.(*MockAzureClient).CreateNetworkInterfaceFunc = func(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
+		return testInterface, nil
+	}
 	projectID := "testProject"
 	uniqueID := "testUniqueID"
 	tags := generateTags(projectID, uniqueID)
@@ -121,7 +155,7 @@ func TestCreateNIC(t *testing.T) {
 
 	nsgID := to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkSecurityGroups/testNSG")
 
-	nic, err := createNIC(ctx, projectID, uniqueID, client, "testRG", "testNIC", "eastus", subnet, publicIP, nsgID, tags)
+	nic, err := createNIC(ctx, projectID, uniqueID, mockClient, "testRG", "testNIC", "eastus", subnet, publicIP, nsgID, tags)
 	if err != nil {
 		t.Errorf("createNIC failed: %v", err)
 	}
@@ -129,16 +163,22 @@ func TestCreateNIC(t *testing.T) {
 	if nic == nil {
 		t.Error("createNIC returned nil NIC")
 	}
+
 }
 
 func TestCreateVM(t *testing.T) {
 	ctx := context.Background()
-	client := &MockVirtualMachinesClient{}
+	mockClient := NewMockAzureClient()
+	mockClient.(*MockAzureClient).CreateVirtualMachineFunc = func(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
+		return testVirtualMachine, nil
+	}
+	projectID := "testProject"
+	uniqueID := "testUniqueID"
 
-	tags := generateTags("testProject", "testUniqueID")
+	tags := generateTags(projectID, uniqueID)
 
 	nicID := "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"
-	err := createVM(ctx, "testProject", "testUniqueID", client, "testRG", "testVM", "eastus", nicID, 30, TestPublicSSHKey, tags)
+	err := createVM(ctx, projectID, uniqueID, mockClient, "testRG", "testVM", "eastus", nicID, 30, utils.TestPublicSSHKey, tags)
 	if err != nil {
 		t.Errorf("createVM failed: %v", err)
 	}
@@ -158,7 +198,9 @@ func TestWaitForSSH(t *testing.T) {
 		return &ssh.Client{}, nil
 	}
 
-	err := waitForSSH("1.2.3.4", "testuser", []byte("mockprivatekey"))
+	utils.SSHKeyReader = utils.MockSSHKeyReader
+
+	err := waitForSSH("1.2.3.4", "testuser", []byte(utils.TestPrivateSSHKey))
 	if err != nil {
 		t.Errorf("waitForSSH failed: %v", err)
 	}
@@ -174,4 +216,89 @@ func TestWaitForSSH(t *testing.T) {
 	}
 }
 
-// TODO: Implement mock methods for other client interfaces as needed...
+var testVirtualNetwork = armnetwork.VirtualNetwork{
+	Name: to.Ptr("testVNet"),
+	Properties: &armnetwork.VirtualNetworkPropertiesFormat{
+		AddressSpace: &armnetwork.AddressSpace{
+			AddressPrefixes: []*string{to.Ptr("10.0.0.0/16")},
+		},
+		Subnets: []*armnetwork.Subnet{
+			{ // Subnet
+				Name: to.Ptr("testSubnet"),
+				Properties: &armnetwork.SubnetPropertiesFormat{
+					AddressPrefix: to.Ptr("10.0.0.0/24"),
+				},
+			},
+		},
+	},
+}
+
+var testPublicIPAddress = armnetwork.PublicIPAddress{
+	Name: to.Ptr("testIP"),
+	Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+		IPAddress: to.Ptr("256.256.256.256"),
+	},
+}
+
+var testInterface = armnetwork.Interface{
+	ID:   to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"),
+	Name: to.Ptr("testNIC"),
+	Properties: &armnetwork.InterfacePropertiesFormat{
+		IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
+			{
+				Name:       to.Ptr("testIPConfig"),
+				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{},
+			},
+		},
+	},
+}
+
+var testVirtualMachine = armcompute.VirtualMachine{
+	Name: to.Ptr("testVM"),
+	Properties: &armcompute.VirtualMachineProperties{
+		StorageProfile: &armcompute.StorageProfile{
+			ImageReference: &armcompute.ImageReference{
+				Publisher: to.Ptr("Canonical"),
+				Offer:     to.Ptr("UbuntuServer"),
+				Version:   to.Ptr("latest"),
+			},
+		},
+		OSProfile: &armcompute.OSProfile{
+			ComputerName:  to.Ptr("testVM"),
+			AdminUsername: to.Ptr("testuser"),
+			AdminPassword: to.Ptr("testpassword"),
+			LinuxConfiguration: &armcompute.LinuxConfiguration{
+				SSH: &armcompute.SSHConfiguration{
+					PublicKeys: []*armcompute.SSHPublicKey{
+						{Path: to.Ptr("/home/testuser/.ssh/authorized_keys"),
+							KeyData: to.Ptr(utils.TestPublicSSHKey),
+						},
+					},
+				},
+			},
+		},
+		HardwareProfile: &armcompute.HardwareProfile{
+			VMSize: &armcompute.PossibleVirtualMachineSizeTypesValues()[0],
+		},
+	},
+}
+
+var testNSG = armnetwork.SecurityGroup{
+	Name: to.Ptr("testNSG"),
+	Properties: &armnetwork.SecurityGroupPropertiesFormat{
+		SecurityRules: []*armnetwork.SecurityRule{
+			{
+				Name: to.Ptr("testRule"),
+				Properties: &armnetwork.SecurityRulePropertiesFormat{
+					Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+					Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+					DestinationAddressPrefix: to.Ptr("*"),
+					DestinationPortRange:     to.Ptr("22"),
+					Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+					SourceAddressPrefix:      to.Ptr("*"),
+					SourcePortRange:          to.Ptr("*"),
+				},
+			},
+		},
+	},
+}

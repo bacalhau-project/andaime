@@ -94,7 +94,8 @@ func TestNewSSHConfig(t *testing.T) {
 	user := "testuser"
 	mockDialer := &MockSSHDialer{}
 
-	config, err := NewSSHConfig(host, port, user, mockDialer)
+	utils.SSHKeyReader = utils.MockSSHKeyReader
+	config, err := NewSSHConfig(host, port, user, mockDialer, "test-key-path")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, config)
@@ -110,7 +111,8 @@ func TestNewSSHConfig(t *testing.T) {
 
 func TestConnect(t *testing.T) {
 	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
+	utils.SSHKeyReader = utils.MockSSHKeyReader
+	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer, "test-key-path")
 
 	// Test successful connection
 	mockClient := &ssh.Client{}
@@ -122,7 +124,7 @@ func TestConnect(t *testing.T) {
 
 	// Test connection error
 	mockDialer = &MockSSHDialer{}
-	config, _ = NewSSHConfig("example.com", 22, "testuser", mockDialer)
+	config, _ = NewSSHConfig("example.com", 22, "testuser", mockDialer, "test-key-path")
 	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(nil, assert.AnError)
 	client, err = config.Connect()
 	assert.Error(t, err)
@@ -132,11 +134,7 @@ func TestConnect(t *testing.T) {
 }
 
 func TestExecuteCommand(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	mockClient := &MockSSHClientWrapper{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	mockSession := &MockSSHSession{}
 	mockClient.On("NewSession").Return(mockSession, nil)
@@ -155,9 +153,7 @@ func TestExecuteCommand(t *testing.T) {
 }
 
 func TestPushFile(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	mockClient := &MockSSHClientWrapper{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
+	mockClient, config := GetMockClient(t)
 
 	// Create a temporary local file for testing
 	localFile, err := ioutil.TempFile("", "test-local-file")
@@ -170,9 +166,6 @@ func TestPushFile(t *testing.T) {
 	_, err = localFile.WriteString(localContent)
 	assert.NoError(t, err)
 	localFile.Close()
-
-	// Mock the Dial method
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
 
 	// Mock NewSession to return a mock session
 	mockSession := &MockSSHSession{}
@@ -199,10 +192,7 @@ func TestPushFile(t *testing.T) {
 }
 
 func TestInstallSystemdServiceSuccess(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-	mockClient := &MockSSHClientWrapper{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	// Test successful service installation
 	mockSession := &MockSSHSession{}
@@ -218,10 +208,7 @@ func TestInstallSystemdServiceSuccess(t *testing.T) {
 }
 
 func TestInstallSystemdServiceFailure(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-	mockClient := &MockSSHClientWrapper{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	mockSession := &MockSSHSession{}
 	mockClient.On("NewSession").Return(mockSession, nil)
@@ -235,10 +222,7 @@ func TestInstallSystemdServiceFailure(t *testing.T) {
 	mockSession.AssertExpectations(t)
 }
 func TestStartServiceSuccess(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-	mockClient := &MockSSHClientWrapper{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	// Test successful service start
 	mockSession := &MockSSHSession{}
@@ -254,10 +238,7 @@ func TestStartServiceSuccess(t *testing.T) {
 }
 
 func TestStartServiceFailure(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-	mockClient := &MockSSHClientWrapper{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	mockSession := &MockSSHSession{}
 	mockClient.On("NewSession").Return(mockSession, nil)
@@ -272,10 +253,7 @@ func TestStartServiceFailure(t *testing.T) {
 }
 
 func TestRestartServiceSuccess(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-	mockClient := &MockSSHClientWrapper{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	// Test successful service restart
 	mockSession := &MockSSHSession{}
@@ -291,10 +269,7 @@ func TestRestartServiceSuccess(t *testing.T) {
 }
 
 func TestRestartServiceFailure(t *testing.T) {
-	mockDialer := &MockSSHDialer{}
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer)
-	mockClient := &MockSSHClientWrapper{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockClient, config := GetMockClient(t)
 
 	mockSession := &MockSSHSession{}
 	mockClient.On("NewSession").Return(mockSession, nil)
@@ -306,6 +281,18 @@ func TestRestartServiceFailure(t *testing.T) {
 
 	mockClient.AssertExpectations(t)
 	mockSession.AssertExpectations(t)
+}
+
+func GetMockClient(t *testing.T) (*MockSSHClientWrapper, *SSHConfig) {
+	mockDialer := &MockSSHDialer{}
+	utils.SSHKeyReader = utils.MockSSHKeyReader
+	config, err := NewSSHConfig("example.com", 22, "testuser", mockDialer, "test-key-path")
+	if err != nil {
+		assert.Fail(t, "failed to create SSH config: %v", err)
+	}
+	mockClient := &MockSSHClientWrapper{}
+	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	return mockClient, config
 }
 
 var _ SSHClient = (*MockSSHClientWrapper)(nil)

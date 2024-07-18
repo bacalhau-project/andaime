@@ -81,6 +81,7 @@ stretchr
 stylecheck
 tcell
 testdata
+testpassword
 testuser
 tmpl
 tview
@@ -89,6 +90,7 @@ uksouth
 unconvert
 virtualenvs
 virtualnetworks
+VMSS
 vnet
 VPCCIDR
 Warnf

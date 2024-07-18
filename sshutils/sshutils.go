@@ -29,8 +29,8 @@ type SSHConfig struct {
 	SSHDialer        SSHDialer
 }
 
-func NewSSHConfig(host string, port int, user string, dialer SSHDialer) (*SSHConfig, error) {
-	privateKey, err := getSSHKey()
+func NewSSHConfig(host string, port int, user string, dialer SSHDialer, sshKeyPath string) (*SSHConfig, error) {
+	_, privateKey, err := utils.GetSSHKeysFromPath(sshKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSH key: %w", err)
 	}
@@ -39,7 +39,7 @@ func NewSSHConfig(host string, port int, user string, dialer SSHDialer) (*SSHCon
 		Host:             host,
 		Port:             port,
 		User:             user,
-		PrivateKey:       privateKey,
+		PrivateKey:       string(privateKey),
 		Timeout:          utils.SSHTimeOut,
 		Logger:           logger.Get(),
 		SSHDialer:        dialer,
@@ -254,21 +254,6 @@ func retry(attempts int, sleep time.Duration, f func() error) error {
 		time.Sleep(sleep)
 	}
 	return fmt.Errorf("after %d attempts, last error: %w", attempts, err)
-}
-
-func getSSHKey() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get user home directory: %w", err)
-	}
-
-	keyPath := filepath.Join(home, ".ssh", "id_rsa")
-	keyBytes, err := os.ReadFile(keyPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read SSH key file: %w", err)
-	}
-
-	return string(keyBytes), nil
 }
 
 func getHostKey(host string) (ssh.PublicKey, error) {
