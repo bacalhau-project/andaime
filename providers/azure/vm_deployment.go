@@ -23,11 +23,14 @@ var (
 )
 
 // DeployVM creates an Azure VM with the specified configuration
-func DeployVM(ctx context.Context, clients ClientInterfaces,
-	resourceGroupName, vmName, location string,
+func DeployVM(ctx context.Context,
+	projectID, uniqueID string,
+	clients *ClientInterfaces,
+	resourceGroupName, location, vmName, vmSize string,
 	diskSizeGB int32,
-	ports []int, sshPublicKey,
-	uniqueID, projectID string) error {
+	ports []int,
+	sshPublicKey string,
+) error {
 	// TODO: Implement resource tracking system
 
 	tags := generateTags(uniqueID, projectID)
@@ -35,6 +38,8 @@ func DeployVM(ctx context.Context, clients ClientInterfaces,
 	// Create Virtual Network and Subnet
 	subnet, err := createVirtualNetwork(
 		ctx,
+		projectID,
+		uniqueID,
 		clients.VirtualNetworksClient,
 		resourceGroupName,
 		vmName+"-vnet",
@@ -49,6 +54,8 @@ func DeployVM(ctx context.Context, clients ClientInterfaces,
 	// Create Public IP
 	publicIP, err := createPublicIP(
 		ctx,
+		projectID,
+		uniqueID,
 		clients.PublicIPAddressesClient,
 		resourceGroupName,
 		vmName+"-ip",
@@ -62,6 +69,8 @@ func DeployVM(ctx context.Context, clients ClientInterfaces,
 	// Create Network Security Group
 	nsg, err := createNSG(
 		ctx,
+		projectID,
+		uniqueID,
 		clients.SecurityGroupsClient,
 		resourceGroupName,
 		vmName+"-nsg",
@@ -76,6 +85,8 @@ func DeployVM(ctx context.Context, clients ClientInterfaces,
 	// Create Network Interface
 	nic, err := createNIC(
 		ctx,
+		projectID,
+		uniqueID,
 		clients.NetworkInterfacesClient,
 		resourceGroupName,
 		vmName+"-nic",
@@ -92,6 +103,8 @@ func DeployVM(ctx context.Context, clients ClientInterfaces,
 	// Create Virtual Machine
 	err = createVM(
 		ctx,
+		projectID,
+		uniqueID,
 		clients.VirtualMachinesClient,
 		resourceGroupName,
 		vmName,
@@ -149,7 +162,7 @@ func waitForSSH(publicIP string, username string, privateKey []byte) error {
 	}
 	fmt.Println("SSH client config created")
 
-	for i := 0; i < 30; i++ {
+	for i := 0; i < sshRetryAttempts; i++ {
 		fmt.Printf("Attempt %d to connect via SSH\n", i+1)
 		client, err := sshDial("tcp", fmt.Sprintf("%s:22", publicIP), config)
 		if err != nil {
@@ -176,6 +189,7 @@ func waitForSSH(publicIP string, username string, privateKey []byte) error {
 
 // createVirtualNetwork creates a virtual network and subnet
 func createVirtualNetwork(ctx context.Context,
+	projectID, uniqueID string,
 	client VirtualNetworksClientAPI,
 	resourceGroupName, vnetName, subnetName, location string,
 	tags map[string]*string) (*armnetwork.Subnet, error) {
@@ -185,6 +199,8 @@ func createVirtualNetwork(ctx context.Context,
 			AddressPrefix: to.Ptr("10.0.0.0/24"),
 		},
 	}
+
+	ensureTags(tags, projectID, uniqueID)
 
 	vnet := armnetwork.VirtualNetwork{
 		Location: to.Ptr(location),
@@ -202,9 +218,14 @@ func createVirtualNetwork(ctx context.Context,
 		return nil, fmt.Errorf("failed to start creating virtual network: %v", err)
 	}
 
-	_, err = pollerResp.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{Frequency: pollingDelay})
+	resp, err := pollerResp.PollUntilDone(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual network: %v", err)
+	}
+
+	// Check if resp is valid
+	if resp.VirtualNetwork.Properties == nil || resp.VirtualNetwork.Properties.Subnets == nil {
+		return nil, fmt.Errorf("failed to create virtual network: invalid response")
 	}
 
 	getResp, err := client.Get(ctx, resourceGroupName, vnetName, nil)
@@ -223,6 +244,7 @@ func createVirtualNetwork(ctx context.Context,
 // createPublicIP creates a public IP address
 func createPublicIP(
 	ctx context.Context,
+	projectID, uniqueID string,
 	client PublicIPAddressesClientAPI,
 	resourceGroupName, ipName, location string,
 	tags map[string]*string,
@@ -234,6 +256,8 @@ func createPublicIP(
 			PublicIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodStatic),
 		},
 	}
+
+	ensureTags(tags, projectID, uniqueID)
 
 	poller, err := client.BeginCreateOrUpdate(ctx, resourceGroupName, ipName, publicIP, nil)
 	if err != nil {
@@ -248,27 +272,19 @@ func createPublicIP(
 	return &resp.PublicIPAddress, nil
 }
 
-// InterfacesClientAPI defines the methods we need from InterfacesClient
-type InterfacesClientAPI interface {
-	BeginCreateOrUpdate(
-		ctx context.Context,
-		resourceGroupName string,
-		networkInterfaceName string,
-		parameters armnetwork.Interface,
-		options *armnetwork.InterfacesClientBeginCreateOrUpdateOptions,
-	) (Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error)
-}
-
 // createNIC creates a network interface with both public and private IP
 func createNIC(
 	ctx context.Context,
-	client InterfacesClientAPI,
+	projectID, uniqueID string,
+	client NetworkInterfacesClientAPI,
 	resourceGroupName, nicName, location string,
 	subnet *armnetwork.Subnet,
 	publicIP *armnetwork.PublicIPAddress,
 	nsgID *string,
 	tags map[string]*string,
 ) (*armnetwork.Interface, error) {
+	ensureTags(tags, projectID, uniqueID)
+
 	nic := armnetwork.Interface{
 		Location: to.Ptr(location),
 		Tags:     tags,
@@ -308,12 +324,15 @@ func createNIC(
 // createVM creates the virtual machine
 func createVM(
 	ctx context.Context,
+	projectID, uniqueID string,
 	client VirtualMachinesClientAPI,
 	resourceGroupName, vmName, location, nicID string,
 	diskSizeGB int32,
 	sshPublicKey string,
 	tags map[string]*string,
 ) error {
+	ensureTags(tags, projectID, uniqueID)
+
 	vm := armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Tags:     tags,
@@ -369,7 +388,7 @@ func createVM(
 		return fmt.Errorf("failed to start creating virtual machine: %v", err)
 	}
 
-	_, err = pollerResp.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{Frequency: pollingDelay})
+	_, err = pollerResp.PollUntilDone(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machine: %v", err)
 	}
@@ -383,18 +402,21 @@ type SecurityGroupsClientAPI interface {
 		resourceGroupName string,
 		networkSecurityGroupName string,
 		parameters armnetwork.SecurityGroup,
-		options *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions) (Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) //nolint:lll
+		options *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) //nolint:lll
 }
 
 // createNSG creates a network security group with the specified open ports
 func createNSG(
 	ctx context.Context,
+	projectID, uniqueID string,
 	client SecurityGroupsClientAPI,
 	resourceGroupName, nsgName, location string,
 	ports []int,
 	tags map[string]*string,
 ) (*armnetwork.SecurityGroup, error) {
 	var securityRules []*armnetwork.SecurityRule
+
+	ensureTags(tags, projectID, uniqueID)
 
 	for i, port := range ports {
 		ruleName := fmt.Sprintf("Allow-%d", port)

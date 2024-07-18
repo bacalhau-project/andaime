@@ -2,90 +2,24 @@ package azure
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 )
 
 type ClientInterfaces struct {
 	VirtualNetworksClient   VirtualNetworksClientAPI
 	PublicIPAddressesClient PublicIPAddressesClientAPI
-	NetworkInterfacesClient InterfacesClientAPI
+	NetworkInterfacesClient NetworkInterfacesClientAPI
 	VirtualMachinesClient   VirtualMachinesClientAPI
 	SecurityGroupsClient    SecurityGroupsClientAPI
-	SSHWaiter               SSHWaiter
+	ResourceGraphClient     ResourceGraphClientAPI
 }
 
 type SSHWaiter interface {
 	WaitForSSH(publicIP, username string, privateKey []byte) error
-}
-
-type Poller[T any] interface {
-	Done() bool
-	Poll(context.Context) (*http.Response, error)
-	Result(context.Context) (T, error)
-	PollUntilDone(context.Context, *runtime.PollUntilDoneOptions) (T, error)
-}
-
-type MockPoller[T any] struct {
-	result T
-}
-
-func (m *MockPoller[T]) Done() bool {
-	return true
-}
-
-func (m *MockPoller[T]) Poll(ctx context.Context) (*http.Response, error) {
-	return &http.Response{}, nil
-}
-
-func (m *MockPoller[T]) FinalResponse(ctx context.Context) (*http.Response, error) {
-	return &http.Response{}, nil
-}
-
-func (m *MockPoller[T]) Result(ctx context.Context) (T, error) {
-	return m.result, nil
-}
-
-func (m *MockPoller[T]) PollUntilDone(
-	ctx context.Context,
-	options *runtime.PollUntilDoneOptions,
-) (T, error) {
-	return m.result, nil
-}
-
-// PublicIPAddressesClientWrapper wraps the PublicIPAddressesClient
-type PublicIPAddressesClientWrapper struct {
-	client *armnetwork.PublicIPAddressesClient
-}
-
-// BeginCreateOrUpdate wraps the original BeginCreateOrUpdate method
-func (w *PublicIPAddressesClientWrapper) BeginCreateOrUpdate(
-	ctx context.Context,
-	resourceGroupName string,
-	publicIPAddressName string,
-	parameters armnetwork.PublicIPAddress,
-	options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions,
-) (Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
-	return w.client.BeginCreateOrUpdate(
-		ctx,
-		resourceGroupName,
-		publicIPAddressName,
-		parameters,
-		options,
-	)
-}
-
-// Get wraps the original Get method
-func (w *PublicIPAddressesClientWrapper) Get(
-	ctx context.Context,
-	resourceGroupName string,
-	publicIPAddressName string,
-	options *armnetwork.PublicIPAddressesClientGetOptions,
-) (armnetwork.PublicIPAddressesClientGetResponse, error) {
-	return w.client.Get(ctx, resourceGroupName, publicIPAddressName, options)
 }
 
 type PublicIPAddressesClientAPI interface {
@@ -95,7 +29,7 @@ type PublicIPAddressesClientAPI interface {
 		publicIPAddressName string,
 		parameters armnetwork.PublicIPAddress,
 		options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions,
-	) (Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
+	) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
 
 	Get(
 		ctx context.Context,
@@ -103,6 +37,16 @@ type PublicIPAddressesClientAPI interface {
 		publicIPAddressName string,
 		options *armnetwork.PublicIPAddressesClientGetOptions,
 	) (armnetwork.PublicIPAddressesClientGetResponse, error)
+}
+
+type NetworkInterfacesClientAPI interface {
+	BeginCreateOrUpdate(
+		ctx context.Context,
+		resourceGroupName string,
+		networkInterfaceName string,
+		parameters armnetwork.Interface,
+		options *armnetwork.InterfacesClientBeginCreateOrUpdateOptions,
+	) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error)
 }
 
 // VirtualNetworksClientAPI defines the methods we need from VirtualNetworksClient
@@ -113,7 +57,7 @@ type VirtualNetworksClientAPI interface {
 		virtualNetworkName string,
 		parameters armnetwork.VirtualNetwork,
 		options *armnetwork.VirtualNetworksClientBeginCreateOrUpdateOptions,
-	) (Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error)
+	) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error)
 	Get(
 		ctx context.Context,
 		resourceGroupName string,
@@ -130,5 +74,31 @@ type VirtualMachinesClientAPI interface {
 		vmName string,
 		parameters armcompute.VirtualMachine,
 		options *armcompute.VirtualMachinesClientBeginCreateOrUpdateOptions,
-	) (Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error)
+	) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error)
+}
+
+type ResourceGraphClientAPI interface {
+	Resources(
+		ctx context.Context,
+		request armresourcegraph.QueryRequest,
+		options *armresourcegraph.ClientResourcesOptions,
+	) (armresourcegraph.ClientResourcesResponse, error)
+}
+
+// AzureResource represents a single Azure resource
+type AzureResource struct {
+	Name     string            `json:"name"`
+	Type     string            `json:"type"`
+	ID       string            `json:"id"`
+	Location string            `json:"location"`
+	Tags     map[string]string `json:"tags"`
+}
+
+// QueryResponse represents the response from an Azure Resource Graph query
+type QueryResponse struct {
+	Count           *int64                                 `json:"count"`
+	Data            []AzureResource                        `json:"data"`
+	Facets          []armresourcegraph.FacetClassification `json:"facets"`
+	ResultTruncated *armresourcegraph.ResultTruncated      `json:"resultTruncated"`
+	TotalRecords    *int64                                 `json:"totalRecords"`
 }

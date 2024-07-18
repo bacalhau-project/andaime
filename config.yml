@@ -1,0 +1,56 @@
+# Andaime Configuration File
+
+# General settings
+general:
+  project_id: "andaime-project"
+  ssh_public_key_path: "~/.ssh/id_rsa.pub"
+
+# Azure-specific configuration
+azure:
+  subscription_id: "your-subscription-id"
+  resource_group: "andaime-resources"
+  locations:
+    - name: "eastus"
+      zones:
+        - name: "1"
+          machines:
+            - type: "Standard_DS1_v2"
+              count: 2
+            - type: "Standard_DS2_v2"
+              count: 1
+        - name: "2"
+          machines:
+            - type: "Standard_DS1_v2"
+              count: 1
+    - name: "westus2"
+      zones:
+        - name: "1"
+          machines:
+            - type: "Standard_DS2_v2"
+              count: 1
+  allowed_ports:
+    - 22
+    - 80
+    - 443
+  disk_size_gb: 30
+
+# AWS-specific configuration (placeholder)
+# aws:
+#   regions:
+#     - name: "us-west-2"
+#       zones:
+#         - name: "us-west-2a"
+#           machines:
+#             - type: "t2.micro"
+#               count: 1
+
+# GCP-specific configuration (placeholder)
+# gcp:
+#   project: "your-gcp-project"
+#   regions:
+#     - name: "us-central1"
+#       zones:
+#         - name: "us-central1-a"
+#           machines:
+#             - type: "n1-standard-1"
+#               count: 1

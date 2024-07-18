@@ -2,15 +2,62 @@ package azure
 
 import (
 	"context"
+	"net/http"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/google/uuid"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 )
 
 func getClientInterfaces() ClientInterfaces {
 	return ClientInterfaces{
+		VirtualNetworksClient:   &MockVirtualNetworksClient{},
+		PublicIPAddressesClient: &MockPublicIPAddressesClient{},
+		NetworkInterfacesClient: &MockNetworkInterfacesClient{},
+		VirtualMachinesClient:   &MockVirtualMachinesClient{},
+		SecurityGroupsClient:    &MockSecurityGroupsClient{},
+		ResourceGraphClient:     &MockResourceGraphClient{},
+	}
+}
+
+type MockPoller[T any] struct {
+	result T
+}
+
+func (m *MockPoller[T]) Done() bool {
+	return true
+}
+
+func (m *MockPoller[T]) Poll(ctx context.Context) (*http.Response, error) {
+	return &http.Response{}, nil
+}
+
+func (m *MockPoller[T]) FinalResponse(ctx context.Context) (*http.Response, error) {
+	return &http.Response{}, nil
+}
+
+func (m *MockPoller[T]) Result(ctx context.Context) (T, error) {
+	return m.result, nil
+}
+
+func (m *MockPoller[T]) PollUntilDone(ctx context.Context, options *runtime.PollUntilDoneOptions) (T, error) {
+	return m.result, nil
+}
+
+// Add these new methods to match runtime.Poller interface
+func (m *MockPoller[T]) ResumeToken() (string, error) {
+	return "", nil
+}
+
+// NewMockPoller creates a new MockPoller that satisfies the *runtime.Poller interface
+func NewMockPoller[T any](result T) *runtime.Poller[T] {
+	return (*runtime.Poller[T])(&MockPoller[T]{result: result})
+}
+
+func NewMockClientInterfaces() *ClientInterfaces {
+	return &ClientInterfaces{
 		VirtualNetworksClient:   &MockVirtualNetworksClient{},
 		PublicIPAddressesClient: &MockPublicIPAddressesClient{},
 		NetworkInterfacesClient: &MockNetworkInterfacesClient{},
@@ -31,14 +78,11 @@ func (m *MockPublicIPAddressesClient) BeginCreateOrUpdate(
 	publicIPAddressName string,
 	parameters armnetwork.PublicIPAddress,
 	options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions,
-) (Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
-	parameters.ID = to.Ptr(uuid.New().String())
-	parameters.Properties.IPAddress = to.Ptr(m.IPAddress)
-
-	resp := armnetwork.PublicIPAddressesClientCreateOrUpdateResponse{
+) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
+	result := armnetwork.PublicIPAddressesClientCreateOrUpdateResponse{
 		PublicIPAddress: parameters,
 	}
-	return &MockPoller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse]{result: resp}, nil
+	return NewMockPoller(result), nil
 }
 func (m *MockPublicIPAddressesClient) Get(
 	ctx context.Context,
@@ -65,26 +109,12 @@ func (m *MockNetworkInterfacesClient) BeginCreateOrUpdate(
 	networkInterfaceName string,
 	parameters armnetwork.Interface,
 	options *armnetwork.InterfacesClientBeginCreateOrUpdateOptions,
-) (Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error) {
-	m.tags = parameters.Tags
-	mockNIC := armnetwork.Interface{
-		ID:       to.Ptr(uuid.New().String()),
-		Name:     to.Ptr("testNIC"),
-		Location: to.Ptr("eastus"),
-		Tags: map[string]*string{
-			"andaime":                   to.Ptr("true"),
-			"andaime-id":                to.Ptr("uuid"),
-			"andaime-project":           to.Ptr("uuid-testProject"),
-			"unique-id":                 to.Ptr("uuid"),
-			"project-id":                to.Ptr("testProject"),
-			"deployed-by":               to.Ptr("andaime"),
-			"andaime-resource-tracking": to.Ptr("true"),
-		},
+) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error) {
+	result := armnetwork.InterfacesClientCreateOrUpdateResponse{
+		Interface: parameters,
 	}
-	resp := armnetwork.InterfacesClientCreateOrUpdateResponse{
-		Interface: mockNIC,
-	}
-	return &MockPoller[armnetwork.InterfacesClientCreateOrUpdateResponse]{result: resp}, nil
+
+	return NewMockPoller(result), nil
 }
 
 type MockVirtualMachinesClient struct {
@@ -97,28 +127,11 @@ func (m *MockVirtualMachinesClient) BeginCreateOrUpdate(
 	vmName string,
 	parameters armcompute.VirtualMachine,
 	options *armcompute.VirtualMachinesClientBeginCreateOrUpdateOptions,
-) (Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error) {
-	m.tags = parameters.Tags
-	return &MockPoller[armcompute.VirtualMachinesClientCreateOrUpdateResponse]{
-		result: armcompute.VirtualMachinesClientCreateOrUpdateResponse{VirtualMachine: parameters},
-	}, nil
-}
-
-type MockVirtualNetworksClient struct {
-	tags map[string]*string
-}
-
-func (m *MockVirtualNetworksClient) BeginCreateOrUpdate(
-	ctx context.Context,
-	resourceGroupName string,
-	virtualNetworkName string,
-	parameters armnetwork.VirtualNetwork,
-	options *armnetwork.VirtualNetworksClientBeginCreateOrUpdateOptions,
-) (Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
-	resp := armnetwork.VirtualNetworksClientCreateOrUpdateResponse{
-		VirtualNetwork: parameters,
+) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error) {
+	result := armcompute.VirtualMachinesClientCreateOrUpdateResponse{
+		VirtualMachine: parameters,
 	}
-	return &MockPoller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse]{result: resp}, nil
+	return NewMockPoller(result), nil
 }
 
 type MockSecurityGroupsClient struct {
@@ -131,24 +144,28 @@ func (m *MockSecurityGroupsClient) BeginCreateOrUpdate(
 	networkSecurityGroupName string,
 	parameters armnetwork.SecurityGroup,
 	options *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions,
-) (Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) {
-	mockParams := &armnetwork.SecurityGroup{
-		ID:       to.Ptr(uuid.New().String()),
-		Name:     to.Ptr("testNSG"),
-		Location: to.Ptr("eastus"),
-		Tags: map[string]*string{
-			"andaime":                   to.Ptr("true"),
-			"andaime-id":                to.Ptr("uuid"),
-			"andaime-project":           to.Ptr("uuid-testProject"),
-			"unique-id":                 to.Ptr("uuid"),
-			"project-id":                to.Ptr("testProject"),
-			"deployed-by":               to.Ptr("andaime"),
-			"andaime-resource-tracking": to.Ptr("true"),
-		},
+) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) {
+	result := armnetwork.SecurityGroupsClientCreateOrUpdateResponse{
+		SecurityGroup: parameters,
 	}
-	return &MockPoller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse]{
-		result: armnetwork.SecurityGroupsClientCreateOrUpdateResponse{SecurityGroup: *mockParams},
-	}, nil
+	return NewMockPoller(result), nil
+}
+
+type MockVirtualNetworksClient struct {
+	tags map[string]*string
+}
+
+func (m *MockVirtualNetworksClient) BeginCreateOrUpdate(
+	ctx context.Context,
+	resourceGroupName string,
+	virtualNetworkName string,
+	parameters armnetwork.VirtualNetwork,
+	options *armnetwork.VirtualNetworksClientBeginCreateOrUpdateOptions,
+) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
+	result := armnetwork.VirtualNetworksClientCreateOrUpdateResponse{
+		VirtualNetwork: parameters,
+	}
+	return NewMockPoller(result), nil
 }
 
 func (m *MockVirtualNetworksClient) Get(
@@ -174,11 +191,53 @@ func (m *MockVirtualNetworksClient) Get(
 	}, nil
 }
 
-type MockSSHClient struct {
-	CloseCalled bool
+type MockResourceGraphClient struct {
+	Response armresourcegraph.ClientResourcesResponse
 }
 
-func (m *MockSSHClient) Close() error {
-	m.CloseCalled = true
-	return nil
+func (m *MockResourceGraphClient) Resources(
+	ctx context.Context,
+	request armresourcegraph.QueryRequest,
+	options *armresourcegraph.ClientResourcesOptions,
+) (armresourcegraph.ClientResourcesResponse, error) {
+	return m.Response, nil
 }
+
+func MockQueryResponse() armresourcegraph.ClientResourcesResponse {
+	return armresourcegraph.ClientResourcesResponse{QueryResponse: armresourcegraph.QueryResponse{
+		Count: to.Ptr[int64](3), //nolint:gomnd
+		Data: []AzureResource{
+			{
+				Name:     "myNetworkInterface",
+				Type:     "microsoft.network/networkinterfaces",
+				ID:       "/subscriptions/cfbbd179-59d2-4052-aa06-9270a38aa9d6/resourceGroups/RG1/providers/Microsoft.Network/networkInterfaces/myNetworkInterface", //nolint:lll
+				Location: "centralus",
+				Tags:     map[string]string{"tag1": "Value1"},
+			},
+			{
+				Name:     "myVnet",
+				Type:     "microsoft.network/virtualnetworks",
+				ID:       "/subscriptions/cfbbd179-59d2-4052-aa06-9270a38aa9d6/resourceGroups/RG2/providers/Microsoft.Network/virtualNetworks/myVnet", //nolint:lll
+				Location: "westus",
+				Tags:     map[string]string{},
+			},
+			{
+				Name:     "myPublicIp",
+				Type:     "microsoft.network/publicipaddresses",
+				ID:       "/subscriptions/cfbbd179-59d2-4052-aa06-9270a38aa9d6/resourceGroups/RG2/providers/Microsoft.Network/publicIPAddresses/myPublicIp", //nolint:lll
+				Location: "westus",
+				Tags:     map[string]string{},
+			},
+		},
+		Facets:          []armresourcegraph.FacetClassification{},
+		ResultTruncated: to.Ptr(armresourcegraph.ResultTruncatedFalse),
+		TotalRecords:    to.Ptr[int64](3), //nolint:gomnd
+	},
+	}
+}
+
+var _ runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse] = &MockPoller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse]{}
+var _ runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse] = &MockPoller[armnetwork.InterfacesClientCreateOrUpdateResponse]{}
+var _ runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse] = &MockPoller[armcompute.VirtualMachinesClientCreateOrUpdateResponse]{}
+var _ runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse] = &MockPoller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse]{}
+var _ runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse] = &MockPoller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse]{}

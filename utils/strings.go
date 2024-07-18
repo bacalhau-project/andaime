@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"crypto/rand"
+	"log"
+	"math/big"
 	"strconv"
 )
 
@@ -15,4 +18,17 @@ func ParseStringToIntOrZero(row string) int {
 		return 0
 	}
 	return parsedInt
+}
+
+func GenerateUniqueID() string {
+	var lettersAndDigits = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+	b := make([]rune, 8) //nolint:gomnd
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(lettersAndDigits))))
+		if err != nil {
+			log.Fatalf("Failed to generate unique ID: %v", err)
+		}
+		b[i] = lettersAndDigits[n.Int64()]
+	}
+	return string(b)
 }
