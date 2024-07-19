@@ -27,10 +27,10 @@ release: $(RELEASE_BASE_DIR)
 	mkdir -p $$RELEASE_DIR; \
 	for os in $(OSES); do \
 		for arch in $(ARCHS); do \
-			OUTPUT_FILE=$$RELEASE_DIR/$(PROJECT_NAME)-$$os-$$arch.tar.gz; \
-			GOOS=$$os GOARCH=$$arch go build -o $$RELEASE_DIR/$(PROJECT_NAME)-$$os-$$arch; \
-			tar -czvf $$OUTPUT_FILE -C $$RELEASE_DIR $(PROJECT_NAME)-$$os-$$arch; \
-			rm $$RELEASE_DIR/$(PROJECT_NAME)-$$os-$$arch; \
+			OUTPUT_FILE=$$RELEASE_DIR/$(PROJECT_NAME)-$$ANDAIME_VERSION-$$os-$$arch.tar.gz; \
+			GOOS=$$os GOARCH=$$arch go build -o $$RELEASE_DIR/$(PROJECT_NAME)-$$ANDAIME_VERSION-$$os-$$arch; \
+			tar -czvf $$OUTPUT_FILE -C $$RELEASE_DIR $(PROJECT_NAME)-$$ANDAIME_VERSION-$$os-$$arch; \
+			rm $$RELEASE_DIR/$(PROJECT_NAME)-$$ANDAIME_VERSION-$$os-$$arch; \
 		done; \
 	done
 
