@@ -4,14 +4,13 @@ package cmd
 
 import (
 	"fmt"
-	"sync"
 
+	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/spf13/cobra"
 )
 
 var (
 	betaCmd *cobra.Command
-	once    sync.Once // Ensures the lazy initialization happens only once
 )
 
 func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
@@ -29,6 +28,7 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 
 		betaCmd.AddCommand(getTestDisplayCmd())
 		betaCmd.AddCommand(createCmd, destroyCmd, listCmd)
+		betaCmd.AddCommand(azure.GetAzureCmd())
 	})
 	return betaCmd
 }

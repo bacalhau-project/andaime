@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/bacalhau-project/andaime/providers/aws"
 
@@ -21,6 +22,8 @@ var (
 	orchestratorIP            string
 	awsProfile                string
 	verboseMode               bool
+
+	once sync.Once
 )
 
 var (

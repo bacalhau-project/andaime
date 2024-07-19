@@ -7,6 +7,8 @@ armcompute
 armnetwork
 armresourcegraph
 armresources
+armsubscription
+armsubscriptions
 autorest
 awserr
 azcore
@@ -17,6 +19,7 @@ bodyclose
 BUHJ
 centralus
 chans
+Cmds
 Debugf
 depguard
 dupl

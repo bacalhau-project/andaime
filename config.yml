@@ -7,8 +7,9 @@ general:
 
 # Azure-specific configuration
 azure:
-  subscription_id: "your-subscription-id"
-  resource_group: "andaime-resources"
+  subscription_id: "fd075559-43fc-4fbe-8dee-21e125a9dafc"
+  resource_group_prefix: "andaime-rg"
+
   locations:
     - name: "eastus"
       zones:
@@ -33,7 +34,6 @@ azure:
     - 80
     - 443
   disk_size_gb: 30
-
 # AWS-specific configuration (placeholder)
 # aws:
 #   regions:

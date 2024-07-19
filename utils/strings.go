@@ -5,6 +5,8 @@ import (
 	"log"
 	"math/big"
 	"strconv"
+
+	"github.com/bacalhau-project/andaime/logger"
 )
 
 func StringPtr(s string) *string {
@@ -31,4 +33,17 @@ func GenerateUniqueID() string {
 		b[i] = lettersAndDigits[n.Int64()]
 	}
 	return string(b)
+}
+
+// safeDeref safely dereferences a string pointer. If the pointer is nil, it returns a placeholder.
+func SafeDeref(s *string) string {
+	log := logger.Get()
+
+	// If s is a string pointer, dereference it
+	if s != nil {
+		return *s
+	} else {
+		log.Debug("State is nil")
+		return ""
+	}
 }
