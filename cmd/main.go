@@ -1,3 +1,4 @@
+//nolint:unused,gomnd
 package cmd
 
 import (

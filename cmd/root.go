@@ -130,8 +130,14 @@ func setupFlags() {
 		"orchestrator-nodes",
 		NumberOfDefaultOrchestratorNodes,
 		"Set number of orchestrator nodes")
-	rootCmd.PersistentFlags().IntVar(&numberOfComputeNodes, "compute-nodes", numberOfComputeNodes, "Set number of compute nodes")
-	rootCmd.PersistentFlags().StringVar(&targetRegions, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
+	rootCmd.PersistentFlags().IntVar(&numberOfComputeNodes,
+		"compute-nodes",
+		numberOfComputeNodes,
+		"Set number of compute nodes")
+	rootCmd.PersistentFlags().StringVar(&targetRegions,
+		"target-regions",
+		"us-east-1",
+		"Comma-separated list of target AWS regions")
 	rootCmd.PersistentFlags().StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
 	rootCmd.PersistentFlags().StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
 
@@ -139,10 +145,19 @@ func setupFlags() {
 	mainCmd.PersistentFlags().BoolVar(&VERBOSE_MODE_FLAG, "verbose", false, "Generate verbose output throughout execution")
 	mainCmd.PersistentFlags().StringVar(&PROJECT_NAME_FLAG, "project-name", "", "Set project name")
 	mainCmd.PersistentFlags().StringVar(&TARGET_PLATFORM_FLAG, "target-platform", "", "Set target platform")
-	mainCmd.PersistentFlags().IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG, "orchestrator-nodes", -1, "Set number of orchestrator nodes")
+	mainCmd.PersistentFlags().IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG,
+		"orchestrator-nodes",
+		-1,
+		"Set number of orchestrator nodes")
 	mainCmd.PersistentFlags().IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
-	mainCmd.PersistentFlags().StringVar(&TARGET_REGIONS_FLAG, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
-	mainCmd.PersistentFlags().StringVar(&ORCHESTRATOR_IP_FLAG, "orchestrator-ip", "", "IP address of existing orchestrator node")
+	mainCmd.PersistentFlags().StringVar(&TARGET_REGIONS_FLAG,
+		"target-regions",
+		"us-east-1",
+		"Comma-separated list of target AWS regions")
+	mainCmd.PersistentFlags().StringVar(&ORCHESTRATOR_IP_FLAG,
+		"orchestrator-ip",
+		"",
+		"IP address of existing orchestrator node")
 	mainCmd.PersistentFlags().StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
 
 }

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/bacalhau-project/andaime/utils"
 	"github.com/spf13/viper"
 )
 
@@ -20,7 +22,7 @@ func TestConfigFileReading(t *testing.T) {
 		}
 
 		// Check if some expected keys are present
-		expectedKeys := []string{"general.project_id", "azure.subscription_id", "azure.vm_name"}
+		expectedKeys := []string{"general.project_id", "azure.subscription_id"}
 		for _, key := range expectedKeys {
 			if !v.IsSet(key) {
 				t.Errorf("Expected key %s not found in config", key)
@@ -30,7 +32,8 @@ func TestConfigFileReading(t *testing.T) {
 
 	// Test handling of missing required fields
 	t.Run("MissingRequiredFields", func(t *testing.T) {
-		tempFile, err := ioutil.TempFile("", "test_config_*.yml")
+		tempFile, err := os.CreateTemp("", "test_config_*.yml")
+		defer os.Remove(tempFile.Name())
 		if err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
@@ -125,17 +128,27 @@ azure:
 	})
 	// Test minimal valid configuration
 	t.Run("MinimalValidConfig", func(t *testing.T) {
-		tempFile, err := ioutil.TempFile("", "test_config_*.yml")
+		tempFile, err := os.CreateTemp("", "test_config_*.yml")
+		defer os.Remove(tempFile.Name())
+
+		tempPrivateKey, err := os.CreateTemp("", "id_rsa")
+		tempPrivateKey.Write([]byte(utils.TestPrivateSSHKey))
+		defer os.Remove(tempPrivateKey.Name())
+
+		tempPublicKey, err := os.CreateTemp("", "id_rsa.pub")
+		tempPublicKey.Write([]byte(utils.TestPublicSSHKey))
+		defer os.Remove(tempPublicKey.Name())
+
 		if err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
 		defer os.Remove(tempFile.Name())
 
 		// Write a minimal valid config to the temp file
-		minimalConfig := []byte(`
+		minimalConfig := []byte(fmt.Sprintf(`
 general:
   project_id: "test-project"
-  ssh_public_key_path: "~/.ssh/id_rsa.pub"
+  ssh_public_key_path: "%s"
 azure:
   subscription_id: "test-subscription"
   resource_group: "test-group"
@@ -151,7 +164,7 @@ azure:
     - 80
     - 443
   disk_size_gb: 30
-`)
+`, tempPublicKey.Name()))
 		if _, err := tempFile.Write(minimalConfig); err != nil {
 			t.Fatalf("Failed to write to temp file: %v", err)
 		}

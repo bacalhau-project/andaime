@@ -182,9 +182,9 @@ func randomDetailedStatus(status string) string {
 func randomIP() string {
 	return fmt.Sprintf(
 		"%d.%d.%d.%d",
-		rand.IntN(256),
-		rand.IntN(256),
-		rand.IntN(256),
-		rand.IntN(256),
+		rand.IntN(256), //nolint:gomnd,gosec
+		rand.IntN(256), //nolint:gomnd,gosec
+		rand.IntN(256), //nolint:gomnd,gosec
+		rand.IntN(256), //nolint:gomnd,gosec
 	)
 }
