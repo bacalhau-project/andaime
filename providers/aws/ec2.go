@@ -4,16 +4,29 @@ import (
 	"context"
 	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/providers"
 )
 
 // ubuntuAMICache stores the latest Ubuntu AMI ID for each region.
-var ubuntuAMICache = make(map[string]string)
+var ubuntuAMICache = make(map[string]*types.Image)
 var cacheLock = &sync.Mutex{}
 
-func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (string, error) {
+// NewEC2Client creates a new EC2 client
+func NewEC2Client(ctx context.Context) (*ec2.Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Assuming ec2.NewFromConfig returns a *ec2.Client that implements EC2Client interface
+	return ec2.NewFromConfig(cfg), nil
+}
+func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error) {
 	cacheLock.Lock()
 	if ami, ok := ubuntuAMICache[region]; ok {
 		cacheLock.Unlock()
@@ -25,19 +38,19 @@ func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (
 		Owners: []string{"099720109477"}, // Canonical's AWS account ID
 		Filters: []ec2types.Filter{
 			{
-				Name:   stringPtr("name"),
+				Name:   aws.String("name"),
 				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"},
 			},
 			{
-				Name:   stringPtr("architecture"),
+				Name:   aws.String("architecture"),
 				Values: []string{"x86_64"},
 			},
 			{
-				Name:   stringPtr("root-device-type"),
+				Name:   aws.String("root-device-type"),
 				Values: []string{"ebs"},
 			},
 			{
-				Name:   stringPtr("virtualization-type"),
+				Name:   aws.String("virtualization-type"),
 				Values: []string{"hvm"},
 			},
 		},
@@ -45,11 +58,11 @@ func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (
 
 	result, err := p.EC2Client.DescribeImages(ctx, input)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if len(result.Images) == 0 {
-		return "", providers.ErrNoImagesFound
+		return nil, providers.ErrNoImagesFound
 	}
 
 	// Sort images by creation date
@@ -60,14 +73,9 @@ func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (
 		}
 	}
 
-	amiID := *latestImage.ImageId
 	cacheLock.Lock()
-	ubuntuAMICache[region] = amiID
+	ubuntuAMICache[region] = &latestImage
 	cacheLock.Unlock()
 
-	return amiID, nil
-}
-
-func stringPtr(s string) *string {
-	return &s
+	return &latestImage, nil
 }

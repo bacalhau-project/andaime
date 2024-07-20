@@ -43,5 +43,5 @@ var AzureListResourcesCmd = &cobra.Command{
 
 func isCreatedByAndaime(resource *armresources.GenericResourceExpanded) bool {
 	// If it has the "andaime" tag, it was created by Andaime
-	return resource.Tags["andaime"] != nil
+	return resource.Tags != nil && resource.Tags["andaime"] != nil
 }

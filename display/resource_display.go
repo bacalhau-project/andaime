@@ -69,9 +69,18 @@ var DisplayColumns = []DisplayColumn{
 		Width:    10,
 		Color:    tcell.ColorRed,
 		DataFunc: func(status Status) string { return status.ElapsedTime.Round(time.Second).String() }},
-	{Text: "Instance ID", Width: 20, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.InstanceID }},
-	{Text: "Public IP", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.PublicIP }},
-	{Text: "Private IP", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.PrivateIP }},
+	{Text: "Instance ID",
+		Width:    20,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status Status) string { return status.InstanceID }},
+	{Text: "Public IP",
+		Width:    15,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status Status) string { return status.PublicIP }},
+	{Text: "Private IP",
+		Width:    15,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status Status) string { return status.PrivateIP }},
 }
 
 func NewDisplay(totalTasks int) *Display {

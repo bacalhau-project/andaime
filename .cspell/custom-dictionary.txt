@@ -10,6 +10,7 @@ armresources
 armsubscription
 armsubscriptions
 autorest
+awsconfig
 awserr
 azcore
 azidentity
@@ -20,6 +21,7 @@ BUHJ
 centralus
 chans
 Cmds
+compinit
 Debugf
 depguard
 dupl
@@ -82,6 +84,7 @@ sshutils
 staticcheck
 stretchr
 stylecheck
+tablewriter
 tcell
 testdata
 testpassword

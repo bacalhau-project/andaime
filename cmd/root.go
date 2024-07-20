@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/bacalhau-project/andaime/logger"
 	"github.com/bacalhau-project/andaime/providers/aws"
 
 	"github.com/spf13/cobra"
@@ -110,16 +111,26 @@ func SetupRootCommand() *cobra.Command {
 
 	// Add commands
 	rootCmd.AddCommand(getMainCmd())
+
+	// rootCmd.AddCommand(getCompletionCmd())
 	getBetaCmd(rootCmd)
 
 	// Dynamically initialize required cloud providers based on configuration
 	initializeCloudProviders()
+
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		cmd.Println("Error:", err)
+		cmd.Println(cmd.UsageString())
+		return err
+	})
 
 	return rootCmd
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() error {
+	logger.InitProduction()
+
 	return SetupRootCommand().Execute()
 }
 
@@ -162,7 +173,6 @@ func setupFlags() {
 		"",
 		"IP address of existing orchestrator node")
 	mainCmd.PersistentFlags().StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
-
 }
 
 func initializeCloudProviders() *CloudProvider {

@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/bacalhau-project/andaime/providers/aws"
 	"sigs.k8s.io/yaml"
 )
@@ -67,15 +66,9 @@ func deploy(cfg Config) error {
 		switch providerName {
 		case "aws":
 			if providerConfig.AWS != nil {
-				awsCfg, err := config.LoadDefaultConfig(context.TODO())
-				if err != nil {
-					return fmt.Errorf("failed to load AWS config: %w", err)
-				}
-
 				// You'll need to implement this function in the aws package
 				instances, err := aws.CreateSpotInstancesInRegion(
 					context.TODO(),
-					awsCfg,
 					"us-west-2", // You might want to make this configurable
 					[]string{},  // orchestrators
 					"",          // token

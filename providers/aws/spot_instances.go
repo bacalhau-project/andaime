@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
@@ -22,13 +23,17 @@ type SpotInstanceConfig struct {
 // CreateSpotInstancesInRegion creates spot instances in the specified AWS region
 func CreateSpotInstancesInRegion(
 	ctx context.Context,
-	cfg aws.Config,
 	region string,
 	orchestrators []string,
 	token string,
 	instancesPerRegion int,
 	config SpotInstanceConfig,
 ) ([]string, error) {
+	cfg, err := LoadAWSConfig(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
 	client := ec2.NewFromConfig(cfg)
 
 	// Ensure key pair exists
@@ -49,7 +54,16 @@ func CreateSpotInstancesInRegion(
 	}
 
 	// TODO: Implement the rest of the function
-	return nil, nil
+	return nil, fmt.Errorf("function not fully implemented")
+}
+
+// LoadAWSConfig loads the AWS configuration for the specified region
+func LoadAWSConfig(ctx context.Context, region string) (aws.Config, error) {
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return aws.Config{}, fmt.Errorf("failed to load config: %w", err)
+	}
+	return cfg, nil
 }
 
 // ensureKeyPairExists checks if the key pair exists, and creates it if it doesn't
