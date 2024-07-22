@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -21,6 +22,29 @@ var (
 	WARN         zapcore.Level = zapcore.WarnLevel
 	ERROR        zapcore.Level = zapcore.ErrorLevel
 )
+
+var (
+	colorReset  = "\033[0m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+)
+
+func CmdLog(msg string, level zapcore.Level) {
+	timestamp := time.Now().Format("15:04:05")
+	var colorCode string
+	switch level {
+	case zapcore.InfoLevel:
+		colorCode = colorGreen
+	case zapcore.WarnLevel:
+		colorCode = colorYellow
+	case zapcore.DebugLevel:
+		colorCode = colorBlue
+	default:
+		colorCode = colorReset
+	}
+	fmt.Printf("%s[%s]%s %s\n", colorCode, timestamp, colorReset, msg)
+}
 
 // Logger is a wrapper around zap.Logger
 type Logger struct {
@@ -43,21 +67,31 @@ func getLogLevel() zapcore.Level {
 		return zapcore.InfoLevel // Default to info level if LOG_LEVEL is not set or recognized
 	}
 }
-
 func InitProduction() {
 	once.Do(func() {
 		logLevel := getLogLevel()
 
 		var cores []zapcore.Core
 
-		// Console encoder config (always used)
-		consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
-		consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		// Custom encoder for console output
+		customConsoleEncoder := zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
+			TimeKey:        "",
+			LevelKey:       "",
+			NameKey:        "",
+			CallerKey:      "",
+			FunctionKey:    zapcore.OmitKey,
+			MessageKey:     "message",
+			StacktraceKey:  "",
+			LineEnding:     zapcore.DefaultLineEnding,
+			EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+			EncodeTime:     zapcore.ISO8601TimeEncoder,
+			EncodeDuration: zapcore.StringDurationEncoder,
+			EncodeCaller:   zapcore.ShortCallerEncoder,
+		})
 
 		// Create console core (always used)
 		consoleCore := zapcore.NewCore(
-			zapcore.NewConsoleEncoder(consoleEncoderConfig),
+			customConsoleEncoder,
 			zapcore.Lock(os.Stdout),
 			logLevel,
 		)
@@ -72,7 +106,7 @@ func InitProduction() {
 			// Set up file output for debug mode
 			debugFile, err := os.OpenFile("debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
-				fmt.Printf("Failed to open debug log file: %v\n", err)
+				fmt.Printf("%s Failed to open debug log file: %v\n", time.Now().Format(time.RFC3339), err)
 			} else {
 				fileCore := zapcore.NewCore(
 					zapcore.NewJSONEncoder(fileEncoderConfig),
@@ -87,13 +121,6 @@ func InitProduction() {
 		core := zapcore.NewTee(cores...)
 
 		logger := zap.New(core)
-
-		// Verify log level
-		if logger.Core().Enabled(logLevel) {
-			logger.Info("Logger initialized", zap.String("level", logLevel.String()))
-		} else {
-			fmt.Printf("Warning: Logger not enabled for level %s\n", logLevel)
-		}
 
 		globalLogger = logger
 	})
@@ -133,7 +160,7 @@ func InitTest(tb zaptest.TestingT) {
 // Get returns the global logger instance
 func Get() *Logger {
 	if globalLogger == nil {
-		InitProduction() // Default to production logger if not initialized
+		InitProduction()
 	}
 	logger := &Logger{globalLogger}
 	logger.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
@@ -221,7 +248,7 @@ func SetLevel(level zapcore.Level) {
 // SetOutputFormat sets the output format for the logger
 func SetOutputFormat(format string) {
 	if format != "text" && format != "json" {
-		fmt.Printf("Invalid output format: %s. Using default format: text\n", format)
+		Get().Warnf("Invalid output format: %s. Using default format: text", format)
 		outputFormat = "text"
 	} else {
 		outputFormat = format
@@ -231,20 +258,34 @@ func SetOutputFormat(format string) {
 
 // LogAzureAPIStart logs the start of an Azure API operation
 func LogAzureAPIStart(operation string) {
+	log := Get()
 	if globalLogger != nil {
-		globalLogger.Info("Starting Azure API operation", zap.String("operation", operation))
+		log.Infof("Starting Azure API operation: %s", operation)
 	}
 }
 
 // LogAzureAPIEnd logs the end of an Azure API operation
 func LogAzureAPIEnd(operation string, err error) {
-	if globalLogger != nil {
-		if err != nil {
-			globalLogger.Info("Azure API operation failed", zap.String("operation", operation), zap.Error(err))
-		} else {
-			globalLogger.Info("Azure API operation completed successfully", zap.String("operation", operation))
-		}
+	log := Get()
+	if err != nil {
+		log.Infof("Azure API operation failed: %s. Error: %v", operation, err)
+	} else {
+		log.Infof("Azure API operation completed successfully: %s", operation)
 	}
+}
+
+func DebugPrint(msg string) {
+	if globalLogger == nil {
+		InitProduction()
+	}
+	globalLogger.Debug(msg)
+}
+
+func LogInitialization(msg string) {
+	if globalLogger == nil {
+		InitProduction()
+	}
+	globalLogger.Info(msg)
 }
 
 // Fields is a type alias for zap.Field for convenience

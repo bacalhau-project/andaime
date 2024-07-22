@@ -4,9 +4,12 @@ package azure
 import (
 	"context"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
 )
@@ -25,6 +28,8 @@ type MockAzureClient struct {
 	CreateNetworkSecurityGroupFunc func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error)
 	GetNetworkSecurityGroupFunc    func(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
 	SearchResourcesFunc            func(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error)
+
+	NewListPagerFunc func(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error)
 }
 
 func NewMockAzureClient() AzureClient {
@@ -73,6 +78,10 @@ func (m *MockAzureClient) GetNetworkSecurityGroup(ctx context.Context, resourceG
 
 func (m *MockAzureClient) SearchResources(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error) {
 	return m.SearchResourcesFunc(ctx, resourceGroup, tags, subscriptionID)
+}
+
+func (m *MockAzureClient) NewListPager(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error) {
+	return m.NewListPagerFunc(ctx, resourceGroup, tags, subscriptionID)
 }
 
 type MockAzureProvider struct {

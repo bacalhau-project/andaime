@@ -9,6 +9,11 @@ import (
 
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
+	GetClient() AzureClient
+	SetClient(client AzureClient)
+	GetConfig() *viper.Viper
+	SetConfig(config *viper.Viper)
+
 	CreateDeployment(ctx context.Context) error
 }
 
@@ -38,6 +43,22 @@ func NewAzureProvider(config *viper.Viper) (AzureProviderer, error) {
 		Client: client,
 		Config: config,
 	}, nil
+}
+
+func (p *AzureProvider) GetClient() AzureClient {
+	return p.Client
+}
+
+func (p *AzureProvider) SetClient(client AzureClient) {
+	p.Client = client
+}
+
+func (p *AzureProvider) GetConfig() *viper.Viper {
+	return p.Config
+}
+
+func (p *AzureProvider) SetConfig(config *viper.Viper) {
+	p.Config = config
 }
 
 // CreateDeployment performs the Azure deployment

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"sigs.k8s.io/yaml"
 )
@@ -78,7 +79,7 @@ func deploy(cfg Config) error {
 				if err != nil {
 					return fmt.Errorf("failed to create AWS instances: %w", err)
 				}
-				fmt.Printf("Created %d AWS instances\n", len(instances))
+				logger.DebugPrint(fmt.Sprintf("Created %d AWS instances", len(instances)))
 			}
 		// Add cases for other providers here
 		default:

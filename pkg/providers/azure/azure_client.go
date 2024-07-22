@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
@@ -29,6 +31,7 @@ type AzureClient interface {
 	GetNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
 
 	// ResourceGraphClientAPI
+	NewListPager(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error)
 	SearchResources(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error)
 }
 
@@ -42,6 +45,7 @@ type LiveAzureClient struct {
 	virtualMachinesClient   *armcompute.VirtualMachinesClient
 	securityGroupsClient    *armnetwork.SecurityGroupsClient
 	resourceGraphClient     *armresourcegraph.Client
+	resourcesClient         *armresources.Client
 }
 
 var NewAzureClientFunc = NewAzureClient
@@ -79,6 +83,11 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		return &LiveAzureClient{}, err
 	}
 
+	resourcesClient, err := armresources.NewClient(subscriptionID, cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
+
 	return &LiveAzureClient{
 		Logger: logger.Get(),
 
@@ -88,6 +97,7 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		virtualMachinesClient:   virtualMachinesClient,
 		securityGroupsClient:    securityGroupsClient,
 		resourceGraphClient:     resourceGraphClient,
+		resourcesClient:         resourcesClient,
 	}, nil
 }
 
@@ -271,6 +281,31 @@ func (c *LiveAzureClient) SearchResources(ctx context.Context, resourceGroup str
 	}
 
 	return res, nil
+}
+
+func (c *LiveAzureClient) NewListPager(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error) {
+	logger.LogAzureAPIStart("NewListPager")
+	client := c.resourcesClient
+
+	var filter string
+	if resourceGroup != "" {
+		filter = fmt.Sprintf("resourceGroup eq '%s'", resourceGroup)
+	}
+	for key, value := range tags {
+		if value != nil {
+			if filter != "" {
+				filter += " and "
+			}
+			filter += fmt.Sprintf("tagName eq '%s' and tagValue eq '%s'", key, *value)
+		}
+	}
+
+	pager := client.NewListPager(&armresources.ClientListOptions{
+		Filter: &filter,
+	})
+
+	logger.LogAzureAPIEnd("NewListPager", nil)
+	return pager, nil
 }
 
 func (c *MockAzureClient) GetLogger() *logger.Logger {

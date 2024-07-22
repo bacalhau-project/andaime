@@ -14,6 +14,8 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 // Subscription represents an Azure subscription
@@ -42,7 +44,8 @@ var AzureListSubscriptionsCmd = &cobra.Command{
 }
 
 func init() {
-	AzureListSubscriptionsCmd.Flags().BoolVar(&setSubscription, "set", false, "Set the selected subscription in the config file")
+	AzureListSubscriptionsCmd.Flags().BoolVar(&setSubscription, "set",
+		false, "Set the selected subscription in the config file")
 }
 
 var setSubscription bool
@@ -101,9 +104,9 @@ func ListSubscriptions(configFilePath string, setSubscription bool) error {
 			return fmt.Errorf("failed to write subscription to config: %v", err)
 		}
 
-		fmt.Printf("Subscription '%s' has been set in the config file.\n", *chosenSubscription.DisplayName)
+		logger.DebugPrint(fmt.Sprintf("Subscription '%s' has been set in the config file.", *chosenSubscription.DisplayName))
 	} else {
-		fmt.Println("\nTo set a subscription, run this command with the --set flag:")
+		logger.DebugPrint("\nTo set a subscription, run this command with the --set flag:")
 		fmt.Println("andaime azure list-subscriptions --set")
 	}
 
