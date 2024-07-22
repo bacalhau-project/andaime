@@ -51,6 +51,7 @@ func TestDeployVM(t *testing.T) {
 	mockSSHSession.On("Close", mock.Anything).Return(nil)
 	mockSSHClient, _ := sshutils.NewMockSSHClient(nil)
 	mockSSHClient.On("NewSession", mock.Anything).Return(mockSSHSession, nil)
+	mockSSHClient.On("Close", mock.Anything).Return(nil)
 
 	sshutils.NewSSHClientFunc = func(sshClientConfig *ssh.ClientConfig, dialer sshutils.SSHDialer) sshutils.SSHClienter {
 		return mockSSHClient

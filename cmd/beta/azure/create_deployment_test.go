@@ -165,6 +165,7 @@ func TestCreateDeploymentCmd(t *testing.T) {
 				mockSession := sshutils.NewMockSSHSession()
 				mockSession.On("Close", mock.Anything).Return(nil)
 				client.On("NewSession", mock.Anything).Return(mockSession, nil)
+				client.On("Close", mock.Anything).Return(nil)
 				return client
 			}
 			defer func() {
