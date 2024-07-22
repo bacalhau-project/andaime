@@ -57,9 +57,9 @@ func NewSSHConfig(host string, port int,
 
 func (c *SSHConfig) Connect() (SSHClienter, error) {
 	c.Logger.Info("Connecting to SSH server",
-		logger.String("host", c.Host),
-		logger.Int("port", c.Port),
-		logger.String("user", c.User),
+		logger.ZapString("host", c.Host),
+		logger.ZapInt("port", c.Port),
+		logger.ZapString("user", c.User),
 	)
 
 	key, err := ssh.ParsePrivateKey([]byte(c.PrivateKeyMaterial))
@@ -74,7 +74,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 		hostKeyCallback, err = c.getHostKeyCallback()
 		if err != nil {
 			c.Logger.Warn("Unable to get host key, falling back to insecure ignore",
-				logger.Error(err),
+				logger.ZapAny("error", err),
 			)
 			//nolint: gosec
 			hostKeyCallback = ssh.InsecureIgnoreHostKey()
@@ -99,7 +99,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 
 func (c *SSHConfig) ExecuteCommand(client SSHClienter, command string) (string, error) {
 	c.Logger.Info("Executing command:",
-		logger.String("command", command),
+		logger.ZapString("command", command),
 	)
 
 	var output string
@@ -123,8 +123,8 @@ func (c *SSHConfig) ExecuteCommand(client SSHClienter, command string) (string, 
 
 func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) error {
 	c.Logger.Info("Pushing file",
-		logger.String("localPath", localPath),
-		logger.String("remotePath", remotePath),
+		logger.ZapString("localPath", localPath),
+		logger.ZapString("remotePath", remotePath),
 	)
 
 	session, err := client.NewSession()
@@ -177,7 +177,7 @@ func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) e
 
 func (c *SSHConfig) InstallSystemdService(client SSHClienter, serviceName, serviceContent string) error {
 	c.Logger.Info("Installing systemd service",
-		logger.String("serviceName", serviceName),
+		logger.ZapString("serviceName", serviceName),
 	)
 	remoteServicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
 
@@ -206,8 +206,8 @@ func (c *SSHConfig) RestartService(client SSHClienter, serviceName string) error
 
 func (c *SSHConfig) manageService(client SSHClienter, serviceName, action string) error {
 	c.Logger.Info("Managing service",
-		logger.String("serviceName", serviceName),
-		logger.String("action", action),
+		logger.ZapString("serviceName", serviceName),
+		logger.ZapString("action", action),
 	)
 	session, err := client.NewSession()
 	if err != nil {

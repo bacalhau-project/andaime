@@ -15,6 +15,11 @@ import (
 var (
 	globalLogger *zap.Logger
 	once         sync.Once
+	outputFormat string        = "text"
+	DEBUG        zapcore.Level = zapcore.DebugLevel
+	INFO         zapcore.Level = zapcore.InfoLevel
+	WARN         zapcore.Level = zapcore.WarnLevel
+	ERROR        zapcore.Level = zapcore.ErrorLevel
 )
 
 // Logger is a wrapper around zap.Logger
@@ -45,20 +50,68 @@ func InitProduction() {
 		logLevel := getLogLevel()
 
 		var config zap.Config
-		if logLevel == zapcore.DebugLevel {
+		var core zapcore.Core
+
+		switch logLevel {
+		case zapcore.DebugLevel:
 			config = zap.NewDevelopmentConfig()
-		} else {
+
+			// Console encoder config (with color)
+			consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
+			consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+			consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+			// File encoder config (without color)
+			fileEncoderConfig := zap.NewDevelopmentEncoderConfig()
+			fileEncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+
+			// Set up file output for debug mode
+			debugFile, err := os.OpenFile("debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+			if err != nil {
+				fmt.Printf("Failed to open debug log file: %v\n", err)
+				os.Exit(1)
+			}
+
+			// Create cores for console and file
+			consoleCore := zapcore.NewCore(
+				zapcore.NewConsoleEncoder(consoleEncoderConfig),
+				zapcore.Lock(os.Stdout),
+				config.Level,
+			)
+			fileCore := zapcore.NewCore(
+				zapcore.NewConsoleEncoder(fileEncoderConfig),
+				zapcore.AddSync(debugFile),
+				config.Level,
+			)
+
+			// Combine cores
+			core = zapcore.NewTee(consoleCore, fileCore)
+
+		case zapcore.InfoLevel, zapcore.WarnLevel, zapcore.ErrorLevel:
 			config = zap.NewProductionConfig()
+			core = zapcore.NewCore(
+				zapcore.NewJSONEncoder(config.EncoderConfig),
+				zapcore.Lock(os.Stdout),
+				config.Level,
+			)
+		default:
+			config = zap.NewProductionConfig()
+			core = zapcore.NewCore(
+				zapcore.NewJSONEncoder(config.EncoderConfig),
+				zapcore.Lock(os.Stdout),
+				config.Level,
+			)
 		}
 
-		// Adjust the log level in the config
-		config.Level = zap.NewAtomicLevelAt(logLevel)
+		logger := zap.New(core)
 
-		logger, err := config.Build()
-		if err != nil {
-			fmt.Printf("Failed to initialize logger: %v\n", err)
-			os.Exit(1)
+		// Verify log level
+		if logger.Core().Enabled(logLevel) {
+			logger.Info("Logger initialized", zap.String("level", logLevel.String()))
+		} else {
+			fmt.Printf("Warning: Logger not enabled for level %s\n", logLevel)
 		}
+
 		globalLogger = logger
 	})
 }
@@ -99,7 +152,9 @@ func Get() *Logger {
 	if globalLogger == nil {
 		InitProduction() // Default to production logger if not initialized
 	}
-	return &Logger{globalLogger}
+	logger := &Logger{globalLogger}
+	logger.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
+	return logger
 }
 
 // With creates a child logger and adds structured context to it
@@ -180,15 +235,44 @@ func SetLevel(level zapcore.Level) {
 	globalLogger = globalLogger.WithOptions(zap.IncreaseLevel(level))
 }
 
+// SetOutputFormat sets the output format for the logger
+func SetOutputFormat(format string) {
+	if format != "text" && format != "json" {
+		fmt.Printf("Invalid output format: %s. Using default format: text\n", format)
+		outputFormat = "text"
+	} else {
+		outputFormat = format
+	}
+	InitProduction()
+}
+
+// LogAzureAPIStart logs the start of an Azure API operation
+func LogAzureAPIStart(operation string) {
+	if globalLogger != nil {
+		globalLogger.Info("Starting Azure API operation", zap.String("operation", operation))
+	}
+}
+
+// LogAzureAPIEnd logs the end of an Azure API operation
+func LogAzureAPIEnd(operation string, err error) {
+	if globalLogger != nil {
+		if err != nil {
+			globalLogger.Info("Azure API operation failed", zap.String("operation", operation), zap.Error(err))
+		} else {
+			globalLogger.Info("Azure API operation completed successfully", zap.String("operation", operation))
+		}
+	}
+}
+
 // Fields is a type alias for zap.Field for convenience
 type Field = zap.Field
 
 // Common field constructors
 var (
-	String  = zap.String
-	Int     = zap.Int
-	Float64 = zap.Float64
-	Bool    = zap.Bool
-	Error   = zap.Error
-	Any     = zap.Any
+	ZapString  = zap.String
+	ZapInt     = zap.Int
+	ZapFloat64 = zap.Float64
+	ZapBool    = zap.Bool
+	ZapError   = zap.Error
+	ZapAny     = zap.Any
 )

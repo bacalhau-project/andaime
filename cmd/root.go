@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"sync"
 
@@ -12,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 var (
@@ -24,6 +27,7 @@ var (
 	orchestratorIP            string
 	awsProfile                string
 	verboseMode               bool
+	outputFormat              string
 
 	once sync.Once
 )
@@ -80,45 +84,70 @@ var listCmd = &cobra.Command{
 }
 
 func initConfig() {
-	log := logger.Get()
-	log.Debug("Initializing configuration")
+	// Use a temporary logger for initial debugging
+	tmpLogger := log.New(io.Discard, "", log.LstdFlags)
+	if os.Getenv("LOG_LEVEL") == "debug" {
+		tmpLogger.SetOutput(os.Stdout)
+	}
+
+	tmpLogger.Printf("Debug: Starting initConfig")
+	tmpLogger.Printf("Debug: ConfigFile value: %s", ConfigFile)
+	tmpLogger.Printf("Debug: Output format: %s", outputFormat)
 
 	viper.SetConfigType("yaml")
 
 	if ConfigFile != "" {
-		log.Debugf("Using config file: %s", ConfigFile)
+		tmpLogger.Printf("Debug: Using config file: %s", ConfigFile)
 		viper.SetConfigFile(ConfigFile)
 	} else {
-		log.Debug("No config file specified, using default paths")
+		tmpLogger.Print("Debug: No config file specified, using default paths")
 		home, err := os.UserHomeDir()
 		if err != nil {
-			log.Errorf("Error getting user home directory: %v", err)
-			fmt.Fprintf(os.Stderr,
-				"Error: Unable to determine home directory. Please specify a config file using the --config flag.\n")
+			tmpLogger.Printf("Error getting user home directory: %v", err)
+			fmt.Fprintf(os.Stderr, "Error: Unable to determine home directory. Please specify a config file using the --config flag.\n")
 			os.Exit(1)
 		}
 		viper.AddConfigPath(home)
+		viper.AddConfigPath(".") // Add current directory as a search path
 		viper.SetConfigName(".andaime")
+		viper.SetConfigName("config") // Add "config" as a config name to search for
+		tmpLogger.Printf("Debug: Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
 	}
 
 	viper.AutomaticEnv()
+	tmpLogger.Print("Debug: Environment variables loaded into viper")
 
+	tmpLogger.Print("Debug: Attempting to read config file")
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			if ConfigFile != "" {
-				fmt.Fprintf(os.Stderr, "Error: Config file not found: %s\n", ConfigFile)
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: No config file found in default location (~/.andaime.yaml)\n")
-			}
+			tmpLogger.Print("Debug: No config file found")
 		} else {
-			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
+			tmpLogger.Printf("Error reading config file: %v", err)
 		}
-		fmt.Fprintf(os.Stderr, "Please ensure your config file exists and is properly formatted.\n")
-		os.Exit(1)
+	} else {
+		tmpLogger.Printf("Debug: Successfully read config file: %s", viper.ConfigFileUsed())
 	}
 
-	log.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
-	log.Debug("Configuration initialization complete")
+	// Ensure output format is set correctly
+	if outputFormat != "text" && outputFormat != "json" {
+		tmpLogger.Printf("Debug: Invalid output format '%s'. Using default: text", outputFormat)
+		outputFormat = "text"
+	}
+
+	// Initialize the logger after config is read
+	logger.InitProduction()
+	logger.SetOutputFormat(outputFormat)
+	log := logger.Get()
+
+	// Set log level based on verbose flag
+	if verboseMode {
+		logger.SetLevel(logger.DEBUG)
+	}
+
+	if os.Getenv("LOG_LEVEL") == "debug" {
+		log.Debug("Logger initialized with configuration", zap.String("outputFormat", outputFormat))
+		log.Debug("Configuration initialization complete")
+	}
 }
 
 func SetupRootCommand() *cobra.Command {
@@ -132,8 +161,14 @@ func SetupRootCommand() *cobra.Command {
 			return err
 		}
 
+		// Set log level based on verbose flag
+		if verboseMode {
+			logger.SetLevel(logger.DEBUG)
+		}
+
 		// Now that flags are parsed, we can initialize the config
 		initConfig()
+
 		return nil
 	}
 	// Add commands
@@ -156,12 +191,14 @@ func SetupRootCommand() *cobra.Command {
 
 func Execute() error {
 	logger.InitProduction()
+	initConfig()
 	return SetupRootCommand().Execute()
 }
 
 func setupFlags() {
 	rootCmd.PersistentFlags().StringVar(&ConfigFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
+	rootCmd.PersistentFlags().StringVar(&outputFormat, "output", "text", "Output format: text or json")
 
 	rootCmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
 	rootCmd.PersistentFlags().StringVar(&targetPlatform, "target-platform", "", "Set target platform")
@@ -179,25 +216,6 @@ func setupFlags() {
 		"Comma-separated list of target AWS regions")
 	rootCmd.PersistentFlags().StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
 	rootCmd.PersistentFlags().StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
-
-	mainCmd := getMainCmd()
-	mainCmd.PersistentFlags().BoolVar(&VERBOSE_MODE_FLAG, "verbose", false, "Generate verbose output throughout execution")
-	mainCmd.PersistentFlags().StringVar(&PROJECT_NAME_FLAG, "project-name", "", "Set project name")
-	mainCmd.PersistentFlags().StringVar(&TARGET_PLATFORM_FLAG, "target-platform", "", "Set target platform")
-	mainCmd.PersistentFlags().IntVar(&NUMBER_OF_ORCHESTRATOR_NODES_FLAG,
-		"orchestrator-nodes",
-		-1,
-		"Set number of orchestrator nodes")
-	mainCmd.PersistentFlags().IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
-	mainCmd.PersistentFlags().StringVar(&TARGET_REGIONS_FLAG,
-		"target-regions",
-		"us-east-1",
-		"Comma-separated list of target AWS regions")
-	mainCmd.PersistentFlags().StringVar(&ORCHESTRATOR_IP_FLAG,
-		"orchestrator-ip",
-		"",
-		"IP address of existing orchestrator node")
-	mainCmd.PersistentFlags().StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
 }
 
 func initializeCloudProviders() *CloudProvider {

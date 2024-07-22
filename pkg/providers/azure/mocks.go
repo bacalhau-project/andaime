@@ -7,11 +7,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
 )
 
 type MockAzureClient struct {
 	mock.Mock
+	Logger                         *logger.Logger
 	CreateVirtualNetworkFunc       func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetworkFunc          func(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIPFunc             func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)

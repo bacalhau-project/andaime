@@ -37,9 +37,15 @@ type SubscriptionTable struct {
 var AzureListSubscriptionsCmd = &cobra.Command{
 	Use:   "list-subscriptions",
 	Short: "List Azure subscriptions",
-	Long:  `List all subscriptions and select one to use.`,
+	Long:  `List all subscriptions and optionally select one to use.`,
 	Run:   runListSubscriptions,
 }
+
+func init() {
+	AzureListSubscriptionsCmd.Flags().BoolVar(&setSubscription, "set", false, "Set the selected subscription in the config file")
+}
+
+var setSubscription bool
 
 func runListSubscriptions(cmd *cobra.Command, args []string) {
 	configFile := viper.ConfigFileUsed()
@@ -48,13 +54,13 @@ func runListSubscriptions(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	err := ListSubscriptions(configFile)
+	err := ListSubscriptions(configFile, setSubscription)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
 }
 
-func ListSubscriptions(configFilePath string) error {
+func ListSubscriptions(configFilePath string, setSubscription bool) error {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return fmt.Errorf("failed to obtain a credential: %v", err)
@@ -83,18 +89,24 @@ func ListSubscriptions(configFilePath string) error {
 	table := createSubscriptionTable(subscriptions)
 	table.Render()
 
-	chosenIndex, err := getUserChoice(len(subscriptions))
-	if err != nil {
-		return err
+	if setSubscription {
+		chosenIndex, err := getUserChoice(len(subscriptions))
+		if err != nil {
+			return err
+		}
+
+		chosenSubscription := subscriptions[chosenIndex]
+		err = writeSubscriptionToConfig(*chosenSubscription.ID)
+		if err != nil {
+			return fmt.Errorf("failed to write subscription to config: %v", err)
+		}
+
+		fmt.Printf("Subscription '%s' has been set in the config file.\n", *chosenSubscription.DisplayName)
+	} else {
+		fmt.Println("\nTo set a subscription, run this command with the --set flag:")
+		fmt.Println("andaime azure list-subscriptions --set")
 	}
 
-	chosenSubscription := subscriptions[chosenIndex]
-	err = writeSubscriptionToConfig(*chosenSubscription.ID)
-	if err != nil {
-		return fmt.Errorf("failed to write subscription to config: %v", err)
-	}
-
-	fmt.Printf("Subscription '%s' has been set in the config file.\n", *chosenSubscription.DisplayName)
 	return nil
 }
 
