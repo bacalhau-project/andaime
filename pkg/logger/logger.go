@@ -44,64 +44,47 @@ func getLogLevel() zapcore.Level {
 	}
 }
 
-// InitProduction initializes the global logger for production use.
 func InitProduction() {
 	once.Do(func() {
 		logLevel := getLogLevel()
 
-		var config zap.Config
-		var core zapcore.Core
+		var cores []zapcore.Core
 
-		switch logLevel {
-		case zapcore.DebugLevel:
-			config = zap.NewDevelopmentConfig()
+		// Console encoder config (always used)
+		consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
+		consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-			// Console encoder config (with color)
-			consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
-			consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-			consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		// Create console core (always used)
+		consoleCore := zapcore.NewCore(
+			zapcore.NewConsoleEncoder(consoleEncoderConfig),
+			zapcore.Lock(os.Stdout),
+			logLevel,
+		)
+		cores = append(cores, consoleCore)
 
-			// File encoder config (without color)
-			fileEncoderConfig := zap.NewDevelopmentEncoderConfig()
-			fileEncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+		// If debug level is set, add file core
+		if logLevel == zapcore.DebugLevel {
+			// File encoder config
+			fileEncoderConfig := zap.NewProductionEncoderConfig()
+			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 			// Set up file output for debug mode
-			debugFile, err := os.OpenFile("debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+			debugFile, err := os.OpenFile("debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
 				fmt.Printf("Failed to open debug log file: %v\n", err)
-				os.Exit(1)
+			} else {
+				fileCore := zapcore.NewCore(
+					zapcore.NewJSONEncoder(fileEncoderConfig),
+					zapcore.AddSync(debugFile),
+					zapcore.DebugLevel,
+				)
+				cores = append(cores, fileCore)
 			}
-
-			// Create cores for console and file
-			consoleCore := zapcore.NewCore(
-				zapcore.NewConsoleEncoder(consoleEncoderConfig),
-				zapcore.Lock(os.Stdout),
-				config.Level,
-			)
-			fileCore := zapcore.NewCore(
-				zapcore.NewConsoleEncoder(fileEncoderConfig),
-				zapcore.AddSync(debugFile),
-				config.Level,
-			)
-
-			// Combine cores
-			core = zapcore.NewTee(consoleCore, fileCore)
-
-		case zapcore.InfoLevel, zapcore.WarnLevel, zapcore.ErrorLevel:
-			config = zap.NewProductionConfig()
-			core = zapcore.NewCore(
-				zapcore.NewJSONEncoder(config.EncoderConfig),
-				zapcore.Lock(os.Stdout),
-				config.Level,
-			)
-		default:
-			config = zap.NewProductionConfig()
-			core = zapcore.NewCore(
-				zapcore.NewJSONEncoder(config.EncoderConfig),
-				zapcore.Lock(os.Stdout),
-				config.Level,
-			)
 		}
+
+		// Combine cores
+		core := zapcore.NewTee(cores...)
 
 		logger := zap.New(core)
 
