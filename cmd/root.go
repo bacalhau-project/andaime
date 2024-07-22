@@ -1,20 +1,21 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"sync"
 
-	"github.com/bacalhau-project/andaime/logger"
-	"github.com/bacalhau-project/andaime/providers/aws"
+	"github.com/bacalhau-project/andaime/cmd/beta/aws"
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	cfgFile                   string
+	ConfigFile                string
 	projectName               string
 	targetPlatform            string
 	numberOfOrchestratorNodes int
@@ -33,7 +34,8 @@ var (
 )
 
 type CloudProvider struct {
-	awsProvider aws.AWSProviderInterface
+	awsProvider   awsprovider.AWSProviderer
+	azureProvider azureprovider.AzureProviderer
 }
 
 // rootCmd represents the base command when called without any subcommands
@@ -42,6 +44,9 @@ var rootCmd = &cobra.Command{
 	Short: "Andaime is a tool for managing cloud resources",
 	Long: `Andaime is a comprehensive tool for managing cloud resources,
 including deploying and managing Bacalhau nodes across multiple cloud providers.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		initConfig()
+	},
 }
 
 // createCmd represents the create command
@@ -75,45 +80,67 @@ var listCmd = &cobra.Command{
 }
 
 func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
+	log := logger.Get()
+	log.Debug("Initializing configuration")
+
+	viper.SetConfigType("yaml")
+
+	if ConfigFile != "" {
+		log.Debugf("Using config file: %s", ConfigFile)
+		viper.SetConfigFile(ConfigFile)
 	} else {
-		// Find home directory.
+		log.Debug("No config file specified, using default paths")
 		home, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Println("Unable to find home directory:", err)
+			log.Errorf("Error getting user home directory: %v", err)
+			fmt.Fprintf(os.Stderr,
+				"Error: Unable to determine home directory. Please specify a config file using the --config flag.\n")
 			os.Exit(1)
 		}
-
-		// Search config in home directory with name ".andaime" (without extension).
 		viper.AddConfigPath(home)
 		viper.SetConfigName(".andaime")
 	}
 
-	viper.AutomaticEnv() // read in environment variables that match
+	viper.AutomaticEnv()
 
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
-	} else if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-		// Config file was found but another error was produced
-		fmt.Println("Error reading config file:", err)
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			if ConfigFile != "" {
+				fmt.Fprintf(os.Stderr, "Error: Config file not found: %s\n", ConfigFile)
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: No config file found in default location (~/.andaime.yaml)\n")
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
+		}
+		fmt.Fprintf(os.Stderr, "Please ensure your config file exists and is properly formatted.\n")
 		os.Exit(1)
 	}
+
+	log.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
+	log.Debug("Configuration initialization complete")
 }
 
 func SetupRootCommand() *cobra.Command {
-	cobra.OnInitialize(initConfig)
-
 	// Setup flags
 	setupFlags()
 
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Parse flags for the current command and all parent commands
+		err := cmd.ParseFlags(os.Args[1:])
+		if err != nil {
+			return err
+		}
+
+		// Now that flags are parsed, we can initialize the config
+		initConfig()
+		return nil
+	}
 	// Add commands
 	rootCmd.AddCommand(getMainCmd())
 
-	// rootCmd.AddCommand(getCompletionCmd())
-	getBetaCmd(rootCmd)
+	betaCmd := getBetaCmd(rootCmd)
+	betaCmd.AddCommand(aws.AwsCmd)
 
 	// Dynamically initialize required cloud providers based on configuration
 	initializeCloudProviders()
@@ -127,15 +154,13 @@ func SetupRootCommand() *cobra.Command {
 	return rootCmd
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() error {
 	logger.InitProduction()
-
 	return SetupRootCommand().Execute()
 }
 
 func setupFlags() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
+	rootCmd.PersistentFlags().StringVar(&ConfigFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
 
 	rootCmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
@@ -185,14 +210,19 @@ func initializeCloudProviders() *CloudProvider {
 			os.Exit(1)
 		}
 	}
-	// TODO: Instantiate GCP
-	// TODO: Instantiate Azure
+
+	if shouldInitAzure() {
+		if err := initAzureProvider(cloudProvider); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to initialize Azure provider: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	return cloudProvider
 }
 
 // initAWSProvider initializes the AWS provider with the given profile and region
 func initAWSProvider(c *CloudProvider) error {
-	awsProvider, err := aws.NewAWSProviderFunc(context.Background())
+	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
 	if err != nil {
 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
@@ -202,5 +232,19 @@ func initAWSProvider(c *CloudProvider) error {
 
 func shouldInitAWS() bool {
 	// TODO: Detect if AWS should be instantiated
+	return true
+}
+
+func initAzureProvider(c *CloudProvider) error {
+	azureProvider, err := azureprovider.NewAzureProvider(viper.GetViper())
+	if err != nil {
+		return fmt.Errorf("failed to initialize Azure provider: %w", err)
+	}
+	c.azureProvider = azureProvider
+	return nil
+}
+
+func shouldInitAzure() bool {
+	// TODO: Detect if Azure should be instantiated
 	return true
 }

@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bacalhau-project/andaime/display"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/spf13/cobra"
 )
 

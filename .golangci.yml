@@ -92,18 +92,6 @@ linters:
 # Options for analysis running.
 run:
   go: "1.21"
-  skip-dirs-use-default: true
-  skip-dirs:
-    - experimental$
-    - vendor$
-    - viz$
-    - ops$
-    - testdata$
-    - .*nix/store/.*
-    - .*go/src
-    - .*go/pkg/mod # Exclude external modules
-
-  path: ./ # This restricts golangci-lint to the current directory and its subdirectories
   # The default concurrency value is the number of available CPU.
   # concurrency: 16
   # Timeout for analysis, e.g. 30s, 5m.
@@ -155,3 +143,12 @@ issues:
   exclude:
     # Naming of `error` variables as `err` is standard practise for Go
     - 'shadow: declaration of "err" shadows declaration at'
+  exclude-dirs:
+    - experimental$
+    - vendor$
+    - viz$
+    - ops$
+    - testdata$
+    - .*nix/store/.*
+    - .*go/src
+    - .*go/pkg/mod # Exclude external modules

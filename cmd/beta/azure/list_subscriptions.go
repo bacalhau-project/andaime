@@ -10,7 +10,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
-	"github.com/bacalhau-project/andaime/display"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -31,20 +31,6 @@ type SubscriptionTable struct {
 	Columns  []display.ColumnDef
 	LogFile  string
 	DataType interface{}
-}
-
-// subscriptionTable contains the configuration for displaying Azure subscriptions
-var subscriptionTable = SubscriptionTable{
-	Title: "Azure Subscriptions",
-	Columns: []display.ColumnDef{
-		{Header: "DisplayName", Width: 30, Getter: func(v interface{}) string { return v.(Subscription).DisplayName }},
-		{Header: "ID", Width: 36, Getter: func(v interface{}) string { return v.(Subscription).ID }},
-		{Header: "State", Width: 10, Getter: func(v interface{}) string { return v.(Subscription).State }},
-		{Header: "SubscriptionID", Width: 36, Getter: func(v interface{}) string { return v.(Subscription).SubscriptionID }},
-		{Header: "TenantID", Width: 36, Getter: func(v interface{}) string { return v.(Subscription).TenantID }},
-	},
-	LogFile:  "/tmp/azure_subscriptions.log",
-	DataType: Subscription{},
 }
 
 // AzureListSubscriptionsCmd represents the command to list Azure subscriptions
@@ -103,7 +89,7 @@ func ListSubscriptions(configFilePath string) error {
 	}
 
 	chosenSubscription := subscriptions[chosenIndex]
-	err = writeSubscriptionToConfig(configFilePath, *chosenSubscription.ID)
+	err = writeSubscriptionToConfig(*chosenSubscription.ID)
 	if err != nil {
 		return fmt.Errorf("failed to write subscription to config: %v", err)
 	}
@@ -145,15 +131,27 @@ func getUserChoice(max int) (int, error) {
 	}
 }
 
-func writeSubscriptionToConfig(configFilePath, subscriptionID string) error {
-	file, err := os.OpenFile(configFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+func writeSubscriptionToConfig(subscriptionID string) error {
+	// Extract the UUID from the full subscription ID
+	uuidOnly := extractUUID(subscriptionID)
 
-	_, err = file.WriteString(fmt.Sprintf("AZURE_SUBSCRIPTION_ID=%s\n", subscriptionID))
-	return err
+	// Set the new subscription ID in Viper
+	viper.Set("azure.subscription_id", uuidOnly)
+
+	// Write the updated configuration back to the file
+	err := viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("failed to write updated config: %v", err)
+	}
+
+	return nil
 }
 
-// Remove this entire block as it's no longer needed
+// Helper function to extract UUID from the full subscription ID
+func extractUUID(subscriptionID string) string {
+	parts := strings.Split(subscriptionID, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return subscriptionID // Return original if splitting fails
+}

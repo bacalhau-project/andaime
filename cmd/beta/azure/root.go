@@ -1,12 +1,14 @@
 package azure
 
 import (
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/bacalhau-project/andaime/logger"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 var once sync.Once
@@ -26,22 +28,31 @@ func InitializeCommands() {
 	once.Do(func() {
 		AzureCmd.AddCommand(AzureListSubscriptionsCmd)
 		AzureCmd.AddCommand(AzureListResourcesCmd)
+		AzureCmd.AddCommand(createAzureDeploymentCmd)
 	})
 }
 
 func getSubscriptionID() string {
 	log := logger.Get()
-	v := viper.GetViper()
-	azureCfg := v.Sub("azure")
+
+	azureCfg := viper.Sub("azure")
+	if azureCfg == nil {
+		log.Debug("Azure config is nil")
+		fmt.Fprintf(os.Stderr, "Error: Azure configuration not found in config file.\n")
+		fmt.Fprintf(os.Stderr, "Please ensure your config file includes an 'azure' section with a 'subscription_id'.\n")
+		os.Exit(1)
+	}
 
 	subID := azureCfg.GetString("subscription_id")
 	if subID == "" {
-		// Try to load it from AZURE_SUBSCRIPTION_ID
-		subID = v.GetString("AZURE_SUBSCRIPTION_ID")
+		subID = viper.GetString("AZURE_SUBSCRIPTION_ID")
 	}
 
 	if subID == "" {
-		log.Fatalf("No Azure subscription ID found in either %s or AZURE_SUBSCRIPTION_ID.", v.ConfigFileUsed())
+		fmt.Fprintf(os.Stderr, "Error: No Azure subscription ID found.\n")
+		fmt.Fprintf(os.Stderr, `Please set it in your config file under azure.subscription_id or as an 
+AZURE_SUBSCRIPTION_ID environment variable.`)
+		os.Exit(1)
 	}
 
 	return subID

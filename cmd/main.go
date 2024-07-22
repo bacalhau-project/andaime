@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/bacalhau-project/andaime/providers/aws"
+	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"sigs.k8s.io/yaml"
 )
 
@@ -17,7 +17,7 @@ type Config struct {
 }
 
 type ProviderConfig struct {
-	AWS *aws.SpotInstanceConfig `yaml:"aws,omitempty"`
+	AWS *awsprovider.SpotInstanceConfig `yaml:"aws,omitempty"`
 	// Add other providers here as needed
 }
 
@@ -67,7 +67,7 @@ func deploy(cfg Config) error {
 		case "aws":
 			if providerConfig.AWS != nil {
 				// You'll need to implement this function in the aws package
-				instances, err := aws.CreateSpotInstancesInRegion(
+				instances, err := awsprovider.CreateSpotInstancesInRegion(
 					context.TODO(),
 					"us-west-2", // You might want to make this configurable
 					[]string{},  // orchestrators

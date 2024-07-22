@@ -3,7 +3,6 @@ config.json
 *claude-engineer*
 Chat_*
 .venv
-<<<<<<< HEAD
 
 .aider*
 
@@ -14,7 +13,6 @@ vendor/**
 original/**
 .vscode
 status.txt
-=======
 .DS_Store
 release/
->>>>>>> main
+*prompt*.md

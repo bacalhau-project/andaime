@@ -1,0 +1,14 @@
+azure:
+  subscription_id: "your-subscription-id"
+  resource_group: "your-resource-group"
+  location: "eastus"
+  vm_size: "Standard_D2s_v3"
+  admin_username: "azureuser"
+  vnet_name: "your-vnet-name"
+  subnet_name: "your-subnet-name"
+  nsg_name: "your-nsg-name"
+general:
+  project_id: andaime-project
+  ssh_public_key: ./testdata/dummy_keys/id_ed25519.pub
+  ssh_private_key: ./testdata/dummy_keys/id_ed25519
+  ssh_key_dir: ./testdata/dummy_keys
