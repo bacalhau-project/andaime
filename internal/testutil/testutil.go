@@ -9,19 +9,18 @@ import (
 
 func GetTestAzureViper() (*viper.Viper, error) {
 	viper.Reset()
-	testConfig := viper.New()
 	configFile, cleanup, err := WriteStringToTempFile(testdata.TestAzureConfig)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
-	testConfig.SetConfigType("yaml")
-	testConfig.SetConfigFile(configFile)
-	err = testConfig.ReadInConfig()
+	viper.SetConfigType("yaml")
+	viper.SetConfigFile(configFile)
+	err = viper.ReadInConfig()
 	if err != nil {
 		return nil, err
 	}
-	return testConfig, nil
+	return viper.GetViper(), nil
 }
 
 // returns the file path and a cleanup function.

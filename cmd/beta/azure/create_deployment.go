@@ -16,12 +16,7 @@ var createAzureDeploymentCmd = &cobra.Command{
 }
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
-	config := viper.GetViper()
-	if config == nil {
-		return fmt.Errorf("failed to get configuration")
-	}
-
-	azureProvider, err := azure.AzureProviderFunc(config)
+	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}

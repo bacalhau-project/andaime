@@ -59,9 +59,9 @@ func (p *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 }
 
 func (p *LiveAzureClient) GetResourceGroup(ctx context.Context) (*armresources.ResourceGroup, error) {
-	rgName := viper.GetString("azure.resource_group")
+	rgName := viper.GetString("azure.resource_group_name")
 	if rgName == "" {
-		return nil, fmt.Errorf("azure.resource_group is not set in the configuration")
+		return nil, fmt.Errorf("azure.resource_group_name is not set in the configuration")
 	}
 
 	result, err := p.resourceGroupsClient.Get(ctx, rgName, nil)

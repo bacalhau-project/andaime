@@ -27,22 +27,19 @@ type Parameters struct {
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources() error {
 	ctx := context.Background()
-	if p.Config == nil {
-		return fmt.Errorf("config is nil")
-	}
-
-	config := p.Config
+	viper := viper.GetViper()
 
 	// Extract Azure-specific configuration
-	uniqueID := config.GetString("azure.unique_id")
-	resourceGroup := config.GetString("azure.resource_group")
+	uniqueID := viper.GetString("azure.unique_id")
+	resourceGroupName := viper.GetString("azure.resource_group_prefix") + "-" + uniqueID
+	viper.Set("azure.resource_group_name", resourceGroupName)
 
 	// Extract SSH public key
-	sshPublicKey, err := utils.ExpandPath(config.GetString("general.ssh_public_key_path"))
+	sshPublicKey, err := utils.ExpandPath(viper.GetString("general.ssh_public_key_path"))
 	if err != nil {
 		return fmt.Errorf("failed to expand path for SSH public key: %v", err)
 	}
-	sshPrivateKey, err := utils.ExpandPath(config.GetString("general.ssh_private_key_path"))
+	sshPrivateKey, err := utils.ExpandPath(viper.GetString("general.ssh_private_key_path"))
 	if err != nil {
 		return fmt.Errorf("failed to expand path for SSH private key: %v", err)
 	}
@@ -58,17 +55,15 @@ func (p *AzureProvider) DeployResources() error {
 		return fmt.Errorf("failed to validate SSH keys: %v", err)
 	}
 
-	v := viper.GetViper()
-
 	var machines []Machine
-	err = v.UnmarshalKey("azure.machines", &machines)
+	err = viper.UnmarshalKey("azure.machines", &machines)
 	if err != nil {
 		log.Fatalf("Error unmarshaling machines: %v", err)
 	}
 
-	projectID := v.GetString("general.project_id")
-	defaultMachineType := v.GetString("azure.default_machine_type")
-	defaultCountPerZone := v.GetInt("azure.default_count_per_zone")
+	projectID := viper.GetString("general.project_id")
+	defaultMachineType := viper.GetString("azure.default_machine_type")
+	defaultCountPerZone := viper.GetInt("azure.default_count_per_zone")
 
 	for _, machine := range machines {
 		if !internal.IsValidLocation(machine.Location) {
@@ -97,7 +92,7 @@ func (p *AzureProvider) DeployResources() error {
 				projectID,
 				uniqueID,
 				p.Client,
-				v,
+				viper,
 				machine.Location,
 				params.Type,
 			)
@@ -106,6 +101,6 @@ func (p *AzureProvider) DeployResources() error {
 			}
 		}
 	}
-	fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", uniqueID, resourceGroup)
+	fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", uniqueID, resourceGroupName)
 	return nil
 }

@@ -63,9 +63,9 @@ func (p *AzureProvider) SetConfig(config *viper.Viper) {
 
 // CreateDeployment performs the Azure deployment
 func (p *AzureProvider) CreateDeployment(ctx context.Context) error {
-	location := p.Config.GetString("azure.location")
+	location := p.Config.GetString("azure.resource_group_location")
 	if location == "" {
-		return fmt.Errorf("azure.location is not set in the configuration")
+		return fmt.Errorf("azure.resource_group_location is not set in the configuration")
 	}
 
 	rg, err := p.Client.GetOrCreateResourceGroup(ctx, location)
