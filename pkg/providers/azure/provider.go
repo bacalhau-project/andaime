@@ -73,7 +73,7 @@ func (p *AzureProvider) CreateDeployment(ctx context.Context) error {
 		return fmt.Errorf("failed to get or create resource group: %w", err)
 	}
 
-	p.Config.Set("azure.resource_group", rg.Name)
+	p.Config.Set("azure.resource_group_name", rg.Name)
 
 	return p.DeployResources()
 }

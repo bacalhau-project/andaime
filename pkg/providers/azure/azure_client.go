@@ -137,9 +137,11 @@ func (c *LiveAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGrou
 
 // GetVirtualNetwork retrieves a virtual network
 func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error) {
-	logger.LogAzureAPIStart("GetVirtualNetwork")
+	c.Logger.Infof("GetVirtualNetwork")
+	c.Logger.Infof("resourceGroupName: %s", resourceGroupName)
+	c.Logger.Infof("vnetName: %s", vnetName)
 	resp, err := c.virtualNetworksClient.Get(ctx, resourceGroupName, vnetName, nil)
-	logger.LogAzureAPIEnd("GetVirtualNetwork", err)
+	c.Logger.Infof("GetVirtualNetwork: %v", err)
 	if err != nil {
 		return armnetwork.VirtualNetwork{}, err
 	}

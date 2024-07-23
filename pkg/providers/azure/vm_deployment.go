@@ -24,6 +24,7 @@ func DeployVM(ctx context.Context,
 	config *viper.Viper,
 	location string,
 	vmSize string,
+	subnet *armnetwork.Subnet,
 ) (*armcompute.VirtualMachine, error) {
 	// Read configuration values
 	resourceGroupName := config.GetString("azure.resource_group_name")
@@ -53,22 +54,6 @@ func DeployVM(ctx context.Context,
 	_, err = os.ReadFile(absPrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read SSH private key: %v", err)
-	}
-
-	// Create Virtual Network and Subnet
-	subnet, err := createVirtualNetwork(
-		ctx,
-		projectID,
-		uniqueID,
-		client,
-		resourceGroupName,
-		vmName+"-vnet",
-		vmName+"-subnet",
-		location,
-		tags,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create virtual network: %v", err)
 	}
 
 	// Create Public IP

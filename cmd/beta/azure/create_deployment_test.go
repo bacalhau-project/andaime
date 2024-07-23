@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	armresources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -56,6 +57,7 @@ func TestCreateDeploymentCmd(t *testing.T) {
 				client := azure.GetMockAzureClient().(*azure.MockAzureClient)
 				client.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
 					return &armresources.ResourceGroup{
+						Name:     to.Ptr("test-rg-name"),
 						Location: &location,
 					}, nil
 				}

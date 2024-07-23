@@ -69,7 +69,7 @@ azure:
 		}
 
 		// Check for missing required fields
-		requiredFields := []string{"azure.resource_group", "azure.vm_name", "azure.vm_size"}
+		requiredFields := []string{"azure.resource_group_name"}
 		missingFields := []string{}
 		for _, field := range requiredFields {
 			if !v.IsSet(field) {

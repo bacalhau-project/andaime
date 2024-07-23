@@ -114,6 +114,7 @@ virtualenvs
 virtualnetworks
 VMSS
 vnet
+vnets
 VPCCIDR
 Warnf
 westeurope

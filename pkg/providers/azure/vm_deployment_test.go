@@ -74,6 +74,7 @@ func TestDeployVM(t *testing.T) {
 		viper.GetViper(),
 		"eastus",
 		"Standard_DS1_v2",
+		&armnetwork.Subnet{},
 	)
 	if err != nil {
 		t.Errorf("DeployVM failed: %v", err)
