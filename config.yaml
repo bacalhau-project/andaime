@@ -5,19 +5,26 @@ azure:
     - 443
   disk_size_gb: 30
   default_machine_type: Standard_DS1_v2
+  default_count_per_zone: 1
   machines:
-    eastus:
-      zone1:
+    - location: eastus
+      parameters:
         - count: 2
           type: Standard_DS1_v2
-        - count: 1
-      zone2:
+    - location: westus
+    - location: centralus
+      parameters:
         - count: 1
           type: Standard_DS1_v2
-    westus2:
-      zone1:
-        - count: 1
-          type: Standard_DS2_v2
+          orchestrator: True
+    - location: eastus2
+    - location: southcentralus
+    - location: southcentralus
+    - location: westeurope
+    - location: uksouth
+    - location: eastasia
+    - location: southeastasia
+    - location: westus2
   resource_group_name: andaime-rg
   subscription_id: fd075559-43fc-4fbe-8dee-21e125a9dafc
 general:

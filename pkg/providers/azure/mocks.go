@@ -17,6 +17,7 @@ import (
 type MockAzureClient struct {
 	mock.Mock
 	Logger                         *logger.Logger
+	GetOrCreateResourceGroupFunc   func(ctx context.Context, location string) (*armresources.ResourceGroup, error)
 	CreateVirtualNetworkFunc       func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetworkFunc          func(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIPFunc             func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)
@@ -34,6 +35,18 @@ type MockAzureClient struct {
 
 func NewMockAzureClient() AzureClient {
 	return &MockAzureClient{}
+}
+
+func (m *MockAzureClient) GetLogger() *logger.Logger {
+	return m.Logger
+}
+
+func (m *MockAzureClient) SetLogger(logger *logger.Logger) {
+	m.Logger = logger
+}
+
+func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+	return m.GetOrCreateResourceGroupFunc(ctx, location)
 }
 
 func (m *MockAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
@@ -98,3 +111,11 @@ var GetMockAzureProviderFunc = GetMockAzureProvider
 func GetMockAzureProvider() (*MockAzureProvider, error) {
 	return &MockAzureProvider{}, nil
 }
+
+func GetMockAzureClient() AzureClient {
+	return &MockAzureClient{
+		Logger: logger.Get(),
+	}
+}
+
+var _ AzureClient = &MockAzureClient{}

@@ -19,6 +19,7 @@ type AzureClient interface {
 	GetLogger() *logger.Logger
 	SetLogger(logger *logger.Logger)
 
+	GetOrCreateResourceGroup(ctx context.Context, location string) (*armresources.ResourceGroup, error)
 	CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)
@@ -46,6 +47,7 @@ type LiveAzureClient struct {
 	securityGroupsClient    *armnetwork.SecurityGroupsClient
 	resourceGraphClient     *armresourcegraph.Client
 	resourcesClient         *armresources.Client
+	resourceGroupsClient    *armresources.ResourceGroupsClient
 }
 
 var NewAzureClientFunc = NewAzureClient
@@ -88,6 +90,11 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		return &LiveAzureClient{}, err
 	}
 
+	resourceGroupsClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
+
 	return &LiveAzureClient{
 		Logger: logger.Get(),
 
@@ -98,6 +105,7 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		securityGroupsClient:    securityGroupsClient,
 		resourceGraphClient:     resourceGraphClient,
 		resourcesClient:         resourcesClient,
+		resourceGroupsClient:    resourceGroupsClient,
 	}, nil
 }
 
@@ -308,16 +316,4 @@ func (c *LiveAzureClient) NewListPager(ctx context.Context, resourceGroup string
 	return pager, nil
 }
 
-func (c *MockAzureClient) GetLogger() *logger.Logger {
-	return c.Logger
-}
-
-func (c *MockAzureClient) SetLogger(logger *logger.Logger) {
-	c.Logger = logger
-}
-
-func GetMockAzureClient() AzureClient {
-	return &MockAzureClient{
-		Logger: logger.Get(),
-	}
-}
+var _ AzureClient = &LiveAzureClient{}

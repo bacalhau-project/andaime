@@ -109,6 +109,7 @@ typecheck
 uksouth
 unbuffered
 unconvert
+unmarshaling
 virtualenvs
 virtualnetworks
 VMSS
@@ -117,5 +118,6 @@ VPCCIDR
 Warnf
 westeurope
 westus
+YYMMDDHHMM
 zaptest
 zerolog

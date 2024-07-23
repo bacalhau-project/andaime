@@ -22,11 +22,11 @@ func DeployVM(ctx context.Context,
 	projectID, uniqueID string,
 	client AzureClient,
 	config *viper.Viper,
+	location string,
+	vmSize string,
 ) (*armcompute.VirtualMachine, error) {
 	// Read configuration values
-	resourceGroupName := config.GetString("azure.resource_group")
-	location := config.GetString("azure.location")
-	vmSize := config.GetString("azure.vm_size")
+	resourceGroupName := config.GetString("azure.resource_group_name")
 	diskSizeGB := config.GetInt32("azure.disk_size_gb")
 	ports := config.GetIntSlice("azure.allowed_ports")
 	publicKeyPath := config.GetString("general.ssh_public_key_path")
@@ -35,12 +35,22 @@ func DeployVM(ctx context.Context,
 	tags := generateTags(uniqueID, projectID)
 	vmName := utils.GenerateUniqueName(projectID, uniqueID)
 
-	SSHPublicKeyMaterial, err := os.ReadFile(publicKeyPath)
+	absKeyPath, err := utils.ExpandPath(publicKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand path: %v", err)
+	}
+
+	SSHPublicKeyMaterial, err := os.ReadFile(absKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read SSH public key: %v", err)
 	}
 
-	_, err = os.ReadFile(privateKeyPath)
+	absPrivateKeyPath, err := utils.ExpandPath(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand path: %v", err)
+	}
+
+	_, err = os.ReadFile(absPrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read SSH private key: %v", err)
 	}

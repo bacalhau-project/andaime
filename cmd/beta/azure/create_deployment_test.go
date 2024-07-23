@@ -13,6 +13,7 @@ import (
 
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	armresources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -53,6 +54,12 @@ func TestCreateDeploymentCmd(t *testing.T) {
 			},
 			clientSetup: func(subscriptionID string) (azure.AzureClient, error) {
 				client := azure.GetMockAzureClient().(*azure.MockAzureClient)
+				client.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+					return &armresources.ResourceGroup{
+						Location: &location,
+					}, nil
+				}
+
 				client.CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName string, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
 					return testdata.TestVirtualNetwork, nil
 				}
@@ -100,6 +107,11 @@ func TestCreateDeploymentCmd(t *testing.T) {
 			},
 			clientSetup: func(subscriptionID string) (azure.AzureClient, error) {
 				mockClient := &azure.MockAzureClient{
+					GetOrCreateResourceGroupFunc: func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+						return &armresources.ResourceGroup{
+							Location: &location,
+						}, nil
+					},
 					CreateVirtualNetworkFunc: func(ctx context.Context, resourceGroupName string, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
 						return armnetwork.VirtualNetwork{}, assert.AnError
 					},
@@ -138,7 +150,8 @@ func TestCreateDeploymentCmd(t *testing.T) {
 			}()
 
 			oldSSHWaiter := sshutils.NewSSHClientFunc
-			sshutils.NewSSHClientFunc = func(sshClientConfig *ssh.ClientConfig, dialer sshutils.SSHDialer) sshutils.SSHClienter {
+			sshutils.NewSSHClientFunc = func(sshClientConfig *ssh.ClientConfig,
+				dialer sshutils.SSHDialer) sshutils.SSHClienter {
 				client, _ := sshutils.NewMockSSHClient(sshutils.NewMockSSHDialer())
 				mockSession := sshutils.NewMockSSHSession()
 				mockSession.On("Close", mock.Anything).Return(nil)
