@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/utils"
 )
 
 // DeployResources deploys Azure resources based on the provided configuration.
@@ -18,17 +19,18 @@ func (p *AzureProvider) DeployResources() error {
 	config := p.Config
 
 	// Extract Azure-specific configuration
-	projectID := config.GetString("azure.project_id")
 	uniqueID := config.GetString("azure.unique_id")
 	resourceGroup := config.GetString("azure.resource_group")
-	location := config.GetString("azure.location")
-	vmName := config.GetString("azure.vm_name")
-	vmSize := config.GetString("azure.vm_size")
-	diskSizeGB := config.GetInt32("azure.disk_size_gb")
 
 	// Extract SSH public key
-	sshPublicKey := config.GetString("general.ssh_public_key")
-	sshPrivateKey := config.GetString("general.ssh_private_key")
+	sshPublicKey, err := utils.ExpandPath(config.GetString("general.ssh_public_key_path"))
+	if err != nil {
+		return fmt.Errorf("failed to expand path for SSH public key: %v", err)
+	}
+	sshPrivateKey, err := utils.ExpandPath(config.GetString("general.ssh_private_key_path"))
+	if err != nil {
+		return fmt.Errorf("failed to expand path for SSH private key: %v", err)
+	}
 
 	if sshPrivateKey == "" {
 		// Then we need to extract the private key from the public key
@@ -36,34 +38,23 @@ func (p *AzureProvider) DeployResources() error {
 	}
 
 	// Validate SSH keys
-	err := sshutils.ValidateSSHKeysFromPath(sshPublicKey, sshPrivateKey)
+	err = sshutils.ValidateSSHKeysFromPath(sshPublicKey, sshPrivateKey)
 	if err != nil {
 		return fmt.Errorf("failed to validate SSH keys: %v", err)
 	}
 
-	// Extract allowed ports
-	allowedPorts := config.GetIntSlice("allowed_ports")
-
-	// Create Azure clients
-	client := p.Client
-
 	// Deploy VM
-	err = DeployVM(context.Background(),
-		projectID,
+	_, err = DeployVM(
+		context.Background(),
+		p.Config.GetString("general.project_id"),
 		uniqueID,
-		client,
-		resourceGroup,
-		location,
-		vmName,
-		vmSize,
-		diskSizeGB,
-		allowedPorts,
-		sshPublicKey,
-		sshPrivateKey)
+		p.Client,
+		p.Config,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to deploy VM: %v", err)
 	}
 
-	fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", vmName, resourceGroup)
+	fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", uniqueID, resourceGroup)
 	return nil
 }

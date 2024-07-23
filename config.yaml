@@ -1,28 +1,26 @@
 azure:
-    allowed_ports:
-        - 22
-        - 80
-        - 443
-    disk_size_gb: 30
-    locations:
-        - eastus
-        - westus2
-    resource_group_prefix: andaime-rg
-    subscription_id: fd075559-43fc-4fbe-8dee-21e125a9dafc
-general:
-    project_id: andaime-project
-    ssh_public_key_path: ~/.ssh/id_rsa.pub
-machines:
+  allowed_ports:
+    - 22
+    - 80
+    - 443
+  disk_size_gb: 30
+  default_machine_type: Standard_DS1_v2
+  machines:
     eastus:
-        zone1:
-            - count: 2
-              type: Standard_DS1_v2
-            - count: 1
-              type: Standard_DS2_v2
-        zone2:
-            - count: 1
-              type: Standard_DS1_v2
+      zone1:
+        - count: 2
+          type: Standard_DS1_v2
+        - count: 1
+      zone2:
+        - count: 1
+          type: Standard_DS1_v2
     westus2:
-        zone1:
-            - count: 1
-              type: Standard_DS2_v2
+      zone1:
+        - count: 1
+          type: Standard_DS2_v2
+  resource_group_name: andaime-rg
+  subscription_id: fd075559-43fc-4fbe-8dee-21e125a9dafc
+general:
+  project_id: andaime-project
+  ssh_public_key_path: ~/.ssh/id_rsa.pub
+  ssh_private_key_path: ~/.ssh/id_rsa

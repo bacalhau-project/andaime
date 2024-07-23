@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/internal/testdata"
@@ -47,51 +46,30 @@ func TestCreateDeploymentCmd(t *testing.T) {
 				if err != nil {
 					return nil, err
 				}
-				testConfig.Set("general.ssh_public_key", testSSHPublicKeyFile)
-				testConfig.Set("general.ssh_private_key", testSSHPrivateKeyFile)
+				testConfig.Set("general.ssh_public_key_path", testSSHPublicKeyFile)
+				testConfig.Set("general.ssh_private_key_path", testSSHPrivateKeyFile)
 				testConfig.Set("general.ssh_key_path", strings.TrimSuffix(testSSHPublicKeyFile, ".pub"))
 				return testConfig, nil
 			},
 			clientSetup: func(subscriptionID string) (azure.AzureClient, error) {
 				client := azure.GetMockAzureClient().(*azure.MockAzureClient)
 				client.CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName string, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
-					return armnetwork.VirtualNetwork{
-						Properties: &armnetwork.VirtualNetworkPropertiesFormat{
-							Subnets: []*armnetwork.Subnet{
-								{
-									Name: to.Ptr("default"),
-									Properties: &armnetwork.SubnetPropertiesFormat{
-										AddressPrefix: to.Ptr("10.0.0.0/24"),
-									},
-								},
-							},
-						},
-					}, nil
+					return testdata.TestVirtualNetwork, nil
 				}
 				client.CreatePublicIPFunc = func(ctx context.Context, resourceGroupName string, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
-					return armnetwork.PublicIPAddress{
-						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-							IPAddress: to.Ptr("10.0.0.1"),
-						},
-					}, nil
+					return testdata.TestPublicIPAddress, nil
 				}
 
 				client.CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName string, nsgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
-					return armnetwork.SecurityGroup{
-						ID: to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkSecurityGroups/testNSG"),
-					}, nil
+					return testdata.TestNSG, nil
 				}
 
 				client.CreateNetworkInterfaceFunc = func(ctx context.Context, resourceGroupName string, networkInterfaceName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
-					return armnetwork.Interface{
-						ID: to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"),
-					}, nil
+					return testdata.TestInterface, nil
 				}
 
 				client.CreateVirtualMachineFunc = func(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
-					return armcompute.VirtualMachine{
-						ID: to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Compute/virtualMachines/testVM"),
-					}, nil
+					return testdata.TestVirtualMachine, nil
 				}
 				return client, nil
 			},

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -84,12 +85,15 @@ var SSHKeyReader = func(path string) ([]byte, error) {
 // being the ".pub" extension for the public key.
 func ValidateSSHKeysFromPath(publicKeyPath, privateKeyPath string) error {
 	// Read public key
+	log := logger.Get()
+	log.Debugf("Reading public key from path: %s", publicKeyPath)
 	publicKey, err := SSHKeyReader(publicKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to read public key: %w", err)
 	}
 
 	// Read private key
+	log.Debugf("Reading private key from path: %s", privateKeyPath)
 	privateKey, err := SSHKeyReader(privateKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to read private key: %w", err)

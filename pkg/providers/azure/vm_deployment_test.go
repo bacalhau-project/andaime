@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"testing"
@@ -12,6 +13,8 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
 )
@@ -25,23 +28,23 @@ func TestDeployVM(t *testing.T) {
 	mockClient := NewMockAzureClient()
 	// Create a mock for each method that will be called
 	mockClient.(*MockAzureClient).CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
-		return testVirtualNetwork, nil
+		return testdata.TestVirtualNetwork, nil
 	}
 
 	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
-		return testPublicIPAddress, nil
+		return testdata.TestPublicIPAddress, nil
 	}
 
 	mockClient.(*MockAzureClient).CreateNetworkInterfaceFunc = func(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
-		return testInterface, nil
+		return testdata.TestInterface, nil
 	}
 
 	mockClient.(*MockAzureClient).CreateVirtualMachineFunc = func(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
-		return testVirtualMachine, nil
+		return testdata.TestVirtualMachine, nil
 	}
 
 	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
-		return testNSG, nil
+		return testdata.TestNSG, nil
 	}
 
 	sshutils.SSHRetryAttempts = 1
@@ -57,22 +60,24 @@ func TestDeployVM(t *testing.T) {
 		return mockSSHClient
 	}
 
-	err := DeployVM(ctx, "testProject",
+	viper.Reset()
+	viper.SetConfigFile("config.yaml")
+	viper.ReadConfig(bytes.NewBufferString(testdata.TestAzureConfig))
+
+	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
+	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
+
+	createdVM, err := DeployVM(ctx,
+		"testProject",
 		"testUniqueID",
 		mockClient,
-		"testRG",
-		"eastus",
-		"testVM",
-		"DS1_v2",
-		30,
-		[]int{22, 80, 443},
-		testSSHPublicKeyPath,
-		testSSHPrivateKeyPath,
+		viper.GetViper(),
 	)
 	if err != nil {
 		t.Errorf("DeployVM failed: %v", err)
 	}
 
+	assert.Equal(t, *createdVM.Name, "testVM")
 }
 
 func TestCreateVirtualNetwork(t *testing.T) {
@@ -81,7 +86,7 @@ func TestCreateVirtualNetwork(t *testing.T) {
 	subnetName := "testSubnet"
 	addressPrefix := "10.0.0.0/24"
 	mockClient.(*MockAzureClient).CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
-		tVN := testVirtualNetwork
+		tVN := testdata.TestVirtualNetwork
 		tVN.Name = to.Ptr(subnetName)
 		tVN.Properties.Subnets[0].Properties.AddressPrefix = to.Ptr(addressPrefix)
 		return tVN, nil
@@ -112,7 +117,7 @@ func TestCreatePublicIP(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
 	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
-		return testPublicIPAddress, nil
+		return testdata.TestPublicIPAddress, nil
 	}
 	projectID := "testProject"
 	uniqueID := "testUniqueID"
@@ -132,7 +137,7 @@ func TestCreateNSG(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
 	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
-		return testNSG, nil
+		return testdata.TestNSG, nil
 	}
 	projectID := "testProject"
 	uniqueID := "testUniqueID"
@@ -152,7 +157,7 @@ func TestCreateNIC(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
 	mockClient.(*MockAzureClient).CreateNetworkInterfaceFunc = func(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
-		return testInterface, nil
+		return testdata.TestInterface, nil
 	}
 	projectID := "testProject"
 	uniqueID := "testUniqueID"
@@ -188,7 +193,7 @@ func TestCreateVM(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
 	mockClient.(*MockAzureClient).CreateVirtualMachineFunc = func(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
-		return testVirtualMachine, nil
+		return testdata.TestVirtualMachine, nil
 	}
 	projectID := "testProject"
 	uniqueID := "testUniqueID"
@@ -196,10 +201,12 @@ func TestCreateVM(t *testing.T) {
 	tags := generateTags(projectID, uniqueID)
 
 	nicID := "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"
-	err := createVM(ctx, projectID, uniqueID, mockClient, "testRG", "testVM", "eastus", nicID, 30, testdata.TestPublicSSHKeyMaterial, tags)
+	createdVM, err := createVM(ctx, projectID, uniqueID, mockClient, "testRG", "testVM", "eastus", nicID, 30, "Standard_DS1_v2", testdata.TestPublicSSHKeyMaterial, tags)
 	if err != nil {
 		t.Errorf("createVM failed: %v", err)
 	}
+
+	assert.Equal(t, *createdVM.Name, "testVM")
 }
 
 func TestWaitForSSH(t *testing.T) {
@@ -249,91 +256,4 @@ func TestWaitForSSH(t *testing.T) {
 	if err == nil {
 		t.Error("waitForSSH should have failed with timeout")
 	}
-}
-
-var testVirtualNetwork = armnetwork.VirtualNetwork{
-	Name: to.Ptr("testVNet"),
-	Properties: &armnetwork.VirtualNetworkPropertiesFormat{
-		AddressSpace: &armnetwork.AddressSpace{
-			AddressPrefixes: []*string{to.Ptr("10.0.0.0/16")},
-		},
-		Subnets: []*armnetwork.Subnet{
-			{ // Subnet
-				Name: to.Ptr("testSubnet"),
-				Properties: &armnetwork.SubnetPropertiesFormat{
-					AddressPrefix: to.Ptr("10.0.0.0/24"),
-				},
-			},
-		},
-	},
-}
-
-var testPublicIPAddress = armnetwork.PublicIPAddress{
-	Name: to.Ptr("testIP"),
-	Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-		IPAddress: to.Ptr("256.256.256.256"),
-	},
-}
-
-var testInterface = armnetwork.Interface{
-	ID:   to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"),
-	Name: to.Ptr("testNIC"),
-	Properties: &armnetwork.InterfacePropertiesFormat{
-		IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-			{
-				Name:       to.Ptr("testIPConfig"),
-				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{},
-			},
-		},
-	},
-}
-
-var testVirtualMachine = armcompute.VirtualMachine{
-	Name: to.Ptr("testVM"),
-	Properties: &armcompute.VirtualMachineProperties{
-		StorageProfile: &armcompute.StorageProfile{
-			ImageReference: &armcompute.ImageReference{
-				Publisher: to.Ptr("Canonical"),
-				Offer:     to.Ptr("UbuntuServer"),
-				Version:   to.Ptr("latest"),
-			},
-		},
-		OSProfile: &armcompute.OSProfile{
-			ComputerName:  to.Ptr("testVM"),
-			AdminUsername: to.Ptr("testuser"),
-			AdminPassword: to.Ptr("testpassword"),
-			LinuxConfiguration: &armcompute.LinuxConfiguration{
-				SSH: &armcompute.SSHConfiguration{
-					PublicKeys: []*armcompute.SSHPublicKey{
-						{Path: to.Ptr("/home/testuser/.ssh/authorized_keys"),
-							KeyData: to.Ptr(testdata.TestPublicSSHKeyMaterial),
-						},
-					},
-				},
-			},
-		},
-		HardwareProfile: &armcompute.HardwareProfile{
-			VMSize: &armcompute.PossibleVirtualMachineSizeTypesValues()[0],
-		},
-	},
-}
-
-var testNSG = armnetwork.SecurityGroup{
-	Name: to.Ptr("testNSG"),
-	Properties: &armnetwork.SecurityGroupPropertiesFormat{
-		SecurityRules: []*armnetwork.SecurityRule{
-			{
-				Name: to.Ptr("testRule"),
-				Properties: &armnetwork.SecurityRulePropertiesFormat{
-					Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-					Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-					DestinationAddressPrefix: to.Ptr("*"),
-					DestinationPortRange:     to.Ptr("22"),
-					Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-					SourceAddressPrefix:      to.Ptr("*"),
-					SourcePortRange:          to.Ptr("*"),
-				},
-			},
-		},
-	},
 }

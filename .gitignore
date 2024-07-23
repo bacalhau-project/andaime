@@ -16,3 +16,5 @@ status.txt
 .DS_Store
 release/
 *prompt*.md
+
+*debug.log

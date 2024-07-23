@@ -8,31 +8,41 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/utils"
+	"github.com/spf13/viper"
 )
 
 var (
 	basePriority = 100
 )
 
-// DeployVM creates an Azure VM with the specified configuration
 func DeployVM(ctx context.Context,
 	projectID, uniqueID string,
 	client AzureClient,
-	resourceGroupName, location, vmName, vmSize string,
-	diskSizeGB int32,
-	ports []int,
-	publicKeyPath, privateKeyPath string,
-) error {
+	config *viper.Viper,
+) (*armcompute.VirtualMachine, error) {
+	// Read configuration values
+	resourceGroupName := config.GetString("azure.resource_group")
+	location := config.GetString("azure.location")
+	vmSize := config.GetString("azure.vm_size")
+	diskSizeGB := config.GetInt32("azure.disk_size_gb")
+	ports := config.GetIntSlice("azure.allowed_ports")
+	publicKeyPath := config.GetString("general.ssh_public_key_path")
+	privateKeyPath := config.GetString("general.ssh_private_key_path")
+
 	tags := generateTags(uniqueID, projectID)
+	vmName := utils.GenerateUniqueName(projectID, uniqueID)
+
 	SSHPublicKeyMaterial, err := os.ReadFile(publicKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read SSH public key: %v", err)
+		return nil, fmt.Errorf("failed to read SSH public key: %v", err)
 	}
 
 	_, err = os.ReadFile(privateKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read SSH private key: %v", err)
+		return nil, fmt.Errorf("failed to read SSH private key: %v", err)
 	}
 
 	// Create Virtual Network and Subnet
@@ -48,7 +58,7 @@ func DeployVM(ctx context.Context,
 		tags,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create virtual network: %v", err)
+		return nil, fmt.Errorf("failed to create virtual network: %v", err)
 	}
 
 	// Create Public IP
@@ -63,7 +73,7 @@ func DeployVM(ctx context.Context,
 		tags,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create public IP: %v", err)
+		return nil, fmt.Errorf("failed to create public IP: %v", err)
 	}
 
 	// Create Network Security Group
@@ -79,7 +89,7 @@ func DeployVM(ctx context.Context,
 		tags,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create network security group: %v", err)
+		return nil, fmt.Errorf("failed to create network security group: %v", err)
 	}
 
 	// Create Network Interface
@@ -97,11 +107,11 @@ func DeployVM(ctx context.Context,
 		tags,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create network interface: %v", err)
+		return nil, fmt.Errorf("failed to create network interface: %v", err)
 	}
 
 	// Create Virtual Machine
-	err = createVM(
+	createdVM, err := createVM(
 		ctx,
 		projectID,
 		uniqueID,
@@ -112,10 +122,11 @@ func DeployVM(ctx context.Context,
 		*nic.ID,
 		diskSizeGB,
 		string(SSHPublicKeyMaterial),
+		vmSize,
 		tags,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create virtual machine: %v", err)
+		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
 	}
 
 	// Wait for SSH to be available
@@ -129,19 +140,19 @@ func DeployVM(ctx context.Context,
 	sshConfig, err := sshutils.NewSSHConfig(
 		publicIPAddress,
 		22, //nolint:gomnd
-		"azureuser",
+		config.GetString("azure.admin_username"),
 		sshDialer,
 		privateKeyPath,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %v", err)
+		return nil, fmt.Errorf("failed to create SSH config: %v", err)
 	}
 	err = sshutils.SSHWaiterFunc(sshConfig)
 	if err != nil {
-		return fmt.Errorf("failed to establish SSH connection: %v", err)
+		return nil, fmt.Errorf("failed to establish SSH connection: %v", err)
 	}
 
-	return nil
+	return createdVM, nil
 }
 
 // createVirtualNetwork creates a virtual network and subnet
@@ -157,9 +168,16 @@ func createVirtualNetwork(ctx context.Context,
 		},
 	}
 
+	// In the createVirtualNetwork function, before creating the subnet:
+	log := logger.Get()
+	log.Debugf("Creating subnet with the following details:")
+	log.Debugf("  Name: %s", *subnet.Name)
+	log.Debugf("  Address Prefix: %s", *subnet.Properties.AddressPrefix)
+
 	ensureTags(tags, projectID, uniqueID)
 
 	vnet := armnetwork.VirtualNetwork{
+		Name:     to.Ptr(vnetName),
 		Location: to.Ptr(location),
 		Tags:     tags,
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
@@ -170,9 +188,29 @@ func createVirtualNetwork(ctx context.Context,
 		},
 	}
 
+	// Before creating the virtual network:
+	log.Debugf("Creating virtual network with the following details:")
+	log.Debugf("  Name: %s", vnetName)
+	log.Debugf("  Location: %s", *vnet.Location)
+	log.Debugf("  Address Space: %s", *vnet.Properties.AddressSpace.AddressPrefixes[0])
+	log.Debugf("  Subnet Name: %s", *vnet.Properties.Subnets[0].Name)
+	log.Debugf("  Subnet Address Prefix: %s", *vnet.Properties.Subnets[0].Properties.AddressPrefix)
+	log.Debugf("  Tags:")
+	for key, value := range vnet.Tags {
+		log.Debugf("    %s: %s", key, *value)
+	}
+
 	createdVNet, err := client.CreateVirtualNetwork(ctx, resourceGroupName, vnetName, vnet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual network: %v", err)
+	}
+
+	log.Debugf("Virtual network created successfully:")
+	log.Debugf("  ID: %s", *createdVNet.ID)
+	log.Debugf("  Name: %s", *createdVNet.Name)
+	log.Debugf("  Location: %s", *createdVNet.Location)
+	if createdVNet.Properties != nil && createdVNet.Properties.ProvisioningState != nil {
+		log.Debugf("  Provisioning State: %s", *createdVNet.Properties.ProvisioningState)
 	}
 
 	if createdVNet.Properties != nil && createdVNet.Properties.Subnets != nil && len(createdVNet.Properties.Subnets) > 0 {
@@ -258,8 +296,9 @@ func createVM(
 	resourceGroupName, vmName, location, nicID string,
 	diskSizeGB int32,
 	sshPublicKeyMaterial string,
+	vmSize string,
 	tags map[string]*string,
-) error {
+) (*armcompute.VirtualMachine, error) {
 	ensureTags(tags, projectID, uniqueID)
 
 	vm := armcompute.VirtualMachine{
@@ -267,7 +306,7 @@ func createVM(
 		Tags:     tags,
 		Properties: &armcompute.VirtualMachineProperties{
 			HardwareProfile: &armcompute.HardwareProfile{
-				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes("Standard_DS1_v2")),
+				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(vmSize)),
 			},
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr(vmName),
@@ -312,12 +351,12 @@ func createVM(
 		},
 	}
 
-	_, err := client.CreateVirtualMachine(ctx, resourceGroupName, vmName, vm)
+	createdVM, err := client.CreateVirtualMachine(ctx, resourceGroupName, vmName, vm)
 	if err != nil {
-		return fmt.Errorf("failed to create virtual machine: %v", err)
+		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
 	}
 
-	return nil
+	return &createdVM, nil
 }
 
 // createNSG creates a network security group with the specified open ports

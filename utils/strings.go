@@ -2,9 +2,13 @@ package utils
 
 import (
 	"crypto/rand"
+	"fmt"
 	"log"
 	"math/big"
+	"os/user"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
@@ -46,4 +50,38 @@ func SafeDeref(s *string) string {
 		log.Debug("State is nil")
 		return ""
 	}
+}
+
+func ExpandPath(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		usr, err := user.Current()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(usr.HomeDir, path[2:])
+	}
+	return path, nil
+}
+
+//nolint:gomnd
+func GenerateUniqueName(projectID, uniqueID string) string {
+	// Take the first 4 characters of projectID and uniqueID
+	shortProjectID := projectID
+	if len(shortProjectID) > 4 {
+		shortProjectID = shortProjectID[:4]
+	}
+	shortUniqueID := uniqueID
+	if len(shortUniqueID) > 4 {
+		shortUniqueID = shortUniqueID[:4]
+	}
+
+	// Combine the parts
+	vmName := fmt.Sprintf("vm-%s-%s-%s", shortProjectID, shortUniqueID, GenerateUniqueID()[:4])
+
+	// Ensure the total length is less than 20 characters
+	if len(vmName) > 19 {
+		vmName = vmName[:19]
+	}
+
+	return vmName
 }
