@@ -12,14 +12,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 type AzureClient interface {
-	GetLogger() *logger.Logger
-	SetLogger(logger *logger.Logger)
-
-	GetOrCreateResourceGroup(ctx context.Context, location string) (*armresources.ResourceGroup, error)
+	GetOrCreateResourceGroup(ctx context.Context, location, name string) (*armresources.ResourceGroup, error)
 	CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)
@@ -32,22 +30,22 @@ type AzureClient interface {
 	GetNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
 
 	// ResourceGraphClientAPI
-	NewListPager(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error)
 	SearchResources(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error)
+
+	// Subscriptions API
+	NewSubscriptionListPager(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
 }
 
 // LiveAzureClient wraps all Azure SDK calls
 type LiveAzureClient struct {
-	Logger *logger.Logger
-
 	virtualNetworksClient   *armnetwork.VirtualNetworksClient
 	publicIPAddressesClient *armnetwork.PublicIPAddressesClient
 	interfacesClient        *armnetwork.InterfacesClient
 	virtualMachinesClient   *armcompute.VirtualMachinesClient
 	securityGroupsClient    *armnetwork.SecurityGroupsClient
-	resourceGraphClient     *armresourcegraph.Client
-	resourcesClient         *armresources.Client
 	resourceGroupsClient    *armresources.ResourceGroupsClient
+	resourceGraphClient     *armresourcegraph.Client
+	subscriptionsClient     *armsubscription.SubscriptionsClient
 }
 
 var NewAzureClientFunc = NewAzureClient
@@ -80,46 +78,34 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 	if err != nil {
 		return &LiveAzureClient{}, err
 	}
+	resourceGroupsClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
+	subscriptionsClient, err := armsubscription.NewSubscriptionsClient(cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
 	resourceGraphClient, err := armresourcegraph.NewClient(cred, nil)
 	if err != nil {
 		return &LiveAzureClient{}, err
 	}
 
-	resourcesClient, err := armresources.NewClient(subscriptionID, cred, nil)
-	if err != nil {
-		return &LiveAzureClient{}, err
-	}
-
-	resourceGroupsClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return &LiveAzureClient{}, err
-	}
-
 	return &LiveAzureClient{
-		Logger: logger.Get(),
-
 		virtualNetworksClient:   virtualNetworksClient,
 		publicIPAddressesClient: publicIPAddressesClient,
 		interfacesClient:        interfacesClient,
 		virtualMachinesClient:   virtualMachinesClient,
 		securityGroupsClient:    securityGroupsClient,
-		resourceGraphClient:     resourceGraphClient,
-		resourcesClient:         resourcesClient,
 		resourceGroupsClient:    resourceGroupsClient,
+		resourceGraphClient:     resourceGraphClient,
+		subscriptionsClient:     subscriptionsClient,
 	}, nil
-}
-
-func (c *LiveAzureClient) GetLogger() *logger.Logger {
-	return c.Logger
-}
-
-func (c *LiveAzureClient) SetLogger(logger *logger.Logger) {
-	c.Logger = logger
 }
 
 // CreateVirtualNetwork creates a new virtual network
 func (c *LiveAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
-	c.Logger.Infof("CreateVirtualNetwork")
+	logger.LogAzureAPIStart("CreateVirtualNetwork")
 	poller, err := c.virtualNetworksClient.BeginCreateOrUpdate(ctx, resourceGroupName, vnetName, parameters, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreateVirtualNetwork", err)
@@ -137,11 +123,9 @@ func (c *LiveAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGrou
 
 // GetVirtualNetwork retrieves a virtual network
 func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error) {
-	c.Logger.Infof("GetVirtualNetwork")
-	c.Logger.Infof("resourceGroupName: %s", resourceGroupName)
-	c.Logger.Infof("vnetName: %s", vnetName)
+	logger.LogAzureAPIStart("GetVirtualNetwork")
 	resp, err := c.virtualNetworksClient.Get(ctx, resourceGroupName, vnetName, nil)
-	c.Logger.Infof("GetVirtualNetwork: %v", err)
+	logger.LogAzureAPIEnd("GetVirtualNetwork", err)
 	if err != nil {
 		return armnetwork.VirtualNetwork{}, err
 	}
@@ -293,29 +277,6 @@ func (c *LiveAzureClient) SearchResources(ctx context.Context, resourceGroup str
 	return res, nil
 }
 
-func (c *LiveAzureClient) NewListPager(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error) {
-	logger.LogAzureAPIStart("NewListPager")
-	client := c.resourcesClient
-
-	var filter string
-	if resourceGroup != "" {
-		filter = fmt.Sprintf("resourceGroup eq '%s'", resourceGroup)
-	}
-	for key, value := range tags {
-		if value != nil {
-			if filter != "" {
-				filter += " and "
-			}
-			filter += fmt.Sprintf("tagName eq '%s' and tagValue eq '%s'", key, *value)
-		}
-	}
-
-	pager := client.NewListPager(&armresources.ClientListOptions{
-		Filter: &filter,
-	})
-
-	logger.LogAzureAPIEnd("NewListPager", nil)
-	return pager, nil
+func (c *LiveAzureClient) NewSubscriptionListPager(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
+	return c.subscriptionsClient.NewListPager(options)
 }
-
-var _ AzureClient = &LiveAzureClient{}

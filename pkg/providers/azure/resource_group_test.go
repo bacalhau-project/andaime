@@ -18,7 +18,7 @@ type MockResourceGroupsClient struct {
 
 func TestCreateResourceGroup(t *testing.T) {
 	// Setup
-	viper.Set("azure.resource_group_prefix", "test-rg")
+	viper.Set("azure.resource_group_prefix", "testRG")
 	location := "eastus"
 
 	t.Run("Create new resource group", func(t *testing.T) {
@@ -26,13 +26,13 @@ func TestCreateResourceGroup(t *testing.T) {
 		ctx := context.Background()
 
 		// Act
-		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
 			return &armresources.ResourceGroup{
 				Location: &location,
 			}, nil
 		}
 
-		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location)
+		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME")
 
 		// Assert
 		assert.NoError(t, err)
@@ -45,12 +45,12 @@ func TestCreateResourceGroup(t *testing.T) {
 		ctx := context.Background()
 
 		// Act
-		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
 			return &armresources.ResourceGroup{
 				Location: &location,
 			}, nil
 		}
-		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location)
+		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME")
 
 		// Assert
 		assert.NoError(t, err)
@@ -63,10 +63,10 @@ func TestCreateResourceGroup(t *testing.T) {
 		ctx := context.Background()
 
 		// Act
-		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
 			return nil, errors.New("error")
 		}
-		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location)
+		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME")
 
 		// Assert
 		assert.Error(t, err)

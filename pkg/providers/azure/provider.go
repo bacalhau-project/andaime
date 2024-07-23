@@ -9,11 +9,12 @@ import (
 
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
-	CreateDeployment(ctx context.Context) error
 	GetClient() AzureClient
 	SetClient(client AzureClient)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
+
+	DeployResources(ctx context.Context) error
 }
 
 type AzureProvider struct {
@@ -59,23 +60,6 @@ func (p *AzureProvider) GetConfig() *viper.Viper {
 
 func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
-}
-
-// CreateDeployment performs the Azure deployment
-func (p *AzureProvider) CreateDeployment(ctx context.Context) error {
-	location := p.Config.GetString("azure.resource_group_location")
-	if location == "" {
-		return fmt.Errorf("azure.resource_group_location is not set in the configuration")
-	}
-
-	rg, err := p.Client.GetOrCreateResourceGroup(ctx, location)
-	if err != nil {
-		return fmt.Errorf("failed to get or create resource group: %w", err)
-	}
-
-	p.Config.Set("azure.resource_group_name", rg.Name)
-
-	return p.DeployResources()
 }
 
 var _ AzureProviderer = &AzureProvider{}

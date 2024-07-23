@@ -26,9 +26,9 @@ func GetAzureCmd() *cobra.Command {
 
 func InitializeCommands() {
 	once.Do(func() {
-		AzureCmd.AddCommand(AzureListSubscriptionsCmd)
-		AzureCmd.AddCommand(AzureListResourcesCmd)
-		AzureCmd.AddCommand(createAzureDeploymentCmd)
+		AzureCmd.AddCommand(GetAzureListSubscriptionsCmd())
+		AzureCmd.AddCommand(GetAzureListResourcesCmd())
+		AzureCmd.AddCommand(GetAzureCreateDeploymentCmd())
 	})
 }
 

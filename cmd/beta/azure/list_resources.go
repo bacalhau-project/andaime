@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"context"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -25,30 +24,52 @@ var AzureListResourcesCmd = &cobra.Command{
 			log.Fatalf("Failed to create Azure provider: %v", err)
 		}
 
+		// See if "deployed" is a string or a map
+		deployed := viper.Get("deployed")
+		if deployed == nil {
+			log.Fatal("No deployed configuration found in viper")
+		}
+
+		// List all resource groups in viper config
+		log.Debugf("Listing resource groups in viper config: %v", viper.GetStringMapString("deployed.azure"))
+
+		// Get the Azure Resource Group Name from "deployed.azure" in viper
+		rgName := viper.GetString("deployed.azure.resource_group")
+		if rgName == "" {
+			log.Fatal("No resource group name found in viper")
+		}
+
 		log.Info("Contacting Azure API...")
 		startTime := time.Now()
-		pager, err := azureProvider.GetClient().NewListPager(cmd.Context(), "", nil, "")
-		if err != nil {
-			log.Fatalf("Failed to get resources client: %v", err)
-		}
-		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
 
 		resourceCount := 0
-		log.Info("Fetching resources...")
-		startTime = time.Now()
-		for pager.More() {
-			page, err := pager.NextPage(context.Background())
+		skipToken := ""
+		for {
+			result, err := azureProvider.GetClient().SearchResources(cmd.Context(), rgName, nil, skipToken)
 			if err != nil {
-				log.Fatalf("Failed to advance page: %v", err)
+				log.Fatalf("Failed to query resources: %v", err)
 			}
-			for _, resource := range page.Value {
-				if isCreatedByAndaime(resource) {
-					log.Infof("Found resource %s of type %s in location %s", *resource.Name, *resource.Type, *resource.Location)
-					resourceCount++
-				}
+
+			// Type assertion for result.Data
+			resources, ok := result.Data.([]interface{})
+			if !ok {
+				log.Fatalf("Unexpected data type in result")
 			}
+
+			for _, resource := range resources {
+				resourceMap := resource.(map[string]interface{})
+				log.Infof("Found resource %s of type %s in location %s",
+					resourceMap["name"], resourceMap["type"], resourceMap["location"])
+				resourceCount++
+			}
+
+			if result.SkipToken == nil || *result.SkipToken == "" {
+				break
+			}
+			skipToken = *result.SkipToken
 		}
-		log.Infof("Finished fetching resources (took %s)", time.Since(startTime).Round(time.Millisecond))
+
+		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
 
 		if resourceCount == 0 {
 			log.Warn("No resources created by Andaime were found")
@@ -56,6 +77,10 @@ var AzureListResourcesCmd = &cobra.Command{
 			log.Infof("Found %d resources created by Andaime", resourceCount)
 		}
 	},
+}
+
+func GetAzureListResourcesCmd() *cobra.Command {
+	return AzureListResourcesCmd
 }
 
 func isCreatedByAndaime(resource *armresources.GenericResourceExpanded) bool {

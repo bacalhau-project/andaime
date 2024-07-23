@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/utils"
@@ -28,17 +27,11 @@ type Parameters struct {
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources() error {
-	ctx := context.Background()
+func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	viper := viper.GetViper()
 
 	// Extract Azure-specific configuration
 	uniqueID := viper.GetString("azure.unique_id")
-
-	baseRGName := viper.GetString("azure.resource_group_prefix")
-	dateStr := time.Now().Format("0601021504") // YYMMDDHHMM
-	resourceGroupName := fmt.Sprintf("%s-%s", baseRGName, dateStr)
-	viper.Set("azure.resource_group_name", resourceGroupName)
 
 	// Extract SSH public key
 	sshPublicKey, err := utils.ExpandPath(viper.GetString("general.ssh_public_key_path"))
@@ -69,10 +62,20 @@ func (p *AzureProvider) DeployResources() error {
 
 	projectID := viper.GetString("general.project_id")
 
-	// Create the resource group
-	resourceGroup, err := p.Client.GetOrCreateResourceGroup(ctx, resourceGroupName)
+	resourceGroupName := viper.GetString("azure.resource_group_prefix") + "-rg-" + time.Now().Format("060102150405")
+	if !IsValidResourceGroupName(resourceGroupName) {
+		return fmt.Errorf("invalid resource group name: %s", resourceGroupName)
+	}
+
+	resourceGroupLocation := viper.GetString("azure.location")
+	if !internal.IsValidLocation(resourceGroupLocation) {
+		return fmt.Errorf("invalid resource group location: %s", resourceGroupLocation)
+	}
+
+	// Get or create the resource group
+	resourceGroup, err := p.Client.GetOrCreateResourceGroup(ctx, resourceGroupLocation, resourceGroupName)
 	if err != nil {
-		return fmt.Errorf("failed to create resource group: %v", err)
+		return fmt.Errorf("failed to get or create resource group: %v", err)
 	}
 
 	// Crawl all of machines and populate locations and which is the orchestrator
@@ -106,22 +109,23 @@ func (p *AzureProvider) DeployResources() error {
 	}
 
 	if orchestratorNode != nil {
-		p.processMachines(ctx, []Machine{*orchestratorNode}, resourceGroup, subnets, projectID, viper)
+		p.processMachines(ctx, []Machine{*orchestratorNode}, subnets, projectID, viper)
 	}
 
 	// Process other machines
 	for _, machine := range machines {
-		p.processMachines(ctx, []Machine{machine}, resourceGroup, subnets, projectID, viper)
+		p.processMachines(ctx, []Machine{machine}, subnets, projectID, viper)
 	}
 
-	fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", uniqueID, resourceGroupName)
+	if resourceGroup != nil && *resourceGroup.Name != "" {
+		fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", uniqueID, *resourceGroup.Name)
+	}
 	return nil
 }
 
 func (p *AzureProvider) processMachines(
 	ctx context.Context,
 	machines []Machine,
-	resourceGroup *armresources.ResourceGroup,
 	subnets map[string][]*armnetwork.Subnet,
 	projectID string,
 	v *viper.Viper) {
@@ -158,7 +162,6 @@ func (p *AzureProvider) processMachines(
 		for i := 0; i < internalMachine.Parameters[0].Count; i++ {
 			err := p.processMachine(ctx,
 				&internalMachine,
-				resourceGroup,
 				subnets,
 				projectID,
 				v,
@@ -174,7 +177,6 @@ func (p *AzureProvider) processMachines(
 func (p *AzureProvider) processMachine(
 	ctx context.Context,
 	machine *Machine,
-	resourceGroup *armresources.ResourceGroup,
 	subnets map[string][]*armnetwork.Subnet,
 	projectID string,
 	viper *viper.Viper) error {

@@ -9,6 +9,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
@@ -17,7 +18,7 @@ import (
 type MockAzureClient struct {
 	mock.Mock
 	Logger                         *logger.Logger
-	GetOrCreateResourceGroupFunc   func(ctx context.Context, location string) (*armresources.ResourceGroup, error)
+	GetOrCreateResourceGroupFunc   func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error)
 	CreateVirtualNetworkFunc       func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetworkFunc          func(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIPFunc             func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)
@@ -30,7 +31,7 @@ type MockAzureClient struct {
 	GetNetworkSecurityGroupFunc    func(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
 	SearchResourcesFunc            func(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error)
 
-	NewListPagerFunc func(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error)
+	NewSubscriptionListPagerFunc func(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
 }
 
 func NewMockAzureClient() AzureClient {
@@ -45,8 +46,8 @@ func (m *MockAzureClient) SetLogger(logger *logger.Logger) {
 	m.Logger = logger
 }
 
-func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
-	return m.GetOrCreateResourceGroupFunc(ctx, location)
+func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
+	return m.GetOrCreateResourceGroupFunc(ctx, location, name)
 }
 
 func (m *MockAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
@@ -93,8 +94,8 @@ func (m *MockAzureClient) SearchResources(ctx context.Context, resourceGroup str
 	return m.SearchResourcesFunc(ctx, resourceGroup, tags, subscriptionID)
 }
 
-func (m *MockAzureClient) NewListPager(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (*runtime.Pager[armresources.ClientListResponse], error) {
-	return m.NewListPagerFunc(ctx, resourceGroup, tags, subscriptionID)
+func (m *MockAzureClient) NewSubscriptionListPager(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
+	return m.NewSubscriptionListPagerFunc(ctx, options)
 }
 
 type MockAzureProvider struct {

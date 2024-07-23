@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func GetTestAzureViper() (*viper.Viper, error) {
+func InitializeTestViper() (*viper.Viper, error) {
 	viper.Reset()
 	configFile, cleanup, err := WriteStringToTempFile(testdata.TestAzureConfig)
 	if err != nil {

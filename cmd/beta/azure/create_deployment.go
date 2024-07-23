@@ -15,16 +15,20 @@ var createAzureDeploymentCmd = &cobra.Command{
 	RunE:  executeCreateDeployment,
 }
 
+func GetAzureCreateDeploymentCmd() *cobra.Command {
+	return createAzureDeploymentCmd
+}
+
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
 
-	// Perform deployment
-	err = azureProvider.CreateDeployment(cmd.Context())
+	// Pulls all settings from Viper config
+	err = azureProvider.DeployResources(cmd.Context())
 	if err != nil {
-		return fmt.Errorf("failed to create deployment: %w", err)
+		return fmt.Errorf("failed to deploy resources: %w", err)
 	}
 
 	cmd.Println("Azure deployment created successfully")

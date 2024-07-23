@@ -7,23 +7,32 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 )
 
 // CreateResourceGroup creates a new resource group or returns an existing one
 func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
-	location string) (*armresources.ResourceGroup, error) {
+	rgLocation string,
+	rgName string) (*armresources.ResourceGroup, error) {
 	log := logger.Get()
 
 	// Get the base resource group name from the config
-	rgName := viper.GetString("azure.resource_group_name")
 	if rgName == "" {
 		return nil, fmt.Errorf("azure.resource_group_name is not set in the configuration")
 	}
 
+	if !IsValidResourceGroupName(rgName) {
+		return nil, fmt.Errorf("invalid resource group name: %s", rgName)
+	}
+
+	if !internal.IsValidLocation(rgLocation) {
+		return nil, fmt.Errorf("invalid resource group location: %s", rgLocation)
+	}
+
 	// Check if the resource group already exists
-	existing, err := c.GetResourceGroup(ctx)
+	existing, err := c.GetResourceGroup(ctx, rgLocation, rgName)
 	if err == nil {
 		logger.LogAzureAPIEnd("CreateResourceGroup", nil)
 		return existing, nil
@@ -31,7 +40,8 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 
 	// Create the resource group
 	parameters := armresources.ResourceGroup{
-		Location: to.Ptr(location),
+		Name:     to.Ptr(rgName),
+		Location: to.Ptr(rgLocation),
 		Tags: map[string]*string{
 			"CreatedBy": to.Ptr("Andaime"),
 			"CreatedOn": to.Ptr(time.Now().Format(time.RFC3339)),
@@ -54,13 +64,14 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	return &result.ResourceGroup, nil
 }
 
-func (c *LiveAzureClient) GetResourceGroup(ctx context.Context) (*armresources.ResourceGroup, error) {
-	rgName := viper.GetString("azure.resource_group_name")
-	if rgName == "" {
-		return nil, fmt.Errorf("azure.resource_group_name is not set in the configuration")
-	}
+func (c *LiveAzureClient) GetResourceGroup(ctx context.Context,
+	rgLocation string,
+	rgName string) (*armresources.ResourceGroup, error) {
+	log := logger.Get()
 
+	log.Debugf("Starting Resource Group Get...")
 	result, err := c.resourceGroupsClient.Get(ctx, rgName, nil)
+	log.Debugf("Resource Group Get result: %v", result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resource group: %v", err)
 	}

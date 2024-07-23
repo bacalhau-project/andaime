@@ -43,9 +43,11 @@ var AzureListSubscriptionsCmd = &cobra.Command{
 	Run:   runListSubscriptions,
 }
 
-func init() {
-	AzureListSubscriptionsCmd.Flags().BoolVar(&setSubscription, "set",
+func GetAzureListSubscriptionsCmd() *cobra.Command {
+	cmd := AzureListSubscriptionsCmd
+	cmd.Flags().BoolVar(&setSubscription, "set",
 		false, "Set the selected subscription in the config file")
+	return cmd
 }
 
 var setSubscription bool

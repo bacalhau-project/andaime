@@ -3,6 +3,7 @@ package azure
 import (
 	"bytes"
 	"context"
+	"errors"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -24,6 +25,11 @@ import (
 )
 
 func TestCreateDeploymentCmd(t *testing.T) {
+	_, err := testutil.InitializeTestViper()
+	if err != nil {
+		t.Fatalf("Failed to initialize test Viper: %v", err)
+	}
+
 	testSSHPublicKeyFile, cleanup_public_key, err := testutil.WriteStringToTempFile(testdata.TestPublicSSHKeyMaterial)
 	defer cleanup_public_key()
 
@@ -44,20 +50,16 @@ func TestCreateDeploymentCmd(t *testing.T) {
 		{
 			name: "Successful deployment",
 			configSetup: func() (*viper.Viper, error) {
-				testConfig, err := testutil.GetTestAzureViper()
-				if err != nil {
-					return nil, err
-				}
-				testConfig.Set("general.ssh_public_key_path", testSSHPublicKeyFile)
-				testConfig.Set("general.ssh_private_key_path", testSSHPrivateKeyFile)
-				testConfig.Set("general.ssh_key_path", strings.TrimSuffix(testSSHPublicKeyFile, ".pub"))
-				return testConfig, nil
+				viper.Set("general.ssh_public_key_path", testSSHPublicKeyFile)
+				viper.Set("general.ssh_private_key_path", testSSHPrivateKeyFile)
+				viper.Set("general.ssh_key_path", strings.TrimSuffix(testSSHPublicKeyFile, ".pub"))
+				return viper.GetViper(), nil
 			},
 			clientSetup: func(subscriptionID string) (azure.AzureClient, error) {
 				client := azure.GetMockAzureClient().(*azure.MockAzureClient)
-				client.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+				client.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
 					return &armresources.ResourceGroup{
-						Name:     to.Ptr("test-rg-name"),
+						Name:     to.Ptr(name),
 						Location: &location,
 					}, nil
 				}
@@ -87,7 +89,7 @@ func TestCreateDeploymentCmd(t *testing.T) {
 		{
 			name: "Provider creation error",
 			configSetup: func() (*viper.Viper, error) {
-				testConfig, err := testutil.GetTestAzureViper()
+				testConfig, err := testutil.InitializeTestViper()
 				if err != nil {
 					return nil, err
 				}
@@ -101,26 +103,26 @@ func TestCreateDeploymentCmd(t *testing.T) {
 		{
 			name: "Deployment error",
 			configSetup: func() (*viper.Viper, error) {
-				testConfig, err := testutil.GetTestAzureViper()
-				if err != nil {
-					return nil, err
-				}
-				return testConfig, nil
+				viper.Set("general.ssh_public_key_path", testSSHPublicKeyFile)
+				viper.Set("general.ssh_private_key_path", testSSHPrivateKeyFile)
+				viper.Set("general.ssh_key_path", strings.TrimSuffix(testSSHPublicKeyFile, ".pub"))
+				return viper.GetViper(), nil
 			},
 			clientSetup: func(subscriptionID string) (azure.AzureClient, error) {
 				mockClient := &azure.MockAzureClient{
-					GetOrCreateResourceGroupFunc: func(ctx context.Context, location string) (*armresources.ResourceGroup, error) {
+					GetOrCreateResourceGroupFunc: func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
 						return &armresources.ResourceGroup{
+							Name:     to.Ptr(name),
 							Location: &location,
 						}, nil
 					},
 					CreateVirtualNetworkFunc: func(ctx context.Context, resourceGroupName string, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
-						return armnetwork.VirtualNetwork{}, assert.AnError
+						return armnetwork.VirtualNetwork{}, errors.New("UNIQUE_VIRTUAL_NETWORK_ERROR")
 					},
 				}
 				return mockClient, nil
 			},
-			expectedError: "failed to create deployment",
+			expectedError: "UNIQUE_VIRTUAL_NETWORK_ERROR",
 		},
 	}
 

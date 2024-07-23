@@ -101,6 +101,7 @@ tablewriter
 tcell
 testdata
 testpassword
+TESTRGNAME
 testuser
 testutil
 tmpl

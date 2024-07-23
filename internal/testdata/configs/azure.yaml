@@ -13,6 +13,6 @@ azure:
     - location: westus
 general:
   project_id: andaime-project
-  ssh_public_key: ./testdata/dummy_keys/id_ed25519.pub
-  ssh_private_key: ./testdata/dummy_keys/id_ed25519
+  ssh_public_key_path: ./testdata/dummy_keys/id_ed25519.pub
+  ssh_private_key_path: ./testdata/dummy_keys/id_ed25519
   ssh_key_dir: ./testdata/dummy_keys
