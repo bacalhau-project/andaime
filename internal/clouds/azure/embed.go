@@ -39,6 +39,10 @@ func IsValidLocation(location string) bool {
 	if err != nil {
 		return false
 	}
+	if location == "" {
+		return false
+	}
+
 	for _, validLocation := range validLocations {
 		if location == validLocation {
 			return true
@@ -51,6 +55,9 @@ func IsValidMachineType(machineType string) bool {
 	// This is a placeholder. In a real scenario, you would check against a list of valid Azure machine types.
 	validTypes, err := GetMachineTypes()
 	if err != nil {
+		return false
+	}
+	if machineType == "" {
 		return false
 	}
 	for _, validType := range validTypes {

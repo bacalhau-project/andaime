@@ -25,6 +25,36 @@ type Parameters struct {
 	Orchestrator bool
 }
 
+type Deployment struct {
+	ResourceGroupName       string
+	ResourceGroupLocation   string
+	OrchestratorNode        *Machine
+	NonOrchestratorMachines []Machine
+	VNet                    map[string][]*armnetwork.Subnet
+	ProjectID               string
+	UniqueID                string
+}
+
+func (d *Deployment) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"ResourceGroupName":       d.ResourceGroupName,
+		"ResourceGroupLocation":   d.ResourceGroupLocation,
+		"OrchestratorNode":        d.OrchestratorNode,
+		"NonOrchestratorMachines": d.NonOrchestratorMachines,
+		"VNet":                    d.VNet,
+		"ProjectID":               d.ProjectID,
+		"UniqueID":                d.UniqueID,
+	}
+}
+
+// UpdateViperConfig updates the Viper configuration with the current Deployment state
+func (d *Deployment) UpdateViperConfig() error {
+	v := viper.GetViper()
+	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.ResourceGroupName)
+	v.Set(deploymentPath, d.ToMap())
+	return v.WriteConfig()
+}
+
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
@@ -62,12 +92,12 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 
 	projectID := viper.GetString("general.project_id")
 
-	resourceGroupName := viper.GetString("azure.resource_group_prefix") + "-rg-" + time.Now().Format("060102150405")
+	resourceGroupName := viper.GetString("azure.resource_prefix") + "-rg-" + time.Now().Format("0601021504")
 	if !IsValidResourceGroupName(resourceGroupName) {
 		return fmt.Errorf("invalid resource group name: %s", resourceGroupName)
 	}
 
-	resourceGroupLocation := viper.GetString("azure.location")
+	resourceGroupLocation := viper.GetString("azure.resource_group_location")
 	if !internal.IsValidLocation(resourceGroupLocation) {
 		return fmt.Errorf("invalid resource group location: %s", resourceGroupLocation)
 	}
@@ -76,6 +106,18 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	resourceGroup, err := p.Client.GetOrCreateResourceGroup(ctx, resourceGroupLocation, resourceGroupName)
 	if err != nil {
 		return fmt.Errorf("failed to get or create resource group: %v", err)
+	}
+
+	deployment := &Deployment{
+		ResourceGroupName:     resourceGroupName,
+		ResourceGroupLocation: resourceGroupLocation,
+		ProjectID:             projectID,
+		UniqueID:              uniqueID,
+	}
+
+	// Update Viper configuration after creating the deployment
+	if err := deployment.UpdateViperConfig(); err != nil {
+		return fmt.Errorf("failed to update Viper configuration: %v", err)
 	}
 
 	// Crawl all of machines and populate locations and which is the orchestrator
@@ -106,15 +148,39 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 			return fmt.Errorf("failed to create virtual network: %v", err)
 		}
 		subnets[location] = vnet.Properties.Subnets
+		if deployment.VNet == nil {
+			deployment.VNet = make(map[string][]*armnetwork.Subnet)
+		}
+		deployment.VNet[location] = vnet.Properties.Subnets
+		err = deployment.UpdateViperConfig()
+		if err != nil {
+			return fmt.Errorf("failed to update Viper configuration: %v", err)
+		}
 	}
 
 	if orchestratorNode != nil {
-		p.processMachines(ctx, []Machine{*orchestratorNode}, subnets, projectID, viper)
+		err := p.processMachines(ctx, []Machine{*orchestratorNode}, resourceGroupName, subnets, projectID, viper)
+		if err != nil {
+			return fmt.Errorf("failed to process orchestrator node: %v", err)
+		}
+		deployment.OrchestratorNode = orchestratorNode
+		err = deployment.UpdateViperConfig()
+		if err != nil {
+			return fmt.Errorf("failed to update Viper configuration: %v", err)
+		}
 	}
 
 	// Process other machines
 	for _, machine := range machines {
-		p.processMachines(ctx, []Machine{machine}, subnets, projectID, viper)
+		err := p.processMachines(ctx, []Machine{machine}, resourceGroupName, subnets, projectID, viper)
+		if err != nil {
+			return fmt.Errorf("failed to process non-orchestrator nodes: %v", err)
+		}
+		deployment.NonOrchestratorMachines = append(deployment.NonOrchestratorMachines, machine)
+		err = deployment.UpdateViperConfig()
+		if err != nil {
+			return fmt.Errorf("failed to update Viper configuration: %v", err)
+		}
 	}
 
 	if resourceGroup != nil && *resourceGroup.Name != "" {
@@ -126,9 +192,10 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 func (p *AzureProvider) processMachines(
 	ctx context.Context,
 	machines []Machine,
+	resourceGroupName string,
 	subnets map[string][]*armnetwork.Subnet,
 	projectID string,
-	v *viper.Viper) {
+	v *viper.Viper) error {
 	defaultCount := v.GetInt("azure.default_count_per_zone")
 	defaultType := v.GetString("azure.default_machine_type")
 
@@ -162,21 +229,25 @@ func (p *AzureProvider) processMachines(
 		for i := 0; i < internalMachine.Parameters[0].Count; i++ {
 			err := p.processMachine(ctx,
 				&internalMachine,
+				resourceGroupName,
 				subnets,
 				projectID,
 				v,
 			)
 			if err != nil {
 				log.Printf("Error processing machine in %s: %v", internalMachine.Location, err)
+				return err
 			}
 		}
 	}
+	return nil
 }
 
 // Helper function to process a machine
 func (p *AzureProvider) processMachine(
 	ctx context.Context,
 	machine *Machine,
+	resourceGroupName string,
 	subnets map[string][]*armnetwork.Subnet,
 	projectID string,
 	viper *viper.Viper) error {
@@ -207,6 +278,7 @@ func (p *AzureProvider) processMachine(
 			uniqueID,
 			p.Client,
 			viper,
+			resourceGroupName,
 			machine.Location,
 			params.Type,
 			subnets[machine.Location][0],

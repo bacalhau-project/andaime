@@ -18,7 +18,7 @@ type MockResourceGroupsClient struct {
 
 func TestCreateResourceGroup(t *testing.T) {
 	// Setup
-	viper.Set("azure.resource_group_prefix", "testRG")
+	viper.Set("azure.resource_prefix", "testRG")
 	location := "eastus"
 
 	t.Run("Create new resource group", func(t *testing.T) {

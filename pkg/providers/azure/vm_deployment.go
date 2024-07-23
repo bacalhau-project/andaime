@@ -22,12 +22,12 @@ func DeployVM(ctx context.Context,
 	projectID, uniqueID string,
 	client AzureClient,
 	config *viper.Viper,
+	resourceGroupName string,
 	location string,
 	vmSize string,
 	subnet *armnetwork.Subnet,
 ) (*armcompute.VirtualMachine, error) {
 	// Read configuration values
-	resourceGroupName := config.GetString("azure.resource_group_name")
 	diskSizeGB := config.GetInt32("azure.disk_size_gb")
 	ports := config.GetIntSlice("azure.allowed_ports")
 	publicKeyPath := config.GetString("general.ssh_public_key_path")

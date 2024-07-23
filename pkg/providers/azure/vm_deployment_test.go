@@ -72,6 +72,7 @@ func TestDeployVM(t *testing.T) {
 		"testUniqueID",
 		mockClient,
 		viper.GetViper(),
+		"testRG",
 		"eastus",
 		"Standard_DS1_v2",
 		&armnetwork.Subnet{},
