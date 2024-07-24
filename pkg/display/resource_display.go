@@ -351,11 +351,22 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		d.Stop()
 	}()
 
-	logDebugf("Running tview application")
-	if err := d.app.Run(); err != nil {
-		logDebugf("Error running display: %v", err)
+	appRunComplete := make(chan struct{})
+	go func() {
+		logDebugf("Running tview application")
+		if err := d.app.Run(); err != nil {
+			logDebugf("Error running display: %v", err)
+		}
+		close(appRunComplete)
+	}()
+
+	select {
+	case <-appRunComplete:
+		logDebugf("tview application finished running")
+	case <-time.After(5 * time.Second):
+		logDebugf("Timeout waiting for tview application to start")
 	}
-	logDebugf("tview application finished running")
+
 	logDebugf("Display start completed")
 }
 
