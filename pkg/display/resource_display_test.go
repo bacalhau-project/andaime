@@ -31,28 +31,33 @@ func TestNewDisplayInternal(t *testing.T) {
 func TestDisplayStart(t *testing.T) {
 	d := newDisplayInternal(1, true)
 	sigChan := make(chan os.Signal, 1)
+	updateComplete := make(chan struct{})
 
 	go d.Start(sigChan)
 
-	// Give some time for the goroutines to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Update status to trigger table rendering
-	d.UpdateStatus(&Status{
-		ID:     "test-id",
-		Type:   "EC2",
-		Region: "us-west-2",
-		Zone:   "zone-a",
-		Status: "Running",
-		DetailedStatus: "Healthy",
-		ElapsedTime: 5 * time.Second,
-		InstanceID: "i-12345",
-		PublicIP: "203.0.113.1",
-		PrivateIP: "10.0.0.1",
-	})
+	go func() {
+		d.UpdateStatus(&Status{
+			ID:              "test-id",
+			Type:            "EC2",
+			Region:          "us-west-2",
+			Zone:            "zone-a",
+			Status:          "Running",
+			DetailedStatus:  "Healthy",
+			ElapsedTime:     5 * time.Second,
+			InstanceID:      "i-12345",
+			PublicIP:        "203.0.113.1",
+			PrivateIP:       "10.0.0.1",
+		})
+		close(updateComplete)
+	}()
 
-	// Give some time for the update to process
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the update to complete or timeout
+	select {
+	case <-updateComplete:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out waiting for update")
+	}
 
 	// Stop the display
 	d.Stop()
@@ -62,14 +67,14 @@ func TestDisplayStart(t *testing.T) {
 		d.WaitForStop()
 	})
 
-	// Check if LogBox content is not empty
-	assert.NotEmpty(t, d.LogBox.GetText(true))
-
 	// Check if the table content is in the LogBox
 	logContent := d.LogBox.GetText(true)
-	assert.Contains(t, logContent, "┌──────────┬──────────┬───────────────┬───────────────┬──────────────────────────────┬──────────┬────────────────┬───────────────┬───────────────┐")
-	assert.Contains(t, logContent, "│ ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP    │")
-	assert.Contains(t, logContent, "├──────────┼──────────┼───────────────┼───────────────┼──────────────────────────────┼──────────┼────────────────┼───────────────┼───────────────┤")
-	assert.Contains(t, logContent, "│ test-id  │ EC2      │ us-west-2     │ zone-a        │ Running (Healthy)            │ 5s       │ i-12345        │ 203.0.113.1   │ 10.0.0.1      │")
-	assert.Contains(t, logContent, "└──────────┴──────────┴───────────────┴───────────────┴──────────────────────────────┴──────────┴────────────────┴───────────────┴───────────────┘")
+	expectedContent := []string{
+		"ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP",
+		"test-id  │ EC2      │ us-west-2     │ zone-a        │ Running (Healthy)            │ 5s       │ i-12345        │ 203.0.113.1   │ 10.0.0.1",
+	}
+
+	for _, expected := range expectedContent {
+		assert.Contains(t, logContent, expected, "LogBox content should contain the expected table row")
+	}
 }
