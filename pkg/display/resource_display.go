@@ -18,12 +18,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-func getGoroutineInfo() string {
-	buf := make([]byte, 1<<16)
-	n := runtime.Stack(buf, true)
-	return string(buf[:n])
-}
-
 var debugLogger *log.Logger
 
 func init() {
@@ -341,7 +335,7 @@ func (d *Display) renderTable() {
 	logDebugf("About to call QueueUpdateDraw")
 	updateComplete := make(chan struct{})
 	timeoutChan := make(chan struct{})
-	
+
 	go func() {
 		time.Sleep(5 * time.Second)
 		close(timeoutChan)
