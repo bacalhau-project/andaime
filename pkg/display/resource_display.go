@@ -415,19 +415,16 @@ func (d *Display) Start(sigChan chan os.Signal) {
 
 	go func() {
 		logDebug("Starting signal handling goroutine")
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 		select {
 		case <-d.stopChan:
 			logDebug("Stop signal received from internal channel")
-		case <-sigChan:
-			logDebug("Stop signal received from external channel")
+		case sig := <-signalChan:
+			logDebug("Stop signal received from external channel: %v", sig)
 		}
 		logDebug("Stopping app")
-		d.app.QueueUpdateDraw(func() {
-			logDebug("Stopping tview application")
-			d.app.Stop()
-		})
-		logDebug("Closing quit channel")
-		close(d.quit)
+		d.Stop()
 	}()
 	logDebug("Display start completed")
 }
@@ -442,7 +439,18 @@ func (d *Display) Stop() {
 			close(d.quit) // Close quit channel immediately in test mode
 		}
 		d.printFinalTableState()
+		d.resetTerminal()
 	})
+}
+
+func (d *Display) resetTerminal() {
+	logDebug("Resetting terminal")
+	if !d.testMode {
+		d.app.Suspend(func() {
+			fmt.Print("\033[?1049l") // Exit alternate screen buffer
+			fmt.Print("\033[?25h")   // Show cursor
+		})
+	}
 }
 
 func (d *Display) WaitForStop() {
