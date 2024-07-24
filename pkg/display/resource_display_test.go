@@ -36,6 +36,9 @@ func TestDisplayStart(t *testing.T) {
 	t.Log("Starting display")
 	go d.Start(sigChan)
 
+	// Add a small delay to ensure the display is fully initialized
+	time.Sleep(100 * time.Millisecond)
+
 	// Update status to trigger table rendering
 	t.Log("Updating status")
 	updateComplete = d.UpdateStatus(&Status{
