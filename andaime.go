@@ -76,6 +76,18 @@ var (
 	BOOT_VOLUME_SIZE_FLAG              int
 )
 
+func GetSession(region string) *session.Session {
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Profile: AWS_PROFILE_FLAG,
+		Config:  aws.Config{Region: aws.String(region)},
+	})
+	if err != nil {
+		fmt.Printf("Error creating session for region %s: %v\n", region, err)
+		os.Exit(1)
+	}
+	return sess
+}
+
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	describeImagesInput := &ec2.DescribeImagesInput{
 		Filters: []*ec2.Filter{
@@ -134,7 +146,6 @@ func DeployOnAWS() {
 	noOfOrchestratorNodes := PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
 	noOfComputeNodes := PROJECT_SETTINGS["NumberOfComputeNodes"].(int)
 
-	
 	if command == "create" {
 		// Ensure VPC and Security Groups exist
 		ensureVPCAndSGsExist(targetRegions)
@@ -155,10 +166,7 @@ func ensureVPCAndSGsExist(regions []string) {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			instanceType := "t2.medium"
 			az, err := getAvailableZoneForInstanceType(ec2Svc, instanceType)
@@ -182,10 +190,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 			wg.Add(1)
 			go func(region string) {
 				defer wg.Done()
-				sess := session.Must(session.NewSessionWithOptions(session.Options{
-					Profile: AWS_PROFILE_FLAG,
-					Config:  aws.Config{Region: aws.String(region)},
-				}))
+				sess := GetSession(region)
 				ec2Svc := ec2.New(sess)
 				instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator", nil)
 				orchestratorIPs = append(orchestratorIPs, instanceInfo.PublicIP)
@@ -204,10 +209,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			createInstanceInRegion(ec2Svc, region, "compute", orchestratorIPs)
 		}(regions[i%len(regions)])
@@ -308,8 +310,8 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 
 			// Create Subnet
 			subnetOutput, err := svc.CreateSubnet(&ec2.CreateSubnetInput{
-				CidrBlock: aws.String("10.0.1.0/24"),
-				VpcId:     vpcID,
+				CidrBlock:        aws.String("10.0.1.0/24"),
+				VpcId:            vpcID,
 				AvailabilityZone: aws.String(availabilityZone),
 				TagSpecifications: []*ec2.TagSpecification{
 					{
@@ -475,10 +477,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			instanceInfo := createInstanceInRegion(ec2Svc, region, "compute", orchestratorIPs)
 			instanceChannel <- instanceInfo
@@ -589,7 +588,7 @@ func createInstanceInRegion(svc *ec2.EC2, region string, nodeType string, orches
 		// Get the instance architecture
 		instanceType := "t2.medium"
 
-		if nodeType == "orchestrator" && ORCHESTRATOR_INSTANCE_TYPE != ""{
+		if nodeType == "orchestrator" && ORCHESTRATOR_INSTANCE_TYPE != "" {
 			instanceType = ORCHESTRATOR_INSTANCE_TYPE
 		}
 
@@ -852,10 +851,7 @@ func destroyResources() {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			deleteTaggedResources(ec2Svc, region)
 		}(region)
@@ -866,10 +862,7 @@ func destroyResources() {
 }
 
 func getAllRegions() ([]string, error) {
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		Profile: AWS_PROFILE_FLAG,
-		Config:  aws.Config{Region: aws.String("us-east-1")},
-	}))
+	sess := GetSession("us-east-1")
 	ec2Svc := ec2.New(sess)
 	result, err := ec2Svc.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if err != nil {
@@ -1125,11 +1118,8 @@ func listResources() {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
-			 ec2Svc := ec2.New(sess)
+			sess := GetSession(region)
+			ec2Svc := ec2.New(sess)
 
 			resources := make(map[string][]string)
 			for _, resourceType := range resourceTypes {
@@ -1146,7 +1136,7 @@ func listResources() {
 
 	fmt.Println("\n== Resources Report ==")
 	for region, resources := range resourcesByRegion {
-		
+
 		fmt.Println("\n=======================")
 		fmt.Println("||")
 		fmt.Printf("|| Resources in region: %s\n", region)
@@ -1626,12 +1616,11 @@ func main() {
 
 	ProcessFlags()
 
-	
 	if command == "version" {
 		fmt.Println(VERSION_NUMBER)
 		os.Exit(0)
 	}
-	
+
 	fmt.Println("\n== Andaime ==\n")
 
 	if command == "create" {
