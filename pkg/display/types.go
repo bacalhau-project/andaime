@@ -11,13 +11,13 @@ import (
 var testTasks []Status
 
 type TestDisplay struct {
-	*Display
+	Display
 	Logger *logger.Logger
 }
 
 func NewTestDisplay(totalTasks int) *TestDisplay {
 	return &TestDisplay{
-		Display: NewDisplay(totalTasks),
+		Display: *NewDisplay(totalTasks),
 		Logger:  logger.Get(),
 	}
 }
@@ -30,6 +30,7 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 	d.Logger.Debug("Starting test display")
 	d.stopChan = make(chan struct{})
 	d.quit = make(chan struct{})
+	d.statuses = make(map[string]*Status)
 	go func() {
 		<-d.stopChan
 		close(d.quit)
