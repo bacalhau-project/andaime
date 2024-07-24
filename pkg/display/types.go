@@ -5,22 +5,28 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 var testTasks []Status
 
 type TestDisplay struct {
 	*Display
+	Logger *logger.Logger
 }
 
 func NewTestDisplay(totalTasks int) *TestDisplay {
 	return &TestDisplay{
 		Display: NewDisplay(totalTasks),
+		Logger:  logger.Get(),
 	}
 }
 
 // Override the Start method for testing
 func (d *TestDisplay) Start(sigChan chan os.Signal) {
+	if d.Logger == nil {
+		d.Logger = logger.Get()
+	}
 	d.Logger.Debug("Starting test display")
 	go func() {
 		<-d.stopChan
