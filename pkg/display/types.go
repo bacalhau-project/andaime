@@ -7,6 +7,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+var testTasks []Status
+
 type TestDisplay struct {
 	*Display
 }
@@ -19,7 +21,7 @@ func NewTestDisplay(totalTasks int) *TestDisplay {
 
 // Override the Start method for testing
 func (d *TestDisplay) Start(sigChan chan os.Signal) {
-	d.DebugLog.Debug("Starting test display")
+	d.Logger.Debug("Starting test display")
 	go func() {
 		<-d.stopChan
 		close(d.quit)
@@ -28,7 +30,7 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 
 // Override the UpdateStatus method to skip tview operations
 func (d *TestDisplay) UpdateStatus(status *Status) {
-	d.DebugLog.Debugf("UpdateStatus called with %s", status.ID)
+	d.Logger.Debugf("UpdateStatus called with %s", status.ID)
 	d.statusesMu.Lock()
 	defer d.statusesMu.Unlock()
 
@@ -41,17 +43,17 @@ func (d *TestDisplay) UpdateStatus(status *Status) {
 }
 
 func (d *TestDisplay) Stop() {
-	d.DebugLog.Debug("Stopping test display")
+	d.Logger.Debug("Stopping test display")
 	close(d.stopChan)
 }
 
 func (d *TestDisplay) WaitForStop() {
-	d.DebugLog.Debug("Waiting for test display to stop")
+	d.Logger.Debug("Waiting for test display to stop")
 	select {
 	case <-d.quit:
-		d.DebugLog.Debug("Test display stopped")
+		d.Logger.Debug("Test display stopped")
 	case <-time.After(5 * time.Second): //nolint:gomnd
-		d.DebugLog.Debug("Timeout waiting for test display to stop")
+		d.Logger.Debug("Timeout waiting for test display to stop")
 	}
 }
 
