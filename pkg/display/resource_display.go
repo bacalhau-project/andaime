@@ -151,7 +151,7 @@ func (d *Display) setupLayout() {
 	d.DebugLog.Debug("Setting up layout")
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.table, 0, 3, true). //nolint:gomnd
-		AddItem(d.LogBox, 0, 1, false)
+		AddItem(d.LogBox, 5, 1, false)
 
 	d.app.SetRoot(flex, true).EnableMouse(false)
 }
@@ -296,12 +296,10 @@ func (d *Display) renderTable() {
 			cellText := column.DataFunc(*status)
 			paddedText := d.padText(cellText, column.Width)
 			d.lastTableState[row+1][col] = cellText
-			if !d.testMode {
-				cell := tview.NewTableCell(paddedText).
-					SetMaxWidth(column.Width).
-					SetTextColor(highlightColor)
-				d.table.SetCell(row+1, col, cell)
-			}
+			cell := tview.NewTableCell(paddedText).
+				SetMaxWidth(column.Width).
+				SetTextColor(highlightColor)
+			d.table.SetCell(row+1, col, cell)
 		}
 	}
 
@@ -310,27 +308,11 @@ func (d *Display) renderTable() {
 	if d.testMode {
 		logDebugf("Test mode: Adding log entry for table content")
 		d.AddLogEntry(tableContent.String())
-	} else {
-		logDebugf("Live mode: Queueing table update")
-		d.app.QueueUpdateDraw(func() {
-			logDebugf("Clearing table")
-			d.table.Clear()
-			for row := 0; row < len(d.lastTableState); row++ {
-				for col := 0; col < len(DisplayColumns); col++ {
-					cellText := d.lastTableState[row][col]
-					paddedText := d.padText(cellText, DisplayColumns[col].Width)
-					cell := tview.NewTableCell(paddedText).
-						SetMaxWidth(DisplayColumns[col].Width)
-					if row == 0 {
-						cell.SetTextColor(DisplayColumns[col].Color)
-					}
-					logDebugf("Setting cell at row %d, col %d: %s", row, col, cellText)
-					d.table.SetCell(row, col, cell)
-				}
-			}
-			logDebugf("Table update complete")
-		})
 	}
+
+	d.app.QueueUpdateDraw(func() {
+		logDebugf("Table update queued")
+	})
 
 	logDebugf("Table cells set")
 
@@ -418,9 +400,9 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		logDebugf("Setting up input capture")
 		d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			logDebugf("Key event received: %v", event.Key())
-			if event.Key() == tcell.KeyCtrlC {
-				logDebugf("Ctrl+C detected, sending interrupt signal")
-				sigChan <- os.Interrupt
+			if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
+				logDebugf("Ctrl+C or 'q' detected, stopping display")
+				d.Stop()
 				return nil
 			}
 			return event
