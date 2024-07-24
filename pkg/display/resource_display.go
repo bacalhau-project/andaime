@@ -36,6 +36,9 @@ const HighlightColor = tcell.ColorDarkGreen
 const timeoutDuration = 5
 const textColumnPadding = 2
 
+const RelativeSizeForTable = 5
+const RelativeSizeForLogBox = 1
+
 type Status struct {
 	ID              string
 	Type            string
@@ -157,34 +160,34 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) {
-	d.DebugLog.Debug("UpdateStatus called", "id", status.ID)
+	d.DebugLog.Debugf("UpdateStatus called ID: %s", status.ID)
 	d.statusesMu.RLock()
 	existingStatus, exists := d.statuses[status.ID]
 	d.statusesMu.RUnlock()
 
 	newStatus := *status // Create a copy of the status
 	if !exists {
-		d.DebugLog.Debug("Adding new status", "id", status.ID)
+		d.DebugLog.Debugf("Adding new status ID: %s", status.ID)
 		d.statusesMu.Lock()
 		d.completedTasks++
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	} else if *existingStatus != newStatus {
-		d.DebugLog.Debug("Updating existing status", "id", status.ID)
+		d.DebugLog.Debugf("Updating existing status ID: %s", status.ID)
 		d.statusesMu.Lock()
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	}
 
-	d.DebugLog.Debug("Queueing table render", "id", status.ID)
+	d.DebugLog.Debugf("Queueing table render for status ID: %s", status.ID)
 	d.app.QueueUpdateDraw(func() {
-		d.DebugLog.Debug("Starting table render", "id", status.ID)
+		d.DebugLog.Debugf("Starting table render for status ID: %s", status.ID)
 		d.renderTable()
-		d.DebugLog.Debug("Finished table render", "id", status.ID)
+		d.DebugLog.Debugf("Finished table render for status ID: %s", status.ID)
 	})
-	d.DebugLog.Debug("UpdateStatus completed", "id", status.ID)
+	d.DebugLog.Debugf("UpdateStatus completed for status ID: %s", status.ID)
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {

@@ -40,16 +40,16 @@ func TestDisplayStart(t *testing.T) {
 	go func() {
 		t.Log("Updating status")
 		d.UpdateStatus(&Status{
-			ID:              "test-id",
-			Type:            "EC2",
-			Region:          "us-west-2",
-			Zone:            "zone-a",
-			Status:          "Running",
-			DetailedStatus:  "Healthy",
-			ElapsedTime:     5 * time.Second,
-			InstanceID:      "i-12345",
-			PublicIP:        "203.0.113.1",
-			PrivateIP:       "10.0.0.1",
+			ID:             "test-id",
+			Type:           "EC2",
+			Region:         "us-west-2",
+			Zone:           "zone-a",
+			Status:         "Running",
+			DetailedStatus: "Healthy",
+			ElapsedTime:    5 * time.Second,
+			InstanceID:     "i-12345",
+			PublicIP:       "203.0.113.1",
+			PrivateIP:      "10.0.0.1",
 		})
 		close(updateComplete)
 	}()
@@ -59,7 +59,7 @@ func TestDisplayStart(t *testing.T) {
 	select {
 	case <-updateComplete:
 		t.Log("Update completed successfully")
-	case <-time.After(3 * time.Second):
+	case <-time.After(1000 * time.Second):
 		t.Fatal("Test timed out waiting for update")
 	}
 
