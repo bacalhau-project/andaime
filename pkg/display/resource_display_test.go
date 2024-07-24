@@ -44,6 +44,11 @@ func TestDisplayStart(t *testing.T) {
 		Region: "us-west-2",
 		Zone:   "zone-a",
 		Status: "Running",
+		DetailedStatus: "Healthy",
+		ElapsedTime: 5 * time.Second,
+		InstanceID: "i-12345",
+		PublicIP: "203.0.113.1",
+		PrivateIP: "10.0.0.1",
 	})
 
 	// Give some time for the update to process
@@ -65,6 +70,6 @@ func TestDisplayStart(t *testing.T) {
 	assert.Contains(t, logContent, "┌──────────┬──────────┬───────────────┬───────────────┬──────────────────────────────┬──────────┬────────────────┬───────────────┬───────────────┐")
 	assert.Contains(t, logContent, "│ ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP    │")
 	assert.Contains(t, logContent, "├──────────┼──────────┼───────────────┼───────────────┼──────────────────────────────┼──────────┼────────────────┼───────────────┼───────────────┤")
-	assert.Contains(t, logContent, "│ test-id  │ EC2      │ us-west-2     │ zone-a        │ Running                      │ 0s       │                │               │               │")
+	assert.Contains(t, logContent, "│ test-id  │ EC2      │ us-west-2     │ zone-a        │ Running (Healthy)            │ 5s       │ i-12345        │ 203.0.113.1   │ 10.0.0.1      │")
 	assert.Contains(t, logContent, "└──────────┴──────────┴───────────────┴───────────────┴──────────────────────────────┴──────────┴────────────────┴───────────────┴───────────────┘")
 }
