@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
@@ -74,18 +75,73 @@ var (
 	ORCHESTRATOR_INSTANCE_TYPE         string
 	VALID_ARCHITECTURES =              []string{"arm64", "x86_64"}
 	BOOT_VOLUME_SIZE_FLAG              int
+	SESSION_GUIDANCE_LOGGED =          false
 )
 
 func GetSession(region string) *session.Session {
-	sess, err := session.NewSessionWithOptions(session.Options{
-		Profile: AWS_PROFILE_FLAG,
-		Config:  aws.Config{Region: aws.String(region)},
+
+	var sess *session.Session
+	var err error
+
+	awsAccessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+
+	if AWS_PROFILE_FLAG != "" {
+
+		if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
+			SESSION_GUIDANCE_LOGGED = true
+			fmt.Printf("\tUsing -aws-profile flag \"%s\"\n\n", AWS_PROFILE_FLAG)
+		}
+		
+		sess, err = session.NewSessionWithOptions(session.Options{
+			Profile: AWS_PROFILE_FLAG,
+			Config:  aws.Config{Region: aws.String(region)},
+		})
+
+		if err != nil {
+			fmt.Printf("Error creating session for region %s: %v\n", region, err)
+			os.Exit(1)
+		}
+
+		return sess
+	} 
+
+	if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+
+		if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
+			SESSION_GUIDANCE_LOGGED = true
+			fmt.Println("\tUsing environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n")
+		}
+		
+		sess, err = session.NewSession(&aws.Config{
+			Region:      aws.String(region),
+			Credentials: credentials.NewStaticCredentials(awsAccessKeyID, awsSecretAccessKey, ""),
+		})
+
+		if err != nil {
+			fmt.Printf("Error creating session for region %s: %v\n", region, err)
+			os.Exit(1)
+		}
+
+		return sess
+	} 
+	
+	if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
+		SESSION_GUIDANCE_LOGGED = true
+		fmt.Println("\tUsing default AWS profile\n")
+	}
+
+	sess, err = session.NewSession(&aws.Config{
+		Region: aws.String(region),
 	})
+
 	if err != nil {
 		fmt.Printf("Error creating session for region %s: %v\n", region, err)
 		os.Exit(1)
 	}
+	
 	return sess
+
 }
 
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
@@ -1600,7 +1656,7 @@ func main() {
 	flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
 	flag.StringVar(&TARGET_REGIONS_FLAG, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
 	flag.StringVar(&ORCHESTRATOR_IP_FLAG, "orchestrator-ip", "", "IP address of existing orchestrator node")
-	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "default", "AWS profile to use for credentials")
+	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "", "AWS profile to use for credentials")
 	flag.StringVar(&INSTANCE_TYPE, "instance-type", "t2.medium", "The instance type for both the compute and orchestrator nodes")
 	flag.StringVar(&COMPUTE_INSTANCE_TYPE, "compute-instance-type", "", "The instance type for the compute nodes. Overrides --instance-type for compute nodes.")
 	flag.StringVar(&ORCHESTRATOR_INSTANCE_TYPE, "orchestrator-instance-type", "", "The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.")
