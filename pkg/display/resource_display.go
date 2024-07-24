@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,12 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+func getGoroutineInfo() string {
+	buf := make([]byte, 1<<16)
+	n := runtime.Stack(buf, true)
+	return string(buf[:n])
+}
 
 var debugLogger *log.Logger
 
@@ -161,6 +168,7 @@ func (d *Display) setupLayout() {
 
 func (d *Display) UpdateStatus(status *Status) chan struct{} {
 	d.DebugLog.Debugf("UpdateStatus called ID: %s", status.ID)
+	d.DebugLog.Debugf("Goroutine info:\n%s", getGoroutineInfo())
 	updateComplete := make(chan struct{})
 
 	d.statusesMu.RLock()
@@ -186,10 +194,12 @@ func (d *Display) UpdateStatus(status *Status) chan struct{} {
 	d.DebugLog.Debugf("Queueing table render for status ID: %s", status.ID)
 	d.app.QueueUpdateDraw(func() {
 		d.DebugLog.Debugf("Starting table render for status ID: %s", status.ID)
+		d.DebugLog.Debugf("Goroutine info before renderTable:\n%s", getGoroutineInfo())
 		renderStart := time.Now()
 		d.renderTable()
 		renderDuration := time.Since(renderStart)
 		d.DebugLog.Debugf("Finished table render for status ID: %s, duration: %v", status.ID, renderDuration)
+		d.DebugLog.Debugf("Goroutine info after renderTable:\n%s", getGoroutineInfo())
 		d.DebugLog.Debugf("Closing updateComplete channel for status ID: %s", status.ID)
 		close(updateComplete)
 		d.DebugLog.Debugf("Closed updateComplete channel for status ID: %s", status.ID)

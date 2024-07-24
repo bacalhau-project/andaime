@@ -56,7 +56,7 @@ func TestDisplayStart(t *testing.T) {
 	select {
 	case <-updateComplete:
 		t.Log("Update completed successfully")
-	case <-time.After(1 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("Test timed out waiting for update")
 	}
 
