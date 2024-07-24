@@ -204,49 +204,7 @@ func (d *Display) getHighlightColor(cycles int) tcell.Color {
 	return tcell.NewRGBColor(int32(r), int32(g), int32(b))
 }
 
-func (d *Display) startHighlightTimer() {
-	if d.testMode {
-		return // Don't start the timer in test mode
-	}
-	d.DebugLog.Debug("Starting highlight timer")
-	go func() {
-		ticker := time.NewTicker(HighlightTimer)
-		defer ticker.Stop()
-		tickCount := 0
-		for {
-			select {
-			case <-ticker.C:
-				tickCount++
-				d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d started", tickCount))
-
-				updateComplete := make(chan bool)
-				timeoutTimer := time.NewTimer(timeoutDuration * time.Second)
-
-				go func() {
-					d.app.QueueUpdateDraw(func() {
-						d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d started", tickCount))
-						d.renderTable()
-						d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d completed", tickCount))
-						updateComplete <- true
-					})
-				}()
-
-				select {
-				case <-updateComplete:
-					d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d completed successfully", tickCount))
-				case <-timeoutTimer.C:
-					d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d timed out", tickCount))
-				}
-
-				timeoutTimer.Stop()
-
-			case <-d.stopChan:
-				d.DebugLog.Debug("Highlight timer stopped")
-				return
-			}
-		}
-	}()
-}
+// Highlight timer removed
 
 func (d *Display) renderTable() {
 	logDebugf("Rendering table started")
@@ -270,17 +228,17 @@ func (d *Display) renderTable() {
 		d.lastTableState[0][col] = column.Text
 	}
 
-	for _, status := range statuses {
-		row := make([]string, len(DisplayColumns))
+	for row, status := range statuses {
+		tableRow := make([]string, len(DisplayColumns))
 		for col, column := range DisplayColumns {
 			cellText := column.DataFunc(*status)
-			row[col] = cellText
+			tableRow[col] = cellText
 			cell := tview.NewTableCell(cellText).
 				SetMaxWidth(column.Width).
 				SetTextColor(column.Color)
-			d.table.SetCell(len(d.lastTableState), col, cell)
+			d.table.SetCell(row+1, col, cell)
 		}
-		d.lastTableState = append(d.lastTableState, row)
+		d.lastTableState = append(d.lastTableState, tableRow)
 	}
 
 	if d.testMode {
@@ -367,8 +325,6 @@ func (d *Display) padText(text string, width int) string {
 func (d *Display) Start(sigChan chan os.Signal) {
 	logDebugf("Starting display")
 	if d.testMode {
-		logDebugf("Test mode: Starting highlight timer")
-		d.startHighlightTimer()
 		return
 	}
 
@@ -381,9 +337,6 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		}
 		return event
 	})
-
-	logDebugf("Starting highlight timer")
-	d.startHighlightTimer()
 
 	go func() {
 		logDebugf("Starting signal handling goroutine")
