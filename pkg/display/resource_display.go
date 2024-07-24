@@ -216,18 +216,23 @@ func (d *Display) startHighlightTimer() {
 	go func() {
 		ticker := time.NewTicker(HighlightTimer)
 		defer ticker.Stop()
+		tickCount := 0
 		for {
 			select {
 			case <-ticker.C:
-				d.DebugLog.Debug("Highlight timer tick")
+				tickCount++
+				d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d", tickCount))
 				d.app.QueueUpdateDraw(func() {
-					d.DebugLog.Debug("QueueUpdateDraw in timer tick started")
+					d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d started", tickCount))
 					d.renderTable()
-					d.DebugLog.Debug("QueueUpdateDraw in timer tick completed")
+					d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d completed", tickCount))
 				})
 			case <-d.stopChan:
 				d.DebugLog.Debug("Highlight timer stopped")
 				return
+			default:
+				// Add a small sleep to prevent tight loop
+				time.Sleep(50 * time.Millisecond)
 			}
 		}
 	}()
