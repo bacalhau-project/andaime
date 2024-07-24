@@ -83,11 +83,7 @@ type Display struct {
 }
 
 func NewDisplay(totalTasks int) *Display {
-	ctx, cancel := context.WithCancel(context.Background())
-	d := newDisplayInternal(totalTasks, false)
-	d.ctx = ctx
-	d.cancel = cancel
-	return d
+	return newDisplayInternal(totalTasks, false)
 }
 
 type DisplayColumn struct {
@@ -126,6 +122,7 @@ var DisplayColumns = []DisplayColumn{
 }
 
 func newDisplayInternal(totalTasks int, testMode bool) *Display {
+	ctx, cancel := context.WithCancel(context.Background())
 	d := &Display{
 		statuses:           make(map[string]*Status),
 		app:                tview.NewApplication(),
@@ -137,6 +134,8 @@ func newDisplayInternal(totalTasks int, testMode bool) *Display {
 		quit:               make(chan struct{}),
 		testMode:           testMode,
 		LogBox:             tview.NewTextView().SetDynamicColors(true),
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 
 	d.DebugLog = *logger.Get()
