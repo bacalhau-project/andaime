@@ -264,14 +264,23 @@ func (d *Display) renderTable() {
 
 	logDebugf("Statuses sorted")
 
-	for row, status := range statuses {
+	// Initialize lastTableState with header row
+	d.lastTableState = [][]string{make([]string, len(DisplayColumns))}
+	for col, column := range DisplayColumns {
+		d.lastTableState[0][col] = column.Text
+	}
+
+	for _, status := range statuses {
+		row := make([]string, len(DisplayColumns))
 		for col, column := range DisplayColumns {
 			cellText := column.DataFunc(*status)
+			row[col] = cellText
 			cell := tview.NewTableCell(cellText).
 				SetMaxWidth(column.Width).
 				SetTextColor(column.Color)
-			d.table.SetCell(row+1, col, cell)
+			d.table.SetCell(len(d.lastTableState), col, cell)
 		}
+		d.lastTableState = append(d.lastTableState, row)
 	}
 
 	if d.testMode {
@@ -286,8 +295,10 @@ func (d *Display) renderTable() {
 func (d *Display) getTableString() string {
 	var tableContent strings.Builder
 	tableContent.WriteString(d.getTableHeader())
-	for _, row := range d.lastTableState[1:] {
-		tableContent.WriteString(d.getTableRow(row))
+	if len(d.lastTableState) > 1 {
+		for _, row := range d.lastTableState[1:] {
+			tableContent.WriteString(d.getTableRow(row))
+		}
 	}
 	tableContent.WriteString(d.getTableFooter())
 	return tableContent.String()
