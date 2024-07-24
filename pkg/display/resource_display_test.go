@@ -38,7 +38,7 @@ func TestDisplayStart(t *testing.T) {
 
 	// Update status to trigger table rendering
 	t.Log("Updating status")
-	updateComplete := d.UpdateStatus(&Status{
+	updateComplete = d.UpdateStatus(&Status{
 		ID:             "test-id",
 		Type:           "EC2",
 		Region:         "us-west-2",
