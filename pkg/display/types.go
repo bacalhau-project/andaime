@@ -31,8 +31,10 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 	d.stopChan = make(chan struct{})
 	d.quit = make(chan struct{})
 	d.statuses = make(map[string]*Status)
+	d.app = tview.NewApplication()
 	go func() {
 		<-d.stopChan
+		d.app.Stop()
 		close(d.quit)
 	}()
 }
