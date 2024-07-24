@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-. <( /usr/local/bin/flox activate; );
-
 # Check if Go is installed
 if ! command -v go &> /dev/null
 then
@@ -13,7 +11,7 @@ then
 fi
 
 # Set GOPATH to an absolute path
-export GOPATH="$HOME/go"
+export GOPATH="${HOME}/go"
 
 # Run the tests
 go test ./...
