@@ -1,6 +1,7 @@
 package display
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -27,20 +28,6 @@ var debugLogger *log.Logger
 
 func init() {
 	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-	debugLogger = log.New(debugFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
-}
-
-func logDebugf(format string, v ...interface{}) {
-	debugLogger.Printf(format, v...)
-}
-
-var debugLogger *log.Logger
-
-func init() {
-	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gomnd
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -136,10 +123,6 @@ var DisplayColumns = []DisplayColumn{
 		Width:    15,
 		Color:    tcell.ColorRed,
 		DataFunc: func(status Status) string { return status.PrivateIP }},
-}
-
-func NewDisplay(totalTasks int) *Display {
-	return newDisplayInternal(totalTasks, false)
 }
 
 func newDisplayInternal(totalTasks int, testMode bool) *Display {
