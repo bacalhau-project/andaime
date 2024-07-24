@@ -404,18 +404,6 @@ func (d *Display) getTableHeader() string {
 	return header.String()
 }
 
-func (d *Display) getTableRow(status *Status, _ tcell.Color) string {
-	var row strings.Builder
-	row.WriteString("│")
-	for _, column := range DisplayColumns {
-		cellText := column.DataFunc(*status)
-		paddedText := d.padText(cellText, column.Width)
-		row.WriteString(fmt.Sprintf(" %s │", paddedText))
-	}
-	row.WriteString("\n")
-	return row.String()
-}
-
 func (d *Display) getTableFooter() string {
 	var footer strings.Builder
 	footer.WriteString("└")
