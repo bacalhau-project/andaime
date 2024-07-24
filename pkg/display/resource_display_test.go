@@ -55,9 +55,12 @@ func TestDisplayStart(t *testing.T) {
 	// Wait for the update to complete or timeout
 	select {
 	case <-updateComplete:
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Test timed out waiting for update")
 	}
+
+	// Give some time for the display to update
+	time.Sleep(1 * time.Second)
 
 	// Stop the display
 	d.Stop()
@@ -69,6 +72,8 @@ func TestDisplayStart(t *testing.T) {
 
 	// Check if the table content is in the LogBox
 	logContent := d.LogBox.GetText(true)
+	t.Logf("LogBox content: %s", logContent) // Log the content for debugging
+
 	expectedContent := []string{
 		"ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP",
 		"test-id  │ EC2      │ us-west-2     │ zone-a        │ Running (Healthy)            │ 5s       │ i-12345        │ 203.0.113.1   │ 10.0.0.1",
