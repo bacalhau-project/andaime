@@ -176,8 +176,11 @@ func (d *Display) UpdateStatus(status *Status) {
 
 	logDebug("Queueing table render for status update: %s", status.ID)
 	d.app.QueueUpdateDraw(func() {
+		logDebug("Starting table render for status update: %s", status.ID)
 		d.renderTable()
+		logDebug("Finished table render for status update: %s", status.ID)
 	})
+	logDebug("UpdateStatus completed for %s", status.ID)
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -391,6 +394,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 	go func() {
 		logDebug("Setting up input capture")
 		d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			logDebug("Key event received: %v", event.Key())
 			if event.Key() == tcell.KeyCtrlC {
 				logDebug("Ctrl+C detected, sending interrupt signal")
 				sigChan <- os.Interrupt
@@ -406,9 +410,11 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		if err := d.app.Run(); err != nil {
 			logDebug("Error running display: %v", err)
 		}
+		logDebug("tview application finished running")
 	}()
 
 	go func() {
+		logDebug("Starting signal handling goroutine")
 		select {
 		case <-d.stopChan:
 			logDebug("Stop signal received from internal channel")
@@ -423,6 +429,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		logDebug("Closing quit channel")
 		close(d.quit)
 	}()
+	logDebug("Display start completed")
 }
 
 func (d *Display) Stop() {
