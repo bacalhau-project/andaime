@@ -45,6 +45,8 @@ type Display struct {
 	quit               chan struct{}
 	lastTableState     [][]string
 	DebugLog           logger.Logger
+	Logger             logger.Logger
+	LogBox             *tview.TextView
 	testMode           bool
 }
 
@@ -127,7 +129,8 @@ func (d *Display) setupTable() {
 func (d *Display) setupLayout() {
 	d.DebugLog.Debug("Setting up layout")
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(d.table, 0, 1, true)
+		AddItem(d.table, 0, 3, true). //nolint:gomnd
+		AddItem(d.LogBox, 0, 1, false)
 
 	d.app.SetRoot(flex, true).EnableMouse(false)
 }
@@ -326,6 +329,10 @@ func (d *Display) WaitForStop() {
 	case <-time.After(5 * time.Second): //nolint:gomnd
 		d.DebugLog.Debug("Timeout waiting for display to stop")
 	}
+}
+
+func (d *Display) AddLogEntry(logEntry string) {
+	d.DebugLog.Debug(logEntry)
 }
 
 func (d *Display) printFinalTableState() {
