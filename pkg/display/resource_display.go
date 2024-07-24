@@ -166,49 +166,19 @@ func (d *Display) setupLayout() {
 	d.app.SetRoot(flex, true).EnableMouse(false)
 }
 
-func (d *Display) UpdateStatus(status *Status) chan struct{} {
-	updateComplete := make(chan struct{})
-
-	if d == nil || status == nil || d.ctx == nil {
-		logDebugf("Invalid state in UpdateStatus: d=%v, status=%v, ctx=%v", d, status, d.ctx)
-		close(updateComplete)
-		return updateComplete
+func (d *Display) UpdateStatus(status *Status) {
+	if d == nil || status == nil {
+		logDebugf("Invalid state in UpdateStatus: d=%v, status=%v", d, status)
+		return
 	}
 
 	logDebugf("UpdateStatus called ID: %s", status.ID)
 
-	go func() {
-		select {
-		case <-d.ctx.Done():
-			logDebugf("Context cancelled, skipping update for ID: %s", status.ID)
-			close(updateComplete)
-		default:
-			d.statusesMu.Lock()
-			if d.statuses == nil {
-				d.statuses = make(map[string]*Status)
-			}
-			newStatus := *status
-			newStatus.HighlightCycles = d.fadeSteps
-			d.statuses[newStatus.ID] = &newStatus
-			if _, exists := d.statuses[newStatus.ID]; !exists {
-				d.completedTasks++
-			}
-			d.statusesMu.Unlock()
+	d.statusesMu.Lock()
+	d.statuses[status.ID] = status
+	d.statusesMu.Unlock()
 
-			if d.app != nil {
-				d.app.QueueUpdateDraw(func() {
-					logDebugf("QueueUpdateDraw Inner Function called")
-					// d.renderTable()
-					// close(updateComplete)
-				})
-			} else {
-				logDebugf("App is nil in UpdateStatus")
-				close(updateComplete)
-			}
-		}
-	}()
-
-	return updateComplete
+	d.renderTable()
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -281,17 +251,10 @@ func (d *Display) startHighlightTimer() {
 func (d *Display) renderTable() {
 	logDebugf("Rendering table started")
 	d.statusesMu.RLock()
-	statusesCopy := make(map[string]*Status, len(d.statuses))
-	for id, status := range d.statuses {
-		statusCopy := *status
-		statusesCopy[id] = &statusCopy
-	}
-	d.statusesMu.RUnlock()
+	defer d.statusesMu.RUnlock()
 
-	logDebugf("Statuses copied: %d statuses", len(statusesCopy))
-
-	statuses := make([]*Status, 0, len(statusesCopy))
-	for _, status := range statusesCopy {
+	statuses := make([]*Status, 0, len(d.statuses))
+	for _, status := range d.statuses {
 		statuses = append(statuses, status)
 	}
 
@@ -301,28 +264,12 @@ func (d *Display) renderTable() {
 
 	logDebugf("Statuses sorted")
 
-	d.lastTableState = make([][]string, len(statuses)+1)
-	d.lastTableState[0] = make([]string, len(DisplayColumns))
-	for col, header := range DisplayColumns {
-		d.lastTableState[0][col] = header.Text
-		cell := tview.NewTableCell(header.Text).
-			SetTextColor(header.Color).
-			SetSelectable(false).
-			SetExpansion(0).
-			SetMaxWidth(header.Width)
-		d.table.SetCell(0, col, cell)
-	}
-
 	for row, status := range statuses {
-		highlightColor := d.getHighlightColor(status.HighlightCycles)
-		d.lastTableState[row+1] = make([]string, len(DisplayColumns))
 		for col, column := range DisplayColumns {
 			cellText := column.DataFunc(*status)
-			paddedText := d.padText(cellText, column.Width)
-			d.lastTableState[row+1][col] = cellText
-			cell := tview.NewTableCell(paddedText).
+			cell := tview.NewTableCell(cellText).
 				SetMaxWidth(column.Width).
-				SetTextColor(highlightColor)
+				SetTextColor(column.Color)
 			d.table.SetCell(row+1, col, cell)
 		}
 	}
@@ -332,40 +279,7 @@ func (d *Display) renderTable() {
 		d.AddLogEntry(d.getTableString())
 	}
 
-	logDebugf("About to call QueueUpdateDraw")
-	updateComplete := make(chan struct{})
-	timeoutChan := make(chan struct{})
-
-	go func() {
-		time.Sleep(5 * time.Second)
-		close(timeoutChan)
-	}()
-
-	d.app.QueueUpdateDraw(func() {
-		logDebugf("Inside QueueUpdateDraw callback")
-		defer close(updateComplete)
-		logDebugf("Table update queued")
-	})
-	logDebugf("QueueUpdateDraw called, waiting for completion")
-
-	select {
-	case <-updateComplete:
-		logDebugf("QueueUpdateDraw completed successfully")
-	case <-timeoutChan:
-		logDebugf("QueueUpdateDraw timed out after 5 seconds")
-		d.DebugLog.Error("QueueUpdateDraw timed out. Current goroutine stack:\n" + getGoroutineInfo())
-	}
-
-	logDebugf("Table cells set")
-
-	d.statusesMu.Lock()
-	for id, status := range d.statuses {
-		if status.HighlightCycles > 0 {
-			status.HighlightCycles--
-			d.statuses[id] = status
-		}
-	}
-	d.statusesMu.Unlock()
+	d.app.Draw()
 	logDebugf("Table rendered")
 }
 
