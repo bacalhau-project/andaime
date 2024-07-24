@@ -175,86 +175,45 @@ func (d *Display) setupLayout() {
 func (d *Display) UpdateStatus(status *Status) chan struct{} {
 	updateComplete := make(chan struct{})
 
-	if d == nil {
-		logDebugf("Display is nil in UpdateStatus")
-		close(updateComplete)
-		return updateComplete
-	}
-
-	if status == nil {
-		logDebugf("Status is nil in UpdateStatus")
+	if d == nil || status == nil || d.ctx == nil {
+		logDebugf("Invalid state in UpdateStatus: d=%v, status=%v, ctx=%v", d, status, d.ctx)
 		close(updateComplete)
 		return updateComplete
 	}
 
 	logDebugf("UpdateStatus called ID: %s", status.ID)
-	logDebugf("Goroutine info:\n%s", getGoroutineInfo())
 
-	if d.ctx == nil {
-		logDebugf("Context is nil in UpdateStatus")
-		close(updateComplete)
-		return updateComplete
-	}
-
-	select {
-	case <-d.ctx.Done():
-		logDebugf("Context cancelled, skipping update for ID: %s", status.ID)
-		close(updateComplete)
-		return updateComplete
-	default:
-		if d.statuses == nil {
-			logDebugf("Statuses map is nil in UpdateStatus")
-			d.statuses = make(map[string]*Status)
-		}
-
-		d.statusesMu.RLock()
-		existingStatus, exists := d.statuses[status.ID]
-		d.statusesMu.RUnlock()
-
-		newStatus := *status // Create a copy of the status
-		if !exists {
-			logDebugf("Adding new status ID: %s", status.ID)
-			d.statusesMu.Lock()
-			d.completedTasks++
-			newStatus.HighlightCycles = d.fadeSteps
-			d.statuses[newStatus.ID] = &newStatus
-			d.statusesMu.Unlock()
-		} else if *existingStatus != newStatus {
-			logDebugf("Updating existing status ID: %s", status.ID)
-			d.statusesMu.Lock()
-			newStatus.HighlightCycles = d.fadeSteps
-			d.statuses[newStatus.ID] = &newStatus
-			d.statusesMu.Unlock()
-		}
-
-		logDebugf("Queueing table render for status ID: %s", status.ID)
-		if d.app == nil {
-			logDebugf("App is nil in UpdateStatus")
+	go func() {
+		select {
+		case <-d.ctx.Done():
+			logDebugf("Context cancelled, skipping update for ID: %s", status.ID)
 			close(updateComplete)
-			return updateComplete
-		}
-		d.app.QueueUpdateDraw(func() {
-			select {
-			case <-d.ctx.Done():
-				logDebugf("Context cancelled during table render for ID: %s", status.ID)
-				close(updateComplete)
-				return
-			default:
-				logDebugf("Starting table render for status ID: %s", status.ID)
-				logDebugf("Goroutine info before renderTable:\n%s", getGoroutineInfo())
-				renderStart := time.Now()
-				d.renderTable()
-				renderDuration := time.Since(renderStart)
-				logDebugf("Finished table render for status ID: %s, duration: %v", status.ID, renderDuration)
-				logDebugf("Goroutine info after renderTable:\n%s", getGoroutineInfo())
-				logDebugf("Closing updateComplete channel for status ID: %s", status.ID)
-				close(updateComplete)
-				logDebugf("Closed updateComplete channel for status ID: %s", status.ID)
+		default:
+			d.statusesMu.Lock()
+			if d.statuses == nil {
+				d.statuses = make(map[string]*Status)
 			}
-		})
-		logDebugf("UpdateStatus queued for status ID: %s", status.ID)
-		return updateComplete
-	}
+			newStatus := *status
+			newStatus.HighlightCycles = d.fadeSteps
+			d.statuses[newStatus.ID] = &newStatus
+			if _, exists := d.statuses[newStatus.ID]; !exists {
+				d.completedTasks++
+			}
+			d.statusesMu.Unlock()
+
+			if d.app != nil {
+				d.app.QueueUpdateDraw(func() {
+					d.renderTable()
+					close(updateComplete)
+				})
+			} else {
+				logDebugf("App is nil in UpdateStatus")
+				close(updateComplete)
+			}
+		}
+	}()
+
+	return updateComplete
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {

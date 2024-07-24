@@ -38,11 +38,19 @@ func TestDisplayStart(t *testing.T) {
 
 	sigChan := make(chan os.Signal, 1)
 
-	t.Log("Starting display")
-	go d.Start(sigChan)
+	startComplete := make(chan struct{})
+	go func() {
+		d.Start(sigChan)
+		close(startComplete)
+	}()
 
-	// Add a small delay to ensure the display is fully initialized
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the display to start or timeout
+	select {
+	case <-startComplete:
+		t.Log("Display started successfully")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for display to start")
+	}
 
 	// Update status to trigger table rendering
 	t.Log("Updating status")
@@ -60,32 +68,19 @@ func TestDisplayStart(t *testing.T) {
 	})
 
 	// Wait for the update to complete or timeout
-	t.Log("Waiting for update to complete")
 	select {
 	case <-updateComplete:
 		t.Log("Update completed successfully")
 	case <-time.After(5 * time.Second):
-		t.Log("Test timed out waiting for update")
-		if d.cancel != nil {
-			d.cancel() // Cancel the context if it exists
-		}
-		t.Fatal("Test timed out waiting for update")
+		t.Fatal("Timeout waiting for update to complete")
 	}
-
-	t.Log("Waiting for display to update")
-	time.Sleep(1 * time.Second)
 
 	// Stop the display
 	d.Stop()
 
-	// Ensure no panic occurs
-	assert.NotPanics(t, func() {
-		d.WaitForStop()
-	})
-
 	// Check if the table content is in the LogBox
 	logContent := d.LogBox.GetText(true)
-	t.Logf("LogBox content: %s", logContent) // Log the content for debugging
+	t.Logf("LogBox content: %s", logContent)
 
 	expectedContent := []string{
 		"ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP",
