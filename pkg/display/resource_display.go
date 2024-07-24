@@ -2,12 +2,14 @@ package display
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
-	"log"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/gdamore/tcell/v2"
@@ -268,7 +270,7 @@ func (d *Display) renderTable() {
 		d.lastTableState[row+1] = make([]string, len(DisplayColumns))
 		rowContent := d.getTableRow(status, highlightColor)
 		tableContent.WriteString(rowContent)
-		
+
 		for col, column := range DisplayColumns {
 			cellText := column.DataFunc(*status)
 			paddedText := d.padText(cellText, column.Width)
