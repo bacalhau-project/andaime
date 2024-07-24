@@ -203,8 +203,9 @@ func (d *Display) UpdateStatus(status *Status) chan struct{} {
 
 			if d.app != nil {
 				d.app.QueueUpdateDraw(func() {
-					d.renderTable()
-					close(updateComplete)
+					logDebugf("QueueUpdateDraw Inner Function called")
+					// d.renderTable()
+					// close(updateComplete)
 				})
 			} else {
 				logDebugf("App is nil in UpdateStatus")
