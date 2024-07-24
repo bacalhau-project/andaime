@@ -186,9 +186,13 @@ func (d *Display) UpdateStatus(status *Status) chan struct{} {
 	d.DebugLog.Debugf("Queueing table render for status ID: %s", status.ID)
 	d.app.QueueUpdateDraw(func() {
 		d.DebugLog.Debugf("Starting table render for status ID: %s", status.ID)
+		renderStart := time.Now()
 		d.renderTable()
-		d.DebugLog.Debugf("Finished table render for status ID: %s", status.ID)
+		renderDuration := time.Since(renderStart)
+		d.DebugLog.Debugf("Finished table render for status ID: %s, duration: %v", status.ID, renderDuration)
+		d.DebugLog.Debugf("Closing updateComplete channel for status ID: %s", status.ID)
 		close(updateComplete)
+		d.DebugLog.Debugf("Closed updateComplete channel for status ID: %s", status.ID)
 	})
 	d.DebugLog.Debugf("UpdateStatus queued for status ID: %s", status.ID)
 	return updateComplete
