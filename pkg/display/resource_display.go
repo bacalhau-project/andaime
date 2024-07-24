@@ -26,6 +26,20 @@ func getGoroutineInfo() string {
 var debugLogger *log.Logger
 
 func init() {
+	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	debugLogger = log.New(debugFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+func logDebugf(format string, v ...interface{}) {
+	debugLogger.Printf(format, v...)
+}
+
+var debugLogger *log.Logger
+
+func init() {
 	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gomnd
 	if err != nil {
 		log.Fatal(err)
@@ -77,6 +91,16 @@ type Display struct {
 	Logger             logger.Logger
 	LogBox             *tview.TextView
 	testMode           bool
+	ctx                context.Context
+	cancel             context.CancelFunc
+}
+
+func NewDisplay(totalTasks int) *Display {
+	ctx, cancel := context.WithCancel(context.Background())
+	d := newDisplayInternal(totalTasks, false)
+	d.ctx = ctx
+	d.cancel = cancel
+	return d
 }
 
 type DisplayColumn struct {
@@ -167,45 +191,59 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) chan struct{} {
-	d.DebugLog.Debugf("UpdateStatus called ID: %s", status.ID)
-	d.DebugLog.Debugf("Goroutine info:\n%s", getGoroutineInfo())
+	logDebugf("UpdateStatus called ID: %s", status.ID)
+	logDebugf("Goroutine info:\n%s", getGoroutineInfo())
 	updateComplete := make(chan struct{})
 
-	d.statusesMu.RLock()
-	existingStatus, exists := d.statuses[status.ID]
-	d.statusesMu.RUnlock()
-
-	newStatus := *status // Create a copy of the status
-	if !exists {
-		d.DebugLog.Debugf("Adding new status ID: %s", status.ID)
-		d.statusesMu.Lock()
-		d.completedTasks++
-		newStatus.HighlightCycles = d.fadeSteps
-		d.statuses[newStatus.ID] = &newStatus
-		d.statusesMu.Unlock()
-	} else if *existingStatus != newStatus {
-		d.DebugLog.Debugf("Updating existing status ID: %s", status.ID)
-		d.statusesMu.Lock()
-		newStatus.HighlightCycles = d.fadeSteps
-		d.statuses[newStatus.ID] = &newStatus
-		d.statusesMu.Unlock()
-	}
-
-	d.DebugLog.Debugf("Queueing table render for status ID: %s", status.ID)
-	d.app.QueueUpdateDraw(func() {
-		d.DebugLog.Debugf("Starting table render for status ID: %s", status.ID)
-		d.DebugLog.Debugf("Goroutine info before renderTable:\n%s", getGoroutineInfo())
-		renderStart := time.Now()
-		d.renderTable()
-		renderDuration := time.Since(renderStart)
-		d.DebugLog.Debugf("Finished table render for status ID: %s, duration: %v", status.ID, renderDuration)
-		d.DebugLog.Debugf("Goroutine info after renderTable:\n%s", getGoroutineInfo())
-		d.DebugLog.Debugf("Closing updateComplete channel for status ID: %s", status.ID)
+	select {
+	case <-d.ctx.Done():
+		logDebugf("Context cancelled, skipping update for ID: %s", status.ID)
 		close(updateComplete)
-		d.DebugLog.Debugf("Closed updateComplete channel for status ID: %s", status.ID)
-	})
-	d.DebugLog.Debugf("UpdateStatus queued for status ID: %s", status.ID)
-	return updateComplete
+		return updateComplete
+	default:
+		d.statusesMu.RLock()
+		existingStatus, exists := d.statuses[status.ID]
+		d.statusesMu.RUnlock()
+
+		newStatus := *status // Create a copy of the status
+		if !exists {
+			logDebugf("Adding new status ID: %s", status.ID)
+			d.statusesMu.Lock()
+			d.completedTasks++
+			newStatus.HighlightCycles = d.fadeSteps
+			d.statuses[newStatus.ID] = &newStatus
+			d.statusesMu.Unlock()
+		} else if *existingStatus != newStatus {
+			logDebugf("Updating existing status ID: %s", status.ID)
+			d.statusesMu.Lock()
+			newStatus.HighlightCycles = d.fadeSteps
+			d.statuses[newStatus.ID] = &newStatus
+			d.statusesMu.Unlock()
+		}
+
+		logDebugf("Queueing table render for status ID: %s", status.ID)
+		d.app.QueueUpdateDraw(func() {
+			select {
+			case <-d.ctx.Done():
+				logDebugf("Context cancelled during table render for ID: %s", status.ID)
+				close(updateComplete)
+				return
+			default:
+				logDebugf("Starting table render for status ID: %s", status.ID)
+				logDebugf("Goroutine info before renderTable:\n%s", getGoroutineInfo())
+				renderStart := time.Now()
+				d.renderTable()
+				renderDuration := time.Since(renderStart)
+				logDebugf("Finished table render for status ID: %s, duration: %v", status.ID, renderDuration)
+				logDebugf("Goroutine info after renderTable:\n%s", getGoroutineInfo())
+				logDebugf("Closing updateComplete channel for status ID: %s", status.ID)
+				close(updateComplete)
+				logDebugf("Closed updateComplete channel for status ID: %s", status.ID)
+			}
+		})
+		logDebugf("UpdateStatus queued for status ID: %s", status.ID)
+		return updateComplete
+	}
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {

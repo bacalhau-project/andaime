@@ -57,6 +57,8 @@ func TestDisplayStart(t *testing.T) {
 	case <-updateComplete:
 		t.Log("Update completed successfully")
 	case <-time.After(5 * time.Second):
+		t.Log("Test timed out waiting for update, cancelling context")
+		d.cancel() // Cancel the context
 		t.Fatal("Test timed out waiting for update")
 	}
 
