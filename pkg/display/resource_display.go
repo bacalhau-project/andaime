@@ -383,8 +383,13 @@ func (d *Display) Start(sigChan chan os.Signal) {
 	}()
 
 	go func() {
-		<-d.stopChan
-		d.DebugLog.Debug("Stop signal received, stopping app")
+		select {
+		case <-d.stopChan:
+			d.DebugLog.Debug("Stop signal received from internal channel")
+		case <-sigChan:
+			d.DebugLog.Debug("Stop signal received from external channel")
+		}
+		d.DebugLog.Debug("Stopping app")
 		d.app.QueueUpdateDraw(func() {
 			d.app.Stop()
 		})
