@@ -337,9 +337,21 @@ func (d *Display) renderTable() {
 		d.AddLogEntry(d.getTableString())
 	}
 
+	logDebugf("About to call QueueUpdateDraw")
+	updateComplete := make(chan struct{})
 	d.app.QueueUpdateDraw(func() {
+		logDebugf("Inside QueueUpdateDraw callback")
+		defer close(updateComplete)
 		logDebugf("Table update queued")
 	})
+	logDebugf("QueueUpdateDraw called, waiting for completion")
+
+	select {
+	case <-updateComplete:
+		logDebugf("QueueUpdateDraw completed successfully")
+	case <-time.After(5 * time.Second):
+		logDebugf("QueueUpdateDraw timed out after 5 seconds")
+	}
 
 	logDebugf("Table cells set")
 
