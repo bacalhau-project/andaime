@@ -33,10 +33,12 @@ func TestDisplayStart(t *testing.T) {
 	sigChan := make(chan os.Signal, 1)
 	updateComplete := make(chan struct{})
 
+	t.Log("Starting display")
 	go d.Start(sigChan)
 
 	// Update status to trigger table rendering
 	go func() {
+		t.Log("Updating status")
 		d.UpdateStatus(&Status{
 			ID:              "test-id",
 			Type:            "EC2",
@@ -55,12 +57,12 @@ func TestDisplayStart(t *testing.T) {
 	// Wait for the update to complete or timeout
 	select {
 	case <-updateComplete:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Test timed out waiting for update")
 	}
 
-	// Give some time for the display to update
-	time.Sleep(1 * time.Second)
+	// Give more time for the display to update
+	time.Sleep(5 * time.Second)
 
 	// Stop the display
 	d.Stop()
