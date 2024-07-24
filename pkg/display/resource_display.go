@@ -340,6 +340,13 @@ func (d *Display) renderTable() {
 
 	logDebugf("About to call QueueUpdateDraw")
 	updateComplete := make(chan struct{})
+	timeoutChan := make(chan struct{})
+	
+	go func() {
+		time.Sleep(5 * time.Second)
+		close(timeoutChan)
+	}()
+
 	d.app.QueueUpdateDraw(func() {
 		logDebugf("Inside QueueUpdateDraw callback")
 		defer close(updateComplete)
@@ -350,8 +357,9 @@ func (d *Display) renderTable() {
 	select {
 	case <-updateComplete:
 		logDebugf("QueueUpdateDraw completed successfully")
-	case <-time.After(5 * time.Second):
+	case <-timeoutChan:
 		logDebugf("QueueUpdateDraw timed out after 5 seconds")
+		d.DebugLog.Error("QueueUpdateDraw timed out. Current goroutine stack:\n" + getGoroutineInfo())
 	}
 
 	logDebugf("Table cells set")
@@ -577,4 +585,9 @@ func (d *Display) printFinalTableState() {
 		fmt.Println("|")
 	}
 	printSeparator() // Print bottom separator
+}
+func getGoroutineInfo() string {
+	buf := make([]byte, 1<<16)
+	n := runtime.Stack(buf, true)
+	return string(buf[:n])
 }
