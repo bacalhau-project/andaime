@@ -374,7 +374,9 @@ func (d *Display) Stop() {
 	d.DebugLog.Debug("Stopping display")
 	d.stopOnce.Do(func() {
 		close(d.stopChan)
-		d.app.Stop()
+		d.app.QueueUpdateDraw(func() {
+			d.app.Stop()
+		})
 		if !d.testMode {
 			d.WaitForStop()
 		} else {
@@ -397,11 +399,25 @@ func (d *Display) resetTerminal() {
 
 func (d *Display) WaitForStop() {
 	d.DebugLog.Debug("Waiting for display to stop")
-	select {
-	case <-d.quit:
-		d.DebugLog.Debug("Display stopped")
-	case <-time.After(5 * time.Second): //nolint:gomnd
-		d.DebugLog.Debug("Timeout waiting for display to stop")
+	timeout := time.After(10 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-d.quit:
+			d.DebugLog.Debug("Display stopped")
+			return
+		case <-timeout:
+			d.DebugLog.Debug("Timeout waiting for display to stop")
+			return
+		case <-ticker.C:
+			if !d.app.IsRunning() {
+				d.DebugLog.Debug("Application is no longer running")
+				close(d.quit)
+				return
+			}
+		}
 	}
 }
 
