@@ -241,10 +241,16 @@ func (d *Display) renderTable() {
 		d.lastTableState[0][col] = header.Text
 	}
 
-	if !d.testMode {
-		for row, status := range statuses {
-			highlightColor := d.getHighlightColor(status.HighlightCycles)
-			d.lastTableState[row+1] = make([]string, len(DisplayColumns))
+	var tableContent strings.Builder
+	tableContent.WriteString(d.getTableHeader())
+
+	for row, status := range statuses {
+		highlightColor := d.getHighlightColor(status.HighlightCycles)
+		d.lastTableState[row+1] = make([]string, len(DisplayColumns))
+		rowContent := d.getTableRow(status, highlightColor)
+		tableContent.WriteString(rowContent)
+		
+		if !d.testMode {
 			for col, column := range DisplayColumns {
 				cellText := column.DataFunc(*status)
 				paddedText := d.padText(cellText, column.Width)
@@ -255,6 +261,12 @@ func (d *Display) renderTable() {
 				d.lastTableState[row+1][col] = cellText
 			}
 		}
+	}
+
+	tableContent.WriteString(d.getTableFooter())
+
+	if d.testMode {
+		d.AddLogEntry(tableContent.String())
 	}
 
 	d.DebugLog.Debug("Table cells set")
@@ -268,6 +280,60 @@ func (d *Display) renderTable() {
 	}
 	d.statusesMu.Unlock()
 	d.DebugLog.Debug("Table rendered")
+}
+
+func (d *Display) getTableHeader() string {
+	var header strings.Builder
+	header.WriteString("┌")
+	for i, column := range DisplayColumns {
+		header.WriteString(strings.Repeat("─", column.Width+2))
+		if i < len(DisplayColumns)-1 {
+			header.WriteString("┬")
+		}
+	}
+	header.WriteString("┐\n")
+
+	header.WriteString("│")
+	for _, column := range DisplayColumns {
+		header.WriteString(fmt.Sprintf(" %-*s │", column.Width, column.Text))
+	}
+	header.WriteString("\n")
+
+	header.WriteString("├")
+	for i, column := range DisplayColumns {
+		header.WriteString(strings.Repeat("─", column.Width+2))
+		if i < len(DisplayColumns)-1 {
+			header.WriteString("┼")
+		}
+	}
+	header.WriteString("┤\n")
+
+	return header.String()
+}
+
+func (d *Display) getTableRow(status *Status, highlightColor tcell.Color) string {
+	var row strings.Builder
+	row.WriteString("│")
+	for _, column := range DisplayColumns {
+		cellText := column.DataFunc(*status)
+		paddedText := d.padText(cellText, column.Width)
+		row.WriteString(fmt.Sprintf(" %s │", paddedText))
+	}
+	row.WriteString("\n")
+	return row.String()
+}
+
+func (d *Display) getTableFooter() string {
+	var footer strings.Builder
+	footer.WriteString("└")
+	for i, column := range DisplayColumns {
+		footer.WriteString(strings.Repeat("─", column.Width+2))
+		if i < len(DisplayColumns)-1 {
+			footer.WriteString("┴")
+		}
+	}
+	footer.WriteString("┘\n")
+	return footer.String()
 }
 
 func (d *Display) padText(text string, width int) string {
@@ -335,6 +401,13 @@ func (d *Display) WaitForStop() {
 
 func (d *Display) AddLogEntry(logEntry string) {
 	d.DebugLog.Debug(logEntry)
+	if d.testMode {
+		d.LogBox.Write([]byte(logEntry + "\n"))
+	} else {
+		d.app.QueueUpdateDraw(func() {
+			fmt.Fprintf(d.LogBox, "%s\n", logEntry)
+		})
+	}
 }
 
 func (d *Display) printFinalTableState() {
