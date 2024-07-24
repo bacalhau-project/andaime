@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+. <( /usr/local/bin/flox activate; );
+
 # Set GOPATH to an absolute path
 export GOPATH="$HOME/go"
 
