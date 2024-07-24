@@ -55,14 +55,16 @@ func TestDisplayStart(t *testing.T) {
 	}()
 
 	// Wait for the update to complete or timeout
+	t.Log("Waiting for update to complete")
 	select {
 	case <-updateComplete:
-	case <-time.After(30 * time.Second):
+		t.Log("Update completed successfully")
+	case <-time.After(3 * time.Second):
 		t.Fatal("Test timed out waiting for update")
 	}
 
-	// Give more time for the display to update
-	time.Sleep(5 * time.Second)
+	t.Log("Waiting for display to update")
+	time.Sleep(1 * time.Second)
 
 	// Stop the display
 	d.Stop()

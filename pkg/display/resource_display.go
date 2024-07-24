@@ -157,34 +157,34 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) {
-	logDebugf("UpdateStatus called with %s", status.ID)
+	d.DebugLog.Debug("UpdateStatus called", "id", status.ID)
 	d.statusesMu.RLock()
 	existingStatus, exists := d.statuses[status.ID]
 	d.statusesMu.RUnlock()
 
 	newStatus := *status // Create a copy of the status
 	if !exists {
-		logDebugf("Adding new status: %s", status.ID)
+		d.DebugLog.Debug("Adding new status", "id", status.ID)
 		d.statusesMu.Lock()
 		d.completedTasks++
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	} else if *existingStatus != newStatus {
-		logDebugf("Updating existing status: %s", status.ID)
+		d.DebugLog.Debug("Updating existing status", "id", status.ID)
 		d.statusesMu.Lock()
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	}
 
-	logDebugf("Queueing table render for status update: %s", status.ID)
+	d.DebugLog.Debug("Queueing table render", "id", status.ID)
 	d.app.QueueUpdateDraw(func() {
-		logDebugf("Starting table render for status update: %s", status.ID)
+		d.DebugLog.Debug("Starting table render", "id", status.ID)
 		d.renderTable()
-		logDebugf("Finished table render for status update: %s", status.ID)
+		d.DebugLog.Debug("Finished table render", "id", status.ID)
 	})
-	logDebugf("UpdateStatus completed for %s", status.ID)
+	d.DebugLog.Debug("UpdateStatus completed", "id", status.ID)
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
