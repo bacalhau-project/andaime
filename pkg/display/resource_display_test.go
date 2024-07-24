@@ -37,29 +37,26 @@ func TestDisplayStart(t *testing.T) {
 	go d.Start(sigChan)
 
 	// Update status to trigger table rendering
-	go func() {
-		t.Log("Updating status")
-		d.UpdateStatus(&Status{
-			ID:             "test-id",
-			Type:           "EC2",
-			Region:         "us-west-2",
-			Zone:           "zone-a",
-			Status:         "Running",
-			DetailedStatus: "Healthy",
-			ElapsedTime:    5 * time.Second,
-			InstanceID:     "i-12345",
-			PublicIP:       "203.0.113.1",
-			PrivateIP:      "10.0.0.1",
-		})
-		close(updateComplete)
-	}()
+	t.Log("Updating status")
+	updateComplete := d.UpdateStatus(&Status{
+		ID:             "test-id",
+		Type:           "EC2",
+		Region:         "us-west-2",
+		Zone:           "zone-a",
+		Status:         "Running",
+		DetailedStatus: "Healthy",
+		ElapsedTime:    5 * time.Second,
+		InstanceID:     "i-12345",
+		PublicIP:       "203.0.113.1",
+		PrivateIP:      "10.0.0.1",
+	})
 
 	// Wait for the update to complete or timeout
 	t.Log("Waiting for update to complete")
 	select {
 	case <-updateComplete:
 		t.Log("Update completed successfully")
-	case <-time.After(1000 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("Test timed out waiting for update")
 	}
 

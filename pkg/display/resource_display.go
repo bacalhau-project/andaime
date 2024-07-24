@@ -159,8 +159,10 @@ func (d *Display) setupLayout() {
 	d.app.SetRoot(flex, true).EnableMouse(false)
 }
 
-func (d *Display) UpdateStatus(status *Status) {
+func (d *Display) UpdateStatus(status *Status) chan struct{} {
 	d.DebugLog.Debugf("UpdateStatus called ID: %s", status.ID)
+	updateComplete := make(chan struct{})
+
 	d.statusesMu.RLock()
 	existingStatus, exists := d.statuses[status.ID]
 	d.statusesMu.RUnlock()
@@ -186,8 +188,10 @@ func (d *Display) UpdateStatus(status *Status) {
 		d.DebugLog.Debugf("Starting table render for status ID: %s", status.ID)
 		d.renderTable()
 		d.DebugLog.Debugf("Finished table render for status ID: %s", status.ID)
+		close(updateComplete)
 	})
-	d.DebugLog.Debugf("UpdateStatus completed for status ID: %s", status.ID)
+	d.DebugLog.Debugf("UpdateStatus queued for status ID: %s", status.ID)
+	return updateComplete
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
