@@ -28,6 +28,8 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 		d.Logger = logger.Get()
 	}
 	d.Logger.Debug("Starting test display")
+	d.stopChan = make(chan struct{})
+	d.quit = make(chan struct{})
 	go func() {
 		<-d.stopChan
 		close(d.quit)
