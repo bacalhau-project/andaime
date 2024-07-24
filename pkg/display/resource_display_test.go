@@ -62,9 +62,9 @@ func TestDisplayStart(t *testing.T) {
 
 	// Check if the table content is in the LogBox
 	logContent := d.LogBox.GetText(true)
-	assert.Contains(t, logContent, "test-id")
-	assert.Contains(t, logContent, "EC2")
-	assert.Contains(t, logContent, "us-west-2")
-	assert.Contains(t, logContent, "zone-a")
-	assert.Contains(t, logContent, "Running")
+	assert.Contains(t, logContent, "┌──────────┬──────────┬───────────────┬───────────────┬──────────────────────────────┬──────────┬────────────────┬───────────────┬───────────────┐")
+	assert.Contains(t, logContent, "│ ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP    │")
+	assert.Contains(t, logContent, "├──────────┼──────────┼───────────────┼───────────────┼──────────────────────────────┼──────────┼────────────────┼───────────────┼───────────────┤")
+	assert.Contains(t, logContent, "│ test-id  │ EC2      │ us-west-2     │ zone-a        │ Running                      │ 0s       │                │               │               │")
+	assert.Contains(t, logContent, "└──────────┴──────────┴───────────────┴───────────────┴──────────────────────────────┴──────────┴────────────────┴───────────────┴───────────────┘")
 }

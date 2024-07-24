@@ -250,15 +250,15 @@ func (d *Display) renderTable() {
 		rowContent := d.getTableRow(status, highlightColor)
 		tableContent.WriteString(rowContent)
 		
-		if !d.testMode {
-			for col, column := range DisplayColumns {
-				cellText := column.DataFunc(*status)
-				paddedText := d.padText(cellText, column.Width)
+		for col, column := range DisplayColumns {
+			cellText := column.DataFunc(*status)
+			paddedText := d.padText(cellText, column.Width)
+			d.lastTableState[row+1][col] = cellText
+			if !d.testMode {
 				cell := tview.NewTableCell(paddedText).
 					SetMaxWidth(column.Width).
 					SetTextColor(highlightColor)
 				d.table.SetCell(row+1, col, cell)
-				d.lastTableState[row+1][col] = cellText
 			}
 		}
 	}
@@ -267,6 +267,22 @@ func (d *Display) renderTable() {
 
 	if d.testMode {
 		d.AddLogEntry(tableContent.String())
+	} else {
+		d.app.QueueUpdateDraw(func() {
+			d.table.Clear()
+			for row := 0; row < len(d.lastTableState); row++ {
+				for col := 0; col < len(DisplayColumns); col++ {
+					cellText := d.lastTableState[row][col]
+					paddedText := d.padText(cellText, DisplayColumns[col].Width)
+					cell := tview.NewTableCell(paddedText).
+						SetMaxWidth(DisplayColumns[col].Width)
+					if row == 0 {
+						cell.SetTextColor(DisplayColumns[col].Color)
+					}
+					d.table.SetCell(row, col, cell)
+				}
+			}
+		})
 	}
 
 	d.DebugLog.Debug("Table cells set")
