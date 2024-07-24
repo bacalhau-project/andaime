@@ -173,9 +173,28 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) chan struct{} {
+	updateComplete := make(chan struct{})
+
+	if d == nil {
+		logDebugf("Display is nil in UpdateStatus")
+		close(updateComplete)
+		return updateComplete
+	}
+
+	if status == nil {
+		logDebugf("Status is nil in UpdateStatus")
+		close(updateComplete)
+		return updateComplete
+	}
+
 	logDebugf("UpdateStatus called ID: %s", status.ID)
 	logDebugf("Goroutine info:\n%s", getGoroutineInfo())
-	updateComplete := make(chan struct{})
+
+	if d.ctx == nil {
+		logDebugf("Context is nil in UpdateStatus")
+		close(updateComplete)
+		return updateComplete
+	}
 
 	select {
 	case <-d.ctx.Done():
@@ -183,6 +202,11 @@ func (d *Display) UpdateStatus(status *Status) chan struct{} {
 		close(updateComplete)
 		return updateComplete
 	default:
+		if d.statuses == nil {
+			logDebugf("Statuses map is nil in UpdateStatus")
+			d.statuses = make(map[string]*Status)
+		}
+
 		d.statusesMu.RLock()
 		existingStatus, exists := d.statuses[status.ID]
 		d.statusesMu.RUnlock()
@@ -204,6 +228,11 @@ func (d *Display) UpdateStatus(status *Status) chan struct{} {
 		}
 
 		logDebugf("Queueing table render for status ID: %s", status.ID)
+		if d.app == nil {
+			logDebugf("App is nil in UpdateStatus")
+			close(updateComplete)
+			return updateComplete
+		}
 		d.app.QueueUpdateDraw(func() {
 			select {
 			case <-d.ctx.Done():

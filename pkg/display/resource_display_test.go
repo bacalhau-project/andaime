@@ -30,8 +30,13 @@ func TestNewDisplayInternal(t *testing.T) {
 
 func TestDisplayStart(t *testing.T) {
 	d := newDisplayInternal(1, true)
+	assert.NotNil(t, d)
+	assert.NotNil(t, d.app)
+	assert.NotNil(t, d.table)
+	assert.NotNil(t, d.LogBox)
+	assert.NotNil(t, d.statuses)
+
 	sigChan := make(chan os.Signal, 1)
-	updateComplete := make(chan struct{})
 
 	t.Log("Starting display")
 	go d.Start(sigChan)
@@ -41,7 +46,7 @@ func TestDisplayStart(t *testing.T) {
 
 	// Update status to trigger table rendering
 	t.Log("Updating status")
-	updateComplete = d.UpdateStatus(&Status{
+	updateComplete := d.UpdateStatus(&Status{
 		ID:             "test-id",
 		Type:           "EC2",
 		Region:         "us-west-2",
@@ -60,8 +65,10 @@ func TestDisplayStart(t *testing.T) {
 	case <-updateComplete:
 		t.Log("Update completed successfully")
 	case <-time.After(5 * time.Second):
-		t.Log("Test timed out waiting for update, cancelling context")
-		d.cancel() // Cancel the context
+		t.Log("Test timed out waiting for update")
+		if d.cancel != nil {
+			d.cancel() // Cancel the context if it exists
+		}
 		t.Fatal("Test timed out waiting for update")
 	}
 
