@@ -100,9 +100,11 @@ func newDisplayInternal(totalTasks int, testMode bool) *Display {
 		stopChan:           make(chan struct{}),
 		quit:               make(chan struct{}),
 		testMode:           testMode,
+		LogBox:             tview.NewTextView().SetDynamicColors(true),
 	}
 
 	d.DebugLog = *logger.Get()
+	d.Logger = *logger.Get()
 	d.setupTable()
 	d.setupLayout()
 
