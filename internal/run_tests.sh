@@ -4,6 +4,8 @@
 if ! command -v go &> /dev/null
 then
     echo "Error: Go is not installed or not in PATH"
+    echo "Please install Go from https://golang.org/doc/install"
+    echo "After installation, make sure 'go' is in your PATH"
     exit 1
 fi
 
