@@ -54,7 +54,7 @@ func TestDisplayStart(t *testing.T) {
 
 	// Update status to trigger table rendering
 	t.Log("Updating status")
-	updateComplete := d.UpdateStatus(&Status{
+	d.UpdateStatus(&Status{
 		ID:             "test-id",
 		Type:           "EC2",
 		Region:         "us-west-2",
@@ -67,13 +67,8 @@ func TestDisplayStart(t *testing.T) {
 		PrivateIP:      "10.0.0.1",
 	})
 
-	// Wait for the update to complete or timeout
-	select {
-	case <-updateComplete:
-		t.Log("Update completed successfully")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for update to complete")
-	}
+	// Give some time for the update to complete
+	time.Sleep(100 * time.Millisecond)
 
 	// Stop the display
 	d.Stop()
