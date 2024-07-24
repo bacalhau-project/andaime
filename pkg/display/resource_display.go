@@ -363,8 +363,9 @@ func (d *Display) Start(sigChan chan os.Signal) {
 	select {
 	case <-appRunComplete:
 		logDebugf("tview application finished running")
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		logDebugf("Timeout waiting for tview application to start")
+		d.Stop()
 	}
 
 	logDebugf("Display start completed")
