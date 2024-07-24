@@ -19,20 +19,22 @@ import (
 var debugLogger *log.Logger
 
 func init() {
-	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gomnd
 	if err != nil {
 		log.Fatal(err)
 	}
 	debugLogger = log.New(debugFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
-func logDebug(format string, v ...interface{}) {
+func logDebugf(format string, v ...interface{}) {
 	debugLogger.Printf(format, v...)
 }
 
 const NumberOfCyclesToHighlight = 8
 const HighlightTimer = 250 * time.Millisecond
 const HighlightColor = tcell.ColorDarkGreen
+const timeoutDuration = 5
+const textColumnPadding = 2
 
 type Status struct {
 	ID              string
@@ -155,34 +157,34 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) {
-	logDebug("UpdateStatus called with %s", status.ID)
+	logDebugf("UpdateStatus called with %s", status.ID)
 	d.statusesMu.RLock()
 	existingStatus, exists := d.statuses[status.ID]
 	d.statusesMu.RUnlock()
 
 	newStatus := *status // Create a copy of the status
 	if !exists {
-		logDebug("Adding new status: %s", status.ID)
+		logDebugf("Adding new status: %s", status.ID)
 		d.statusesMu.Lock()
 		d.completedTasks++
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	} else if *existingStatus != newStatus {
-		logDebug("Updating existing status: %s", status.ID)
+		logDebugf("Updating existing status: %s", status.ID)
 		d.statusesMu.Lock()
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	}
 
-	logDebug("Queueing table render for status update: %s", status.ID)
+	logDebugf("Queueing table render for status update: %s", status.ID)
 	d.app.QueueUpdateDraw(func() {
-		logDebug("Starting table render for status update: %s", status.ID)
+		logDebugf("Starting table render for status update: %s", status.ID)
 		d.renderTable()
-		logDebug("Finished table render for status update: %s", status.ID)
+		logDebugf("Finished table render for status update: %s", status.ID)
 	})
-	logDebug("UpdateStatus completed for %s", status.ID)
+	logDebugf("UpdateStatus completed for %s", status.ID)
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -221,25 +223,39 @@ func (d *Display) startHighlightTimer() {
 			select {
 			case <-ticker.C:
 				tickCount++
-				d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d", tickCount))
-				d.app.QueueUpdateDraw(func() {
-					d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d started", tickCount))
-					d.renderTable()
-					d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d completed", tickCount))
-				})
+				d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d started", tickCount))
+
+				updateComplete := make(chan bool)
+				timeoutTimer := time.NewTimer(timeoutDuration * time.Second)
+
+				go func() {
+					d.app.QueueUpdateDraw(func() {
+						d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d started", tickCount))
+						d.renderTable()
+						d.DebugLog.Debug(fmt.Sprintf("QueueUpdateDraw in timer tick %d completed", tickCount))
+						updateComplete <- true
+					})
+				}()
+
+				select {
+				case <-updateComplete:
+					d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d completed successfully", tickCount))
+				case <-timeoutTimer.C:
+					d.DebugLog.Debug(fmt.Sprintf("Highlight timer tick %d timed out", tickCount))
+				}
+
+				timeoutTimer.Stop()
+
 			case <-d.stopChan:
 				d.DebugLog.Debug("Highlight timer stopped")
 				return
-			default:
-				// Add a small sleep to prevent tight loop
-				time.Sleep(50 * time.Millisecond)
 			}
 		}
 	}()
 }
 
 func (d *Display) renderTable() {
-	logDebug("Rendering table started")
+	logDebugf("Rendering table started")
 	d.statusesMu.RLock()
 	statusesCopy := make(map[string]*Status, len(d.statuses))
 	for id, status := range d.statuses {
@@ -248,7 +264,7 @@ func (d *Display) renderTable() {
 	}
 	d.statusesMu.RUnlock()
 
-	logDebug("Statuses copied: %d statuses", len(statusesCopy))
+	logDebugf("Statuses copied: %d statuses", len(statusesCopy))
 
 	statuses := make([]*Status, 0, len(statusesCopy))
 	for _, status := range statusesCopy {
@@ -259,7 +275,7 @@ func (d *Display) renderTable() {
 		return statuses[i].ID < statuses[j].ID
 	})
 
-	logDebug("Statuses sorted")
+	logDebugf("Statuses sorted")
 
 	d.lastTableState = make([][]string, len(statuses)+1)
 	d.lastTableState[0] = make([]string, len(DisplayColumns))
@@ -292,12 +308,12 @@ func (d *Display) renderTable() {
 	tableContent.WriteString(d.getTableFooter())
 
 	if d.testMode {
-		logDebug("Test mode: Adding log entry for table content")
+		logDebugf("Test mode: Adding log entry for table content")
 		d.AddLogEntry(tableContent.String())
 	} else {
-		logDebug("Live mode: Queueing table update")
+		logDebugf("Live mode: Queueing table update")
 		d.app.QueueUpdateDraw(func() {
-			logDebug("Clearing table")
+			logDebugf("Clearing table")
 			d.table.Clear()
 			for row := 0; row < len(d.lastTableState); row++ {
 				for col := 0; col < len(DisplayColumns); col++ {
@@ -308,15 +324,15 @@ func (d *Display) renderTable() {
 					if row == 0 {
 						cell.SetTextColor(DisplayColumns[col].Color)
 					}
-					logDebug("Setting cell at row %d, col %d: %s", row, col, cellText)
+					logDebugf("Setting cell at row %d, col %d: %s", row, col, cellText)
 					d.table.SetCell(row, col, cell)
 				}
 			}
-			logDebug("Table update complete")
+			logDebugf("Table update complete")
 		})
 	}
 
-	logDebug("Table cells set")
+	logDebugf("Table cells set")
 
 	d.statusesMu.Lock()
 	for id, status := range d.statuses {
@@ -326,14 +342,14 @@ func (d *Display) renderTable() {
 		}
 	}
 	d.statusesMu.Unlock()
-	logDebug("Table rendered")
+	logDebugf("Table rendered")
 }
 
 func (d *Display) getTableHeader() string {
 	var header strings.Builder
 	header.WriteString("┌")
 	for i, column := range DisplayColumns {
-		header.WriteString(strings.Repeat("─", column.Width+2))
+		header.WriteString(strings.Repeat("─", column.Width+textColumnPadding))
 		if i < len(DisplayColumns)-1 {
 			header.WriteString("┬")
 		}
@@ -348,7 +364,7 @@ func (d *Display) getTableHeader() string {
 
 	header.WriteString("├")
 	for i, column := range DisplayColumns {
-		header.WriteString(strings.Repeat("─", column.Width+2))
+		header.WriteString(strings.Repeat("─", column.Width+textColumnPadding))
 		if i < len(DisplayColumns)-1 {
 			header.WriteString("┼")
 		}
@@ -358,7 +374,7 @@ func (d *Display) getTableHeader() string {
 	return header.String()
 }
 
-func (d *Display) getTableRow(status *Status, highlightColor tcell.Color) string {
+func (d *Display) getTableRow(status *Status, _ tcell.Color) string {
 	var row strings.Builder
 	row.WriteString("│")
 	for _, column := range DisplayColumns {
@@ -374,7 +390,7 @@ func (d *Display) getTableFooter() string {
 	var footer strings.Builder
 	footer.WriteString("└")
 	for i, column := range DisplayColumns {
-		footer.WriteString(strings.Repeat("─", column.Width+2))
+		footer.WriteString(strings.Repeat("─", column.Width+textColumnPadding))
 		if i < len(DisplayColumns)-1 {
 			footer.WriteString("┴")
 		}
@@ -391,49 +407,49 @@ func (d *Display) padText(text string, width int) string {
 }
 
 func (d *Display) Start(sigChan chan os.Signal) {
-	logDebug("Starting display")
+	logDebugf("Starting display")
 	if d.testMode {
-		logDebug("Test mode: Starting highlight timer")
+		logDebugf("Test mode: Starting highlight timer")
 		d.startHighlightTimer()
 		return
 	}
 
 	go func() {
-		logDebug("Setting up input capture")
+		logDebugf("Setting up input capture")
 		d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			logDebug("Key event received: %v", event.Key())
+			logDebugf("Key event received: %v", event.Key())
 			if event.Key() == tcell.KeyCtrlC {
-				logDebug("Ctrl+C detected, sending interrupt signal")
+				logDebugf("Ctrl+C detected, sending interrupt signal")
 				sigChan <- os.Interrupt
 				return nil
 			}
 			return event
 		})
 
-		logDebug("Starting highlight timer")
+		logDebugf("Starting highlight timer")
 		d.startHighlightTimer()
 
-		logDebug("Running tview application")
+		logDebugf("Running tview application")
 		if err := d.app.Run(); err != nil {
-			logDebug("Error running display: %v", err)
+			logDebugf("Error running display: %v", err)
 		}
-		logDebug("tview application finished running")
+		logDebugf("tview application finished running")
 	}()
 
 	go func() {
-		logDebug("Starting signal handling goroutine")
+		logDebugf("Starting signal handling goroutine")
 		signalChan := make(chan os.Signal, 1)
 		signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 		select {
 		case <-d.stopChan:
-			logDebug("Stop signal received from internal channel")
+			logDebugf("Stop signal received from internal channel")
 		case sig := <-signalChan:
-			logDebug("Stop signal received from external channel: %v", sig)
+			logDebugf("Stop signal received from external channel: %v", sig)
 		}
-		logDebug("Stopping app")
+		logDebugf("Stopping app")
 		d.Stop()
 	}()
-	logDebug("Display start completed")
+	logDebugf("Display start completed")
 }
 
 func (d *Display) Stop() {
@@ -451,7 +467,7 @@ func (d *Display) Stop() {
 }
 
 func (d *Display) resetTerminal() {
-	logDebug("Resetting terminal")
+	logDebugf("Resetting terminal")
 	if !d.testMode {
 		d.app.Suspend(func() {
 			fmt.Print("\033[?1049l") // Exit alternate screen buffer
@@ -473,7 +489,10 @@ func (d *Display) WaitForStop() {
 func (d *Display) AddLogEntry(logEntry string) {
 	d.DebugLog.Debug(logEntry)
 	if d.testMode {
-		d.LogBox.Write([]byte(logEntry + "\n"))
+		_, err := d.LogBox.Write([]byte(logEntry + "\n"))
+		if err != nil {
+			d.DebugLog.Error(fmt.Sprintf("Error writing to log box: %v", err))
+		}
 	} else {
 		d.app.QueueUpdateDraw(func() {
 			fmt.Fprintf(d.LogBox, "%s\n", logEntry)
