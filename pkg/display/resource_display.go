@@ -7,11 +7,26 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"log"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+var debugLogger *log.Logger
+
+func init() {
+	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	debugLogger = log.New(debugFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+func logDebug(format string, v ...interface{}) {
+	debugLogger.Printf(format, v...)
+}
 
 const NumberOfCyclesToHighlight = 8
 const HighlightTimer = 250 * time.Millisecond
@@ -138,27 +153,28 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(status *Status) {
-	d.DebugLog.Debugf("UpdateStatus called with %s", status.ID)
+	logDebug("UpdateStatus called with %s", status.ID)
 	d.statusesMu.RLock()
 	existingStatus, exists := d.statuses[status.ID]
 	d.statusesMu.RUnlock()
 
 	newStatus := *status // Create a copy of the status
 	if !exists {
-		d.DebugLog.Debugf("Adding new status: %s", status.ID)
+		logDebug("Adding new status: %s", status.ID)
 		d.statusesMu.Lock()
 		d.completedTasks++
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	} else if *existingStatus != newStatus {
-		d.DebugLog.Debugf("Updating existing status: %s", status.ID)
+		logDebug("Updating existing status: %s", status.ID)
 		d.statusesMu.Lock()
 		newStatus.HighlightCycles = d.fadeSteps
 		d.statuses[newStatus.ID] = &newStatus
 		d.statusesMu.Unlock()
 	}
 
+	logDebug("Queueing table render for status update: %s", status.ID)
 	d.app.QueueUpdateDraw(func() {
 		d.renderTable()
 	})
@@ -213,7 +229,7 @@ func (d *Display) startHighlightTimer() {
 }
 
 func (d *Display) renderTable() {
-	d.DebugLog.Debug("Rendering table started")
+	logDebug("Rendering table started")
 	d.statusesMu.RLock()
 	statusesCopy := make(map[string]*Status, len(d.statuses))
 	for id, status := range d.statuses {
@@ -222,7 +238,7 @@ func (d *Display) renderTable() {
 	}
 	d.statusesMu.RUnlock()
 
-	d.DebugLog.Debugf("Statuses copied: %d statuses", len(statusesCopy))
+	logDebug("Statuses copied: %d statuses", len(statusesCopy))
 
 	statuses := make([]*Status, 0, len(statusesCopy))
 	for _, status := range statusesCopy {
@@ -233,7 +249,7 @@ func (d *Display) renderTable() {
 		return statuses[i].ID < statuses[j].ID
 	})
 
-	d.DebugLog.Debug("Statuses sorted")
+	logDebug("Statuses sorted")
 
 	d.lastTableState = make([][]string, len(statuses)+1)
 	d.lastTableState[0] = make([]string, len(DisplayColumns))
@@ -266,9 +282,12 @@ func (d *Display) renderTable() {
 	tableContent.WriteString(d.getTableFooter())
 
 	if d.testMode {
+		logDebug("Test mode: Adding log entry for table content")
 		d.AddLogEntry(tableContent.String())
 	} else {
+		logDebug("Live mode: Queueing table update")
 		d.app.QueueUpdateDraw(func() {
+			logDebug("Clearing table")
 			d.table.Clear()
 			for row := 0; row < len(d.lastTableState); row++ {
 				for col := 0; col < len(DisplayColumns); col++ {
@@ -279,13 +298,15 @@ func (d *Display) renderTable() {
 					if row == 0 {
 						cell.SetTextColor(DisplayColumns[col].Color)
 					}
+					logDebug("Setting cell at row %d, col %d: %s", row, col, cellText)
 					d.table.SetCell(row, col, cell)
 				}
 			}
+			logDebug("Table update complete")
 		})
 	}
 
-	d.DebugLog.Debug("Table cells set")
+	logDebug("Table cells set")
 
 	d.statusesMu.Lock()
 	for id, status := range d.statuses {
@@ -295,7 +316,7 @@ func (d *Display) renderTable() {
 		}
 	}
 	d.statusesMu.Unlock()
-	d.DebugLog.Debug("Table rendered")
+	logDebug("Table rendered")
 }
 
 func (d *Display) getTableHeader() string {
@@ -360,39 +381,46 @@ func (d *Display) padText(text string, width int) string {
 }
 
 func (d *Display) Start(sigChan chan os.Signal) {
-	d.DebugLog.Debug("Starting display")
+	logDebug("Starting display")
 	if d.testMode {
+		logDebug("Test mode: Starting highlight timer")
 		d.startHighlightTimer()
 		return
 	}
 
 	go func() {
+		logDebug("Setting up input capture")
 		d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyCtrlC {
+				logDebug("Ctrl+C detected, sending interrupt signal")
 				sigChan <- os.Interrupt
 				return nil
 			}
 			return event
 		})
 
+		logDebug("Starting highlight timer")
 		d.startHighlightTimer()
 
+		logDebug("Running tview application")
 		if err := d.app.Run(); err != nil {
-			d.DebugLog.Error(fmt.Sprintf("Error running display: %v", err))
+			logDebug("Error running display: %v", err)
 		}
 	}()
 
 	go func() {
 		select {
 		case <-d.stopChan:
-			d.DebugLog.Debug("Stop signal received from internal channel")
+			logDebug("Stop signal received from internal channel")
 		case <-sigChan:
-			d.DebugLog.Debug("Stop signal received from external channel")
+			logDebug("Stop signal received from external channel")
 		}
-		d.DebugLog.Debug("Stopping app")
+		logDebug("Stopping app")
 		d.app.QueueUpdateDraw(func() {
+			logDebug("Stopping tview application")
 			d.app.Stop()
 		})
+		logDebug("Closing quit channel")
 		close(d.quit)
 	}()
 }
