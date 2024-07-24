@@ -310,17 +310,17 @@ func (d *Display) renderTable() {
 	d.lastTableState[0] = make([]string, len(DisplayColumns))
 	for col, header := range DisplayColumns {
 		d.lastTableState[0][col] = header.Text
+		cell := tview.NewTableCell(header.Text).
+			SetTextColor(header.Color).
+			SetSelectable(false).
+			SetExpansion(0).
+			SetMaxWidth(header.Width)
+		d.table.SetCell(0, col, cell)
 	}
-
-	var tableContent strings.Builder
-	tableContent.WriteString(d.getTableHeader())
 
 	for row, status := range statuses {
 		highlightColor := d.getHighlightColor(status.HighlightCycles)
 		d.lastTableState[row+1] = make([]string, len(DisplayColumns))
-		rowContent := d.getTableRow(status, highlightColor)
-		tableContent.WriteString(rowContent)
-
 		for col, column := range DisplayColumns {
 			cellText := column.DataFunc(*status)
 			paddedText := d.padText(cellText, column.Width)
@@ -332,11 +332,9 @@ func (d *Display) renderTable() {
 		}
 	}
 
-	tableContent.WriteString(d.getTableFooter())
-
 	if d.testMode {
 		logDebugf("Test mode: Adding log entry for table content")
-		d.AddLogEntry(tableContent.String())
+		d.AddLogEntry(d.getTableString())
 	}
 
 	d.app.QueueUpdateDraw(func() {
@@ -354,6 +352,27 @@ func (d *Display) renderTable() {
 	}
 	d.statusesMu.Unlock()
 	logDebugf("Table rendered")
+}
+
+func (d *Display) getTableString() string {
+	var tableContent strings.Builder
+	tableContent.WriteString(d.getTableHeader())
+	for _, row := range d.lastTableState[1:] {
+		tableContent.WriteString(d.getTableRow(row))
+	}
+	tableContent.WriteString(d.getTableFooter())
+	return tableContent.String()
+}
+
+func (d *Display) getTableRow(row []string) string {
+	var rowContent strings.Builder
+	rowContent.WriteString("│")
+	for col, cell := range row {
+		paddedText := d.padText(cell, DisplayColumns[col].Width)
+		rowContent.WriteString(fmt.Sprintf(" %s │", paddedText))
+	}
+	rowContent.WriteString("\n")
+	return rowContent.String()
 }
 
 func (d *Display) getTableHeader() string {
@@ -425,41 +444,37 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		return
 	}
 
-	go func() {
-		logDebugf("Setting up input capture")
-		d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			logDebugf("Key event received: %v", event.Key())
-			if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
-				logDebugf("Ctrl+C or 'q' detected, stopping display")
-				d.Stop()
-				return nil
-			}
-			return event
-		})
-
-		logDebugf("Starting highlight timer")
-		d.startHighlightTimer()
-
-		logDebugf("Running tview application")
-		if err := d.app.Run(); err != nil {
-			logDebugf("Error running display: %v", err)
+	d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		logDebugf("Key event received: %v", event.Key())
+		if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
+			logDebugf("Ctrl+C or 'q' detected, stopping display")
+			d.Stop()
+			return nil
 		}
-		logDebugf("tview application finished running")
-	}()
+		return event
+	})
+
+	logDebugf("Starting highlight timer")
+	d.startHighlightTimer()
 
 	go func() {
 		logDebugf("Starting signal handling goroutine")
-		signalChan := make(chan os.Signal, 1)
-		signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 		select {
 		case <-d.stopChan:
 			logDebugf("Stop signal received from internal channel")
-		case sig := <-signalChan:
+		case sig := <-sigChan:
 			logDebugf("Stop signal received from external channel: %v", sig)
 		}
 		logDebugf("Stopping app")
 		d.Stop()
 	}()
+
+	logDebugf("Running tview application")
+	if err := d.app.Run(); err != nil {
+		logDebugf("Error running display: %v", err)
+	}
+	logDebugf("tview application finished running")
 	logDebugf("Display start completed")
 }
 
@@ -467,6 +482,7 @@ func (d *Display) Stop() {
 	d.DebugLog.Debug("Stopping display")
 	d.stopOnce.Do(func() {
 		close(d.stopChan)
+		d.app.Stop()
 		if !d.testMode {
 			d.WaitForStop()
 		} else {
