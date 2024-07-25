@@ -71,20 +71,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errString)
 	}
 
-	// Update status for each resource
-	for _, resource := range resources {
-		disp.UpdateStatus(&display.Status{
-			ID:             resource.ID,
-			Type:           resource.Type,
-			Region:         resource.Region,
-			Zone:           resource.Zone,
-			Status:         "Created",
-			DetailedStatus: resource.Status,
-			InstanceID:     resource.InstanceID,
-			PublicIP:       resource.PublicIP,
-			PrivateIP:      resource.PrivateIP,
-		})
-	}
+	// TODO: Implement resource status updates when AWS provider supports it
 
 	disp.UpdateStatus(&display.Status{
 		ID:     "aws-deployment",
