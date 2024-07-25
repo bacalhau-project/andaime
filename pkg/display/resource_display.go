@@ -161,6 +161,7 @@ func newDisplayInternal(totalTasks int, testMode bool) *Display {
 		LogBox:             tview.NewTextView().SetDynamicColors(true),
 		ctx:                ctx,
 		cancel:             cancel,
+		virtualConsole:     &bytes.Buffer{},
 	}
 
 	d.DebugLog = *logger.Get()
@@ -528,6 +529,9 @@ func (d *Display) logDebugInfo() {
 	d.Logger.Infof("------------------")
 }
 func (d *Display) renderToVirtualConsole() {
+	if d.virtualConsole == nil {
+		d.virtualConsole = &bytes.Buffer{}
+	}
 	d.virtualConsole.Reset()
 	d.virtualConsole.WriteString(d.getTableString())
 	d.virtualConsole.WriteString("\nLog:\n")

@@ -35,6 +35,7 @@ func TestDisplayStart(t *testing.T) {
 	assert.NotNil(t, d.table)
 	assert.NotNil(t, d.LogBox)
 	assert.NotNil(t, d.statuses)
+	assert.NotNil(t, d.virtualConsole)
 
 	sigChan := make(chan os.Signal, 1)
 
@@ -73,9 +74,9 @@ func TestDisplayStart(t *testing.T) {
 	// Stop the display
 	d.Stop()
 
-	// Check if the table content is in the LogBox
-	logContent := d.LogBox.GetText(true)
-	t.Logf("LogBox content: %s", logContent)
+	// Check if the table content is in the virtual console
+	consoleContent := d.virtualConsole.String()
+	t.Logf("Virtual console content: %s", consoleContent)
 
 	expectedContent := []string{
 		"ID       │ Type     │ Region        │ Zone          │ Status                       │ Elapsed  │ Instance ID    │ Public IP     │ Private IP",
@@ -83,6 +84,6 @@ func TestDisplayStart(t *testing.T) {
 	}
 
 	for _, expected := range expectedContent {
-		assert.Contains(t, logContent, expected, "LogBox content should contain the expected table row")
+		assert.Contains(t, consoleContent, expected, "Virtual console content should contain the expected table row")
 	}
 }
