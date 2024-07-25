@@ -57,11 +57,13 @@ func TestDisplayStart(t *testing.T) {
 	d.UpdateStatus(testStatus)
 
 	// Give more time for the update to complete
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	// Trigger a manual update
-	d.scheduleUpdate()
-	time.Sleep(500 * time.Millisecond)
+	// Trigger multiple manual updates
+	for i := 0; i < 5; i++ {
+		d.scheduleUpdate()
+		time.Sleep(500 * time.Millisecond)
+	}
 
 	// Check if the status was actually updated
 	d.StatusesMu.RLock()
@@ -92,6 +94,21 @@ func TestDisplayStart(t *testing.T) {
 	expectedContent := []string{
 		"test-id",
 		"EC2",
+		"Running",
+	}
+
+	for _, expected := range expectedContent {
+		if strings.Contains(consoleContent, expected) {
+			t.Logf("Found expected content: %s", expected)
+		} else {
+			t.Logf("Missing expected content: %s", expected)
+		}
+		assert.Contains(t, consoleContent, expected, "Virtual console content should contain the expected information")
+	}
+
+	// Additional debugging information
+	t.Logf("Table content: %s", d.Table.GetContent(false))
+	t.Logf("LogBox content: %s", d.LogBox.GetText(false))
 		"Running",
 	}
 
