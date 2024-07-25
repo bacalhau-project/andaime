@@ -169,33 +169,7 @@ func createVirtualNetwork(ctx context.Context,
 	log.Debugf("  Name: %s", *subnet.Name)
 	log.Debugf("  Address Prefix: %s", *subnet.Properties.AddressPrefix)
 
-	ensureTags(tags, projectID, uniqueID)
-
-	vnet := armnetwork.VirtualNetwork{
-		Name:     to.Ptr(vnetName),
-		Location: to.Ptr(location),
-		Tags:     tags,
-		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
-			AddressSpace: &armnetwork.AddressSpace{
-				AddressPrefixes: []*string{to.Ptr("10.0.0.0/16")},
-			},
-			Subnets: []*armnetwork.Subnet{&subnet},
-		},
-	}
-
-	// Before creating the virtual network:
-	log.Debugf("Creating virtual network with the following details:")
-	log.Debugf("  Name: %s", vnetName)
-	log.Debugf("  Location: %s", *vnet.Location)
-	log.Debugf("  Address Space: %s", *vnet.Properties.AddressSpace.AddressPrefixes[0])
-	log.Debugf("  Subnet Name: %s", *vnet.Properties.Subnets[0].Name)
-	log.Debugf("  Subnet Address Prefix: %s", *vnet.Properties.Subnets[0].Properties.AddressPrefix)
-	log.Debugf("  Tags:")
-	for key, value := range vnet.Tags {
-		log.Debugf("    %s: %s", key, *value)
-	}
-
-	createdVNet, err := client.CreateVirtualNetwork(ctx, resourceGroupName, vnetName, vnet)
+	createdVNet, err := client.CreateVirtualNetwork(ctx, resourceGroupName, vnetName, location, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual network: %v", err)
 	}
@@ -232,9 +206,9 @@ func createPublicIP(
 		},
 	}
 
-	ensureTags(tags, projectID, uniqueID)
+	EnsureTags(tags, projectID, uniqueID)
 
-	createdIP, err := client.CreatePublicIP(ctx, resourceGroupName, ipName, publicIP)
+	createdIP, err := client.CreatePublicIP(ctx, resourceGroupName, ipName, publicIP, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create public IP: %v", err)
 	}
@@ -253,7 +227,7 @@ func createNIC(
 	nsgID *string,
 	tags map[string]*string,
 ) (*armnetwork.Interface, error) {
-	ensureTags(tags, projectID, uniqueID)
+	EnsureTags(tags, projectID, uniqueID)
 
 	nic := armnetwork.Interface{
 		Location: to.Ptr(location),
@@ -275,7 +249,7 @@ func createNIC(
 		},
 	}
 
-	createdNIC, err := client.CreateNetworkInterface(ctx, resourceGroupName, nicName, nic)
+	createdNIC, err := client.CreateNetworkInterface(ctx, resourceGroupName, nicName, nic, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network interface: %v", err)
 	}
@@ -294,7 +268,7 @@ func createVM(
 	vmSize string,
 	tags map[string]*string,
 ) (*armcompute.VirtualMachine, error) {
-	ensureTags(tags, projectID, uniqueID)
+	EnsureTags(tags, projectID, uniqueID)
 
 	vm := armcompute.VirtualMachine{
 		Location: to.Ptr(location),
@@ -346,7 +320,7 @@ func createVM(
 		},
 	}
 
-	createdVM, err := client.CreateVirtualMachine(ctx, resourceGroupName, vmName, vm)
+	createdVM, err := client.CreateVirtualMachine(ctx, resourceGroupName, vmName, vm, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
 	}
@@ -365,7 +339,7 @@ func createNSG(
 ) (*armnetwork.SecurityGroup, error) {
 	var securityRules []*armnetwork.SecurityRule
 
-	ensureTags(tags, projectID, uniqueID)
+	EnsureTags(tags, projectID, uniqueID)
 
 	for i, port := range ports {
 		ruleName := fmt.Sprintf("Allow-%d", port)
@@ -392,7 +366,7 @@ func createNSG(
 		},
 	}
 
-	createdNSG, err := client.CreateNetworkSecurityGroup(ctx, resourceGroupName, nsgName, nsg)
+	createdNSG, err := client.CreateNetworkSecurityGroup(ctx, resourceGroupName, nsgName, nsg, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network security group: %v", err)
 	}

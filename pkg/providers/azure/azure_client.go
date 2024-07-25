@@ -17,20 +17,20 @@ import (
 )
 
 type AzureClient interface {
-	GetOrCreateResourceGroup(ctx context.Context, location, name string) (*armresources.ResourceGroup, error)
-	CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
-	GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
-	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)
+	GetOrCreateResourceGroup(ctx context.Context, location, name string, tags map[string]*string) (*armresources.ResourceGroup, error)
+	CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string, tags map[string]*string) (armnetwork.VirtualNetwork, error)
+	GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error)
+	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress, tags map[string]*string) (armnetwork.PublicIPAddress, error)
 	GetPublicIP(ctx context.Context, resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error)
-	CreateVirtualMachine(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error)
+	CreateVirtualMachine(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine, tags map[string]*string) (armcompute.VirtualMachine, error)
 	GetVirtualMachine(ctx context.Context, resourceGroupName, vmName string) (armcompute.VirtualMachine, error)
-	CreateNetworkInterface(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error)
+	CreateNetworkInterface(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface, tags map[string]*string) (armnetwork.Interface, error)
 	GetNetworkInterface(ctx context.Context, resourceGroupName, nicName string) (armnetwork.Interface, error)
-	CreateNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error)
+	CreateNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup, tags map[string]*string) (armnetwork.SecurityGroup, error)
 	GetNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
 
 	// ResourceGraphClientAPI
-	SearchResources(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error)
+	SearchResources(ctx context.Context, resourceGroup string, subscriptionID string, tags map[string]*string) (armresourcegraph.ClientResourcesResponse, error)
 
 	// Subscriptions API
 	NewSubscriptionListPager(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
@@ -104,9 +104,43 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 }
 
 // CreateVirtualNetwork creates a new virtual network
-func (c *LiveAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
+func (c *LiveAzureClient) CreateVirtualNetwork(ctx context.Context,
+	resourceGroupName, vnetName, location string,
+	tags map[string]*string) (armnetwork.VirtualNetwork, error) {
+	log := logger.Get()
 	logger.LogAzureAPIStart("CreateVirtualNetwork")
-	poller, err := c.virtualNetworksClient.BeginCreateOrUpdate(ctx, resourceGroupName, vnetName, parameters, nil)
+	subnet := armnetwork.Subnet{
+		Name: to.Ptr(vnetName + "-subnet"),
+		Properties: &armnetwork.SubnetPropertiesFormat{
+			AddressPrefix: to.Ptr("10.0.0.0/24"),
+		},
+	}
+
+	vnet := armnetwork.VirtualNetwork{
+		Name:     to.Ptr(vnetName),
+		Location: to.Ptr(location),
+		Tags:     tags,
+		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
+			AddressSpace: &armnetwork.AddressSpace{
+				AddressPrefixes: []*string{to.Ptr("10.0.0.0/16")},
+			},
+			Subnets: []*armnetwork.Subnet{&subnet},
+		},
+	}
+
+	// Before creating the virtual network:
+	log.Debugf("Creating virtual network with the following details:")
+	log.Debugf("  Name: %s", vnetName)
+	log.Debugf("  Location: %s", *vnet.Location)
+	log.Debugf("  Address Space: %s", *vnet.Properties.AddressSpace.AddressPrefixes[0])
+	log.Debugf("  Subnet Name: %s", *vnet.Properties.Subnets[0].Name)
+	log.Debugf("  Subnet Address Prefix: %s", *vnet.Properties.Subnets[0].Properties.AddressPrefix)
+	log.Debugf("  Tags:")
+	for key, value := range vnet.Tags {
+		log.Debugf("    %s: %s", key, *value)
+	}
+
+	poller, err := c.virtualNetworksClient.BeginCreateOrUpdate(ctx, resourceGroupName, vnetName, vnet, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreateVirtualNetwork", err)
 		return armnetwork.VirtualNetwork{}, err
@@ -122,7 +156,8 @@ func (c *LiveAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGrou
 }
 
 // GetVirtualNetwork retrieves a virtual network
-func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error) {
+func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context,
+	resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error) {
 	logger.LogAzureAPIStart("GetVirtualNetwork")
 	resp, err := c.virtualNetworksClient.Get(ctx, resourceGroupName, vnetName, nil)
 	logger.LogAzureAPIEnd("GetVirtualNetwork", err)
@@ -134,8 +169,13 @@ func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupNa
 }
 
 // CreatePublicIP creates a new public IP address
-func (c *LiveAzureClient) CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
+func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
+	resourceGroupName, ipName string,
+	parameters armnetwork.PublicIPAddress,
+	tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 	logger.LogAzureAPIStart("CreatePublicIP")
+
+	parameters.Tags = tags
 	poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(ctx, resourceGroupName, ipName, parameters, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreatePublicIP", err)
@@ -151,7 +191,8 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context, resourceGroupName,
 	return resp.PublicIPAddress, nil
 }
 
-func (c *LiveAzureClient) GetPublicIP(ctx context.Context, resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error) {
+func (c *LiveAzureClient) GetPublicIP(ctx context.Context,
+	resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error) {
 	logger.LogAzureAPIStart("GetPublicIP")
 	resp, err := c.publicIPAddressesClient.Get(ctx, resourceGroupName, ipName, nil)
 	logger.LogAzureAPIEnd("GetPublicIP", err)
@@ -162,7 +203,10 @@ func (c *LiveAzureClient) GetPublicIP(ctx context.Context, resourceGroupName, ip
 	return resp.PublicIPAddress, nil
 }
 
-func (c *LiveAzureClient) CreateVirtualMachine(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
+func (c *LiveAzureClient) CreateVirtualMachine(ctx context.Context,
+	resourceGroupName, vmName string,
+	parameters armcompute.VirtualMachine,
+	tags map[string]*string) (armcompute.VirtualMachine, error) {
 	logger.LogAzureAPIStart("CreateVirtualMachine")
 	poller, err := c.virtualMachinesClient.BeginCreateOrUpdate(ctx, resourceGroupName, vmName, parameters, nil)
 	if err != nil {
@@ -190,8 +234,12 @@ func (c *LiveAzureClient) GetVirtualMachine(ctx context.Context, resourceGroupNa
 	return resp.VirtualMachine, nil
 }
 
-func (c *LiveAzureClient) CreateNetworkInterface(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
+func (c *LiveAzureClient) CreateNetworkInterface(ctx context.Context,
+	resourceGroupName, nicName string,
+	parameters armnetwork.Interface,
+	tags map[string]*string) (armnetwork.Interface, error) {
 	logger.LogAzureAPIStart("CreateNetworkInterface")
+	parameters.Tags = tags
 	poller, err := c.interfacesClient.BeginCreateOrUpdate(ctx, resourceGroupName, nicName, parameters, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreateNetworkInterface", err)
@@ -218,8 +266,12 @@ func (c *LiveAzureClient) GetNetworkInterface(ctx context.Context, resourceGroup
 	return resp.Interface, nil
 }
 
-func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
+func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
+	resourceGroupName, sgName string,
+	parameters armnetwork.SecurityGroup,
+	tags map[string]*string) (armnetwork.SecurityGroup, error) {
 	logger.LogAzureAPIStart("CreateNetworkSecurityGroup")
+	parameters.Tags = tags
 	poller, err := c.securityGroupsClient.BeginCreateOrUpdate(ctx, resourceGroupName, sgName, parameters, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreateNetworkSecurityGroup", err)
@@ -235,7 +287,8 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context, resour
 	return resp.SecurityGroup, nil
 }
 
-func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error) {
+func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context,
+	resourceGroupName, sgName string) (armnetwork.SecurityGroup, error) {
 	logger.LogAzureAPIStart("GetNetworkSecurityGroup")
 	resp, err := c.securityGroupsClient.Get(ctx, resourceGroupName, sgName, nil)
 	logger.LogAzureAPIEnd("GetNetworkSecurityGroup", err)
@@ -246,7 +299,10 @@ func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context, resourceG
 	return resp.SecurityGroup, nil
 }
 
-func (c *LiveAzureClient) SearchResources(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error) {
+func (c *LiveAzureClient) SearchResources(ctx context.Context,
+	resourceGroup string,
+	subscriptionID string,
+	tags map[string]*string) (armresourcegraph.ClientResourcesResponse, error) {
 	logger.LogAzureAPIStart("SearchResources")
 	query := "Resources | project id, name, type, location, tags"
 	if resourceGroup != "" {
@@ -277,6 +333,7 @@ func (c *LiveAzureClient) SearchResources(ctx context.Context, resourceGroup str
 	return res, nil
 }
 
-func (c *LiveAzureClient) NewSubscriptionListPager(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
+func (c *LiveAzureClient) NewSubscriptionListPager(ctx context.Context,
+	options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
 	return c.subscriptionsClient.NewListPager(options)
 }

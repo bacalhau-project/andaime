@@ -4,8 +4,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/gdamore/tcell/v2"
 )
 
 var testTasks []Status
@@ -28,40 +28,38 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 		d.Logger = logger.Get()
 	}
 	d.Logger.Debug("Starting test display")
-	d.stopChan = make(chan struct{})
-	d.quit = make(chan struct{})
-	d.statuses = make(map[string]*Status)
-	d.app = tview.NewApplication()
+	d.StopChan = make(chan struct{})
+	d.Quit = make(chan struct{})
+	d.Statuses = make(map[string]*Status)
 	go func() {
-		<-d.stopChan
-		d.app.Stop()
-		close(d.quit)
+		<-d.StopChan
+		close(d.Quit)
 	}()
 }
 
 // Override the UpdateStatus method to skip tview operations
 func (d *TestDisplay) UpdateStatus(status *Status) {
 	d.Logger.Debugf("UpdateStatus called with %s", status.ID)
-	d.statusesMu.Lock()
-	defer d.statusesMu.Unlock()
+	d.StatusesMu.Lock()
+	defer d.StatusesMu.Unlock()
 
 	newStatus := *status // Create a copy of the status
-	if _, exists := d.statuses[newStatus.ID]; !exists {
-		d.completedTasks++
+	if _, exists := d.Statuses[newStatus.ID]; !exists {
+		d.CompletedTasks++
 	}
-	newStatus.HighlightCycles = d.fadeSteps
-	d.statuses[newStatus.ID] = &newStatus
+	newStatus.HighlightCycles = d.FadeSteps
+	d.Statuses[newStatus.ID] = &newStatus
 }
 
 func (d *TestDisplay) Stop() {
 	d.Logger.Debug("Stopping test display")
-	close(d.stopChan)
+	close(d.StopChan)
 }
 
 func (d *TestDisplay) WaitForStop() {
 	d.Logger.Debug("Waiting for test display to stop")
 	select {
-	case <-d.quit:
+	case <-d.Quit:
 		d.Logger.Debug("Test display stopped")
 	case <-time.After(5 * time.Second): //nolint:gomnd
 		d.Logger.Debug("Timeout waiting for test display to stop")

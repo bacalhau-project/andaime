@@ -27,6 +27,7 @@ Clienter
 Cmds
 compinit
 Configer
+Deallocation
 Debugf
 depguard
 Dialerer
@@ -42,6 +43,7 @@ forbidigo
 funcs
 funlen
 gdamore
+gochecknoinit
 gochecknoinits
 goconst
 gocritic
@@ -74,6 +76,7 @@ nakedret
 nats
 networkinterfaces
 noctx
+noinit
 nolint
 nolintlint
 northeurope

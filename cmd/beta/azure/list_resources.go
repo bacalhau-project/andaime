@@ -17,6 +17,11 @@ var AzureListResourcesCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log := logger.Get()
 
+		projectID := viper.GetString("general.project_id")
+		uniqueID := viper.GetString("general.unique_id")
+		tags := make(map[string]*string)
+		azure.EnsureTags(tags, projectID, uniqueID)
+
 		log.Info("Listing Azure resources...")
 
 		azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
@@ -43,9 +48,8 @@ var AzureListResourcesCmd = &cobra.Command{
 		startTime := time.Now()
 
 		resourceCount := 0
-		skipToken := ""
 		for {
-			result, err := azureProvider.GetClient().SearchResources(cmd.Context(), rgName, nil, skipToken)
+			result, err := azureProvider.GetClient().SearchResources(cmd.Context(), rgName, getSubscriptionID(), tags)
 			if err != nil {
 				log.Fatalf("Failed to query resources: %v", err)
 			}
@@ -66,7 +70,6 @@ var AzureListResourcesCmd = &cobra.Command{
 			if result.SkipToken == nil || *result.SkipToken == "" {
 				break
 			}
-			skipToken = *result.SkipToken
 		}
 
 		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))

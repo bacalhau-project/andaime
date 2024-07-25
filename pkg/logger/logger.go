@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/rivo/tview"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -89,8 +90,17 @@ func getLogLevel(logLevel string) zapcore.Level {
 }
 func InitProduction(enableConsole bool, enableFile bool) {
 	once.Do(func() {
-		logLevel := getLogLevel(GlobalLogLevel)
 		var cores []zapcore.Core
+
+		logPath := viper.GetString("general.log_path")
+		if logPath != "" {
+			GlobalLogPath = logPath
+		}
+		logLevelString := viper.GetString("general.log_level")
+		if logLevelString != "" {
+			GlobalLogLevel = logLevelString
+		}
+		logLevel := getLogLevel(GlobalLogLevel)
 
 		if enableConsole {
 			consoleCore := zapcore.NewCore(
@@ -322,7 +332,9 @@ func GetLastLines(filepath string, n int) []string {
 	if filepath == "" {
 		l.Errorf("Error: filepath is empty")
 		writeToDebugLog("Error: filepath is empty in GetLastLines")
-		debug.PrintStack() // Add stack trace
+		buf := make([]byte, 1024)
+		runtime.Stack(buf, false)
+		writeToDebugLog(fmt.Sprintf("Stack trace:\n%s", string(buf)))
 		return []string{"Error: filepath is empty"}
 	}
 

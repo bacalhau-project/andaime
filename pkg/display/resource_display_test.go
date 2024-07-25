@@ -12,30 +12,30 @@ func TestNewDisplay(t *testing.T) {
 	d := NewDisplay(10)
 	assert.NotNil(t, d)
 	assert.NotNil(t, d.LogBox)
-	assert.NotNil(t, d.app)
-	assert.NotNil(t, d.table)
-	assert.Equal(t, 10, d.totalTasks)
-	assert.False(t, d.testMode)
+	assert.NotNil(t, d.App)
+	assert.NotNil(t, d.Table)
+	assert.Equal(t, 10, d.TotalTasks)
+	assert.False(t, d.TestMode)
 }
 
 func TestNewDisplayInternal(t *testing.T) {
 	d := newDisplayInternal(5, true)
 	assert.NotNil(t, d)
 	assert.NotNil(t, d.LogBox)
-	assert.NotNil(t, d.app)
-	assert.NotNil(t, d.table)
-	assert.Equal(t, 5, d.totalTasks)
-	assert.True(t, d.testMode)
+	assert.NotNil(t, d.App)
+	assert.NotNil(t, d.Table)
+	assert.Equal(t, 5, d.TotalTasks)
+	assert.True(t, d.TestMode)
 }
 
 func TestDisplayStart(t *testing.T) {
 	d := newDisplayInternal(1, true)
 	assert.NotNil(t, d)
-	assert.NotNil(t, d.app)
-	assert.NotNil(t, d.table)
+	assert.NotNil(t, d.App)
+	assert.NotNil(t, d.Table)
 	assert.NotNil(t, d.LogBox)
-	assert.NotNil(t, d.statuses)
-	assert.NotNil(t, d.virtualConsole)
+	assert.NotNil(t, d.Statuses)
+	assert.NotNil(t, d.VirtualConsole)
 
 	sigChan := make(chan os.Signal, 1)
 
@@ -44,14 +44,6 @@ func TestDisplayStart(t *testing.T) {
 		d.Start(sigChan)
 		close(startComplete)
 	}()
-
-	// Wait for the display to start or timeout
-	select {
-	case <-startComplete:
-		t.Log("Display started successfully")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for display to start")
-	}
 
 	// Update status to trigger table rendering
 	t.Log("Updating status")
@@ -74,8 +66,16 @@ func TestDisplayStart(t *testing.T) {
 	// Stop the display
 	d.Stop()
 
+	// Wait for the display to stop or timeout
+	select {
+	case <-startComplete:
+		t.Log("Display stopped successfully")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for display to stop")
+	}
+
 	// Check if the table content is in the virtual console
-	consoleContent := d.virtualConsole.String()
+	consoleContent := d.VirtualConsole.String()
 	t.Logf("Virtual console content: %s", consoleContent)
 
 	expectedContent := []string{

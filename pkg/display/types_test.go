@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestTestDisplayStart(t *testing.T) {
@@ -31,8 +30,8 @@ func TestTestDisplayStart(t *testing.T) {
 
 	// Assert that no panic occurred and the status was updated
 	assert.NotNil(t, display.Logger)
-	assert.Len(t, display.statuses, 1)
-	assert.Equal(t, status.ID, display.statuses["test1"].ID)
+	assert.Len(t, display.Statuses, 1)
+	assert.Equal(t, status.ID, display.Statuses["test1"].ID)
 }
 
 func TestTestDisplayUpdateStatus(t *testing.T) {
@@ -51,14 +50,14 @@ func TestTestDisplayUpdateStatus(t *testing.T) {
 			Region: "us-west-2",
 			Status: "Running",
 		}
-		require.NotPanics(t, func() {
+		assert.NotPanics(t, func() {
 			display.UpdateStatus(status)
 		})
 	}
 
 	// Check if the status was updated correctly
-	display.statusesMu.RLock()
-	defer display.statusesMu.RUnlock()
-	assert.Len(t, display.statuses, 1)
-	assert.Equal(t, "test1", display.statuses["test1"].ID)
+	display.StatusesMu.RLock()
+	defer display.StatusesMu.RUnlock()
+	assert.Len(t, display.Statuses, 1)
+	assert.Equal(t, "test1", display.Statuses["test1"].ID)
 }

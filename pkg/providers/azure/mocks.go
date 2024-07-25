@@ -17,21 +17,51 @@ import (
 
 type MockAzureClient struct {
 	mock.Mock
-	Logger                         *logger.Logger
-	GetOrCreateResourceGroupFunc   func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error)
-	CreateVirtualNetworkFunc       func(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error)
-	GetVirtualNetworkFunc          func(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error)
-	CreatePublicIPFunc             func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error)
-	GetPublicIPFunc                func(ctx context.Context, resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error)
-	CreateVirtualMachineFunc       func(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error)
-	GetVirtualMachineFunc          func(ctx context.Context, resourceGroupName, vmName string) (armcompute.VirtualMachine, error)
-	CreateNetworkInterfaceFunc     func(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error)
-	GetNetworkInterfaceFunc        func(ctx context.Context, resourceGroupName, nicName string) (armnetwork.Interface, error)
-	CreateNetworkSecurityGroupFunc func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error)
-	GetNetworkSecurityGroupFunc    func(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
-	SearchResourcesFunc            func(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error)
+	Logger                       *logger.Logger
+	GetOrCreateResourceGroupFunc func(ctx context.Context, location string,
+		name string,
+		tags map[string]*string) (*armresources.ResourceGroup, error)
+	CreateVirtualNetworkFunc func(ctx context.Context,
+		resourceGroupName,
+		vnetName,
+		location string,
+		tags map[string]*string) (armnetwork.VirtualNetwork, error)
+	GetVirtualNetworkFunc func(ctx context.Context, resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error)
+	CreatePublicIPFunc    func(ctx context.Context, resourceGroupName,
+		ipName string,
+		parameters armnetwork.PublicIPAddress,
+		tags map[string]*string) (armnetwork.PublicIPAddress, error)
+	GetPublicIPFunc func(ctx context.Context,
+		resourceGroupName,
+		ipName string) (armnetwork.PublicIPAddress, error)
+	CreateVirtualMachineFunc func(ctx context.Context,
+		resourceGroupName,
+		vmName string,
+		parameters armcompute.VirtualMachine,
+		tags map[string]*string) (armcompute.VirtualMachine, error)
+	GetVirtualMachineFunc func(ctx context.Context,
+		resourceGroupName,
+		vmName string) (armcompute.VirtualMachine, error)
+	CreateNetworkInterfaceFunc func(ctx context.Context,
+		resourceGroupName,
+		nicName string,
+		parameters armnetwork.Interface,
+		tags map[string]*string) (armnetwork.Interface, error)
+	GetNetworkInterfaceFunc func(ctx context.Context,
+		resourceGroupName,
+		nicName string) (armnetwork.Interface, error)
+	CreateNetworkSecurityGroupFunc func(ctx context.Context,
+		resourceGroupName,
+		sgName string,
+		parameters armnetwork.SecurityGroup,
+		tags map[string]*string) (armnetwork.SecurityGroup, error)
+	GetNetworkSecurityGroupFunc func(ctx context.Context,
+		resourceGroupName,
+		sgName string) (armnetwork.SecurityGroup, error)
+	SearchResourcesFunc func(ctx context.Context,
+		resourceGroup string, subscriptionID string, tags map[string]*string) (armresourcegraph.ClientResourcesResponse, error)
 
-	NewSubscriptionListPagerFunc func(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
+	SubscriptionListPagerFunc func(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
 }
 
 func NewMockAzureClient() AzureClient {
@@ -46,56 +76,79 @@ func (m *MockAzureClient) SetLogger(logger *logger.Logger) {
 	m.Logger = logger
 }
 
-func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
-	return m.GetOrCreateResourceGroupFunc(ctx, location, name)
+func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context,
+	location string,
+	name string,
+	tags map[string]*string) (*armresources.ResourceGroup, error) {
+	return m.GetOrCreateResourceGroupFunc(ctx, location, name, tags)
 }
 
-func (m *MockAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string, parameters armnetwork.VirtualNetwork) (armnetwork.VirtualNetwork, error) {
-	return m.CreateVirtualNetworkFunc(ctx, resourceGroupName, vnetName, parameters)
+func (m *MockAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string, tags map[string]*string) (armnetwork.VirtualNetwork, error) {
+	return m.CreateVirtualNetworkFunc(ctx, resourceGroupName, vnetName, location, tags)
 }
 
-func (m *MockAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName string) (armnetwork.VirtualNetwork, error) {
-	return m.GetVirtualNetworkFunc(ctx, resourceGroupName, vnetName)
+func (m *MockAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error) {
+	return m.GetVirtualNetworkFunc(ctx, resourceGroupName, vnetName, location)
 }
 
-func (m *MockAzureClient) CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress) (armnetwork.PublicIPAddress, error) {
-	return m.CreatePublicIPFunc(ctx, resourceGroupName, ipName, parameters)
+func (m *MockAzureClient) CreatePublicIP(ctx context.Context,
+	resourceGroupName, ipName string,
+	parameters armnetwork.PublicIPAddress,
+	tags map[string]*string) (armnetwork.PublicIPAddress, error) {
+	return m.CreatePublicIPFunc(ctx, resourceGroupName, ipName, parameters, tags)
 }
 
-func (m *MockAzureClient) GetPublicIP(ctx context.Context, resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error) {
+func (m *MockAzureClient) GetPublicIP(ctx context.Context,
+	resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error) {
 	return m.GetPublicIPFunc(ctx, resourceGroupName, ipName)
 }
 
-func (m *MockAzureClient) CreateVirtualMachine(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine) (armcompute.VirtualMachine, error) {
-	return m.CreateVirtualMachineFunc(ctx, resourceGroupName, vmName, parameters)
+func (m *MockAzureClient) CreateVirtualMachine(ctx context.Context,
+	resourceGroupName,
+	vmName string,
+	parameters armcompute.VirtualMachine,
+	tags map[string]*string) (armcompute.VirtualMachine, error) {
+	return m.CreateVirtualMachineFunc(ctx, resourceGroupName, vmName, parameters, tags)
 }
 
-func (m *MockAzureClient) GetVirtualMachine(ctx context.Context, resourceGroupName, vmName string) (armcompute.VirtualMachine, error) {
+func (m *MockAzureClient) GetVirtualMachine(ctx context.Context,
+	resourceGroupName, vmName string) (armcompute.VirtualMachine, error) {
 	return m.GetVirtualMachineFunc(ctx, resourceGroupName, vmName)
 }
 
-func (m *MockAzureClient) CreateNetworkInterface(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface) (armnetwork.Interface, error) {
-	return m.CreateNetworkInterfaceFunc(ctx, resourceGroupName, nicName, parameters)
+func (m *MockAzureClient) CreateNetworkInterface(ctx context.Context,
+	resourceGroupName, nicName string,
+	parameters armnetwork.Interface,
+	tags map[string]*string) (armnetwork.Interface, error) {
+	return m.CreateNetworkInterfaceFunc(ctx, resourceGroupName, nicName, parameters, tags)
 }
 
-func (m *MockAzureClient) GetNetworkInterface(ctx context.Context, resourceGroupName, nicName string) (armnetwork.Interface, error) {
+func (m *MockAzureClient) GetNetworkInterface(ctx context.Context,
+	resourceGroupName, nicName string) (armnetwork.Interface, error) {
 	return m.GetNetworkInterfaceFunc(ctx, resourceGroupName, nicName)
 }
 
-func (m *MockAzureClient) CreateNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup) (armnetwork.SecurityGroup, error) {
-	return m.CreateNetworkSecurityGroupFunc(ctx, resourceGroupName, sgName, parameters)
+func (m *MockAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
+	resourceGroupName,
+	sgName string,
+	parameters armnetwork.SecurityGroup,
+	tags map[string]*string) (armnetwork.SecurityGroup, error) {
+	return m.CreateNetworkSecurityGroupFunc(ctx, resourceGroupName, sgName, parameters, tags)
 }
 
-func (m *MockAzureClient) GetNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error) {
+func (m *MockAzureClient) GetNetworkSecurityGroup(ctx context.Context,
+	resourceGroupName, sgName string) (armnetwork.SecurityGroup, error) {
 	return m.GetNetworkSecurityGroupFunc(ctx, resourceGroupName, sgName)
 }
 
-func (m *MockAzureClient) SearchResources(ctx context.Context, resourceGroup string, tags map[string]*string, subscriptionID string) (armresourcegraph.ClientResourcesResponse, error) {
-	return m.SearchResourcesFunc(ctx, resourceGroup, tags, subscriptionID)
+func (m *MockAzureClient) SearchResources(ctx context.Context,
+	resourceGroup string, subscriptionID string, tags map[string]*string) (armresourcegraph.ClientResourcesResponse, error) {
+	return m.SearchResourcesFunc(ctx, resourceGroup, subscriptionID, tags)
 }
 
-func (m *MockAzureClient) NewSubscriptionListPager(ctx context.Context, options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
-	return m.NewSubscriptionListPagerFunc(ctx, options)
+func (m *MockAzureClient) NewSubscriptionListPager(ctx context.Context,
+	options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
+	return m.SubscriptionListPagerFunc(ctx, options)
 }
 
 type MockAzureProvider struct {

@@ -33,6 +33,7 @@ type Deployment struct {
 	VNet                    map[string][]*armnetwork.Subnet
 	ProjectID               string
 	UniqueID                string
+	Tags                    map[string]*string
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
@@ -44,6 +45,7 @@ func (d *Deployment) ToMap() map[string]interface{} {
 		"VNet":                    d.VNet,
 		"ProjectID":               d.ProjectID,
 		"UniqueID":                d.UniqueID,
+		"Tags":                    d.Tags,
 	}
 }
 
@@ -62,6 +64,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 
 	// Extract Azure-specific configuration
 	uniqueID := viper.GetString("azure.unique_id")
+	projectID := viper.GetString("general.project_id")
 
 	// Extract SSH public key
 	sshPublicKey, err := utils.ExpandPath(viper.GetString("general.ssh_public_key_path"))
@@ -78,6 +81,10 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		sshPrivateKey = strings.TrimSuffix(sshPublicKey, ".pub")
 	}
 
+	// Ensure tags
+	tags := make(map[string]*string)
+	tags = EnsureTags(tags, projectID, uniqueID)
+
 	// Validate SSH keys
 	err = sshutils.ValidateSSHKeysFromPath(sshPublicKey, sshPrivateKey)
 	if err != nil {
@@ -90,8 +97,6 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		log.Fatalf("Error unmarshaling machines: %v", err)
 	}
 
-	projectID := viper.GetString("general.project_id")
-
 	resourceGroupName := viper.GetString("azure.resource_prefix") + "-rg-" + time.Now().Format("0601021504")
 	if !IsValidResourceGroupName(resourceGroupName) {
 		return fmt.Errorf("invalid resource group name: %s", resourceGroupName)
@@ -103,7 +108,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	}
 
 	// Get or create the resource group
-	resourceGroup, err := p.Client.GetOrCreateResourceGroup(ctx, resourceGroupLocation, resourceGroupName)
+	resourceGroup, err := p.Client.GetOrCreateResourceGroup(ctx, resourceGroupLocation, resourceGroupName, tags)
 	if err != nil {
 		return fmt.Errorf("failed to get or create resource group: %v", err)
 	}
@@ -113,6 +118,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		ResourceGroupLocation: resourceGroupLocation,
 		ProjectID:             projectID,
 		UniqueID:              uniqueID,
+		Tags:                  tags,
 	}
 
 	// Update Viper configuration after creating the deployment
@@ -143,7 +149,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 
 	// For each location, create a virtual network
 	for _, location := range locations {
-		vnet, err := p.Client.CreateVirtualNetwork(ctx, *resourceGroup.Name, location+"-vnet", armnetwork.VirtualNetwork{})
+		vnet, err := p.Client.CreateVirtualNetwork(ctx, *resourceGroup.Name, location+"-vnet", location, tags)
 		if err != nil {
 			return fmt.Errorf("failed to create virtual network: %v", err)
 		}

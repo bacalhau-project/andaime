@@ -56,48 +56,55 @@ type Status struct {
 	HighlightCycles int
 }
 type Display struct {
-	statuses           map[string]*Status
-	statusesMu         sync.RWMutex
-	app                *tview.Application
-	table              *tview.Table
-	totalTasks         int
-	completedTasks     int
-	baseHighlightColor tcell.Color
-	fadeSteps          int
-	stopOnce           sync.Once
-	stopChan           chan struct{}
-	quit               chan struct{}
-	lastTableState     [][]string
+	Statuses           map[string]*Status
+	StatusesMu         sync.RWMutex
+	App                *tview.Application
+	Table              *tview.Table
+	TotalTasks         int
+	CompletedTasks     int
+	BaseHighlightColor tcell.Color
+	FadeSteps          int
+	StopOnce           sync.Once
+	StopChan           chan struct{}
+	Quit               chan struct{}
+	LastTableState     [][]string
 	DebugLog           logger.Logger
 	Logger             logger.Logger
 	LogFileName        string
-	logFile            *os.File
+	LogFile            *os.File
 	LogBox             *tview.TextView
-	testMode           bool
-	ctx                context.Context
-	cancel             context.CancelFunc
-	logBuffer          *utils.CircularBuffer
-	updatePending      bool
-	updateMutex        sync.Mutex
-	virtualConsole     *bytes.Buffer
+	TestMode           bool
+	Ctx                context.Context
+	Cancel             context.CancelFunc
+	LogBuffer          *utils.CircularBuffer
+	UpdatePending      bool
+	UpdateMutex        sync.Mutex
+	VirtualConsole     *bytes.Buffer
 }
 
 func NewDisplay(totalTasks int) *Display {
+	d := newDisplayInternal(totalTasks, false)
+	d.LogFileName = logger.GlobalLogPath
+	return d
+}
+
+func newDisplayInternal(totalTasks int, testMode bool) *Display {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Display{
-		statuses:           make(map[string]*Status),
-		app:                tview.NewApplication(),
-		table:              tview.NewTable().SetBorders(true),
-		totalTasks:         totalTasks,
-		baseHighlightColor: HighlightColor,
-		fadeSteps:          NumberOfCyclesToHighlight,
-		stopChan:           make(chan struct{}),
-		quit:               make(chan struct{}),
-		testMode:           false,
+		Statuses:           make(map[string]*Status),
+		App:                tview.NewApplication(),
+		Table:              tview.NewTable().SetBorders(true),
+		TotalTasks:         totalTasks,
+		BaseHighlightColor: HighlightColor,
+		FadeSteps:          NumberOfCyclesToHighlight,
+		StopChan:           make(chan struct{}),
+		Quit:               make(chan struct{}),
+		TestMode:           testMode,
 		LogBox:             tview.NewTextView().SetDynamicColors(true),
-		ctx:                ctx,
-		cancel:             cancel,
-		virtualConsole:     &bytes.Buffer{},
+		LogFileName:        logger.GlobalLogPath,
+		Ctx:                ctx,
+		Cancel:             cancel,
+		LogBuffer:          utils.NewCircularBuffer(MaxLogLines),
 	}
 
 	d.DebugLog = *logger.Get()
@@ -146,56 +153,13 @@ var DisplayColumns = []DisplayColumn{
 		DataFunc: func(status Status) string { return status.PrivateIP }},
 }
 
-func newDisplayInternal(totalTasks int, testMode bool) *Display {
-	ctx, cancel := context.WithCancel(context.Background())
-	d := &Display{
-		statuses:           make(map[string]*Status),
-		app:                tview.NewApplication(),
-		table:              tview.NewTable().SetBorders(true),
-		totalTasks:         totalTasks,
-		baseHighlightColor: HighlightColor,
-		fadeSteps:          NumberOfCyclesToHighlight,
-		stopChan:           make(chan struct{}),
-		quit:               make(chan struct{}),
-		testMode:           testMode,
-		LogBox:             tview.NewTextView().SetDynamicColors(true),
-		ctx:                ctx,
-		cancel:             cancel,
-		virtualConsole:     &bytes.Buffer{},
-	}
-
-	d.DebugLog = *logger.Get()
-	d.Logger = *logger.Get()
-	d.setupTable()
-	d.setupLayout()
-
-	return d
-}
-
-func (d *Display) setupTable() {
-	d.DebugLog.Debug("Setting up table")
-	d.table.SetFixed(1, len(DisplayColumns))
-	d.table.SetBordersColor(tcell.ColorWhite)
-	d.table.SetBorders(true)
-
-	for col, header := range DisplayColumns {
-		cell := tview.NewTableCell(header.Text).
-			SetTextColor(header.Color).
-			SetSelectable(false).
-			SetExpansion(0).
-			SetMaxWidth(header.Width)
-		d.table.SetCell(0, col, cell)
-	}
-	d.table.SetBorderPadding(0, 0, 1, 1)
-}
-
 func (d *Display) setupLayout() {
 	d.DebugLog.Debug("Setting up layout")
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(d.table, RelativeSizeForTable, 0, true). //nolint:gomnd
-		AddItem(d.LogBox, RelativeSizeForLogBox, 0, false)
+		AddItem(d.Table, 0, 3, true).
+		AddItem(d.LogBox, 12, 1, false)
 
-	d.app.SetRoot(flex, true).EnableMouse(false)
+	d.App.SetRoot(flex, true).EnableMouse(false)
 }
 
 func (d *Display) UpdateStatus(status *Status) {
@@ -206,20 +170,11 @@ func (d *Display) UpdateStatus(status *Status) {
 
 	d.Logger.Infof("UpdateStatus called ID: %s", status.ID)
 
-	d.statusesMu.Lock()
-	defer d.statusesMu.Unlock()
+	d.StatusesMu.Lock()
+	d.Statuses[status.ID] = status
+	d.StatusesMu.Unlock()
 
-	newStatus := *status // Create a copy of the status
-	if _, exists := d.statuses[newStatus.ID]; !exists {
-		d.completedTasks++
-	}
-	newStatus.HighlightCycles = d.fadeSteps
-	d.statuses[newStatus.ID] = &newStatus
-
-	d.app.QueueUpdateDraw(func() {
-		d.renderTable()
-		d.updateLogBox()
-	})
+	d.scheduleUpdate()
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -233,11 +188,11 @@ func (d *Display) getHighlightColor(cycles int) tcell.Color {
 	// End with white
 	targetR, targetG, targetB := tcell.ColorWhite.RGB()
 
-	stepR := float64(targetR-baseR) / float64(d.fadeSteps)
-	stepG := float64(targetG-baseG) / float64(d.fadeSteps)
-	stepB := float64(targetB-baseB) / float64(d.fadeSteps)
+	stepR := float64(targetR-baseR) / float64(d.FadeSteps)
+	stepG := float64(targetG-baseG) / float64(d.FadeSteps)
+	stepB := float64(targetB-baseB) / float64(d.FadeSteps)
 
-	fadeProgress := d.fadeSteps - cycles
+	fadeProgress := d.FadeSteps - cycles
 	r := uint8(float64(baseR) + stepR*float64(fadeProgress))
 	g := uint8(float64(baseG) + stepG*float64(fadeProgress))
 	b := uint8(float64(baseB) + stepB*float64(fadeProgress))
@@ -248,8 +203,8 @@ func (d *Display) getHighlightColor(cycles int) tcell.Color {
 func (d *Display) getTableString() string {
 	var tableContent strings.Builder
 	tableContent.WriteString(d.getTableHeader())
-	if len(d.lastTableState) > 1 {
-		for _, row := range d.lastTableState[1:] {
+	if len(d.LastTableState) > 1 {
+		for _, row := range d.LastTableState[1:] {
 			tableContent.WriteString(d.getTableRow(row))
 		}
 	}
@@ -322,31 +277,39 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		d.Logger = *logger.Get()
 	}
 	d.Logger.Debug("Starting display")
-	d.stopChan = make(chan struct{})
-	d.quit = make(chan struct{})
-	d.statuses = make(map[string]*Status)
+	d.StopChan = make(chan struct{})
+	d.Quit = make(chan struct{})
+	d.Statuses = make(map[string]*Status)
+
 	go func() {
-		<-d.stopChan
-		close(d.quit)
+		select {
+		case <-sigChan:
+			d.Logger.Debug("Received signal, stopping display")
+			d.Stop()
+		case <-d.StopChan:
+			d.Logger.Debug("Stop channel closed, stopping display")
+		}
+		close(d.Quit)
 	}()
 
-	if !d.testMode {
+	if !d.TestMode {
 		go func() {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
 			for {
 				select {
-				case <-d.stopChan:
+				case <-d.StopChan:
 					return
-				default:
-					d.app.QueueUpdateDraw(func() {
+				case <-ticker.C:
+					d.App.QueueUpdateDraw(func() {
 						d.renderTable()
 						d.updateLogBox()
 					})
-					time.Sleep(100 * time.Millisecond)
 				}
 			}
 		}()
 
-		if err := d.app.Run(); err != nil {
+		if err := d.App.Run(); err != nil {
 			d.Logger.Errorf("Error running display: %v", err)
 		}
 	} else {
@@ -357,14 +320,17 @@ func (d *Display) Start(sigChan chan os.Signal) {
 
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
-	close(d.stopChan)
-	d.resetTerminal()
+	d.StopOnce.Do(func() {
+		close(d.StopChan)
+		d.App.Stop()
+		d.resetTerminal()
+	})
 }
 
 func (d *Display) resetTerminal() {
 	logDebugf("Resetting terminal")
-	if !d.testMode {
-		d.app.Suspend(func() {
+	if !d.TestMode {
+		d.App.Suspend(func() {
 			fmt.Print("\033[?1049l") // Exit alternate screen buffer
 			fmt.Print("\033[?25h")   // Show cursor
 		})
@@ -374,7 +340,7 @@ func (d *Display) resetTerminal() {
 func (d *Display) WaitForStop() {
 	d.Logger.Debug("Waiting for display to stop")
 	select {
-	case <-d.quit:
+	case <-d.Quit:
 		d.Logger.Debug("Display stopped")
 	case <-time.After(5 * time.Second): //nolint:gomnd
 		d.Logger.Debug("Timeout waiting for display to stop")
@@ -383,13 +349,13 @@ func (d *Display) WaitForStop() {
 
 func (d *Display) AddLogEntry(logEntry string) {
 	d.DebugLog.Debug(logEntry)
-	if d.testMode {
+	if d.TestMode {
 		_, err := d.LogBox.Write([]byte(logEntry + "\n"))
 		if err != nil {
 			d.DebugLog.Error(fmt.Sprintf("Error writing to log box: %v", err))
 		}
 	} else {
-		d.app.QueueUpdateDraw(func() {
+		d.App.QueueUpdateDraw(func() {
 			fmt.Fprintf(d.LogBox, "%s\n", logEntry)
 		})
 	}
@@ -397,14 +363,14 @@ func (d *Display) AddLogEntry(logEntry string) {
 
 func (d *Display) printFinalTableState() {
 	d.DebugLog.Debug("Printing final table state")
-	if len(d.lastTableState) == 0 {
+	if len(d.LastTableState) == 0 {
 		fmt.Println("No data to display")
 		return
 	}
 
 	// Determine column widths
-	colWidths := make([]int, len(d.lastTableState[0]))
-	for _, row := range d.lastTableState {
+	colWidths := make([]int, len(d.LastTableState[0]))
+	for _, row := range d.LastTableState {
 		for col, cell := range row {
 			if len(cell) > colWidths[col] {
 				colWidths[col] = len(cell)
@@ -430,14 +396,14 @@ func (d *Display) printFinalTableState() {
 	printSeparator() // Print top separator
 
 	// Print header row
-	for col, cell := range d.lastTableState[0] {
+	for col, cell := range d.LastTableState[0] {
 		fmt.Printf("| %-*s ", colWidths[col], cell)
 	}
 	fmt.Println("|")
 	printSeparator() // Print separator after header
 
 	// Print the table
-	for _, row := range d.lastTableState[1:] {
+	for _, row := range d.LastTableState[1:] {
 		for col, cell := range row {
 			fmt.Printf("| %-*s ", colWidths[col], cell)
 		}
@@ -452,17 +418,17 @@ func getGoroutineInfo() string {
 }
 
 func (d *Display) scheduleUpdate() {
-	d.updateMutex.Lock()
-	defer d.updateMutex.Unlock()
+	d.UpdateMutex.Lock()
+	defer d.UpdateMutex.Unlock()
 
-	if !d.updatePending {
-		d.updatePending = true
+	if !d.UpdatePending {
+		d.UpdatePending = true
 		go func() {
 			time.Sleep(250 * time.Millisecond) // Increased delay to reduce update frequency
-			d.app.QueueUpdateDraw(func() {
-				d.updateMutex.Lock()
-				d.updatePending = false
-				d.updateMutex.Unlock()
+			d.App.QueueUpdateDraw(func() {
+				d.UpdateMutex.Lock()
+				d.UpdatePending = false
+				d.UpdateMutex.Unlock()
 
 				d.updateDisplay()
 			})
@@ -479,8 +445,8 @@ func (d *Display) updateDisplay() {
 func (d *Display) renderTable() {
 	logDebugf("Rendering table started")
 
-	statuses := make([]*Status, 0, len(d.statuses))
-	for _, status := range d.statuses {
+	statuses := make([]*Status, 0, len(d.Statuses))
+	for _, status := range d.Statuses {
 		statuses = append(statuses, status)
 	}
 
@@ -491,9 +457,9 @@ func (d *Display) renderTable() {
 	logDebugf("Statuses sorted")
 
 	// Initialize lastTableState with header row
-	d.lastTableState = [][]string{make([]string, len(DisplayColumns))}
+	d.LastTableState = [][]string{make([]string, len(DisplayColumns))}
 	for col, column := range DisplayColumns {
-		d.lastTableState[0][col] = column.Text
+		d.LastTableState[0][col] = column.Text
 	}
 
 	for row, status := range statuses {
@@ -504,9 +470,9 @@ func (d *Display) renderTable() {
 			cell := tview.NewTableCell(cellText).
 				SetMaxWidth(column.Width).
 				SetTextColor(column.Color)
-			d.table.SetCell(row+1, col, cell)
+			d.Table.SetCell(row+1, col, cell)
 		}
-		d.lastTableState = append(d.lastTableState, tableRow)
+		d.LastTableState = append(d.LastTableState, tableRow)
 	}
 
 	logDebugf("Table rendered")
@@ -520,20 +486,28 @@ func (d *Display) updateLogBox() {
 	}
 }
 
+func (d *Display) Log(message string) {
+	d.Logger.Info(message)
+	d.scheduleUpdate()
+}
+
 func (d *Display) logDebugInfo() {
 	d.Logger.Infof("--- Debug Info ---")
-	d.Logger.Infof("Number of statuses: %d", len(d.statuses))
+	d.Logger.Infof("Number of statuses: %d", len(d.Statuses))
 	d.Logger.Infof("LogBox title: %s", d.LogBox.GetTitle())
 	d.Logger.Infof("LogBox content length: %d", len(d.LogBox.GetText(true)))
-	d.Logger.Infof("LogBuffer size: %d", len(d.logBuffer.GetLines()))
+	d.Logger.Infof("LogBuffer size: %d", len(d.LogBuffer.GetLines()))
 	d.Logger.Infof("------------------")
 }
 func (d *Display) renderToVirtualConsole() {
-	if d.virtualConsole == nil {
-		d.virtualConsole = &bytes.Buffer{}
+	if d.VirtualConsole == nil {
+		d.VirtualConsole = &bytes.Buffer{}
 	}
-	d.virtualConsole.Reset()
-	d.virtualConsole.WriteString(d.getTableString())
-	d.virtualConsole.WriteString("\nLog:\n")
-	d.virtualConsole.WriteString(d.LogBox.GetText(false))
+
+	d.VirtualConsole.Reset()
+	d.VirtualConsole.WriteString(d.getTableString())
+	d.VirtualConsole.WriteString("\nLog:\n")
+	if d.LogBox != nil {
+		d.VirtualConsole.WriteString(d.LogBox.GetText(false))
+	}
 }

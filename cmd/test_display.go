@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	rand "math/rand/v2"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
+	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/cobra"
 )
+
+var totalTasks = 20
 
 var testDisplayCmd = &cobra.Command{
 	Use:   "testDisplay",
@@ -25,59 +25,116 @@ func getTestDisplayCmd() *cobra.Command {
 }
 
 func runTestDisplay(cmd *cobra.Command, args []string) {
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	totalTasks := 20
+	runTestDisplayInternal(totalTasks)
+
+	// sigChan := make(chan os.Signal, 1)
+	// signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// go func() {
+	// 	<-sigChan
+	// 	d.DebugLog.Debug("\nReceived interrupt, shutting down...")
+	// 	d.Stop()
+	// 	cancel()
+	// }()
+
+	// d.Start(sigChan)
+
+	// statusChan := make(chan *display.Status)
+	// logChan := make(chan string)
+
+	// var wg sync.WaitGroup
+	// wg.Add(1)
+	// go func() {
+	// 	defer wg.Done()
+	// 	generateEvents(ctx, statusChan, logChan)
+	// }()
+
+	// go func() {
+	// 	for {
+	// 		select {
+	// 		case status := <-statusChan:
+	// 			d.UpdateStatus(status)
+	// 		case logEntry := <-logChan:
+	// 			d.AddLogEntry(logEntry)
+	// 		case <-ctx.Done():
+	// 			return
+	// 		}
+	// 	}
+	// }()
+
+	// // Wait for the context to be canceled (which happens when we receive an interrupt)
+	// <-ctx.Done()
+
+	// // Wait for goroutines to finish
+	// wg.Wait()
+
+	// // Wait for the display to fully stop
+	// d.WaitForStop()
+
+	// d.DebugLog.Debug("Exiting")
+}
+
+func runTestDisplayInternal(totalTasks int) {
 	d := display.NewDisplay(totalTasks)
+	d.Logger.Info("Display initialized")
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	// Create 10 initial statuses
+	for i := 0; i < 10; i++ {
+		status := createRandomStatus()
+		d.Logger.Infof("Created random status: %+v", status)
+		d.UpdateStatus(status)
+	}
 
+	// Create a ticker for periodic updates
+	ticker := time.NewTicker(500 * time.Millisecond) // Increased the interval
+	defer ticker.Stop()
+
+	// Start the update loop in a separate goroutine
 	go func() {
-		<-sigChan
-		d.DebugLog.Debug("\nReceived interrupt, shutting down...")
-		d.Stop()
-		cancel()
-	}()
-
-	d.Start(sigChan)
-
-	statusChan := make(chan *display.Status)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		generateEvents(ctx, statusChan, totalTasks)
-	}()
-
-	go func() {
+		d.Log("Starting update loop")
 		for {
 			select {
-			case status := <-statusChan:
-				d.UpdateStatus(status)
-			case <-ctx.Done():
+			case <-ticker.C:
+				d.Log("Update loop tick")
+				status := getRandomStatus(d.Statuses)
+				if status != nil {
+					d.Logger.Infof("Got random status: %+v", status)
+					updateRandomStatus(status)
+					d.Logger.Infof("Updated random status: %+v", status)
+					d.UpdateStatus(status)
+					d.App.Draw()
+				} else {
+					d.Logger.Info("Got nil status")
+				}
+			case <-d.StopChan:
+				d.Log("Stop signal received")
+				return
+			case <-d.Quit:
+				d.Log("Quit signal received")
+				return
+			case <-d.Ctx.Done():
+				d.Log("Context done")
 				return
 			}
 		}
 	}()
 
-	// Wait for the context to be canceled (which happens when we receive an interrupt)
-	<-ctx.Done()
-
-	// Wait for goroutines to finish
-	wg.Wait()
-
-	// Wait for the display to fully stop
-	d.WaitForStop()
-
-	d.DebugLog.Debug("Exiting")
+	// Run the application
+	d.Logger.Info("Starting application")
+	if err := d.App.Run(); err != nil {
+		d.Logger.Errorf("Error running application: %s", err.Error())
+	}
 }
 
-func generateEvents(ctx context.Context, statusChan chan<- *display.Status, totalTasks int) {
+func generateEvents(ctx context.Context, statusChan chan<- *display.Status, logChan chan<- string) {
+	log := logger.Get()
+
 	statuses := make(map[string]*display.Status)
-	ticker := time.NewTicker(500 * time.Millisecond) //nolint:gomnd
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for i := 0; i < totalTasks; i++ {
@@ -86,21 +143,75 @@ func generateEvents(ctx context.Context, statusChan chan<- *display.Status, tota
 		statusChan <- newStatus
 	}
 
+	logTicker := time.NewTicker(2 * time.Second)
+	defer logTicker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
 			if status := getRandomStatus(statuses); status != nil {
-				updateRandomStatus(status)
-				select {
-				case statusChan <- status:
-				case <-ctx.Done():
-					return
+				if updateRandomStatus(status) {
+					select {
+					case statusChan <- status:
+					case <-ctx.Done():
+						return
+					}
 				}
+			}
+		case <-logTicker.C:
+			logEntry := generateRandomLogEntry()
+			log.Infof(logEntry)
+			select {
+			case logChan <- logEntry:
+			case <-ctx.Done():
+				return
 			}
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+func updateRandomStatus(status *display.Status) bool {
+	oldStatus := *status
+	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second
+	status.Status = randomStatus()
+	status.DetailedStatus = randomDetailedStatus(status.Status)
+	return oldStatus != *status // Return true if there's a change
+}
+
+func generateRandomLogEntry() string {
+	words := []string{
+		"Deploying", "Configuring", "Initializing", "Updating", "Processing",
+		"Resource", "Network", "Storage", "Compute", "Database",
+		"Server", "Cloud", "Virtual", "Container", "Cluster",
+		"Scaling", "Balancing", "Routing", "Firewall", "Gateway",
+		"Backup", "Recovery", "Monitoring", "Logging", "Analytics",
+		"API", "Microservice", "Function", "Queue", "Cache",
+		"Encryption", "Authentication", "Authorization", "Endpoint", "Protocol",
+		"Bandwidth", "Latency", "Throughput", "Packet", "Payload",
+		"Instance", "Volume", "Snapshot", "Image", "Template",
+		"Orchestration", "Provisioning", "Deprovisioning", "Allocation", "Deallocation",
+		"Replication", "Synchronization", "Failover", "Redundancy", "Resilience",
+		"Optimization", "Compression", "Indexing", "Partitioning", "Sharding",
+		"Namespace", "Repository", "Registry", "Artifact", "Pipeline",
+		"Webhook", "Trigger", "Event", "Stream", "Batch",
+		"Scheduler", "Cron", "Task", "Job", "Workflow",
+		"Module", "Package", "Library", "Framework", "SDK",
+		"Compiler", "Interpreter", "Runtime", "Debugger", "Profiler",
+		"Algorithm", "Hashing", "Encryption", "Decryption", "Encoding",
+		"Socket", "Port", "Interface", "Bridge", "Tunnel",
+		"Proxy", "Reverse-proxy", "Load-balancer", "CDN", "DNS",
+		"Certificate", "Key", "Token", "Session", "Cookie",
+		"Thread", "Process", "Daemon", "Service", "Middleware",
+	}
+
+	numWords := rand.IntN(5) + 3 //nolint:gomnd,gosec
+	var logWords []string
+	for i := 0; i < numWords; i++ {
+		logWords = append(logWords, words[rand.IntN(len(words))]) //nolint:gomnd,gosec
+	}
+
+	return strings.Join(logWords, " ")
 }
 
 func createRandomStatus() *display.Status {
@@ -117,12 +228,6 @@ func createRandomStatus() *display.Status {
 		PublicIP:       randomIP(),
 		PrivateIP:      randomIP(),
 	}
-}
-
-func updateRandomStatus(status *display.Status) {
-	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second //nolint:gomnd,gosec
-	status.Status = randomStatus()
-	status.DetailedStatus = randomDetailedStatus(status.Status)
 }
 
 func getRandomStatus(statuses map[string]*display.Status) *display.Status {

@@ -15,7 +15,8 @@ import (
 // CreateResourceGroup creates a new resource group or returns an existing one
 func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	rgLocation string,
-	rgName string) (*armresources.ResourceGroup, error) {
+	rgName string,
+	tags map[string]*string) (*armresources.ResourceGroup, error) {
 	log := logger.Get()
 
 	// Get the base resource group name from the config

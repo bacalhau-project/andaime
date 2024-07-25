@@ -19,7 +19,7 @@ func generateTags(projectID, uniqueID string) map[string]*string {
 	}
 }
 
-func ensureTags(tags map[string]*string, projectID, uniqueID string) {
+func EnsureTags(tags map[string]*string, projectID, uniqueID string) map[string]*string {
 	if tags == nil {
 		tags = map[string]*string{}
 	}
@@ -41,6 +41,7 @@ func ensureTags(tags map[string]*string, projectID, uniqueID string) {
 	if tags["andaime-project"] == nil {
 		tags["andaime-project"] = to.Ptr(fmt.Sprintf("%s-%s", uniqueID, projectID))
 	}
+	return tags
 }
 
 func IsValidResourceGroupName(name string) bool {

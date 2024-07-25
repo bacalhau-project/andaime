@@ -26,13 +26,16 @@ func TestCreateResourceGroup(t *testing.T) {
 		ctx := context.Background()
 
 		// Act
-		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
+		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context,
+			location string,
+			name string,
+			tags map[string]*string) (*armresources.ResourceGroup, error) {
 			return &armresources.ResourceGroup{
 				Location: &location,
 			}, nil
 		}
 
-		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME")
+		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME", nil)
 
 		// Assert
 		assert.NoError(t, err)
@@ -45,12 +48,15 @@ func TestCreateResourceGroup(t *testing.T) {
 		ctx := context.Background()
 
 		// Act
-		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
+		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context,
+			location string,
+			name string,
+			tags map[string]*string) (*armresources.ResourceGroup, error) {
 			return &armresources.ResourceGroup{
 				Location: &location,
 			}, nil
 		}
-		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME")
+		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME", nil)
 
 		// Assert
 		assert.NoError(t, err)
@@ -63,10 +69,10 @@ func TestCreateResourceGroup(t *testing.T) {
 		ctx := context.Background()
 
 		// Act
-		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string) (*armresources.ResourceGroup, error) {
+		mockClient.GetOrCreateResourceGroupFunc = func(ctx context.Context, location string, name string, tags map[string]*string) (*armresources.ResourceGroup, error) {
 			return nil, errors.New("error")
 		}
-		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME")
+		result, err := mockClient.GetOrCreateResourceGroupFunc(ctx, location, "TESTRGNAME", nil)
 
 		// Assert
 		assert.Error(t, err)
