@@ -325,6 +325,25 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		<-d.stopChan
 		close(d.quit)
 	}()
+
+	go func() {
+		for {
+			select {
+			case <-d.stopChan:
+				return
+			default:
+				d.app.QueueUpdateDraw(func() {
+					d.renderTable()
+					d.updateLogBox()
+				})
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+
+	if err := d.app.Run(); err != nil {
+		d.Logger.Errorf("Error running display: %v", err)
+	}
 }
 
 func (d *Display) Stop() {
