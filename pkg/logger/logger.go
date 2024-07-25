@@ -14,8 +14,6 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/rivo/tview"
-
-	"github.com/spf13/viper"
 )
 
 var (
