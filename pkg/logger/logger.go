@@ -346,9 +346,14 @@ var (
 
 func GetLastLines(filepath string, n int) []string {
 	l := Get()
+	if filepath == "" {
+		l.Errorf("Error: filepath is empty")
+		return nil
+	}
+
 	file, err := os.Open(filepath)
 	if err != nil {
-		l.Errorf("Error opening file: %v", err)
+		l.Errorf("Error opening file '%s': %v", filepath, err)
 		return nil
 	}
 	defer file.Close()
@@ -363,7 +368,7 @@ func GetLastLines(filepath string, n int) []string {
 	}
 
 	if err := scanner.Err(); err != nil {
-		l.Errorf("Error reading file: %v", err)
+		l.Errorf("Error reading file '%s': %v", filepath, err)
 	}
 
 	return lines
