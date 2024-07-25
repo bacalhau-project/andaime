@@ -321,6 +321,7 @@ func GetLastLines(filepath string, n int) []string {
 	if filepath == "" {
 		l.Errorf("Error: filepath is empty")
 		writeToDebugLog("Error: filepath is empty in GetLastLines")
+		debug.PrintStack() // Add stack trace
 		return []string{"Error: filepath is empty"}
 	}
 
@@ -363,9 +364,10 @@ func GetLastLines(filepath string, n int) []string {
 }
 
 func writeToDebugLog(message string) {
-	debugFile, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugFilePath := "/tmp/andaime.log"
+	debugFile, err := os.OpenFile(debugFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error opening debug log file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error opening debug log file %s: %v\n", debugFilePath, err)
 		return
 	}
 	defer debugFile.Close()
@@ -373,6 +375,14 @@ func writeToDebugLog(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	_, err = fmt.Fprintf(debugFile, "[%s] %s\n", timestamp, message)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error writing to debug log file %s: %v\n", debugFilePath, err)
+	}
+
+	// Check if the file was actually written to
+	fileInfo, err := os.Stat(debugFilePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error checking debug log file %s: %v\n", debugFilePath, err)
+	} else if fileInfo.Size() == 0 {
+		fmt.Fprintf(os.Stderr, "Warning: Debug log file %s is empty after write attempt\n", debugFilePath)
 	}
 }
