@@ -1,6 +1,7 @@
 package display
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -96,6 +97,7 @@ func NewDisplay(totalTasks int) *Display {
 		LogBox:             tview.NewTextView().SetDynamicColors(true),
 		ctx:                ctx,
 		cancel:             cancel,
+		virtualConsole:     &bytes.Buffer{},
 	}
 
 	d.DebugLog = *logger.Get()
