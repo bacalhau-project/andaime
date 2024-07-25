@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/rivo/tview"
+
+	"github.com/spf13/viper"
 )
 
 var (
@@ -23,6 +26,11 @@ var (
 	INFO         zapcore.Level = zapcore.InfoLevel
 	WARN         zapcore.Level = zapcore.WarnLevel
 	ERROR        zapcore.Level = zapcore.ErrorLevel
+
+	GlobalEnableConsoleLogger bool
+	GlobalEnableFileLogger    bool
+	GlobalLogPath             string
+	GlobalLogLevel            string
 )
 
 var (
@@ -66,9 +74,8 @@ func (w *LogBoxWriter) Write(p []byte) (n int, err error) {
 }
 
 // getLogLevel reads the LOG_LEVEL environment variable and returns the corresponding zapcore.Level.
-func getLogLevel() zapcore.Level {
-	logLevelEnv := os.Getenv("LOG_LEVEL")
-	switch strings.ToUpper(logLevelEnv) {
+func getLogLevel(logLevel string) zapcore.Level {
+	switch strings.ToUpper(logLevel) {
 	case "DEBUG":
 		return zapcore.DebugLevel
 	case "INFO":
@@ -81,44 +88,59 @@ func getLogLevel() zapcore.Level {
 		return zapcore.InfoLevel // Default to info level if LOG_LEVEL is not set or recognized
 	}
 }
-func InitProduction() {
+func InitProduction(enableConsole bool, enableFile bool) {
 	once.Do(func() {
-		logLevel := getLogLevel()
+
+		if viper.GetBool("general.enable_console_logger") {
+			GlobalEnableConsoleLogger = viper.GetBool("general.enable_console_logger")
+		}
+		if viper.GetBool("general.enable_file_logger") {
+			GlobalEnableFileLogger = viper.GetBool("general.enable_file_logger")
+		}
+		if viper.GetString("general.log_path") != "" {
+			GlobalLogPath = viper.GetString("general.log_path")
+		}
+		if viper.GetString("general.log_level") != "" {
+			GlobalLogLevel = viper.GetString("general.log_level")
+		}
+
+		logLevel := getLogLevel(GlobalLogLevel)
 
 		var cores []zapcore.Core
 
-		// Custom encoder for console output
-		customConsoleEncoder := zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
-			TimeKey:        "",
-			LevelKey:       "",
-			NameKey:        "",
-			CallerKey:      "",
-			FunctionKey:    zapcore.OmitKey,
-			MessageKey:     "message",
-			StacktraceKey:  "",
-			LineEnding:     zapcore.DefaultLineEnding,
-			EncodeLevel:    zapcore.CapitalColorLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.StringDurationEncoder,
-			EncodeCaller:   zapcore.ShortCallerEncoder,
-		})
+		if enableConsole {
+			// Custom encoder for console output
+			customConsoleEncoder := zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
+				TimeKey:        "",
+				LevelKey:       "",
+				NameKey:        "",
+				CallerKey:      "",
+				FunctionKey:    zapcore.OmitKey,
+				MessageKey:     "message",
+				StacktraceKey:  "",
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+				EncodeTime:     zapcore.ISO8601TimeEncoder,
+				EncodeDuration: zapcore.StringDurationEncoder,
+				EncodeCaller:   zapcore.ShortCallerEncoder,
+			})
 
-		// Create console core (always used)
-		consoleCore := zapcore.NewCore(
-			customConsoleEncoder,
-			zapcore.Lock(os.Stdout),
-			logLevel,
-		)
-		cores = append(cores, consoleCore)
+			// Create console core (always used)
+			consoleCore := zapcore.NewCore(
+				customConsoleEncoder,
+				zapcore.Lock(os.Stdout),
+				logLevel,
+			)
+			cores = append(cores, consoleCore)
+		}
 
-		// If debug level is set, add file core
-		if logLevel == zapcore.DebugLevel {
+		if enableFile {
 			// File encoder config
 			fileEncoderConfig := zap.NewProductionEncoderConfig()
 			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 			// Set up file output for debug mode
-			debugFile, err := os.OpenFile("debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			debugFile, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
 				fmt.Printf("%s Failed to open debug log file: %v\n", time.Now().Format(time.RFC3339), err)
 			} else {
@@ -130,7 +152,6 @@ func InitProduction() {
 				cores = append(cores, fileCore)
 			}
 		}
-
 		// Combine cores
 		core := zapcore.NewTee(cores...)
 
@@ -157,7 +178,7 @@ func (tw *testingWriter) Write(p []byte) (n int, err error) {
 // InitTest initializes the global logger for testing, respecting LOG_LEVEL.
 func InitTest(tb zaptest.TestingT) {
 	once.Do(func() {
-		logLevel := getLogLevel()
+		logLevel := getLogLevel("DEBUG")
 
 		core := zapcore.NewCore(
 			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
@@ -174,7 +195,7 @@ func InitTest(tb zaptest.TestingT) {
 // Get returns the global logger instance
 func Get() *Logger {
 	if globalLogger == nil {
-		InitProduction()
+		InitProduction(GlobalEnableConsoleLogger, GlobalEnableFileLogger)
 	}
 	logger := &Logger{Logger: globalLogger}
 	logger.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
@@ -254,7 +275,7 @@ func NewNopLogger() *Logger {
 // SetLevel sets the logging level for the global logger
 func SetLevel(level zapcore.Level) {
 	if globalLogger == nil {
-		InitProduction()
+		InitProduction(false, true)
 	}
 	globalLogger = globalLogger.WithOptions(zap.IncreaseLevel(level))
 }
@@ -267,7 +288,7 @@ func SetOutputFormat(format string) {
 	} else {
 		outputFormat = format
 	}
-	InitProduction()
+	InitProduction(false, true)
 }
 
 // LevelEnablerFunc is a wrapper to implement zapcore.LevelEnabler
@@ -298,14 +319,14 @@ func LogAzureAPIEnd(operation string, err error) {
 
 func DebugPrint(msg string) {
 	if globalLogger == nil {
-		InitProduction()
+		InitProduction(false, true)
 	}
 	globalLogger.Debug(msg)
 }
 
 func LogInitialization(msg string) {
 	if globalLogger == nil {
-		InitProduction()
+		InitProduction(false, true)
 	}
 	globalLogger.Info(msg)
 }
@@ -322,3 +343,28 @@ var (
 	ZapError   = zap.Error
 	ZapAny     = zap.Any
 )
+
+func GetLastLines(filepath string, n int) []string {
+	l := Get()
+	file, err := os.Open(filepath)
+	if err != nil {
+		l.Errorf("Error opening file: %v", err)
+		return nil
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+		if len(lines) > n {
+			lines = lines[1:]
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		l.Errorf("Error reading file: %v", err)
+	}
+
+	return lines
+}
