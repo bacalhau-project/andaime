@@ -321,7 +321,7 @@ func GetLastLines(filepath string, n int) []string {
 	if filepath == "" {
 		l.Errorf("Error: filepath is empty")
 		writeToDebugLog("Error: filepath is empty in GetLastLines")
-		return nil
+		return []string{"Error: filepath is empty"}
 	}
 
 	l.Debugf("Attempting to open file: '%s'", filepath)
@@ -331,7 +331,7 @@ func GetLastLines(filepath string, n int) []string {
 		errMsg := fmt.Sprintf("Error opening file '%s': %v", filepath, err)
 		l.Errorf(errMsg)
 		writeToDebugLog(errMsg)
-		return nil
+		return []string{errMsg}
 	}
 	defer file.Close()
 	l.Debugf("File opened successfully: '%s'", filepath)
@@ -354,6 +354,7 @@ func GetLastLines(filepath string, n int) []string {
 		errMsg := fmt.Sprintf("Error reading file '%s': %v", filepath, err)
 		l.Errorf(errMsg)
 		writeToDebugLog(errMsg)
+		return append([]string{errMsg}, lines...)
 	}
 
 	l.Debugf("Returning %d lines from file '%s'", len(lines), filepath)
