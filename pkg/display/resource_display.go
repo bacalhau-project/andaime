@@ -212,7 +212,10 @@ func (d *Display) UpdateStatus(status *Status) {
 	newStatus.HighlightCycles = d.fadeSteps
 	d.statuses[newStatus.ID] = &newStatus
 
-	d.scheduleUpdate()
+	d.app.QueueUpdateDraw(func() {
+		d.renderTable()
+		d.updateLogBox()
+	})
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
