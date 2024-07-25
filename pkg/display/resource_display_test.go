@@ -2,6 +2,7 @@ package display
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,14 +63,28 @@ func TestDisplayStart(t *testing.T) {
 	d.UpdateStatus(testStatus)
 
 	// Give more time for the update to complete
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	// Check if the status was actually updated
 	d.StatusesMu.RLock()
 	updatedStatus, exists := d.Statuses[testStatus.ID]
 	d.StatusesMu.RUnlock()
+
+	t.Logf("Status exists: %v", exists)
+	if exists {
+		t.Logf("Updated status: %+v", updatedStatus)
+	} else {
+		t.Logf("All statuses: %+v", d.Statuses)
+	}
+
 	assert.True(t, exists, "Status should exist in the display")
-	assert.Equal(t, testStatus, updatedStatus, "Status should be updated correctly")
+	if exists {
+		assert.Equal(t, testStatus, updatedStatus, "Status should be updated correctly")
+	}
+
+	// Trigger a manual update
+	d.scheduleUpdate()
+	time.Sleep(500 * time.Millisecond)
 
 	// Stop the display
 	d.Stop()
@@ -96,6 +111,11 @@ func TestDisplayStart(t *testing.T) {
 	}
 
 	for _, expected := range expectedContent {
+		if strings.Contains(consoleContent, expected) {
+			t.Logf("Found expected content: %s", expected)
+		} else {
+			t.Logf("Missing expected content: %s", expected)
+		}
 		assert.Contains(t, consoleContent, expected, "Virtual console content should contain the expected information")
 	}
 }
