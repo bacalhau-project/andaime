@@ -47,7 +47,7 @@ func TestDisplayStart(t *testing.T) {
 
 	// Update status to trigger table rendering
 	t.Log("Updating status")
-	d.UpdateStatus(&Status{
+	testStatus := &Status{
 		ID:             "test-id",
 		Type:           "EC2",
 		Region:         "us-west-2",
@@ -58,10 +58,18 @@ func TestDisplayStart(t *testing.T) {
 		InstanceID:     "i-12345",
 		PublicIP:       "203.0.113.1",
 		PrivateIP:      "10.0.0.1",
-	})
+	}
+	d.UpdateStatus(testStatus)
 
-	// Give some time for the update to complete
-	time.Sleep(100 * time.Millisecond)
+	// Give more time for the update to complete
+	time.Sleep(500 * time.Millisecond)
+
+	// Check if the status was actually updated
+	d.StatusesMu.RLock()
+	updatedStatus, exists := d.Statuses[testStatus.ID]
+	d.StatusesMu.RUnlock()
+	assert.True(t, exists, "Status should exist in the display")
+	assert.Equal(t, testStatus, updatedStatus, "Status should be updated correctly")
 
 	// Stop the display
 	d.Stop()
@@ -79,12 +87,12 @@ func TestDisplayStart(t *testing.T) {
 	t.Logf("Virtual console content: %s", consoleContent)
 
 	expectedContent := []string{
-		"test-id",
-		"EC2",
-		"us-west-2",
-		"Running",
-		"i-12345",
-		"203.0.113.1",
+		testStatus.ID,
+		testStatus.Type,
+		testStatus.Region,
+		testStatus.Status,
+		testStatus.InstanceID,
+		testStatus.PublicIP,
 	}
 
 	for _, expected := range expectedContent {
