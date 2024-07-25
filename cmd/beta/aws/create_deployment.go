@@ -59,7 +59,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		Status: "Initializing",
 	})
 
-	resources, err := awsProvider.CreateDeployment(cmd.Context())
+	err = awsProvider.CreateDeployment(cmd.Context())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to create deployment: %s", err.Error())
 		log.Error(errString)
