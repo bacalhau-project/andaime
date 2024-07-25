@@ -5,9 +5,20 @@ import (
 )
 
 // Status represents the status of an instance
+type ResourceInfo struct {
+	ID         string
+	Type       string
+	Region     string
+	Zone       string
+	Status     string
+	InstanceID string
+	PublicIP   string
+	PrivateIP  string
+}
+
 type Status struct {
 	ID string
-	// Add other fields as needed
+	ResourceInfo
 }
 
 // allStatuses is a thread-safe map to store instance statuses
