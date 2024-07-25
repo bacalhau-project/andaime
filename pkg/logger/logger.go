@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
+
+	"github.com/rivo/tview"
 )
 
 var (
@@ -49,6 +51,18 @@ func CmdLog(msg string, level zapcore.Level) {
 // Logger is a wrapper around zap.Logger
 type Logger struct {
 	*zap.Logger
+}
+
+type LogBoxWriter struct {
+	LogBox *tview.TextView
+	App    *tview.Application
+}
+
+func (w *LogBoxWriter) Write(p []byte) (n int, err error) {
+	w.App.QueueUpdateDraw(func() {
+		_, err = w.LogBox.Write(p)
+	})
+	return len(p), err
 }
 
 // getLogLevel reads the LOG_LEVEL environment variable and returns the corresponding zapcore.Level.
@@ -162,7 +176,7 @@ func Get() *Logger {
 	if globalLogger == nil {
 		InitProduction()
 	}
-	logger := &Logger{globalLogger}
+	logger := &Logger{Logger: globalLogger}
 	logger.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
 	return logger
 }
@@ -254,6 +268,14 @@ func SetOutputFormat(format string) {
 		outputFormat = format
 	}
 	InitProduction()
+}
+
+// LevelEnablerFunc is a wrapper to implement zapcore.LevelEnabler
+type LevelEnablerFunc func(zapcore.Level) bool
+
+// Enabled implements zapcore.LevelEnabler interface
+func (f LevelEnablerFunc) Enabled(level zapcore.Level) bool {
+	return f(level)
 }
 
 // LogAzureAPIStart logs the start of an Azure API operation

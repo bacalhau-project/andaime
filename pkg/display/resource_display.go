@@ -21,7 +21,7 @@ import (
 var debugLogger *log.Logger
 
 func init() {
-	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gomnd
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -160,8 +160,8 @@ func (d *Display) setupTable() {
 func (d *Display) setupLayout() {
 	d.DebugLog.Debug("Setting up layout")
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(d.table, 0, 3, true). //nolint:gomnd
-		AddItem(d.LogBox, 5, 1, false)
+		AddItem(d.table, RelativeSizeForTable, 0, true). //nolint:gomnd
+		AddItem(d.LogBox, RelativeSizeForLogBox, 0, false)
 
 	d.app.SetRoot(flex, true).EnableMouse(false)
 }
@@ -246,7 +246,6 @@ func (d *Display) renderTable() {
 		d.AddLogEntry(d.getTableString())
 	}
 
-	d.app.Draw()
 	logDebugf("Table rendered")
 }
 
@@ -412,12 +411,6 @@ func (d *Display) WaitForStop() {
 		case <-timeout:
 			d.DebugLog.Debug("Timeout waiting for display to stop")
 			return
-		case <-ticker.C:
-			if !d.app.IsRunning() {
-				d.DebugLog.Debug("Application is no longer running")
-				close(d.quit)
-				return
-			}
 		}
 	}
 }
