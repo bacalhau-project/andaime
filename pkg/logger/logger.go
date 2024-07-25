@@ -89,40 +89,46 @@ func getLogLevel(logLevel string) zapcore.Level {
 	}
 }
 func InitProduction(enableConsole bool, enableFile bool) {
-	fmt.Fprintf(os.Stderr, "DEBUG: Entering InitProduction (enableConsole: %v, enableFile: %v)\n", enableConsole, enableFile)
 	once.Do(func() {
-		fmt.Fprintf(os.Stderr, "DEBUG: Inside once.Do\n")
+		// Setup a special file for log initialization only
+		logInitFile, err := os.OpenFile("/tmp/andaime-loginit.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "DEBUG: Failed to open log initialization file: %v\n", err)
+		}
+		defer logInitFile.Close()
 
-		fmt.Fprintf(os.Stderr, "DEBUG: Viper settings:\n")
-		fmt.Fprintf(os.Stderr, "  general.enable_console_logger: %v\n", viper.GetBool("general.enable_console_logger"))
-		fmt.Fprintf(os.Stderr, "  general.enable_file_logger: %v\n", viper.GetBool("general.enable_file_logger"))
-		fmt.Fprintf(os.Stderr, "  general.log_path: %s\n", viper.GetString("general.log_path"))
-		fmt.Fprintf(os.Stderr, "  general.log_level: %s\n", viper.GetString("general.log_level"))
+		fmt.Fprintf(logInitFile, "DEBUG: Inside once.Do\n")
+
+		fmt.Fprintf(logInitFile, "DEBUG: Viper settings:\n")
+		fmt.Fprintf(logInitFile, "  general.enable_console_logger: %v\n", viper.GetBool("general.enable_console_logger"))
+		fmt.Fprintf(logInitFile, "  general.enable_file_logger: %v\n", viper.GetBool("general.enable_file_logger"))
+		fmt.Fprintf(logInitFile, "  general.log_path: %s\n", viper.GetString("general.log_path"))
+		fmt.Fprintf(logInitFile, "  general.log_level: %s\n", viper.GetString("general.log_level"))
 
 		if viper.GetBool("general.enable_console_logger") {
 			GlobalEnableConsoleLogger = viper.GetBool("general.enable_console_logger")
-			fmt.Fprintf(os.Stderr, "DEBUG: GlobalEnableConsoleLogger set to %v\n", GlobalEnableConsoleLogger)
+			fmt.Fprintf(logInitFile, "DEBUG: GlobalEnableConsoleLogger set to %v\n", GlobalEnableConsoleLogger)
 		}
 		if viper.GetBool("general.enable_file_logger") {
 			GlobalEnableFileLogger = viper.GetBool("general.enable_file_logger")
-			fmt.Fprintf(os.Stderr, "DEBUG: GlobalEnableFileLogger set to %v\n", GlobalEnableFileLogger)
+			fmt.Fprintf(logInitFile, "DEBUG: GlobalEnableFileLogger set to %v\n", GlobalEnableFileLogger)
 		}
 		if viper.GetString("general.log_path") != "" {
 			GlobalLogPath = viper.GetString("general.log_path")
-			fmt.Fprintf(os.Stderr, "DEBUG: GlobalLogPath set to %s\n", GlobalLogPath)
+			fmt.Fprintf(logInitFile, "DEBUG: GlobalLogPath set to %s\n", GlobalLogPath)
 		}
 		if viper.GetString("general.log_level") != "" {
 			GlobalLogLevel = viper.GetString("general.log_level")
-			fmt.Fprintf(os.Stderr, "DEBUG: GlobalLogLevel set to %s\n", GlobalLogLevel)
+			fmt.Fprintf(logInitFile, "DEBUG: GlobalLogLevel set to %s\n", GlobalLogLevel)
 		}
 
 		logLevel := getLogLevel(GlobalLogLevel)
-		fmt.Fprintf(os.Stderr, "DEBUG: Log level set to %v\n", logLevel)
+		fmt.Fprintf(logInitFile, "DEBUG: Log level set to %v\n", logLevel)
 
 		var cores []zapcore.Core
 
 		if enableConsole {
-			fmt.Fprintf(os.Stderr, "DEBUG: Enabling console logging\n")
+			fmt.Fprintf(logInitFile, "DEBUG: Enabling console logging\n")
 			// Custom encoder for console output
 			customConsoleEncoder := zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
 				TimeKey:        "",
@@ -155,32 +161,37 @@ func InitProduction(enableConsole bool, enableFile bool) {
 			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 			// Set up file output for debug mode
-			fmt.Fprintf(os.Stderr, "DEBUG: Attempting to open log file: %s\n", GlobalLogPath)
+			fmt.Fprintf(logInitFile, "DEBUG: Attempting to open log file: %s\n", GlobalLogPath)
 			debugFile, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "DEBUG: Failed to open debug log file: %v\n", err)
+				fmt.Fprintf(logInitFile, "DEBUG: Failed to open debug log file: %v\n", err)
 			} else {
-				fmt.Fprintf(os.Stderr, "DEBUG: Successfully opened log file\n")
+				fmt.Fprintf(logInitFile, "DEBUG: Successfully opened log file\n")
 				fileCore := zapcore.NewCore(
 					zapcore.NewJSONEncoder(fileEncoderConfig),
 					zapcore.AddSync(debugFile),
 					logLevel, // Use the configured log level instead of always using DebugLevel
 				)
 				cores = append(cores, fileCore)
-				fmt.Fprintf(os.Stderr, "DEBUG: Added file core to cores slice\n")
+				fmt.Fprintf(logInitFile, "DEBUG: Added file core to cores slice\n")
 			}
 		}
 		// Combine cores
-		fmt.Fprintf(os.Stderr, "DEBUG: Combining cores\n")
+		fmt.Fprintf(logInitFile, "DEBUG: Combining cores\n")
 		core := zapcore.NewTee(cores...)
 
-		fmt.Fprintf(os.Stderr, "DEBUG: Creating new logger\n")
+		fmt.Fprintf(logInitFile, "DEBUG: Creating new logger\n")
 		logger := zap.New(core)
 
 		globalLogger = logger
-		fmt.Fprintf(os.Stderr, "DEBUG: Global logger set\n")
+		fmt.Fprintf(logInitFile, "DEBUG: Global logger set\n")
+		fmt.Fprintf(logInitFile, "DEBUG: Exiting InitProduction\n")
 	})
-	fmt.Fprintf(os.Stderr, "DEBUG: Exiting InitProduction\n")
+
+	l := Get()
+	if l != nil {
+		l.Debug("DEBUG: Exiting InitProduction: ", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
+	}
 }
 
 type testingWriter struct {
@@ -216,16 +227,17 @@ func InitTest(tb zaptest.TestingT) {
 
 // Get returns the global logger instance
 func Get() *Logger {
-	fmt.Fprintf(os.Stderr, "DEBUG: Entering Get()\n")
+	var l *Logger
 	if globalLogger == nil {
-		fmt.Fprintf(os.Stderr, "DEBUG: globalLogger is nil, initializing production logger\n")
 		InitProduction(GlobalEnableConsoleLogger, GlobalEnableFileLogger)
+		l = &Logger{Logger: globalLogger}
+		l.Debug("Logger created", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
+	} else {
+		l.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
+		l = &Logger{Logger: globalLogger}
 	}
-	logger := &Logger{Logger: globalLogger}
-	fmt.Fprintf(os.Stderr, "DEBUG: Logger created, debug level enabled: %v\n", globalLogger.Core().Enabled(zapcore.DebugLevel))
-	logger.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
-	fmt.Fprintf(os.Stderr, "DEBUG: Exiting Get()\n")
-	return logger
+	l.Debug("Exiting Get()")
+	return l
 }
 
 // With creates a child logger and adds structured context to it
@@ -373,20 +385,25 @@ var (
 func GetLastLines(filepath string, n int) []string {
 	l := Get()
 	l.Debugf("GetLastLines called with filepath: '%s' and n: %d", filepath, n)
-	
+
 	if filepath == "" {
 		l.Errorf("Error: filepath is empty")
+		writeToDebugLog("Error: filepath is empty in GetLastLines")
 		return nil
 	}
 
 	l.Debugf("Attempting to open file: '%s'", filepath)
+	writeToDebugLog(fmt.Sprintf("Attempting to open file: '%s'", filepath))
 	file, err := os.Open(filepath)
 	if err != nil {
-		l.Errorf("Error opening file '%s': %v", filepath, err)
+		errMsg := fmt.Sprintf("Error opening file '%s': %v", filepath, err)
+		l.Errorf(errMsg)
+		writeToDebugLog(errMsg)
 		return nil
 	}
 	defer file.Close()
 	l.Debugf("File opened successfully: '%s'", filepath)
+	writeToDebugLog(fmt.Sprintf("File opened successfully: '%s'", filepath))
 
 	var lines []string
 	scanner := bufio.NewScanner(file)
@@ -399,11 +416,30 @@ func GetLastLines(filepath string, n int) []string {
 		lineCount++
 	}
 	l.Debugf("Read %d lines from file '%s'", lineCount, filepath)
+	writeToDebugLog(fmt.Sprintf("Read %d lines from file '%s'", lineCount, filepath))
 
 	if err := scanner.Err(); err != nil {
-		l.Errorf("Error reading file '%s': %v", filepath, err)
+		errMsg := fmt.Sprintf("Error reading file '%s': %v", filepath, err)
+		l.Errorf(errMsg)
+		writeToDebugLog(errMsg)
 	}
 
 	l.Debugf("Returning %d lines from file '%s'", len(lines), filepath)
+	writeToDebugLog(fmt.Sprintf("Returning %d lines from file '%s'", len(lines), filepath))
 	return lines
+}
+
+func writeToDebugLog(message string) {
+	debugFile, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening debug log file: %v\n", err)
+		return
+	}
+	defer debugFile.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	_, err = fmt.Fprintf(debugFile, "[%s] %s\n", timestamp, message)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
+	}
 }

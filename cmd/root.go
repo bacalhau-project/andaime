@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"sync"
@@ -91,10 +90,14 @@ var listCmd = &cobra.Command{
 
 func initConfig() {
 	// Use a temporary logger for initial debugging
-	tmpLogger := log.New(io.Discard, "", log.LstdFlags)
-	if os.Getenv("LOG_LEVEL") == "debug" {
-		tmpLogger.SetOutput(os.Stdout)
+	debugLog, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening debug log file: %v\n", err)
+		os.Exit(1)
 	}
+	defer debugLog.Close()
+
+	tmpLogger := log.New(debugLog, "", log.LstdFlags)
 
 	tmpLogger.Printf("Debug: Starting initConfig")
 	tmpLogger.Printf("Debug: ConfigFile value: %s", ConfigFile)
@@ -110,7 +113,8 @@ func initConfig() {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			tmpLogger.Printf("Error getting user home directory: %v", err)
-			fmt.Fprintf(os.Stderr, "Error: Unable to determine home directory. Please specify a config file using the --config flag.\n")
+			tmpLogger.Printf(`Error: Unable to determine home directory.
+ Please specify a config file using the --config flag.`)
 			os.Exit(1)
 		}
 		viper.AddConfigPath(home)
