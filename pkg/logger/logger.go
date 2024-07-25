@@ -90,64 +90,12 @@ func getLogLevel(logLevel string) zapcore.Level {
 }
 func InitProduction(enableConsole bool, enableFile bool) {
 	once.Do(func() {
-		// Setup a special file for log initialization only
-		logInitFile, err := os.OpenFile("/tmp/andaime-loginit.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "DEBUG: Failed to open log initialization file: %v\n", err)
-		}
-		defer logInitFile.Close()
-
-		fmt.Fprintf(logInitFile, "DEBUG: Inside once.Do\n")
-
-		fmt.Fprintf(logInitFile, "DEBUG: Viper settings:\n")
-		fmt.Fprintf(logInitFile, "  general.enable_console_logger: %v\n", viper.GetBool("general.enable_console_logger"))
-		fmt.Fprintf(logInitFile, "  general.enable_file_logger: %v\n", viper.GetBool("general.enable_file_logger"))
-		fmt.Fprintf(logInitFile, "  general.log_path: %s\n", viper.GetString("general.log_path"))
-		fmt.Fprintf(logInitFile, "  general.log_level: %s\n", viper.GetString("general.log_level"))
-
-		if viper.GetBool("general.enable_console_logger") {
-			GlobalEnableConsoleLogger = viper.GetBool("general.enable_console_logger")
-			fmt.Fprintf(logInitFile, "DEBUG: GlobalEnableConsoleLogger set to %v\n", GlobalEnableConsoleLogger)
-		}
-		if viper.GetBool("general.enable_file_logger") {
-			GlobalEnableFileLogger = viper.GetBool("general.enable_file_logger")
-			fmt.Fprintf(logInitFile, "DEBUG: GlobalEnableFileLogger set to %v\n", GlobalEnableFileLogger)
-		}
-		if viper.GetString("general.log_path") != "" {
-			GlobalLogPath = viper.GetString("general.log_path")
-			fmt.Fprintf(logInitFile, "DEBUG: GlobalLogPath set to %s\n", GlobalLogPath)
-		}
-		if viper.GetString("general.log_level") != "" {
-			GlobalLogLevel = viper.GetString("general.log_level")
-			fmt.Fprintf(logInitFile, "DEBUG: GlobalLogLevel set to %s\n", GlobalLogLevel)
-		}
-
 		logLevel := getLogLevel(GlobalLogLevel)
-		fmt.Fprintf(logInitFile, "DEBUG: Log level set to %v\n", logLevel)
-
 		var cores []zapcore.Core
 
 		if enableConsole {
-			fmt.Fprintf(logInitFile, "DEBUG: Enabling console logging\n")
-			// Custom encoder for console output
-			customConsoleEncoder := zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
-				TimeKey:        "",
-				LevelKey:       "",
-				NameKey:        "",
-				CallerKey:      "",
-				FunctionKey:    zapcore.OmitKey,
-				MessageKey:     "message",
-				StacktraceKey:  "",
-				LineEnding:     zapcore.DefaultLineEnding,
-				EncodeLevel:    zapcore.CapitalColorLevelEncoder,
-				EncodeTime:     zapcore.ISO8601TimeEncoder,
-				EncodeDuration: zapcore.StringDurationEncoder,
-				EncodeCaller:   zapcore.ShortCallerEncoder,
-			})
-
-			// Create console core (always used)
 			consoleCore := zapcore.NewCore(
-				customConsoleEncoder,
+				zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 				zapcore.Lock(os.Stdout),
 				logLevel,
 			)
@@ -155,42 +103,27 @@ func InitProduction(enableConsole bool, enableFile bool) {
 		}
 
 		if enableFile {
-			fmt.Fprintf(os.Stderr, "DEBUG: Enabling file logging\n")
-			// File encoder config
 			fileEncoderConfig := zap.NewProductionEncoderConfig()
 			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-			// Set up file output for debug mode
-			fmt.Fprintf(logInitFile, "DEBUG: Attempting to open log file: %s\n", GlobalLogPath)
 			debugFile, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-			if err != nil {
-				fmt.Fprintf(logInitFile, "DEBUG: Failed to open debug log file: %v\n", err)
-			} else {
-				fmt.Fprintf(logInitFile, "DEBUG: Successfully opened log file\n")
+			if err == nil {
 				fileCore := zapcore.NewCore(
 					zapcore.NewJSONEncoder(fileEncoderConfig),
 					zapcore.AddSync(debugFile),
-					logLevel, // Use the configured log level instead of always using DebugLevel
+					logLevel,
 				)
 				cores = append(cores, fileCore)
-				fmt.Fprintf(logInitFile, "DEBUG: Added file core to cores slice\n")
 			}
 		}
-		// Combine cores
-		fmt.Fprintf(logInitFile, "DEBUG: Combining cores\n")
+
 		core := zapcore.NewTee(cores...)
-
-		fmt.Fprintf(logInitFile, "DEBUG: Creating new logger\n")
-		logger := zap.New(core)
-
-		globalLogger = logger
-		fmt.Fprintf(logInitFile, "DEBUG: Global logger set\n")
-		fmt.Fprintf(logInitFile, "DEBUG: Exiting InitProduction\n")
+		globalLogger = zap.New(core)
 	})
 
-	l := Get()
-	if l != nil {
-		l.Debug("DEBUG: Exiting InitProduction: ", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
+	if globalLogger == nil {
+		// If globalLogger is still nil after initialization, create a no-op logger
+		globalLogger = zap.NewNop()
 	}
 }
 
@@ -227,16 +160,15 @@ func InitTest(tb zaptest.TestingT) {
 
 // Get returns the global logger instance
 func Get() *Logger {
-	var l *Logger
 	if globalLogger == nil {
 		InitProduction(GlobalEnableConsoleLogger, GlobalEnableFileLogger)
-		l = &Logger{Logger: globalLogger}
-		l.Debug("Logger created", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
-	} else {
-		l.Debug("Logger initialized", zap.Bool("level", globalLogger.Core().Enabled(zapcore.DebugLevel)))
-		l = &Logger{Logger: globalLogger}
 	}
-	l.Debug("Exiting Get()")
+	l := &Logger{Logger: globalLogger}
+	if l.Logger == nil {
+		// If globalLogger is still nil after initialization, create a no-op logger
+		l = NewNopLogger()
+	}
+	l.Debug("Logger accessed", zap.Bool("level", l.Core().Enabled(zapcore.DebugLevel)))
 	return l
 }
 
@@ -313,9 +245,11 @@ func NewNopLogger() *Logger {
 // SetLevel sets the logging level for the global logger
 func SetLevel(level zapcore.Level) {
 	if globalLogger == nil {
-		InitProduction(false, true)
+		InitProduction(GlobalEnableConsoleLogger, GlobalEnableFileLogger)
 	}
-	globalLogger = globalLogger.WithOptions(zap.IncreaseLevel(level))
+	if globalLogger != nil {
+		globalLogger = globalLogger.WithOptions(zap.IncreaseLevel(level))
+	}
 }
 
 // SetOutputFormat sets the output format for the logger
