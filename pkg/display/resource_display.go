@@ -78,6 +78,7 @@ type Display struct {
 	logBuffer          *utils.CircularBuffer
 	updatePending      bool
 	updateMutex        sync.Mutex
+	virtualConsole     *bytes.Buffer
 }
 
 func NewDisplay(totalTasks int) *Display {
@@ -326,23 +327,28 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		close(d.quit)
 	}()
 
-	go func() {
-		for {
-			select {
-			case <-d.stopChan:
-				return
-			default:
-				d.app.QueueUpdateDraw(func() {
-					d.renderTable()
-					d.updateLogBox()
-				})
-				time.Sleep(100 * time.Millisecond)
+	if !d.testMode {
+		go func() {
+			for {
+				select {
+				case <-d.stopChan:
+					return
+				default:
+					d.app.QueueUpdateDraw(func() {
+						d.renderTable()
+						d.updateLogBox()
+					})
+					time.Sleep(100 * time.Millisecond)
+				}
 			}
-		}
-	}()
+		}()
 
-	if err := d.app.Run(); err != nil {
-		d.Logger.Errorf("Error running display: %v", err)
+		if err := d.app.Run(); err != nil {
+			d.Logger.Errorf("Error running display: %v", err)
+		}
+	} else {
+		// In test mode, just render to the virtual console
+		d.renderToVirtualConsole()
 	}
 }
 
@@ -518,4 +524,10 @@ func (d *Display) logDebugInfo() {
 	d.Logger.Infof("LogBox content length: %d", len(d.LogBox.GetText(true)))
 	d.Logger.Infof("LogBuffer size: %d", len(d.logBuffer.GetLines()))
 	d.Logger.Infof("------------------")
+}
+func (d *Display) renderToVirtualConsole() {
+	d.virtualConsole.Reset()
+	d.virtualConsole.WriteString(d.getTableString())
+	d.virtualConsole.WriteString("\nLog:\n")
+	d.virtualConsole.WriteString(d.LogBox.GetText(false))
 }
