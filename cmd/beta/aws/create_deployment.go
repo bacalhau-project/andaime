@@ -59,7 +59,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		Status: "Initializing",
 	})
 
-	err = awsProvider.CreateDeployment(cmd.Context())
+	resources, err := awsProvider.CreateDeployment(cmd.Context())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to create deployment: %s", err.Error())
 		log.Error(errString)
@@ -69,6 +69,21 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			Status: "Failed",
 		})
 		return fmt.Errorf(errString)
+	}
+
+	// Update status for each resource
+	for _, resource := range resources {
+		disp.UpdateStatus(&display.Status{
+			ID:             resource.ID,
+			Type:           resource.Type,
+			Region:         resource.Region,
+			Zone:           resource.Zone,
+			Status:         "Created",
+			DetailedStatus: resource.Status,
+			InstanceID:     resource.InstanceID,
+			PublicIP:       resource.PublicIP,
+			PrivateIP:      resource.PrivateIP,
+		})
 	}
 
 	disp.UpdateStatus(&display.Status{
