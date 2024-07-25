@@ -29,7 +29,7 @@ var (
 
 	GlobalEnableConsoleLogger bool
 	GlobalEnableFileLogger    bool
-	GlobalLogPath             string
+	GlobalLogPath             string = "/tmp/andaime.log"
 	GlobalLogLevel            string
 )
 
@@ -147,7 +147,7 @@ func InitProduction(enableConsole bool, enableFile bool) {
 				fileCore := zapcore.NewCore(
 					zapcore.NewJSONEncoder(fileEncoderConfig),
 					zapcore.AddSync(debugFile),
-					zapcore.DebugLevel,
+					logLevel, // Use the configured log level instead of always using DebugLevel
 				)
 				cores = append(cores, fileCore)
 			}
