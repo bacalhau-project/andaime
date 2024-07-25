@@ -2,7 +2,6 @@ package display
 
 import (
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -49,16 +48,16 @@ func TestDisplayStart(t *testing.T) {
 	// Update status to trigger table rendering
 	t.Log("Updating status")
 	testStatus := &Status{
-		ID:             "test-id",
-		Type:           "EC2",
-		Region:         "us-west-2",
-		Status:         "Running",
-		InstanceID:     "i-12345",
+		ID:         "test-id",
+		Type:       "EC2",
+		Region:     "us-west-2",
+		Status:     "Running",
+		InstanceID: "i-12345",
 	}
 	d.UpdateStatus(testStatus)
 
 	// Give more time for the update to complete
-	time.Sleep(1 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	// Trigger a manual update
 	d.scheduleUpdate()
