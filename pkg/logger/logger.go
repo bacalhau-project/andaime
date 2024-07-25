@@ -89,9 +89,15 @@ func getLogLevel(logLevel string) zapcore.Level {
 	}
 }
 func InitProduction(enableConsole bool, enableFile bool) {
-	fmt.Fprintf(os.Stderr, "DEBUG: Entering InitProduction\n")
+	fmt.Fprintf(os.Stderr, "DEBUG: Entering InitProduction (enableConsole: %v, enableFile: %v)\n", enableConsole, enableFile)
 	once.Do(func() {
 		fmt.Fprintf(os.Stderr, "DEBUG: Inside once.Do\n")
+
+		fmt.Fprintf(os.Stderr, "DEBUG: Viper settings:\n")
+		fmt.Fprintf(os.Stderr, "  general.enable_console_logger: %v\n", viper.GetBool("general.enable_console_logger"))
+		fmt.Fprintf(os.Stderr, "  general.enable_file_logger: %v\n", viper.GetBool("general.enable_file_logger"))
+		fmt.Fprintf(os.Stderr, "  general.log_path: %s\n", viper.GetString("general.log_path"))
+		fmt.Fprintf(os.Stderr, "  general.log_level: %s\n", viper.GetString("general.log_level"))
 
 		if viper.GetBool("general.enable_console_logger") {
 			GlobalEnableConsoleLogger = viper.GetBool("general.enable_console_logger")
@@ -366,30 +372,38 @@ var (
 
 func GetLastLines(filepath string, n int) []string {
 	l := Get()
+	l.Debugf("GetLastLines called with filepath: '%s' and n: %d", filepath, n)
+	
 	if filepath == "" {
 		l.Errorf("Error: filepath is empty")
 		return nil
 	}
 
+	l.Debugf("Attempting to open file: '%s'", filepath)
 	file, err := os.Open(filepath)
 	if err != nil {
 		l.Errorf("Error opening file '%s': %v", filepath, err)
 		return nil
 	}
 	defer file.Close()
+	l.Debugf("File opened successfully: '%s'", filepath)
 
 	var lines []string
 	scanner := bufio.NewScanner(file)
+	lineCount := 0
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 		if len(lines) > n {
 			lines = lines[1:]
 		}
+		lineCount++
 	}
+	l.Debugf("Read %d lines from file '%s'", lineCount, filepath)
 
 	if err := scanner.Err(); err != nil {
 		l.Errorf("Error reading file '%s': %v", filepath, err)
 	}
 
+	l.Debugf("Returning %d lines from file '%s'", len(lines), filepath)
 	return lines
 }

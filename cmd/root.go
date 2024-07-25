@@ -35,6 +35,12 @@ var (
 var (
 	NumberOfDefaultOrchestratorNodes = 1
 	NumberOfDefaultComputeNodes      = 2
+	logPath                          = "/tmp/andaime.log"
+	logLevel                         = "info"
+	GlobalEnableConsoleLogger        = false
+	GlobalEnableFileLogger           = true
+	GlobalLogPath                    = "/tmp/andaime.log"
+	GlobalLogLevel                   = "info"
 )
 
 type CloudProvider struct {
@@ -135,7 +141,7 @@ func initConfig() {
 	}
 
 	// Initialize the logger after config is read
-	logger.InitProduction()
+	logger.InitProduction(false, true)
 	logger.SetOutputFormat(outputFormat)
 	log := logger.Get()
 
@@ -176,7 +182,6 @@ func SetupRootCommand() *cobra.Command {
 
 	betaCmd := getBetaCmd(rootCmd)
 	betaCmd.AddCommand(aws.AwsCmd)
-
 	// Dynamically initialize required cloud providers based on configuration
 	initializeCloudProviders()
 
@@ -190,7 +195,7 @@ func SetupRootCommand() *cobra.Command {
 }
 
 func Execute() error {
-	logger.InitProduction()
+	logger.InitProduction(false, true)
 	initConfig()
 	return SetupRootCommand().Execute()
 }
