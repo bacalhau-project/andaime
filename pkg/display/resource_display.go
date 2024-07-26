@@ -254,6 +254,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 
 	if !d.TestMode {
 		go func() {
+			d.Logger.Debug("Setting up table")
 			d.Table.SetTitle("Deployment Status")
 			d.Table.SetBorder(true)
 			d.Table.SetBorderColor(tcell.ColorWhite)
@@ -261,22 +262,29 @@ func (d *Display) Start(sigChan chan os.Signal) {
 
 			ticker := time.NewTicker(100 * time.Millisecond)
 			defer ticker.Stop()
+			d.Logger.Debug("Starting update loop")
 			for {
 				select {
 				case <-d.StopChan:
+					d.Logger.Debug("Received stop signal in update loop")
 					return
 				case <-ticker.C:
+					d.Logger.Debug("Ticker triggered, updating display")
 					d.updateFromGlobalMap()
 					d.renderTable()
 					d.updateLogBox()
+					d.Logger.Debug("Display update completed")
 				}
 			}
 		}()
 
+		d.Logger.Debug("Starting tview application")
 		if err := d.App.Run(); err != nil {
 			d.Logger.Errorf("Error running display: %v", err)
 		}
+		d.Logger.Debug("tview application stopped")
 	} else {
+		d.Logger.Debug("Running in test mode")
 		// In test mode, just render to the virtual console
 		d.renderToVirtualConsole()
 	}
