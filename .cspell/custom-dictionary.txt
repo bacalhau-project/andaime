@@ -88,6 +88,7 @@ Providerer
 publicipaddresses
 resliced
 resourcegraph
+resourcegroupname
 resourcemanager
 Retryable
 rivo

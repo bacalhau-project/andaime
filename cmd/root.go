@@ -155,7 +155,7 @@ func initConfig() {
 	}
 
 	if os.Getenv("LOG_LEVEL") == "debug" {
-		log.Debug("Logger initialized with configuration", zap.String("outputFormat", outputFormat))
+		log.Debugf("Logger initialized with configuration: %v", zap.String("outputFormat", outputFormat))
 		log.Debug("Configuration initialization complete")
 	}
 }

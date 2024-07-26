@@ -137,7 +137,7 @@ func DeployVM(ctx context.Context,
 		22, //nolint:gomnd
 		config.GetString("azure.admin_username"),
 		sshDialer,
-		absPublicKeyPath,
+		absPrivateKeyPath,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSH config: %v", err)
@@ -198,17 +198,9 @@ func createPublicIP(
 	resourceGroupName, ipName, location string,
 	tags map[string]*string,
 ) (*armnetwork.PublicIPAddress, error) {
-	publicIP := armnetwork.PublicIPAddress{
-		Location: to.Ptr(location),
-		Tags:     tags,
-		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-			PublicIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodStatic),
-		},
-	}
-
 	EnsureTags(tags, projectID, uniqueID)
 
-	createdIP, err := client.CreatePublicIP(ctx, resourceGroupName, ipName, publicIP, tags)
+	createdIP, err := client.CreatePublicIP(ctx, resourceGroupName, ipName, location, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create public IP: %v", err)
 	}
@@ -337,36 +329,14 @@ func createNSG(
 	ports []int,
 	tags map[string]*string,
 ) (*armnetwork.SecurityGroup, error) {
-	var securityRules []*armnetwork.SecurityRule
-
 	EnsureTags(tags, projectID, uniqueID)
 
-	for i, port := range ports {
-		ruleName := fmt.Sprintf("Allow-%d", port)
-		securityRules = append(securityRules, &armnetwork.SecurityRule{
-			Name: to.Ptr(ruleName),
-			Properties: &armnetwork.SecurityRulePropertiesFormat{
-				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-				SourceAddressPrefix:      to.Ptr("*"),
-				SourcePortRange:          to.Ptr("*"),
-				DestinationAddressPrefix: to.Ptr("*"),
-				DestinationPortRange:     to.Ptr(fmt.Sprintf("%d", port)),
-				Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-				Priority:                 to.Ptr(int32(basePriority + i)),
-			},
-		})
-	}
-
-	nsg := armnetwork.SecurityGroup{
-		Location: to.Ptr(location),
-		Tags:     tags,
-		Properties: &armnetwork.SecurityGroupPropertiesFormat{
-			SecurityRules: securityRules,
-		},
-	}
-
-	createdNSG, err := client.CreateNetworkSecurityGroup(ctx, resourceGroupName, nsgName, nsg, tags)
+	createdNSG, err := client.CreateNetworkSecurityGroup(ctx,
+		resourceGroupName,
+		nsgName,
+		location,
+		ports,
+		tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network security group: %v", err)
 	}

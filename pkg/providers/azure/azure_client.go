@@ -23,13 +23,13 @@ type AzureClient interface {
 
 	CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string, tags map[string]*string) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error)
-	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress, tags map[string]*string) (armnetwork.PublicIPAddress, error)
-	GetPublicIP(ctx context.Context, resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error)
+	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, location string, tags map[string]*string) (armnetwork.PublicIPAddress, error)
+	GetPublicIP(ctx context.Context, resourceGroupName, location, ipName string) (armnetwork.PublicIPAddress, error)
 	CreateVirtualMachine(ctx context.Context, resourceGroupName, vmName string, parameters armcompute.VirtualMachine, tags map[string]*string) (armcompute.VirtualMachine, error)
 	GetVirtualMachine(ctx context.Context, resourceGroupName, vmName string) (armcompute.VirtualMachine, error)
 	CreateNetworkInterface(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface, tags map[string]*string) (armnetwork.Interface, error)
 	GetNetworkInterface(ctx context.Context, resourceGroupName, nicName string) (armnetwork.Interface, error)
-	CreateNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup, tags map[string]*string) (armnetwork.SecurityGroup, error)
+	CreateNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName, location string, ports []int, tags map[string]*string) (armnetwork.SecurityGroup, error)
 	GetNetworkSecurityGroup(ctx context.Context, resourceGroupName, sgName string) (armnetwork.SecurityGroup, error)
 
 	// ResourceGraphClientAPI
@@ -174,11 +174,18 @@ func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context,
 // CreatePublicIP creates a new public IP address
 func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 	resourceGroupName, ipName string,
-	parameters armnetwork.PublicIPAddress,
+	location string,
 	tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 	logger.LogAzureAPIStart("CreatePublicIP")
 
-	parameters.Tags = tags
+	parameters := armnetwork.PublicIPAddress{
+		Location: to.Ptr(location),
+		Tags:     tags,
+		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+			PublicIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodStatic),
+		},
+	}
+
 	poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(ctx, resourceGroupName, ipName, parameters, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreatePublicIP", err)
@@ -195,7 +202,7 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 }
 
 func (c *LiveAzureClient) GetPublicIP(ctx context.Context,
-	resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error) {
+	resourceGroupName, location, ipName string) (armnetwork.PublicIPAddress, error) {
 	logger.LogAzureAPIStart("GetPublicIP")
 	resp, err := c.publicIPAddressesClient.Get(ctx, resourceGroupName, ipName, nil)
 	logger.LogAzureAPIEnd("GetPublicIP", err)
@@ -271,10 +278,37 @@ func (c *LiveAzureClient) GetNetworkInterface(ctx context.Context, resourceGroup
 
 func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	resourceGroupName, sgName string,
-	parameters armnetwork.SecurityGroup,
+	location string,
+	ports []int,
 	tags map[string]*string) (armnetwork.SecurityGroup, error) {
 	logger.LogAzureAPIStart("CreateNetworkSecurityGroup")
-	parameters.Tags = tags
+
+	securityRules := []*armnetwork.SecurityRule{}
+	for i, port := range ports {
+		ruleName := fmt.Sprintf("Allow-%d", port)
+		securityRules = append(securityRules, &armnetwork.SecurityRule{
+			Name: to.Ptr(ruleName),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+				SourceAddressPrefix:      to.Ptr("*"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr("*"),
+				DestinationPortRange:     to.Ptr(fmt.Sprintf("%d", port)),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+				Priority:                 to.Ptr(int32(basePriority + i)),
+			},
+		})
+	}
+
+	parameters := armnetwork.SecurityGroup{
+		Location: to.Ptr(location),
+		Tags:     tags,
+		Properties: &armnetwork.SecurityGroupPropertiesFormat{
+			SecurityRules: securityRules,
+		},
+	}
+
 	poller, err := c.securityGroupsClient.BeginCreateOrUpdate(ctx, resourceGroupName, sgName, parameters, nil)
 	if err != nil {
 		logger.LogAzureAPIEnd("CreateNetworkSecurityGroup", err)
@@ -339,4 +373,15 @@ func (c *LiveAzureClient) SearchResources(ctx context.Context,
 func (c *LiveAzureClient) NewSubscriptionListPager(ctx context.Context,
 	options *armsubscription.SubscriptionsClientListOptions) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
 	return c.subscriptionsClient.NewListPager(options)
+}
+
+func (c *LiveAzureClient) DestroyResourceGroup(ctx context.Context, resourceGroupName string) error {
+	logger.LogAzureAPIStart("DestroyResourceGroup")
+	_, err := c.resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
+	logger.LogAzureAPIEnd("DestroyResourceGroup", err)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -54,7 +54,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	})
 
 	// Pulls all settings from Viper config
-	err = azureProvider.DeployResources(cmd.Context())
+	err = azureProvider.DeployResources(cmd.Context(), disp)
 	if err != nil {
 		errString := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 		log.Error(errString)

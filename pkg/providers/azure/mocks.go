@@ -29,11 +29,12 @@ type MockAzureClient struct {
 		tags map[string]*string) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetworkFunc func(ctx context.Context, resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIPFunc    func(ctx context.Context, resourceGroupName,
+		location,
 		ipName string,
-		parameters armnetwork.PublicIPAddress,
 		tags map[string]*string) (armnetwork.PublicIPAddress, error)
 	GetPublicIPFunc func(ctx context.Context,
 		resourceGroupName,
+		location,
 		ipName string) (armnetwork.PublicIPAddress, error)
 	CreateVirtualMachineFunc func(ctx context.Context,
 		resourceGroupName,
@@ -54,7 +55,8 @@ type MockAzureClient struct {
 	CreateNetworkSecurityGroupFunc func(ctx context.Context,
 		resourceGroupName,
 		sgName string,
-		parameters armnetwork.SecurityGroup,
+		location string,
+		ports []int,
 		tags map[string]*string) (armnetwork.SecurityGroup, error)
 	GetNetworkSecurityGroupFunc func(ctx context.Context,
 		resourceGroupName,
@@ -97,15 +99,14 @@ func (m *MockAzureClient) GetVirtualNetwork(ctx context.Context, resourceGroupNa
 }
 
 func (m *MockAzureClient) CreatePublicIP(ctx context.Context,
-	resourceGroupName, ipName string,
-	parameters armnetwork.PublicIPAddress,
+	resourceGroupName, location, ipName string,
 	tags map[string]*string) (armnetwork.PublicIPAddress, error) {
-	return m.CreatePublicIPFunc(ctx, resourceGroupName, ipName, parameters, tags)
+	return m.CreatePublicIPFunc(ctx, resourceGroupName, location, ipName, tags)
 }
 
 func (m *MockAzureClient) GetPublicIP(ctx context.Context,
-	resourceGroupName, ipName string) (armnetwork.PublicIPAddress, error) {
-	return m.GetPublicIPFunc(ctx, resourceGroupName, ipName)
+	resourceGroupName, location, ipName string) (armnetwork.PublicIPAddress, error) {
+	return m.GetPublicIPFunc(ctx, resourceGroupName, location, ipName)
 }
 
 func (m *MockAzureClient) CreateVirtualMachine(ctx context.Context,
@@ -136,9 +137,10 @@ func (m *MockAzureClient) GetNetworkInterface(ctx context.Context,
 func (m *MockAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	resourceGroupName,
 	sgName string,
-	parameters armnetwork.SecurityGroup,
+	location string,
+	ports []int,
 	tags map[string]*string) (armnetwork.SecurityGroup, error) {
-	return m.CreateNetworkSecurityGroupFunc(ctx, resourceGroupName, sgName, parameters, tags)
+	return m.CreateNetworkSecurityGroupFunc(ctx, resourceGroupName, sgName, location, ports, tags)
 }
 
 func (m *MockAzureClient) GetNetworkSecurityGroup(ctx context.Context,

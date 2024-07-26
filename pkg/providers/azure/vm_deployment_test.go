@@ -31,7 +31,7 @@ func TestDeployVM(t *testing.T) {
 		return testdata.TestVirtualNetwork, nil
 	}
 
-	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress, tags map[string]*string) (armnetwork.PublicIPAddress, error) {
+	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, location, ipName string, tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 		return testdata.TestPublicIPAddress, nil
 	}
 
@@ -43,7 +43,7 @@ func TestDeployVM(t *testing.T) {
 		return testdata.TestVirtualMachine, nil
 	}
 
-	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup, tags map[string]*string) (armnetwork.SecurityGroup, error) {
+	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, location string, ports []int, tags map[string]*string) (armnetwork.SecurityGroup, error) {
 		return testdata.TestNSG, nil
 	}
 
@@ -122,7 +122,7 @@ func TestCreateVirtualNetwork(t *testing.T) {
 func TestCreatePublicIP(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
-	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress, tags map[string]*string) (armnetwork.PublicIPAddress, error) {
+	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, location, ipName string, tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 		return testdata.TestPublicIPAddress, nil
 	}
 	projectID := "testProject"
@@ -142,7 +142,7 @@ func TestCreatePublicIP(t *testing.T) {
 func TestCreateNSG(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
-	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, parameters armnetwork.SecurityGroup, tags map[string]*string) (armnetwork.SecurityGroup, error) {
+	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, location string, ports []int, tags map[string]*string) (armnetwork.SecurityGroup, error) {
 		return testdata.TestNSG, nil
 	}
 	projectID := "testProject"

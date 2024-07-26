@@ -177,7 +177,7 @@ func Get() *Logger {
 		// If globalLogger is still nil after initialization, create a no-op logger
 		l = NewNopLogger()
 	}
-	l.Debug("Logger accessed", zap.Bool("level", l.Core().Enabled(zapcore.DebugLevel)))
+	l.Debugf("Logger accessed: %v", zap.Bool("level", l.Core().Enabled(zapcore.DebugLevel)))
 	return l
 }
 
@@ -187,28 +187,28 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 }
 
 // Debug logs a message at DebugLevel
-func (l *Logger) Debug(msg string, fields ...zap.Field) {
-	l.Logger.Debug(msg, fields...)
+func (l *Logger) Debug(msg string) {
+	l.Logger.Debug(msg)
 }
 
 // Info logs a message at InfoLevel
-func (l *Logger) Info(msg string, fields ...zap.Field) {
-	l.Logger.Info(msg, fields...)
+func (l *Logger) Info(msg string) {
+	l.Logger.Info(msg)
 }
 
 // Warn logs a message at WarnLevel
-func (l *Logger) Warn(msg string, fields ...zap.Field) {
-	l.Logger.Warn(msg, fields...)
+func (l *Logger) Warn(msg string) {
+	l.Logger.Warn(msg)
 }
 
 // Error logs a message at ErrorLevel
-func (l *Logger) Error(msg string, fields ...zap.Field) {
-	l.Logger.Error(msg, fields...)
+func (l *Logger) Error(msg string) {
+	l.Logger.Error(msg)
 }
 
 // Fatal logs a message at FatalLevel and then calls os.Exit(1)
-func (l *Logger) Fatal(msg string, fields ...zap.Field) {
-	l.Logger.Fatal(msg, fields...)
+func (l *Logger) Fatal(msg string) {
+	l.Logger.Fatal(msg)
 }
 
 // Sync flushes any buffered log entries

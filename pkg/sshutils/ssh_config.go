@@ -56,11 +56,7 @@ func NewSSHConfig(host string, port int,
 }
 
 func (c *SSHConfig) Connect() (SSHClienter, error) {
-	c.Logger.Info("Connecting to SSH server",
-		logger.ZapString("host", c.Host),
-		logger.ZapInt("port", c.Port),
-		logger.ZapString("user", c.User),
-	)
+	c.Logger.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
 
 	key, err := ssh.ParsePrivateKey([]byte(c.PrivateKeyMaterial))
 	if err != nil {
@@ -73,9 +69,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 	} else {
 		hostKeyCallback, err = c.getHostKeyCallback()
 		if err != nil {
-			c.Logger.Warn("Unable to get host key, falling back to insecure ignore",
-				logger.ZapAny("error", err),
-			)
+			c.Logger.Warnf("Unable to get host key, falling back to insecure ignore: %v", err)
 			//nolint: gosec
 			hostKeyCallback = ssh.InsecureIgnoreHostKey()
 		}
@@ -98,9 +92,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 }
 
 func (c *SSHConfig) ExecuteCommand(client SSHClienter, command string) (string, error) {
-	c.Logger.Info("Executing command:",
-		logger.ZapString("command", command),
-	)
+	c.Logger.Infof("Executing command: %s", command)
 
 	var output string
 	err := retry(NumberOfSSHRetries, TimeInBetweenSSHRetries, func() error {
@@ -122,10 +114,7 @@ func (c *SSHConfig) ExecuteCommand(client SSHClienter, command string) (string, 
 }
 
 func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) error {
-	c.Logger.Info("Pushing file",
-		logger.ZapString("localPath", localPath),
-		logger.ZapString("remotePath", remotePath),
-	)
+	c.Logger.Infof("Pushing file: %s to %s", localPath, remotePath)
 
 	session, err := client.NewSession()
 	if err != nil {
@@ -176,9 +165,7 @@ func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) e
 }
 
 func (c *SSHConfig) InstallSystemdService(client SSHClienter, serviceName, serviceContent string) error {
-	c.Logger.Info("Installing systemd service",
-		logger.ZapString("serviceName", serviceName),
-	)
+	c.Logger.Infof("Installing systemd service: %s", serviceName)
 	remoteServicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
 
 	session, err := client.NewSession()
@@ -205,10 +192,7 @@ func (c *SSHConfig) RestartService(client SSHClienter, serviceName string) error
 }
 
 func (c *SSHConfig) manageService(client SSHClienter, serviceName, action string) error {
-	c.Logger.Info("Managing service",
-		logger.ZapString("serviceName", serviceName),
-		logger.ZapString("action", action),
-	)
+	c.Logger.Infof("Managing service: %s %s", serviceName, action)
 	session, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)

@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/utils"
 	"github.com/spf13/viper"
@@ -62,6 +63,7 @@ func (d *Deployment) UpdateViperConfig() error {
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Display) error {
+	l := logger.Get()
 	viper := viper.GetViper()
 
 	// Extract Azure-specific configuration
@@ -143,6 +145,13 @@ func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Displ
 		return fmt.Errorf("failed to update Viper configuration: %v", err)
 	}
 
+	// Get all ports from the viper config
+	ports := viper.GetIntSlice("azure.allowed_ports")
+	if len(ports) == 0 {
+		return fmt.Errorf("no allowed ports found in viper config")
+	}
+	l.Debugf("Allowed ports: %v", ports)
+
 	// Crawl all of machines and populate locations and which is the orchestrator
 	locations := make([]string, 0)
 	var orchestratorNode *Machine
@@ -193,32 +202,11 @@ func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Displ
 			})
 
 			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("subnet-%s", loc),
-				Type:   "Azure",
-				Status: "Creating",
-			})
-			subnet, err := p.Client.CreateSubnet(ctx, *resourceGroup.Name, vnet.Name, loc+"-subnet", loc)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to create subnet in %s: %v", loc, err)
-				disp.UpdateStatus(&display.Status{
-					ID:     fmt.Sprintf("subnet-%s", loc),
-					Type:   "Azure",
-					Status: "Failed",
-				})
-				return
-			}
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("subnet-%s", loc),
-				Type:   "Azure",
-				Status: "Created",
-			})
-
-			disp.UpdateStatus(&display.Status{
 				ID:     fmt.Sprintf("nsg-%s", loc),
 				Type:   "Azure",
 				Status: "Creating",
 			})
-			_, err = p.Client.CreateNetworkSecurityGroup(ctx, *resourceGroup.Name, loc+"-nsg", loc, tags)
+			_, err = p.Client.CreateNetworkSecurityGroup(ctx, *resourceGroup.Name, loc+"-nsg", loc, ports, tags)
 			if err != nil {
 				errChan <- fmt.Errorf("failed to create network security group in %s: %v", loc, err)
 				disp.UpdateStatus(&display.Status{
@@ -234,11 +222,11 @@ func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Displ
 				Status: "Created",
 			})
 
-			subnets[loc] = []*armnetwork.Subnet{subnet}
+			subnets[loc] = []*armnetwork.Subnet{vnet.Properties.Subnets[0]}
 			if deployment.VNet == nil {
 				deployment.VNet = make(map[string][]*armnetwork.Subnet)
 			}
-			deployment.VNet[loc] = []*armnetwork.Subnet{subnet}
+			deployment.VNet[loc] = []*armnetwork.Subnet{vnet.Properties.Subnets[0]}
 		}(location)
 	}
 	wg.Wait()
@@ -265,7 +253,10 @@ func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Displ
 				Type:   "Azure",
 				Status: "Creating",
 			})
-			publicIP, err := p.Client.CreatePublicIP(ctx, *resourceGroup.Name, vmName+"-ip", machine.Location, tags)
+			publicIP, err := p.Client.CreatePublicIP(ctx, *resourceGroup.Name,
+				vmName+"-ip",
+				machine.Location,
+				tags)
 			if err != nil {
 				disp.UpdateStatus(&display.Status{
 					ID:     fmt.Sprintf("public-ip-%s", vmName),
