@@ -19,4 +19,4 @@ release/
 
 *debug.log
 
-code_execution_env
+code_execution_env/**

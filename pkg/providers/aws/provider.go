@@ -81,10 +81,25 @@ func (p *AWSProvider) SetEC2Client(client EC2Clienter) {
 }
 
 // CreateDeployment performs the AWS deployment
-func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
+func (p *AWSProvider) getRegion() (string, error) {
 	region := p.Config.Region
+	if err := p.validateRegion(region); err != nil {
+		return "", err
+	}
+	return region, nil
+}
+
+func (p *AWSProvider) validateRegion(region string) error {
 	if region == "" {
 		return fmt.Errorf("AWS region is not specified in the configuration")
+	}
+	return nil
+}
+
+func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
+	region, err := p.getRegion()
+	if err != nil {
+		return fmt.Errorf("failed to get region: %w", err)
 	}
 
 	image, err := p.GetLatestUbuntuImage(ctx, region)
@@ -96,16 +111,72 @@ func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
 	return nil
 }
 
-func (p *AWSProvider) ListDeployments(ctx context.Context) ([]*types.Instance, error) {
-	panic("not implemented")
+func (p *AWSProvider) describeInstances(ctx context.Context) ([]*types.Instance, error) {
+	input := &ec2.DescribeInstancesInput{}
+	result, err := p.EC2Client.DescribeInstances(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe instances: %w", err)
+	}
+
+	var instances []*types.Instance
+	for _, reservation := range result.Reservations {
+		for i := range reservation.Instances {
+			instances = append(instances, &reservation.Instances[i])
+		}
+	}
+
+	return instances, nil
 }
 
-func (p *AWSProvider) DestroyDeployment(ctx context.Context) ([]*types.Instance, error) {
-	panic("not implemented")
+func (p *AWSProvider) ListDeployments(ctx context.Context) ([]*types.Instance, error) {
+	instances, err := p.describeInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add any additional filtering or processing of instances here if needed
+
+	return instances, nil
+}
+
+func (p *AWSProvider) terminateInstances(ctx context.Context, instanceIDs []string) error {
+	input := &ec2.TerminateInstancesInput{
+		InstanceIds: instanceIDs,
+	}
+	_, err := p.EC2Client.TerminateInstances(ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to terminate instances: %w", err)
+	}
+	return nil
+}
+
+func (p *AWSProvider) DestroyDeployment(ctx context.Context) error {
+	instances, err := p.describeInstances(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list instances: %w", err)
+	}
+
+	var instanceIDs []string
+	for _, instance := range instances {
+		instanceIDs = append(instanceIDs, *instance.InstanceId)
+	}
+
+	if len(instanceIDs) > 0 {
+		err = p.terminateInstances(ctx, instanceIDs)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // GetLatestUbuntuImage gets the latest Ubuntu AMI for the specified region
 func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error) {
+	if err := p.validateRegion(region); err != nil {
+		return nil, err
+	}
+
 	cacheLock.RLock()
 	cachedAMI, found := ubuntuAMICache[region]
 	cacheLock.RUnlock()
