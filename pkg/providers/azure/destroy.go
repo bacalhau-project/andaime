@@ -7,32 +7,26 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
-// DestroyAzureDeployment deletes the specified Azure resource group
+// DestroyAzureDeployment initiates the deletion of the specified Azure resource group
 func (p *AzureProvider) DestroyAzureDeployment(ctx context.Context, resourceGroupName string) error {
 	l := logger.Get()
 
-	l.Infof("Starting destruction of Azure deployment (Resource Group: %s)", resourceGroupName)
+	l.Infof("Initiating destruction of Azure deployment (Resource Group: %s)", resourceGroupName)
 
 	err := p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 	if err != nil {
-		return fmt.Errorf("failed to start resource group deletion: %v", err)
+		return fmt.Errorf("failed to initiate resource group deletion: %v", err)
 	}
 
 	l.Infof("Deletion process for Azure deployment (Resource Group: %s) has been initiated", resourceGroupName)
 	return nil
 }
 
-func (c *LiveAzureClient) DestroyResourceGroup(ctx context.Context, resourceGroupName string) error {
-	l := logger.Get()
-
-	l.Infof("Starting destruction of Azure deployment (Resource Group: %s)", resourceGroupName)
-
+func (c *LiveAzureClient) InitiateResourceGroupDeletion(ctx context.Context, resourceGroupName string) error {
 	_, err := c.resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start resource group deletion: %v", err)
+		return fmt.Errorf("failed to initiate resource group deletion: %v", err)
 	}
-
-	l.Infof("Deletion process for Azure deployment (Resource Group: %s) has been initiated", resourceGroupName)
 	return nil
 }
 
