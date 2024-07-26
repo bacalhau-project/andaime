@@ -7,6 +7,10 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
+type AzureProviderer interface {
+	DestroyAzureDeployment(ctx context.Context, resourceGroupName string) error
+}
+
 // DestroyAzureDeployment deletes the specified Azure resource group
 func (p *AzureProvider) DestroyAzureDeployment(ctx context.Context, resourceGroupName string) error {
 	l := logger.Get()
