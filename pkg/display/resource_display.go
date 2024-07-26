@@ -9,10 +9,10 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -42,46 +42,6 @@ const MaxLogLines = 8
 const RelativeSizeForTable = 5
 const RelativeSizeForLogBox = 1
 
-type Status struct {
-	ID              string
-	Type            string
-	Region          string
-	Zone            string
-	Status          string
-	DetailedStatus  string
-	ElapsedTime     time.Duration
-	InstanceID      string
-	PublicIP        string
-	PrivateIP       string
-	HighlightCycles int
-}
-type Display struct {
-	Statuses           map[string]*Status
-	StatusesMu         sync.RWMutex
-	App                *tview.Application
-	Table              *tview.Table
-	TotalTasks         int
-	CompletedTasks     int
-	BaseHighlightColor tcell.Color
-	FadeSteps          int
-	StopOnce           sync.Once
-	StopChan           chan struct{}
-	Quit               chan struct{}
-	LastTableState     [][]string
-	DebugLog           logger.Logger
-	Logger             logger.Logger
-	LogFileName        string
-	LogFile            *os.File
-	LogBox             *tview.TextView
-	TestMode           bool
-	Ctx                context.Context
-	Cancel             context.CancelFunc
-	LogBuffer          *utils.CircularBuffer
-	UpdatePending      bool
-	UpdateMutex        sync.Mutex
-	VirtualConsole     *bytes.Buffer
-}
-
 func NewDisplay(totalTasks int) *Display {
 	d := newDisplayInternal(totalTasks, false)
 	d.LogFileName = logger.GlobalLogPath
@@ -91,7 +51,7 @@ func NewDisplay(totalTasks int) *Display {
 func newDisplayInternal(totalTasks int, testMode bool) *Display {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Display{
-		Statuses:           make(map[string]*Status),
+		Statuses:           make(map[string]*models.Status),
 		App:                tview.NewApplication(),
 		Table:              tview.NewTable().SetBorders(true),
 		TotalTasks:         totalTasks,
@@ -122,35 +82,35 @@ type DisplayColumn struct {
 	Text     string
 	Width    int
 	Color    tcell.Color
-	DataFunc func(status Status) string
+	DataFunc func(status models.Status) string
 }
 
 //nolint:gomnd
 var DisplayColumns = []DisplayColumn{
-	{Text: "ID", Width: 10, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.ID }},
-	{Text: "Type", Width: 10, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.Type }},
-	{Text: "Region", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.Region }},
-	{Text: "Zone", Width: 15, Color: tcell.ColorRed, DataFunc: func(status Status) string { return status.Zone }},
+	{Text: "ID", Width: 10, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.ID }},
+	{Text: "Type", Width: 10, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.Type }},
+	{Text: "Region", Width: 15, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.Region }},
+	{Text: "Zone", Width: 15, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.Zone }},
 	{Text: "Status",
 		Width:    30,
 		Color:    tcell.ColorRed,
-		DataFunc: func(status Status) string { return fmt.Sprintf("%s (%s)", status.Status, status.DetailedStatus) }},
+		DataFunc: func(status models.Status) string { return fmt.Sprintf("%s (%s)", status.Status, status.DetailedStatus) }},
 	{Text: "Elapsed",
 		Width:    10,
 		Color:    tcell.ColorRed,
-		DataFunc: func(status Status) string { return status.ElapsedTime.Round(time.Second).String() }},
+		DataFunc: func(status models.Status) string { return status.ElapsedTime.Round(time.Second).String() }},
 	{Text: "Instance ID",
 		Width:    20,
 		Color:    tcell.ColorRed,
-		DataFunc: func(status Status) string { return status.InstanceID }},
+		DataFunc: func(status models.Status) string { return status.InstanceID }},
 	{Text: "Public IP",
 		Width:    15,
 		Color:    tcell.ColorRed,
-		DataFunc: func(status Status) string { return status.PublicIP }},
+		DataFunc: func(status models.Status) string { return status.PublicIP }},
 	{Text: "Private IP",
 		Width:    15,
 		Color:    tcell.ColorRed,
-		DataFunc: func(status Status) string { return status.PrivateIP }},
+		DataFunc: func(status models.Status) string { return status.PrivateIP }},
 }
 
 func (d *Display) setupLayout() {
@@ -162,7 +122,7 @@ func (d *Display) setupLayout() {
 	d.App.SetRoot(flex, true).EnableMouse(false)
 }
 
-func (d *Display) UpdateStatus(status *Status) {
+func (d *Display) UpdateStatus(status *models.Status) {
 	if d == nil || status == nil {
 		d.Logger.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, status)
 		return
@@ -279,7 +239,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 	d.Logger.Debug("Starting display")
 	d.StopChan = make(chan struct{})
 	d.Quit = make(chan struct{})
-	d.Statuses = make(map[string]*Status)
+	d.Statuses = make(map[string]*models.Status)
 
 	go func() {
 		select {
@@ -294,6 +254,11 @@ func (d *Display) Start(sigChan chan os.Signal) {
 
 	if !d.TestMode {
 		go func() {
+			d.Table.SetTitle("Deployment Status")
+			d.Table.SetBorder(true)
+			d.Table.SetBorderColor(tcell.ColorWhite)
+			d.Table.SetTitleColor(tcell.ColorWhite)
+
 			ticker := time.NewTicker(100 * time.Millisecond)
 			defer ticker.Stop()
 			for {
@@ -301,10 +266,9 @@ func (d *Display) Start(sigChan chan os.Signal) {
 				case <-d.StopChan:
 					return
 				case <-ticker.C:
-					d.App.QueueUpdateDraw(func() {
-						d.renderTable()
-						d.updateLogBox()
-					})
+					d.updateFromGlobalMap()
+					d.renderTable()
+					d.updateLogBox()
 				}
 			}
 		}()
@@ -315,6 +279,15 @@ func (d *Display) Start(sigChan chan os.Signal) {
 	} else {
 		// In test mode, just render to the virtual console
 		d.renderToVirtualConsole()
+	}
+}
+
+func (d *Display) updateFromGlobalMap() {
+	StatusMutex.RLock()
+	defer StatusMutex.RUnlock()
+
+	for id, status := range GlobalStatusMap {
+		d.Statuses[id] = status
 	}
 }
 
@@ -445,7 +418,17 @@ func (d *Display) updateDisplay() {
 func (d *Display) renderTable() {
 	logDebugf("Rendering table started")
 
-	statuses := make([]*Status, 0, len(d.Statuses))
+	// Add header row
+	for col, column := range DisplayColumns {
+		cell := tview.NewTableCell(column.Text).
+			SetMaxWidth(column.Width).
+			SetTextColor(tcell.ColorYellow).
+			SetSelectable(false).
+			SetAlign(tview.AlignCenter)
+		d.Table.SetCell(0, col, cell)
+	}
+
+	statuses := make([]*models.Status, 0, len(d.Statuses))
 	for _, status := range d.Statuses {
 		statuses = append(statuses, status)
 	}
@@ -499,6 +482,7 @@ func (d *Display) logDebugInfo() {
 	d.Logger.Debugf("LogBuffer size: %d", len(d.LogBuffer.GetLines()))
 	d.Logger.Debugf("------------------")
 }
+
 func (d *Display) renderToVirtualConsole() {
 	if d.VirtualConsole == nil {
 		d.VirtualConsole = &bytes.Buffer{}
