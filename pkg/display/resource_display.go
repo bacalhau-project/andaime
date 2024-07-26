@@ -242,6 +242,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 	d.Statuses = make(map[string]*models.Status)
 
 	go func() {
+		d.Logger.Debug("Starting signal handler goroutine")
 		select {
 		case <-sigChan:
 			d.Logger.Debug("Received signal, stopping display")
@@ -250,6 +251,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 			d.Logger.Debug("Stop channel closed, stopping display")
 		}
 		close(d.Quit)
+		d.Logger.Debug("Signal handler goroutine exiting")
 	}()
 
 	if !d.TestMode {
@@ -288,6 +290,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		// In test mode, just render to the virtual console
 		d.renderToVirtualConsole()
 	}
+	d.Logger.Debug("Display Start method completed")
 }
 
 func (d *Display) updateFromGlobalMap() {

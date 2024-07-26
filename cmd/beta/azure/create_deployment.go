@@ -32,28 +32,42 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	l.Debug("Starting executeCreateDeployment")
 
+	l.Debug("Initializing Azure provider")
 	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
 		l.Error(errString)
 		return fmt.Errorf(errString)
 	}
+	l.Debug("Azure provider initialized successfully")
 
-	l.Debug("Azure provider initialized")
-
+	l.Debug("Setting up signal channel")
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+	l.Debug("Creating display")
 	disp := display.NewDisplay(1)
-	go disp.Start(sigChan)
+	l.Debug("Starting display")
+	go func() {
+		l.Debug("Display Start() called")
+		disp.Start(sigChan)
+		l.Debug("Display Start() returned")
+	}()
 
 	defer func() {
 		l.Debug("Stopping display")
 		disp.Stop()
+		l.Debug("Display stopped")
 	}()
 
+	l.Debug("Updating initial status")
+	disp.UpdateStatus(&models.Status{
+		ID:     "azure-deployment",
+		Type:   "Azure",
+		Status: "Initializing",
+	})
+
 	l.Debug("Starting resource deployment")
-	// Pulls all settings from Viper config
 	err = azureProvider.DeployResources(cmd.Context(), disp)
 	if err != nil {
 		errString := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
@@ -68,8 +82,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	l.Debug("Resource deployment completed")
 
-	// TODO: Implement resource status updates when Azure provider supports it
-
 	disp.UpdateStatus(&models.Status{
 		ID:     "azure-deployment",
 		Type:   "Azure",
@@ -83,6 +95,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
 		for {
+			l.Debug("Waiting for input")
 			char, _, err := reader.ReadRune()
 			if err != nil {
 				l.Error(fmt.Sprintf("Error reading input: %s", err.Error()))
