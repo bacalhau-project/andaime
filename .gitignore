@@ -20,3 +20,5 @@ release/
 *debug.log
 
 code_execution_env/**
+process_*
+coverage.log
