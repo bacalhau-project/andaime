@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/cmd/beta/destroy"
 )
 
 var once sync.Once
@@ -29,6 +30,7 @@ func InitializeCommands() {
 		AzureCmd.AddCommand(GetAzureListSubscriptionsCmd())
 		AzureCmd.AddCommand(GetAzureListResourcesCmd())
 		AzureCmd.AddCommand(GetAzureCreateDeploymentCmd())
+		AzureCmd.AddCommand(destroy.GetDestroyCmd())
 	})
 }
 

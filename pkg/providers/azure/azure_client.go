@@ -17,7 +17,10 @@ import (
 )
 
 type AzureClient interface {
+	// Resource Group API
 	GetOrCreateResourceGroup(ctx context.Context, location, name string, tags map[string]*string) (*armresources.ResourceGroup, error)
+	DestroyResourceGroup(ctx context.Context, resourceGroupName string) error
+
 	CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string, tags map[string]*string) (armnetwork.VirtualNetwork, error)
 	GetVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string) (armnetwork.VirtualNetwork, error)
 	CreatePublicIP(ctx context.Context, resourceGroupName, ipName string, parameters armnetwork.PublicIPAddress, tags map[string]*string) (armnetwork.PublicIPAddress, error)

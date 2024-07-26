@@ -327,8 +327,6 @@ var (
 
 func GetLastLines(filepath string, n int) []string {
 	l := Get()
-	l.Debugf("GetLastLines called with filepath: '%s' and n: %d", filepath, n)
-
 	if filepath == "" {
 		l.Errorf("Error: filepath is empty")
 		writeToDebugLog("Error: filepath is empty in GetLastLines")
@@ -338,8 +336,6 @@ func GetLastLines(filepath string, n int) []string {
 		return []string{"Error: filepath is empty"}
 	}
 
-	l.Debugf("Attempting to open file: '%s'", filepath)
-	writeToDebugLog(fmt.Sprintf("Attempting to open file: '%s'", filepath))
 	file, err := os.Open(filepath)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error opening file '%s': %v", filepath, err)
@@ -348,8 +344,6 @@ func GetLastLines(filepath string, n int) []string {
 		return []string{errMsg}
 	}
 	defer file.Close()
-	l.Debugf("File opened successfully: '%s'", filepath)
-	writeToDebugLog(fmt.Sprintf("File opened successfully: '%s'", filepath))
 
 	var lines []string
 	scanner := bufio.NewScanner(file)
@@ -361,8 +355,6 @@ func GetLastLines(filepath string, n int) []string {
 		}
 		lineCount++
 	}
-	l.Debugf("Read %d lines from file '%s'", lineCount, filepath)
-	writeToDebugLog(fmt.Sprintf("Read %d lines from file '%s'", lineCount, filepath))
 
 	if err := scanner.Err(); err != nil {
 		errMsg := fmt.Sprintf("Error reading file '%s': %v", filepath, err)
@@ -371,8 +363,6 @@ func GetLastLines(filepath string, n int) []string {
 		return append([]string{errMsg}, lines...)
 	}
 
-	l.Debugf("Returning %d lines from file '%s'", len(lines), filepath)
-	writeToDebugLog(fmt.Sprintf("Returning %d lines from file '%s'", len(lines), filepath))
 	return lines
 }
 

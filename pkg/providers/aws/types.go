@@ -1,5 +1,5 @@
 //nolint:lll
-package aws_provider
+package awsprovider
 
 import (
 	"context"

@@ -15,6 +15,7 @@ type AzureProviderer interface {
 	SetConfig(config *viper.Viper)
 
 	DeployResources(ctx context.Context) error
+	DestroyResources(ctx context.Context, resourceGroupName string) error
 }
 
 type AzureProvider struct {
@@ -60,6 +61,10 @@ func (p *AzureProvider) GetConfig() *viper.Viper {
 
 func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
+}
+
+func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
+	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
 var _ AzureProviderer = &AzureProvider{}

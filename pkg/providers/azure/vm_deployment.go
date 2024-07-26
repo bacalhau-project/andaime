@@ -36,12 +36,12 @@ func DeployVM(ctx context.Context,
 	tags := generateTags(uniqueID, projectID)
 	vmName := utils.GenerateUniqueName(projectID, uniqueID)
 
-	absKeyPath, err := utils.ExpandPath(publicKeyPath)
+	absPublicKeyPath, err := utils.ExpandPath(publicKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to expand path: %v", err)
 	}
 
-	SSHPublicKeyMaterial, err := os.ReadFile(absKeyPath)
+	SSHPublicKeyMaterial, err := os.ReadFile(absPublicKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read SSH public key: %v", err)
 	}
@@ -137,7 +137,7 @@ func DeployVM(ctx context.Context,
 		22, //nolint:gomnd
 		config.GetString("azure.admin_username"),
 		sshDialer,
-		privateKeyPath,
+		absPublicKeyPath,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSH config: %v", err)

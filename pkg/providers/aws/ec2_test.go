@@ -1,1 +1,1 @@
-package aws_provider_test
+package awsprovider_test

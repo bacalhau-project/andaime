@@ -492,12 +492,12 @@ func (d *Display) Log(message string) {
 }
 
 func (d *Display) logDebugInfo() {
-	d.Logger.Infof("--- Debug Info ---")
-	d.Logger.Infof("Number of statuses: %d", len(d.Statuses))
-	d.Logger.Infof("LogBox title: %s", d.LogBox.GetTitle())
-	d.Logger.Infof("LogBox content length: %d", len(d.LogBox.GetText(true)))
-	d.Logger.Infof("LogBuffer size: %d", len(d.LogBuffer.GetLines()))
-	d.Logger.Infof("------------------")
+	d.Logger.Debugf("--- Debug Info ---")
+	d.Logger.Debugf("Number of statuses: %d", len(d.Statuses))
+	d.Logger.Debugf("LogBox title: %s", d.LogBox.GetTitle())
+	d.Logger.Debugf("LogBox content length: %d", len(d.LogBox.GetText(true)))
+	d.Logger.Debugf("LogBuffer size: %d", len(d.LogBuffer.GetLines()))
+	d.Logger.Debugf("------------------")
 }
 func (d *Display) renderToVirtualConsole() {
 	if d.VirtualConsole == nil {

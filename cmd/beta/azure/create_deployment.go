@@ -66,23 +66,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errString)
 	}
 
-	// Get the deployed resources
-	resources := azureProvider.GetResources()
-
-	// Update status for each resource
-	for _, resource := range resources {
-		disp.UpdateStatus(&display.Status{
-			ID:             resource.ID,
-			Type:           resource.Type,
-			Region:         resource.Region,
-			Zone:           resource.Zone,
-			Status:         resource.Status,
-			DetailedStatus: resource.DetailedStatus,
-			InstanceID:     resource.InstanceID,
-			PublicIP:       resource.PublicIP,
-			PrivateIP:      resource.PrivateIP,
-		})
-	}
+	// TODO: Implement resource status updates when Azure provider supports it
 
 	disp.UpdateStatus(&display.Status{
 		ID:     "azure-deployment",

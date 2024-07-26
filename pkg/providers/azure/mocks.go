@@ -21,6 +21,7 @@ type MockAzureClient struct {
 	GetOrCreateResourceGroupFunc func(ctx context.Context, location string,
 		name string,
 		tags map[string]*string) (*armresources.ResourceGroup, error)
+	DestroyResourceGroupFunc func(ctx context.Context, resourceGroupName string) error
 	CreateVirtualNetworkFunc func(ctx context.Context,
 		resourceGroupName,
 		vnetName,
@@ -81,6 +82,10 @@ func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	name string,
 	tags map[string]*string) (*armresources.ResourceGroup, error) {
 	return m.GetOrCreateResourceGroupFunc(ctx, location, name, tags)
+}
+
+func (m *MockAzureClient) DestroyResourceGroup(ctx context.Context, resourceGroupName string) error {
+	return m.DestroyResourceGroupFunc(ctx, resourceGroupName)
 }
 
 func (m *MockAzureClient) CreateVirtualNetwork(ctx context.Context, resourceGroupName, vnetName, location string, tags map[string]*string) (armnetwork.VirtualNetwork, error) {
