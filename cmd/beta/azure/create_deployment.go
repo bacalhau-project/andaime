@@ -30,12 +30,16 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	logger.InitProduction(false, true)
 	l := logger.Get()
 
+	l.Debug("Starting executeCreateDeployment")
+
 	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
 		l.Error(errString)
 		return fmt.Errorf(errString)
 	}
+
+	l.Debug("Azure provider initialized")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -44,9 +48,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	go disp.Start(sigChan)
 
 	defer func() {
+		l.Debug("Stopping display")
 		disp.Stop()
 	}()
 
+	l.Debug("Starting resource deployment")
 	// Pulls all settings from Viper config
 	err = azureProvider.DeployResources(cmd.Context(), disp)
 	if err != nil {
@@ -59,6 +65,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		})
 		return fmt.Errorf(errString)
 	}
+
+	l.Debug("Resource deployment completed")
 
 	// TODO: Implement resource status updates when Azure provider supports it
 
@@ -81,12 +89,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			if char == 'q' || char == 'Q' {
+				l.Debug("Quit signal received")
 				sigChan <- os.Interrupt
 				return
 			}
 		}
 	}()
 
+	l.Debug("Waiting for signal")
 	<-sigChan
+	l.Debug("Signal received, exiting")
 	return nil
 }
