@@ -18,7 +18,7 @@ func (p *AzureProvider) DestroyAzureDeployment(ctx context.Context, resourceGrou
 		return fmt.Errorf("failed to start resource group deletion: %v", err)
 	}
 
-	l.Infof("Azure deployment (Resource Group: %s) has been successfully destroyed", resourceGroupName)
+	l.Infof("Deletion process for Azure deployment (Resource Group: %s) has been initiated", resourceGroupName)
 	return nil
 }
 
@@ -27,18 +27,11 @@ func (c *LiveAzureClient) DestroyResourceGroup(ctx context.Context, resourceGrou
 
 	l.Infof("Starting destruction of Azure deployment (Resource Group: %s)", resourceGroupName)
 
-	poller, err := c.resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
+	_, err := c.resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start resource group deletion: %v", err)
 	}
 
-	l.Infof("Waiting for resource group deletion to complete...")
-
-	_, err = poller.PollUntilDone(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete resource group: %v", err)
-	}
-
-	l.Infof("Azure deployment (Resource Group: %s) has been successfully destroyed", resourceGroupName)
+	l.Infof("Deletion process for Azure deployment (Resource Group: %s) has been initiated", resourceGroupName)
 	return nil
 }
