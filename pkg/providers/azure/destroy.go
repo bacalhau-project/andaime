@@ -35,3 +35,6 @@ func (c *LiveAzureClient) DestroyResourceGroup(ctx context.Context, resourceGrou
 	l.Infof("Deletion process for Azure deployment (Resource Group: %s) has been initiated", resourceGroupName)
 	return nil
 }
+
+// Ensure AzureProvider implements AzureProviderer interface
+var _ AzureProviderer = (*AzureProvider)(nil)
