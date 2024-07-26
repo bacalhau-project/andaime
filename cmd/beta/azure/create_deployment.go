@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -26,12 +28,12 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	logger.InitProduction(false, true)
-	log := logger.Get()
+	l := logger.Get()
 
 	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
-		log.Error(errString)
+		l.Error(errString)
 		return fmt.Errorf(errString)
 	}
 
@@ -43,22 +45,14 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	defer func() {
 		disp.Stop()
-		<-sigChan
 	}()
-
-	// Update initial status
-	disp.UpdateStatus(&display.Status{
-		ID:     "azure-deployment",
-		Type:   "Azure",
-		Status: "Initializing",
-	})
 
 	// Pulls all settings from Viper config
 	err = azureProvider.DeployResources(cmd.Context(), disp)
 	if err != nil {
 		errString := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
-		log.Error(errString)
-		disp.UpdateStatus(&display.Status{
+		l.Error(errString)
+		disp.UpdateStatus(&models.Status{
 			ID:     "azure-deployment",
 			Type:   "Azure",
 			Status: "Failed",
@@ -68,13 +62,31 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	// TODO: Implement resource status updates when Azure provider supports it
 
-	disp.UpdateStatus(&display.Status{
+	disp.UpdateStatus(&models.Status{
 		ID:     "azure-deployment",
 		Type:   "Azure",
 		Status: "Completed",
 	})
 
-	log.Info("Azure deployment created successfully")
+	l.Info("Azure deployment created successfully")
 	cmd.Println("Azure deployment created successfully")
+	cmd.Println("Press 'q' and Enter to quit")
+
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			char, _, err := reader.ReadRune()
+			if err != nil {
+				l.Error(fmt.Sprintf("Error reading input: %s", err.Error()))
+				continue
+			}
+			if char == 'q' || char == 'Q' {
+				sigChan <- os.Interrupt
+				return
+			}
+		}
+	}()
+
+	<-sigChan
 	return nil
 }
