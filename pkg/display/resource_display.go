@@ -18,7 +18,10 @@ import (
 	"github.com/rivo/tview"
 )
 
-var debugLogger *log.Logger
+var (
+	debugLogger *log.Logger
+	currentDisplay *Display
+)
 
 func init() {
 	debugFile, err := os.OpenFile(
@@ -30,6 +33,11 @@ func init() {
 		log.Fatal(err)
 	}
 	debugLogger = log.New(debugFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+// GetCurrentDisplay returns the current display instance
+func GetCurrentDisplay() *Display {
+	return currentDisplay
 }
 
 func logDebugf(format string, v ...interface{}) {
@@ -49,6 +57,7 @@ const RelativeSizeForLogBox = 1
 func NewDisplay(totalTasks int) *Display {
 	d := newDisplayInternal(totalTasks, false)
 	d.LogFileName = logger.GlobalLogPath
+	currentDisplay = d
 	return d
 }
 
