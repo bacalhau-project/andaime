@@ -451,22 +451,27 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	l.Debugf("CreateNetworkSecurityGroup: %s", resourceGroupName)
 	logger.LogAzureAPIStart("CreateNetworkSecurityGroup")
 
-	// Check if the creation is already in progress
-	if entry, ok := c.nsgCache.Load(sgName); ok {
-		cacheEntry := entry.(*nsgCacheEntry)
+	// Use LoadOrStore to ensure only one goroutine creates the cache entry
+	entry, loaded := c.nsgCache.LoadOrStore(sgName, &nsgCacheEntry{})
+	cacheEntry := entry.(*nsgCacheEntry)
+
+	if loaded {
+		// If the entry was already in the cache, wait for the result
 		cacheEntry.wg.Wait()
 		return cacheEntry.result, cacheEntry.err
 	}
 
-	// Create a new cache entry
-	cacheEntry := &nsgCacheEntry{}
+	// This goroutine is responsible for creating the NSG
 	cacheEntry.wg.Add(1)
-	c.nsgCache.Store(sgName, cacheEntry)
+	defer cacheEntry.wg.Done()
 
-	defer func() {
-		cacheEntry.wg.Done()
-		c.nsgCache.Delete(sgName)
-	}()
+	// Check if the NSG already exists
+	existingNSG, err := c.GetNetworkSecurityGroup(ctx, resourceGroupName, sgName)
+	if err == nil {
+		// NSG already exists, return it
+		cacheEntry.result = existingNSG
+		return existingNSG, nil
+	}
 
 	securityRules := []*armnetwork.SecurityRule{}
 	for i, port := range ports {
