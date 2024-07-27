@@ -385,16 +385,3 @@ func writeToDebugLog(message string) {
 func WriteToDebugLog(message string) {
 	writeToDebugLog(message)
 }
-	_, err = fmt.Fprintf(debugFile, "[%s] %s\n", timestamp, message)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing to debug log file %s: %v\n", debugFilePath, err)
-	}
-
-	// Check if the file was actually written to
-	fileInfo, err := os.Stat(debugFilePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error checking debug log file %s: %v\n", debugFilePath, err)
-	} else if fileInfo.Size() == 0 {
-		fmt.Fprintf(os.Stderr, "Warning: Debug log file %s is empty after write attempt\n", debugFilePath)
-	}
-}
