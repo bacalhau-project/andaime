@@ -16,6 +16,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/internal/clouds/azure"
 )
 
 type AzureClient interface {
@@ -380,6 +381,7 @@ func (c *LiveAzureClient) CreateNetworkInterface(ctx context.Context,
 
 	// Validate location
 	if !IsValidLocation(location) {
+		l.Errorf("Invalid location: %s", location)
 		return armnetwork.Interface{}, fmt.Errorf("invalid location: %s", location)
 	}
 
@@ -570,6 +572,20 @@ func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context,
 
 	l.Debugf("GetNetworkSecurityGroup: Successfully retrieved NSG %s", *resp.SecurityGroup.Name)
 	return resp.SecurityGroup, nil
+}
+
+func IsValidLocation(location string) bool {
+	locations, err := azure.GetLocations()
+	if err != nil {
+		logger.Get().Errorf("Failed to get Azure locations: %v", err)
+		return false
+	}
+	for _, validLocation := range locations {
+		if strings.EqualFold(location, validLocation) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *LiveAzureClient) SearchResources(ctx context.Context,
