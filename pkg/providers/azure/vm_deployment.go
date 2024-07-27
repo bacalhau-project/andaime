@@ -3,6 +3,8 @@ package azure
 import (
 	"context"
 	"fmt"
+	"time"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -16,25 +18,45 @@ var (
 	basePriority = 100
 )
 
-// createPublicIP creates a public IP address
+// createPublicIP creates a public IP address with retry logic
 func (p *AzureProvider) CreatePublicIP(
 	ctx context.Context,
 	deployment *models.Deployment,
 	machine *models.Machine,
 	disp *display.Display,
 ) (*armnetwork.PublicIPAddress, error) {
-	createdIP, err := p.Client.CreatePublicIP(
-		ctx,
-		deployment.ResourceGroupName,
-		machine.Location,
-		machine.ID,
-		deployment.Tags,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create public IP: %v", err)
+	l := logger.Get()
+	maxRetries := 5
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		l.Debugf("CreatePublicIP: Attempt %d of %d for machine %s", attempt+1, maxRetries, machine.ID)
+
+		createdIP, err := p.Client.CreatePublicIP(
+			ctx,
+			deployment.ResourceGroupName,
+			machine.Location,
+			machine.ID,
+			deployment.Tags,
+		)
+
+		if err == nil {
+			l.Infof("CreatePublicIP: Successfully created public IP for machine %s on attempt %d", machine.ID, attempt+1)
+			return &createdIP, nil
+		}
+
+		lastErr = err
+		if strings.Contains(err.Error(), "Canceled") {
+			l.Warnf("CreatePublicIP: Operation was canceled, retrying for machine %s: %v", machine.ID, err)
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+			continue
+		}
+
+		l.Errorf("CreatePublicIP: Failed to create public IP for machine %s: %v", machine.ID, err)
+		return nil, fmt.Errorf("failed to create public IP after %d attempts: %v", maxRetries, err)
 	}
 
-	return &createdIP, nil
+	return nil, fmt.Errorf("failed to create public IP after %d attempts: %v", maxRetries, lastErr)
 }
 
 // createNIC creates a network interface with both public and private IP
