@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -485,6 +486,18 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 		cacheEntry.result = existingNSG
 		return existingNSG, nil
 	}
+	
+	// Log the error, but continue with creation if it's a "not found" error
+	if err != nil {
+		l.Debugf("CreateNetworkSecurityGroup: Error checking for existing NSG %s: %v", sgName, err)
+		logger.WriteToDebugLog(fmt.Sprintf("Error checking for existing NSG %s: %v", sgName, err))
+		// Only proceed if it's a "not found" error
+		if !strings.Contains(err.Error(), "ResourceNotFound") {
+			cacheEntry.err = err
+			return armnetwork.SecurityGroup{}, err
+		}
+	}
+
 	l.Debugf("CreateNetworkSecurityGroup: NSG %s does not exist, creating new", sgName)
 
 	securityRules := []*armnetwork.SecurityRule{}
