@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -286,26 +287,43 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 		},
 	}
 
-	poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(
-		ctx,
-		resourceGroupName,
-		ipName,
-		parameters,
-		nil,
-	)
-	if err != nil {
-		l.Errorf("CreatePublicIP failed: %s", err)
-		return armnetwork.PublicIPAddress{}, err
+	maxRetries := 5
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		l.Debugf("CreatePublicIP: Attempt %d of %d", attempt+1, maxRetries)
+
+		poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(
+			ctx,
+			resourceGroupName,
+			ipName,
+			parameters,
+			nil,
+		)
+		if err != nil {
+			l.Errorf("CreatePublicIP BeginCreateOrUpdate failed: %s", err)
+			lastErr = err
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		resp, err := poller.PollUntilDone(ctx, nil)
+		if err != nil {
+			if strings.Contains(err.Error(), "Canceled") {
+				l.Warnf("CreatePublicIP polling was canceled, retrying: %s", err)
+				lastErr = err
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			l.Errorf("CreatePublicIP polling failed: %s", err)
+			return armnetwork.PublicIPAddress{}, err
+		}
+
+		l.Infof("CreatePublicIP: Successfully created %s", *resp.PublicIPAddress.Name)
+		return resp.PublicIPAddress, nil
 	}
 
-	resp, err := poller.PollUntilDone(ctx, nil)
-	if err != nil {
-		l.Errorf("CreatePublicIP polling failed: %s", err)
-		return armnetwork.PublicIPAddress{}, err
-	}
-
-	l.Infof("CreatePublicIP: Successfully created %s", *resp.PublicIPAddress.Name)
-	return resp.PublicIPAddress, nil
+	l.Errorf("CreatePublicIP: Failed after %d attempts", maxRetries)
+	return armnetwork.PublicIPAddress{}, lastErr
 }
 
 func (c *LiveAzureClient) GetPublicIP(ctx context.Context,
