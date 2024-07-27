@@ -134,6 +134,10 @@ func (d *Display) UpdateStatus(status *models.Status) {
 	d.Statuses[status.ID] = status
 	d.StatusesMu.Unlock()
 
+	if status.Type != "VM" {
+		d.displayResourceProgress(status)
+	}
+
 	d.scheduleUpdate()
 }
 
@@ -439,16 +443,20 @@ func (d *Display) renderTable() {
 		d.Table.SetCell(0, col, cell)
 	}
 
-	statuses := make([]*models.Status, 0, len(d.Statuses))
+	nodes := make([]*models.Status, 0)
 	for _, status := range d.Statuses {
-		statuses = append(statuses, status)
+		if status.Type == "VM" {
+			nodes = append(nodes, status)
+		} else {
+			d.displayResourceProgress(status)
+		}
 	}
 
-	sort.Slice(statuses, func(i, j int) bool {
-		return statuses[i].ID < statuses[j].ID
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].ID < nodes[j].ID
 	})
 
-	logDebugf("Statuses sorted")
+	logDebugf("Nodes sorted")
 
 	// Initialize lastTableState with header row
 	d.LastTableState = [][]string{make([]string, len(DisplayColumns))}
@@ -456,10 +464,10 @@ func (d *Display) renderTable() {
 		d.LastTableState[0][col] = column.Text
 	}
 
-	for row, status := range statuses {
+	for row, node := range nodes {
 		tableRow := make([]string, len(DisplayColumns))
 		for col, column := range DisplayColumns {
-			cellText := column.DataFunc(*status)
+			cellText := column.DataFunc(*node)
 			tableRow[col] = cellText
 			cell := tview.NewTableCell(cellText).
 				SetMaxWidth(column.Width).
@@ -470,6 +478,11 @@ func (d *Display) renderTable() {
 	}
 
 	logDebugf("Table rendered")
+}
+
+func (d *Display) displayResourceProgress(status *models.Status) {
+	progressText := fmt.Sprintf("%s: %s - %s", status.Type, status.ID, status.Status)
+	d.LogBox.Write([]byte(progressText + "\n"))
 }
 
 func (d *Display) updateLogBox() {
