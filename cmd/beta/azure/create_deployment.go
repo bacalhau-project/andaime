@@ -386,6 +386,7 @@ func ProcessMachinesConfig(
 
 		internalMachine.ID = utils.CreateShortID()
 		internalMachine.Name = fmt.Sprintf("vm-%s", internalMachine.ID)
+		internalMachine.ComputerName = fmt.Sprintf("vm-%s", internalMachine.ID)
 
 		if len(machine.Parameters) > 0 && machine.Parameters[0].Orchestrator {
 			if orchestratorNode != nil {
