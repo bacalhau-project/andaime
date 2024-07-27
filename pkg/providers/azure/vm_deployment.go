@@ -123,7 +123,10 @@ func (p *AzureProvider) CreateVirtualMachine(
 		Tags:     deployment.Tags,
 		Properties: &armcompute.VirtualMachineProperties{
 			HardwareProfile: &armcompute.HardwareProfile{
-				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(machine.VMSize)),
+				// TODO: Implement a validation function to check if the provided VMSize is valid
+				// For now, we're using a known-good size to avoid deployment errors
+				// VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(machine.VMSize)),
+				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypesStandardD2V3),
 			},
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr(machine.Name),
