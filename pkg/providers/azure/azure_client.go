@@ -488,8 +488,9 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	l.Debugf("CreateNetworkSecurityGroup: Loading or storing cache entry for %s", sgName)
 	entry, loaded := c.nsgCache.LoadOrStore(sgName, &nsgCacheEntry{})
 	if entry == nil {
-		l.Errorf("CreateNetworkSecurityGroup: Failed to create cache entry for %s", sgName)
-		return armnetwork.SecurityGroup{}, fmt.Errorf("failed to create cache entry")
+		err := fmt.Errorf("failed to create cache entry")
+		l.Errorf("CreateNetworkSecurityGroup: %v", err)
+		return armnetwork.SecurityGroup{}, err
 	}
 	cacheEntry := entry.(*nsgCacheEntry)
 	l.Debugf("CreateNetworkSecurityGroup: Cache entry loaded: %t", loaded)
@@ -578,9 +579,16 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 		return armnetwork.SecurityGroup{}, err
 	}
 
-	l.Debugf("CreateNetworkSecurityGroup: Successfully created NSG %s", sgName)
+	if resp.SecurityGroup.Name == nil {
+		err := fmt.Errorf("created NSG has nil Name")
+		l.Errorf("CreateNetworkSecurityGroup: %v", err)
+		cacheEntry.err = err
+		return armnetwork.SecurityGroup{}, err
+	}
+
+	l.Debugf("CreateNetworkSecurityGroup: Successfully created NSG %s", *resp.SecurityGroup.Name)
 	cacheEntry.result = resp.SecurityGroup
-	l.Infof("CreateNetworkSecurityGroup: Completed creation of NSG %s", sgName)
+	l.Infof("CreateNetworkSecurityGroup: Completed creation of NSG %s", *resp.SecurityGroup.Name)
 	return resp.SecurityGroup, nil
 }
 
