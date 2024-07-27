@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,7 +21,7 @@ func (p *AzureProvider) DeployResources(
 	disp *display.Display,
 ) error {
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.prepareResourceGroup(ctx, deployment, disp)
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, deployment, disp)
 	if err != nil {
 		return err
 	}
@@ -35,7 +34,7 @@ func (p *AzureProvider) DeployResources(
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	err = p.createNetworkInfrastructure(ctx, deployment, disp)
+	err = p.CreateNetworkInfrastructure(ctx, deployment, disp)
 	if err != nil {
 		return err
 	}
@@ -45,16 +44,16 @@ func (p *AzureProvider) DeployResources(
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	err = p.processMachines(ctx, deployment, disp)
+	err = p.ProcessMachines(ctx, deployment, disp)
 	if err != nil {
 		return err
 	}
 
-	return p.finalizeDeployment(ctx, deployment, disp)
+	return p.FinalizeDeployment(ctx, deployment, disp)
 }
 
 // createNetworkInfrastructure sets up the network infrastructure for the deployment
-func (p *AzureProvider) createNetworkInfrastructure(
+func (p *AzureProvider) CreateNetworkInfrastructure(
 	ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display,
@@ -70,7 +69,7 @@ func (p *AzureProvider) createNetworkInfrastructure(
 		locations = append(locations, deployment.OrchestratorNode.Location)
 	}
 
-	err := p.createNetworkResources(ctx, deployment, locations, disp)
+	err := p.CreateNetworkResources(ctx, deployment, locations, disp)
 	if err != nil {
 		return err
 	}
@@ -80,7 +79,7 @@ func (p *AzureProvider) createNetworkInfrastructure(
 }
 
 // createNetworkResources creates the network resources for each location
-func (p *AzureProvider) createNetworkResources(ctx context.Context,
+func (p *AzureProvider) CreateNetworkResources(ctx context.Context,
 	deployment *models.Deployment,
 	locations []string,
 	disp *display.Display) error {
@@ -96,7 +95,7 @@ func (p *AzureProvider) createNetworkResources(ctx context.Context,
 				errChan <- fmt.Errorf("operation cancelled for location %s: %w", loc, ctx.Err())
 				return
 			default:
-				subnets, err := p.createNetworkResourcesForLocation(
+				subnets, err := p.CreateNetworkResourcesForLocation(
 					ctx,
 					deployment,
 					loc,
@@ -124,21 +123,25 @@ func (p *AzureProvider) createNetworkResources(ctx context.Context,
 }
 
 // createNetworkResourcesForLocation creates network resources for a specific location
-func (p *AzureProvider) createNetworkResourcesForLocation(
+func (p *AzureProvider) CreateNetworkResourcesForLocation(
 	ctx context.Context,
 	deployment *models.Deployment,
 	location string,
 	disp *display.Display,
 ) ([]*armnetwork.Subnet, error) {
-	disp.UpdateStatus(&models.Status{
-		ID:     fmt.Sprintf("vnet-%s", location),
-		Type:   "VM",
-		Status: fmt.Sprintf("Creating VNET for %s", location),
-	})
+	for _, machine := range deployment.Machines {
+		if machine.Location != location {
+			continue
+		}
+		disp.UpdateStatus(&models.Status{
+			ID:     machine.ID,
+			Type:   "VM",
+			Status: fmt.Sprintf("Creating VNET for %s", location),
+		})
+	}
 	vnet, err := p.Client.CreateVirtualNetwork(
 		ctx,
 		deployment.ResourceGroupName,
-		location+"-vnet",
 		location,
 		deployment.Tags,
 	)
@@ -164,38 +167,35 @@ func (p *AzureProvider) createNetworkResourcesForLocation(
 		)
 	}
 
-	disp.UpdateStatus(&models.Status{
-		ID:     fmt.Sprintf("nsg-%s", location),
-		Type:   "NSG",
-		Status: "Creating",
-	})
 	_, err = p.Client.CreateNetworkSecurityGroup(
 		ctx,
 		deployment.ResourceGroupName,
-		location+"-nsg",
 		location,
 		deployment.AllowedPorts,
 		deployment.Tags,
 	)
 	if err != nil {
-		disp.UpdateStatus(&models.Status{
-			ID:     fmt.Sprintf("nsg-%s", location),
-			Type:   "NSG",
-			Status: "Failed",
-		})
 		return nil, fmt.Errorf("failed to create network security group in %s: %v", location, err)
 	}
-	disp.UpdateStatus(&models.Status{
-		ID:     fmt.Sprintf("nsg-%s", location),
-		Type:   "NSG",
-		Status: "Created",
-	})
 
 	return []*armnetwork.Subnet{vnet.Properties.Subnets[0]}, nil
 }
 
+func (p *AzureProvider) CreateNetworkResourcesForMachine(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display,
+) error {
+	for _, machine := range deployment.Machines {
+		// Create NIC
+		// Attach NIC to VM
+		// Create Public IP
+		// Create Private IP
+	}
+}
+
 // processMachines processes a list of machines
-func (p *AzureProvider) processMachines(ctx context.Context,
+func (p *AzureProvider) ProcessMachines(ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display) error {
 	l := logger.Get()
@@ -247,30 +247,33 @@ func (p *AzureProvider) processMachines(ctx context.Context,
 				default:
 					vmName := fmt.Sprintf("%s-%d", internalMachine.Location, index)
 					disp.UpdateStatus(&models.Status{
-						ID:     vmName,
-						Type:   "Azure",
-						Status: "Creating",
+						ID:   vmName,
+						Type: "VM",
+						Status: fmt.Sprintf(
+							"Creating VM %s in %s",
+							vmName,
+							internalMachine.Location,
+						),
 					})
-					_, err := DeployVM(ctx,
-						p.Client,
+					_, err := p.CreateVirtualMachine(ctx,
 						deployment,
-						&internalMachine,
+						internalMachine,
 						disp,
 					)
 					if err != nil {
 						errChan <- fmt.Errorf("error deploying VM %s in %s: %v", vmName, internalMachine.Location, err)
 						disp.UpdateStatus(&models.Status{
 							ID:     vmName,
-							Type:   "Azure",
+							Type:   "VM",
 							Status: "Failed",
 						})
 						return
 					}
 					disp.UpdateStatus(&models.Status{
 						ID:        vmName,
-						Type:      "Azure",
+						Type:      "VM",
 						Status:    "Created",
-						PublicIP:  "",
+						PublicIP:  *internalMachine.PublicIP.Properties.IPAddress,
 						PrivateIP: "",
 					})
 				}
@@ -301,7 +304,7 @@ func (p *AzureProvider) processMachines(ctx context.Context,
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
-func (p *AzureProvider) finalizeDeployment(
+func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display,
@@ -345,15 +348,12 @@ func (p *AzureProvider) finalizeDeployment(
 }
 
 // prepareResourceGroup prepares or creates a resource group for the deployment
-func (p *AzureProvider) prepareResourceGroup(
+func (p *AzureProvider) PrepareResourceGroup(
 	ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display) (string, string, error) {
 	// Check if the resource group name already contains a timestamp
-	if !strings.Contains(deployment.ResourceGroupName, "-rg-") {
-		deployment.ResourceGroupName += "-rg-" + time.Now().Format("20060102150405")
-	}
-	resourceGroupName := deployment.ResourceGroupName
+	resourceGroupName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
 	resourceGroupLocation := deployment.ResourceGroupLocation
 
 	for _, machine := range deployment.Machines {
