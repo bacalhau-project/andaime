@@ -239,6 +239,11 @@ func PrepareDeployment(
 		deployment.ResourceGroupName = resourceGroupName
 	}
 
+	// Ensure the deployment has a name
+	if deployment.Name == "" {
+		deployment.Name = fmt.Sprintf("Azure Deployment - %s", uniqueID)
+	}
+
 	// Update Viper configuration
 	if err := deployment.UpdateViperConfig(); err != nil {
 		return nil, fmt.Errorf("failed to update Viper configuration: %v", err)

@@ -25,6 +25,7 @@ type Parameters struct {
 }
 
 type Deployment struct {
+	Name                    string
 	ResourceGroupName       string
 	ResourceGroupLocation   string
 	Locations               []string
