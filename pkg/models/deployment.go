@@ -41,6 +41,7 @@ type Deployment struct {
 	AllowedPorts          []int
 	SSHPublicKeyPath      string
 	SSHPrivateKeyPath     string
+	SSHPublicKeyData      []byte
 	DefaultVMSize         string `default:"Standard_B2s"`
 	DefaultDiskSizeGB     int32  `default:"30"`
 	DefaultLocation       string `default:"eastus"`

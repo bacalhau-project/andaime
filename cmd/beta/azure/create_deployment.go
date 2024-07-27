@@ -217,7 +217,7 @@ func PrepareDeployment(
 	l := logger.Get()
 
 	// Extract SSH keys
-	sshPublicKeyPath, sshPrivateKeyPath, err := ExtractSSHKeyPaths()
+	sshPublicKeyPath, sshPrivateKeyPath, sshPublicKeyData, err := ExtractSSHKeyPaths()
 	if err != nil {
 		return nil, err
 	}
@@ -247,6 +247,7 @@ func PrepareDeployment(
 		UniqueID:              uniqueID,
 		ResourceGroupLocation: resourceGroupLocation,
 		Tags:                  tags,
+		SSHPublicKeyData:      sshPublicKeyData,
 	}
 
 	// Set ResourceGroupName only if it's not already set
@@ -293,17 +294,23 @@ func PrepareDeployment(
 }
 
 // extractSSHKeys extracts SSH public and private key contents from Viper configuration
-func ExtractSSHKeyPaths() (string, string, error) {
+func ExtractSSHKeyPaths() (string, string, []byte, error) {
 	publicKeyPath, err := extractSSHKeyPath("general.ssh_public_key_path")
 	if err != nil {
-		return "", "", fmt.Errorf("failed to extract public key material: %w", err)
+		return "", "", nil, fmt.Errorf("failed to extract public key material: %w", err)
 	}
 
 	privateKeyPath, err := extractSSHKeyPath("general.ssh_private_key_path")
 	if err != nil {
-		return "", "", fmt.Errorf("failed to extract private key material: %w", err)
+		return "", "", nil, fmt.Errorf("failed to extract private key material: %w", err)
 	}
-	return publicKeyPath, privateKeyPath, nil
+
+	publicKeyData, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("failed to read public key file: %w", err)
+	}
+
+	return publicKeyPath, privateKeyPath, publicKeyData, nil
 }
 
 func extractSSHKeyPath(configKeyString string) (string, error) {

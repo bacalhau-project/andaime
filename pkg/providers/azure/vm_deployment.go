@@ -139,7 +139,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 						PublicKeys: []*armcompute.SSHPublicKey{
 							{
 								Path:    to.Ptr("/home/azureuser/.ssh/authorized_keys"),
-								KeyData: to.Ptr(deployment.SSHPublicKeyPath),
+								KeyData: to.Ptr(string(deployment.SSHPublicKeyData)),
 							},
 						},
 					},
