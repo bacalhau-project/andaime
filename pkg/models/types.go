@@ -13,11 +13,11 @@ const (
 type Status struct {
 	ID              string
 	Type            string
-	Region          string
-	Zone            string
+	Location        string
 	Status          string
 	DetailedStatus  string
 	ElapsedTime     time.Duration
+	StartTime       time.Time
 	InstanceID      string
 	PublicIP        string
 	PrivateIP       string
