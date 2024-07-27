@@ -17,6 +17,7 @@ type Machine struct {
 	Interface            *armnetwork.Interface
 	VMSize               string
 	DiskSizeGB           int32 `default:"30"`
+	ComputerName         string
 }
 
 type Parameters struct {
