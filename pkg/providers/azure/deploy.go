@@ -187,11 +187,39 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 	disp *display.Display,
 ) error {
 	for _, machine := range deployment.Machines {
-		// Create NIC
-		// Attach NIC to VM
 		// Create Public IP
-		// Create Private IP
+		publicIP, err := p.Client.CreatePublicIP(ctx, deployment.ResourceGroupName, machine.Location, machine.ID, deployment.Tags)
+		if err != nil {
+			return fmt.Errorf("failed to create public IP for machine %s: %w", machine.ID, err)
+		}
+
+		// Get subnet for the machine's location
+		subnet, ok := deployment.Subnets[machine.Location]
+		if !ok || len(subnet) == 0 {
+			return fmt.Errorf("no subnet found for location %s", machine.Location)
+		}
+
+		// Create Network Security Group
+		nsg, err := p.Client.CreateNetworkSecurityGroup(ctx, deployment.ResourceGroupName, machine.Location, []int{22}, deployment.Tags)
+		if err != nil {
+			return fmt.Errorf("failed to create network security group for machine %s: %w", machine.ID, err)
+		}
+
+		// Create NIC
+		nic, err := p.Client.CreateNetworkInterface(ctx, deployment.ResourceGroupName, machine.Location, machine.ID, deployment.Tags, subnet[0], &publicIP, &nsg)
+		if err != nil {
+			return fmt.Errorf("failed to create network interface for machine %s: %w", machine.ID, err)
+		}
+
+		// Update machine with network information
+		machine.PublicIP = *publicIP.Properties.IPAddress
+		machine.PrivateIP = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
+		machine.NetworkInterfaceID = *nic.ID
+
+		disp.Log(fmt.Sprintf("Created network resources for machine %s: Public IP: %s, Private IP: %s", machine.ID, machine.PublicIP, machine.PrivateIP))
 	}
+
+	return nil
 }
 
 // processMachines processes a list of machines
