@@ -131,7 +131,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(vmSize)),
 			},
 			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(machine.Name),
+				ComputerName:  to.Ptr(machine.ComputerName),
 				AdminUsername: to.Ptr("azureuser"),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
@@ -177,7 +177,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 		ctx,
 		deployment.ResourceGroupName,
 		machine.Location,
-		deployment.UniqueID,
+		machine.ComputerName,
 		&params,
 		deployment.Tags,
 	)
