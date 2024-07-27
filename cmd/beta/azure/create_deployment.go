@@ -156,7 +156,7 @@ func InitializeDeployment(
 			Name:     "default-vm",
 			VMSize:   "Standard_B2s",
 			Location: "eastus",
-			Parameters: []models.Parameter{
+			Parameters: []models.Parameters{
 				{Orchestrator: true},
 			},
 		},
