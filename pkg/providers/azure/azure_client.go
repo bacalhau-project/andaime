@@ -87,6 +87,7 @@ type AzureClient interface {
 		ctx context.Context,
 		resourceGroupName string,
 		location string,
+		sgName string,
 		ports []int,
 		tags map[string]*string,
 	) (armnetwork.SecurityGroup, error)
