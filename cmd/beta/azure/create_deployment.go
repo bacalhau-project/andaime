@@ -12,11 +12,14 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/utils"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -43,7 +46,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Debug("Starting executeCreateDeployment")
 
 	// Create a unique ID for the deployment
-	UniqueID := fmt.Sprintf("deployment-%s", time.Now().Format("060102150405"))
+	UniqueID := fmt.Sprintf(
+		"%s-%s",
+		viper.GetString("general.project_id"),
+		time.Now().Format("060102150405"),
+	)
 
 	// Set the UniqueID on the context
 	ctx := context.WithValue(cmd.Context(), uniqueDeploymentIDKey, UniqueID)
@@ -77,11 +84,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}()
 
 	l.Debug("Updating initial status")
-	disp.UpdateStatus(&models.Status{
-		ID:     "azure-deployment",
-		Type:   UniqueID,
-		Status: "Initializing",
-	})
 
 	// Create a new deployment object
 	deployment, err := InitializeDeployment(ctx, UniqueID, disp)
@@ -93,21 +95,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		errString := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 		l.Error(errString)
-		disp.UpdateStatus(&models.Status{
-			ID:     "azure-deployment",
-			Type:   UniqueID,
-			Status: "Failed",
-		})
 		return fmt.Errorf(errString)
 	}
 
 	l.Debug("Resource deployment completed")
-
-	disp.UpdateStatus(&models.Status{
-		ID:     "azure-deployment",
-		Type:   UniqueID,
-		Status: "Completed",
-	})
 
 	l.Info("Azure deployment created successfully")
 	cmd.Println("Azure deployment created successfully")
@@ -257,13 +248,16 @@ func PrepareDeployment(
 	l.Debugf("Allowed ports: %v", ports)
 
 	// Process machines
-	orchestratorNode, nonOrchestratorMachines, locations, err := ProcessMachinesConfig(machines)
+	orchestratorNode, allMachines, locations, err := ProcessMachinesConfig(
+		machines,
+		disp,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	deployment.OrchestratorNode = orchestratorNode
-	deployment.NonOrchestratorMachines = nonOrchestratorMachines
+	deployment.Machines = allMachines
 	deployment.Locations = locations
 
 	return deployment, nil
@@ -334,23 +328,41 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 // processMachinesConfig processes the machine configurations
 func ProcessMachinesConfig(
 	machines []models.Machine,
+	disp *display.Display,
 ) (*models.Machine, []models.Machine, []string, error) {
 	var orchestratorNode *models.Machine
-	var nonOrchestratorMachines []models.Machine
+	var allMachines []models.Machine
 	locations := make(map[string]bool)
 
 	for _, machine := range machines {
 		internalMachine := machine
+
+		if internalMachine.Location == "" {
+			return nil, nil, nil, fmt.Errorf("machine location is empty")
+		}
+
+		if !internal.IsValidLocation(internalMachine.Location) {
+			return nil, nil, nil, fmt.Errorf("invalid location: %s", internalMachine.Location)
+		}
 		locations[internalMachine.Location] = true
+
+		internalMachine.ID = utils.CreateShortID()
 
 		if len(machine.Parameters) > 0 && machine.Parameters[0].Orchestrator {
 			if orchestratorNode != nil {
 				return nil, nil, nil, fmt.Errorf("multiple orchestrator nodes found")
 			}
 			orchestratorNode = &internalMachine
-		} else {
-			nonOrchestratorMachines = append(nonOrchestratorMachines, internalMachine)
 		}
+		allMachines = append(allMachines, internalMachine)
+
+		disp.UpdateStatus(&models.Status{
+			ID:       internalMachine.ID,
+			Type:     "VM",
+			Location: internalMachine.Location,
+			Status:   "Initializing",
+		})
+
 	}
 
 	uniqueLocations := make([]string, 0, len(locations))
@@ -358,5 +370,5 @@ func ProcessMachinesConfig(
 		uniqueLocations = append(uniqueLocations, location)
 	}
 
-	return orchestratorNode, nonOrchestratorMachines, uniqueLocations, nil
+	return orchestratorNode, allMachines, uniqueLocations, nil
 }
