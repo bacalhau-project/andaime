@@ -498,7 +498,7 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 		}
 	}
 
-	l.Debugf("CreateNetworkSecurityGroup: NSG %s does not exist, creating new", sgName)
+	l.Debugf("CreateNetworkSecurityGroup: NSG %s does not exist or is still being created, proceeding with creation", sgName)
 
 	securityRules := []*armnetwork.SecurityRule{}
 	for i, port := range ports {
