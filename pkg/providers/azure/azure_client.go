@@ -487,6 +487,10 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	// Use LoadOrStore to ensure only one goroutine creates the cache entry
 	l.Debugf("CreateNetworkSecurityGroup: Loading or storing cache entry for %s", sgName)
 	entry, loaded := c.nsgCache.LoadOrStore(sgName, &nsgCacheEntry{})
+	if entry == nil {
+		l.Errorf("CreateNetworkSecurityGroup: Failed to create cache entry for %s", sgName)
+		return armnetwork.SecurityGroup{}, fmt.Errorf("failed to create cache entry")
+	}
 	cacheEntry := entry.(*nsgCacheEntry)
 	l.Debugf("CreateNetworkSecurityGroup: Cache entry loaded: %t", loaded)
 
@@ -594,6 +598,11 @@ func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context,
 			l.Errorf("GetNetworkSecurityGroup: Error getting NSG %s: %v", sgName, err)
 			return armnetwork.SecurityGroup{}, err
 		}
+	}
+
+	if resp.SecurityGroup.Name == nil {
+		l.Errorf("GetNetworkSecurityGroup: Retrieved NSG %s has nil Name", sgName)
+		return armnetwork.SecurityGroup{}, fmt.Errorf("retrieved NSG has nil Name")
 	}
 
 	l.Debugf("GetNetworkSecurityGroup: Successfully retrieved NSG %s", *resp.SecurityGroup.Name)
