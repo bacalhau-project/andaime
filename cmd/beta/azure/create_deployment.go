@@ -134,7 +134,7 @@ func InitializeDeployment(
 	disp *display.Display,
 ) (*models.Deployment, error) {
 	l := logger.Get()
-	viper := viper.GetViper()
+	v := viper.GetViper()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
@@ -142,11 +142,31 @@ func InitializeDeployment(
 		return nil, fmt.Errorf("deployment cancelled: %w", err)
 	}
 
+	// Set default values for all configuration items
+	v.SetDefault("general.project_id", "default-project")
+	v.SetDefault("general.log_path", "/var/log/andaime")
+	v.SetDefault("general.log_level", "info")
+	v.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
+	v.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
+	v.SetDefault("azure.resource_group_name", "andaime-rg")
+	v.SetDefault("azure.resource_group_location", "eastus")
+	v.SetDefault("azure.allowed_ports", []int{22, 80, 443})
+	v.SetDefault("azure.machines", []models.Machine{
+		{
+			Name:     "default-vm",
+			VMSize:   "Standard_B2s",
+			Location: "eastus",
+			Parameters: []models.Parameter{
+				{Orchestrator: true},
+			},
+		},
+	})
+
 	// Extract Azure-specific configuration
-	projectID := viper.GetString("general.project_id")
+	projectID := v.GetString("general.project_id")
 
 	// Create deployment object
-	deployment, err := PrepareDeployment(ctx, viper, projectID, uniqueID, disp)
+	deployment, err := PrepareDeployment(ctx, v, projectID, uniqueID, disp)
 	if err != nil {
 		return nil, err
 	}
