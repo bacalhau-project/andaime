@@ -119,14 +119,9 @@ func (p *AzureProvider) CreateVirtualMachine(
 		return nil, fmt.Errorf("network interface not created for machine %s", machine.ID)
 	}
 
-	defaultMachineType := viper.GetString("azure.default_machine_type")
-	if defaultMachineType == "" {
-		defaultMachineType = "Standard_DS1_v2"
-	}
-
 	vmSize := machine.VMSize
 	if vmSize == "" {
-		vmSize = defaultMachineType
+		vmSize = "Standard_DS1_v2" // Default VM size if not specified
 	}
 
 	params := armcompute.VirtualMachine{
@@ -230,14 +225,10 @@ func (p *AzureProvider) CreateNSG(
 	return &createdNSG, nil
 }
 
-// getDiskSizeGB returns the disk size in GB, using a default value from config if not set
+// getDiskSizeGB returns the disk size in GB, using a default value if not set
 func getDiskSizeGB(diskSize int32) int32 {
 	if diskSize <= 0 {
-		defaultDiskSize := viper.GetInt32("azure.disk_size_gb")
-		if defaultDiskSize <= 0 {
-			return 30 // Fallback default if not set in config
-		}
-		return defaultDiskSize
+		return 30 // Default disk size if not specified
 	}
 	return diskSize
 }
