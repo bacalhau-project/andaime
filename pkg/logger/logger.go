@@ -378,6 +378,15 @@ func writeToDebugLog(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	_, err = fmt.Fprintf(debugFile, "[%s] %s\n", timestamp, message)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
+	}
+}
+
+func WriteToDebugLog(message string) {
+	writeToDebugLog(message)
+}
+	_, err = fmt.Fprintf(debugFile, "[%s] %s\n", timestamp, message)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing to debug log file %s: %v\n", debugFilePath, err)
 	}
 
