@@ -217,10 +217,24 @@ func PrepareDeployment(
 		return nil, fmt.Errorf("error unmarshaling machines: %v", err)
 	}
 
+	// Get resource group name
+	resourceGroupName := viper.GetString("azure.resource_group_name")
+	if resourceGroupName == "" {
+		return nil, fmt.Errorf("resource group name is empty")
+	}
+
+	// Get resource group location
+	resourceGroupLocation := viper.GetString("azure.resource_group_location")
+	if resourceGroupLocation == "" {
+		return nil, fmt.Errorf("resource group location is empty")
+	}
+
 	deployment := &models.Deployment{
-		ProjectID: projectID,
-		UniqueID:  uniqueID,
-		Tags:      tags,
+		ProjectID:             projectID,
+		UniqueID:              uniqueID,
+		ResourceGroupName:     resourceGroupName,
+		ResourceGroupLocation: resourceGroupLocation,
+		Tags:                  tags,
 	}
 
 	// Update Viper configuration
