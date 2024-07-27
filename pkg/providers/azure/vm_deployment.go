@@ -181,10 +181,12 @@ func (p *AzureProvider) CreateNSG(
 		}
 	}
 
+	nsgName := fmt.Sprintf("%s-%s-nsg", deployment.ResourceGroupName, location)
 	createdNSG, err := p.Client.CreateNetworkSecurityGroup(
 		ctx,
 		deployment.ResourceGroupName,
 		location,
+		nsgName,
 		deployment.AllowedPorts,
 		deployment.Tags,
 	)
