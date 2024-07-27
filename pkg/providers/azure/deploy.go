@@ -212,11 +212,21 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 		}
 
 		// Update machine with network information
-		machine.PublicIP = *publicIP.Properties.IPAddress
-		machine.PrivateIP = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
-		machine.NetworkInterfaceID = *nic.ID
+		machine.PublicIP = publicIP
+		machine.Interface = &nic
+		
+		publicIPAddress := ""
+		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
+			publicIPAddress = *publicIP.Properties.IPAddress
+		}
+		privateIPAddress := ""
+		if nic.Properties != nil && nic.Properties.IPConfigurations != nil && len(nic.Properties.IPConfigurations) > 0 {
+			if nic.Properties.IPConfigurations[0].Properties != nil && nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress != nil {
+				privateIPAddress = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
+			}
+		}
 
-		disp.Log(fmt.Sprintf("Created network resources for machine %s: Public IP: %s, Private IP: %s", machine.ID, machine.PublicIP, machine.PrivateIP))
+		disp.Log(fmt.Sprintf("Created network resources for machine %s: Public IP: %s, Private IP: %s", machine.ID, publicIPAddress, privateIPAddress))
 	}
 
 	return nil
