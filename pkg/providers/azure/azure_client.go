@@ -4,6 +4,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -299,7 +300,7 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 		},
 	}
 
-	maxRetries := 5
+	maxRetries := 10
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		l.Debugf("CreatePublicIP: Attempt %d of %d", attempt+1, maxRetries)
@@ -314,16 +315,18 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 		if err != nil {
 			l.Errorf("CreatePublicIP BeginCreateOrUpdate failed: %s", err)
 			lastErr = err
-			time.Sleep(time.Duration(attempt) * time.Second)
+			backoffDuration := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			time.Sleep(backoffDuration)
 			continue
 		}
 
 		resp, err := poller.PollUntilDone(ctx, nil)
 		if err != nil {
-			if strings.Contains(err.Error(), "Canceled") {
-				l.Warnf("CreatePublicIP polling was canceled, retrying: %s", err)
+			if strings.Contains(err.Error(), "Canceled") || strings.Contains(err.Error(), "Conflict") {
+				l.Warnf("CreatePublicIP polling encountered an error, retrying: %s", err)
 				lastErr = err
-				time.Sleep(time.Duration(attempt) * time.Second)
+				backoffDuration := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+				time.Sleep(backoffDuration)
 				continue
 			}
 			l.Errorf("CreatePublicIP polling failed: %s", err)
