@@ -15,8 +15,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
-	"github.com/bacalhau-project/andaime/pkg/logger"
 	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 type AzureClient interface {
@@ -292,10 +292,10 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 	}
 
 	resp, err := poller.PollUntilDone(ctx, nil)
-	l.Debugf("CreatePublicIP: %s", *resp.PublicIPAddress.Name)
 	if err != nil {
 		return armnetwork.PublicIPAddress{}, err
 	}
+	l.Debugf("CreatePublicIP: %s", *resp.PublicIPAddress.Name)
 
 	return resp.PublicIPAddress, nil
 }
