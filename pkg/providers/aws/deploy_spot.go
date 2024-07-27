@@ -2,6 +2,8 @@ package awsprovider
 
 import (
 	"sync"
+
+	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
 // Status represents the status of an instance
@@ -25,15 +27,15 @@ type Status struct {
 var allStatuses sync.Map
 
 // UpdateAllStatuses updates the global allStatuses map in a thread-safe manner
-func UpdateAllStatuses(status *Status) {
+func UpdateAllStatuses(status *models.Status) {
 	allStatuses.Store(status.ID, status)
 }
 
 // GetAllStatuses retrieves all statuses from the allStatuses map
-func GetAllStatuses() map[string]*Status {
-	result := make(map[string]*Status)
+func GetAllStatuses() map[string]*models.Status {
+	result := make(map[string]*models.Status)
 	allStatuses.Range(func(key, value interface{}) bool {
-		result[key.(string)] = value.(*Status)
+		result[key.(string)] = value.(*models.Status)
 		return true
 	})
 	return result

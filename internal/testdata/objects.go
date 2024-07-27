@@ -6,23 +6,25 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 )
 
+var TestSubnet = armnetwork.Subnet{
+	Name: to.Ptr("testSubnet"),
+	Properties: &armnetwork.SubnetPropertiesFormat{
+		AddressPrefix: to.Ptr("10.0.0.0/24"),
+	},
+}
+
 //nolint:lll
 var TestVirtualNetwork = armnetwork.VirtualNetwork{
-	ID:       to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/virtualNetworks/testVNet"),
+	ID: to.Ptr(
+		"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/virtualNetworks/testVNet",
+	),
 	Name:     to.Ptr("testVNet"),
 	Location: to.Ptr("eastus"),
 	Properties: &armnetwork.VirtualNetworkPropertiesFormat{
 		AddressSpace: &armnetwork.AddressSpace{
 			AddressPrefixes: []*string{to.Ptr("10.0.0.0/16")},
 		},
-		Subnets: []*armnetwork.Subnet{
-			{ // Subnet
-				Name: to.Ptr("testSubnet"),
-				Properties: &armnetwork.SubnetPropertiesFormat{
-					AddressPrefix: to.Ptr("10.0.0.0/24"),
-				},
-			},
-		},
+		Subnets: []*armnetwork.Subnet{&TestSubnet},
 	},
 }
 
@@ -35,7 +37,9 @@ var TestPublicIPAddress = armnetwork.PublicIPAddress{
 
 //nolint:lll
 var TestInterface = armnetwork.Interface{
-	ID:   to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"),
+	ID: to.Ptr(
+		"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC",
+	),
 	Name: to.Ptr("testNIC"),
 	Properties: &armnetwork.InterfacePropertiesFormat{
 		IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
@@ -78,6 +82,9 @@ var TestVirtualMachine = armcompute.VirtualMachine{
 }
 
 var TestNSG = armnetwork.SecurityGroup{
+	ID: to.Ptr(
+		"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkSecurityGroups/testNSG",
+	),
 	Name: to.Ptr("testNSG"),
 	Properties: &armnetwork.SecurityGroupPropertiesFormat{
 		SecurityRules: []*armnetwork.SecurityRule{

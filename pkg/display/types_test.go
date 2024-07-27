@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,7 +20,7 @@ func TestTestDisplayStart(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Update status
-	status := &Status{ID: "test1", Type: "test", Region: "us-west-2", Status: "Running"}
+	status := &models.Status{ID: "test1", Type: "test", Region: "us-west-2", Status: "Running"}
 	display.UpdateStatus(status)
 
 	// Stop the display
@@ -44,7 +45,7 @@ func TestTestDisplayUpdateStatus(t *testing.T) {
 
 	// Update status multiple times
 	for i := 0; i < 10; i++ {
-		status := &Status{
+		status := &models.Status{
 			ID:     "test1",
 			Type:   "test",
 			Region: "us-west-2",

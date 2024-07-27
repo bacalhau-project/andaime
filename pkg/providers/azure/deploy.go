@@ -3,232 +3,107 @@ package azure
 import (
 	"context"
 	"fmt"
-	"log"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/utils"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 )
 
-type Machine struct {
-	Location   string
-	Parameters []Parameters
-}
-
-type Parameters struct {
-	Count        int
-	Type         string
-	Orchestrator bool
-}
-
-type Deployment struct {
-	ResourceGroupName       string
-	ResourceGroupLocation   string
-	OrchestratorNode        *Machine
-	NonOrchestratorMachines []Machine
-	VNet                    map[string][]*armnetwork.Subnet
-	ProjectID               string
-	UniqueID                string
-	Tags                    map[string]*string
-}
-
-func (d *Deployment) ToMap() map[string]interface{} {
-	return map[string]interface{}{
-		"ResourceGroupName":       d.ResourceGroupName,
-		"ResourceGroupLocation":   d.ResourceGroupLocation,
-		"OrchestratorNode":        d.OrchestratorNode,
-		"NonOrchestratorMachines": d.NonOrchestratorMachines,
-		"VNet":                    d.VNet,
-		"ProjectID":               d.ProjectID,
-		"UniqueID":                d.UniqueID,
-		"Tags":                    d.Tags,
-	}
-}
-
-// UpdateViperConfig updates the Viper configuration with the current Deployment state
-func (d *Deployment) UpdateViperConfig() error {
-	v := viper.GetViper()
-	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.ResourceGroupName)
-	v.Set(deploymentPath, d.ToMap())
-	return v.WriteConfig()
-}
-
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Display) error {
+func (p *AzureProvider) DeployResources(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display,
+) error {
+	// Prepare resource group
+	resourceGroupName, resourceGroupLocation, err := p.prepareResourceGroup(ctx, deployment, disp)
+	if err != nil {
+		return err
+	}
+
+	deployment.ResourceGroupName = resourceGroupName
+	deployment.ResourceGroupLocation = resourceGroupLocation
+
+	err = p.createNetworkInfrastructure(ctx, deployment, disp)
+	if err != nil {
+		return err
+	}
+
+	err = p.processOrchestratorNode(ctx, deployment, disp)
+	if err != nil {
+		return err
+	}
+
+	err = p.processNonOrchestratorMachines(ctx, deployment, disp)
+	if err != nil {
+		return err
+	}
+
+	return p.finalizeDeployment(ctx, deployment, disp)
+}
+
+// createNetworkInfrastructure sets up the network infrastructure for the deployment
+func (p *AzureProvider) createNetworkInfrastructure(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display,
+) error {
 	l := logger.Get()
-	viper := viper.GetViper()
 
-	// Extract Azure-specific configuration
-	uniqueID := viper.GetString("azure.unique_id")
-	projectID := viper.GetString("general.project_id")
-
-	// Extract SSH public key
-	sshPublicKey, err := utils.ExpandPath(viper.GetString("general.ssh_public_key_path"))
-	if err != nil {
-		return fmt.Errorf("failed to expand path for SSH public key: %v", err)
-	}
-	sshPrivateKey, err := utils.ExpandPath(viper.GetString("general.ssh_private_key_path"))
-	if err != nil {
-		return fmt.Errorf("failed to expand path for SSH private key: %v", err)
-	}
-
-	if sshPrivateKey == "" {
-		// Then we need to extract the private key from the public key
-		sshPrivateKey = strings.TrimSuffix(sshPublicKey, ".pub")
-	}
-
-	// Ensure tags
-	tags := make(map[string]*string)
-	tags = EnsureTags(tags, projectID, uniqueID)
-
-	// Validate SSH keys
-	err = sshutils.ValidateSSHKeysFromPath(sshPublicKey, sshPrivateKey)
-	if err != nil {
-		return fmt.Errorf("failed to validate SSH keys: %v", err)
-	}
-
-	var machines []Machine
-	err = viper.UnmarshalKey("azure.machines", &machines)
-	if err != nil {
-		log.Fatalf("Error unmarshaling machines: %v", err)
-	}
-
-	resourceGroupName := viper.GetString("azure.resource_prefix") + "-rg-" + time.Now().Format("0601021504")
-	if !IsValidResourceGroupName(resourceGroupName) {
-		return fmt.Errorf("invali d resource group name: %s", resourceGroupName)
-	}
-
-	resourceGroupLocation := viper.GetString("azure.resource_group_location")
-	if !internal.IsValidLocation(resourceGroupLocation) {
-		return fmt.Errorf("invalid resource group location: %s", resourceGroupLocation)
-	}
-
-	// Get or create the resource group
-	disp.UpdateStatus(&display.Status{
-		ID:     "resource-group",
-		Type:   "Azure",
-		Status: "Creating",
-	})
-	resourceGroup, err := p.Client.GetOrCreateResourceGroup(ctx, resourceGroupLocation, resourceGroupName, tags)
-	if err != nil {
-		disp.UpdateStatus(&display.Status{
-			ID:     "resource-group",
-			Type:   "Azure",
-			Status: "Failed",
-		})
-		return fmt.Errorf("failed to get or create resource group: %v", err)
-	}
-	disp.UpdateStatus(&display.Status{
-		ID:     "resource-group",
-		Type:   "Azure",
-		Status: "Created",
-	})
-
-	deployment := &Deployment{
-		ResourceGroupName:     resourceGroupName,
-		ResourceGroupLocation: resourceGroupLocation,
-		ProjectID:             projectID,
-		UniqueID:              uniqueID,
-		Tags:                  tags,
-	}
-
-	// Update Viper configuration after creating the deployment
-	if err := deployment.UpdateViperConfig(); err != nil {
-		return fmt.Errorf("failed to update Viper configuration: %v", err)
-	}
-
-	// Get all ports from the viper config
-	ports := viper.GetIntSlice("azure.allowed_ports")
-	if len(ports) == 0 {
-		return fmt.Errorf("no allowed ports found in viper config")
-	}
-	l.Debugf("Allowed ports: %v", ports)
-
-	// Crawl all of machines and populate locations and which is the orchestrator
+	l.Debugf("Creating network infrastructure for deployment: %v", deployment)
 	locations := make([]string, 0)
-	var orchestratorNode *Machine
-	var nonOrchestratorMachines []Machine
-	for _, machine := range machines {
-		internalMachine := machine
+	for _, machine := range deployment.NonOrchestratorMachines {
 		locations = append(locations, machine.Location)
-		if len(internalMachine.Parameters) > 0 && internalMachine.Parameters[0].Orchestrator {
-			if orchestratorNode != nil {
-				return fmt.Errorf("only one orchestrator node is allowed")
-			}
-			orchestratorNode = &internalMachine
-		} else {
-			nonOrchestratorMachines = append(nonOrchestratorMachines, internalMachine)
-		}
 	}
-	// Replace the original machines slice with non-orchestrator machines
-	machines = nonOrchestratorMachines
+	if deployment.OrchestratorNode != nil {
+		locations = append(locations, deployment.OrchestratorNode.Location)
+	}
 
-	subnets := make(map[string][]*armnetwork.Subnet)
+	err := p.createNetworkResources(ctx, deployment, locations, disp)
+	if err != nil {
+		return err
+	}
 
-	// For each location, create a virtual network, subnet, and NSG
+	l.Debugf("Created network infrastructure for deployment: %v", deployment)
+	return deployment.UpdateViperConfig()
+}
+
+// createNetworkResources creates the network resources for each location
+func (p *AzureProvider) createNetworkResources(ctx context.Context,
+	deployment *models.Deployment,
+	locations []string,
+	disp *display.Display) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(locations))
+
 	for _, location := range locations {
 		wg.Add(1)
 		go func(loc string) {
 			defer wg.Done()
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("vnet-%s", loc),
-				Type:   "Azure",
-				Status: "Creating",
-			})
-			vnet, err := p.Client.CreateVirtualNetwork(ctx, *resourceGroup.Name, loc+"-vnet", loc, tags)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to create virtual network in %s: %v", loc, err)
-				disp.UpdateStatus(&display.Status{
-					ID:     fmt.Sprintf("vnet-%s", loc),
-					Type:   "Azure",
-					Status: "Failed",
-				})
+			select {
+			case <-ctx.Done():
+				errChan <- fmt.Errorf("operation cancelled for location %s: %w", loc, ctx.Err())
 				return
+			default:
+				subnet, err := p.createNetworkResourcesForLocation(
+					ctx,
+					deployment,
+					loc,
+					disp,
+				)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				deployment.Subnets[loc] = subnet
 			}
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("vnet-%s", loc),
-				Type:   "Azure",
-				Status: "Created",
-			})
-
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("nsg-%s", loc),
-				Type:   "Azure",
-				Status: "Creating",
-			})
-			_, err = p.Client.CreateNetworkSecurityGroup(ctx, *resourceGroup.Name, loc+"-nsg", loc, ports, tags)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to create network security group in %s: %v", loc, err)
-				disp.UpdateStatus(&display.Status{
-					ID:     fmt.Sprintf("nsg-%s", loc),
-					Type:   "Azure",
-					Status: "Failed",
-				})
-				return
-			}
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("nsg-%s", loc),
-				Type:   "Azure",
-				Status: "Created",
-			})
-
-			subnets[loc] = []*armnetwork.Subnet{vnet.Properties.Subnets[0]}
-			if deployment.VNet == nil {
-				deployment.VNet = make(map[string][]*armnetwork.Subnet)
-			}
-			deployment.VNet[loc] = []*armnetwork.Subnet{vnet.Properties.Subnets[0]}
 		}(location)
 	}
+
 	wg.Wait()
 	close(errChan)
 
@@ -238,85 +113,201 @@ func (p *AzureProvider) DeployResources(ctx context.Context, disp *display.Displ
 		}
 	}
 
-	err = deployment.UpdateViperConfig()
-	if err != nil {
-		return fmt.Errorf("failed to update Viper configuration: %v", err)
-	}
-
-	// Create public IPs for all machines
-	publicIPs := make(map[string]string)
-	for _, machine := range append(nonOrchestratorMachines, *orchestratorNode) {
-		for i := 0; i < machine.Parameters[0].Count; i++ {
-			vmName := fmt.Sprintf("%s-%d", machine.Location, i)
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("public-ip-%s", vmName),
-				Type:   "Azure",
-				Status: "Creating",
-			})
-			publicIP, err := p.Client.CreatePublicIP(ctx, *resourceGroup.Name,
-				vmName+"-ip",
-				machine.Location,
-				tags)
-			if err != nil {
-				disp.UpdateStatus(&display.Status{
-					ID:     fmt.Sprintf("public-ip-%s", vmName),
-					Type:   "Azure",
-					Status: "Failed",
-				})
-				return fmt.Errorf("failed to create public IP for VM %s: %v", vmName, err)
-			}
-			publicIPs[vmName] = *publicIP.Properties.IPAddress
-			disp.UpdateStatus(&display.Status{
-				ID:     fmt.Sprintf("public-ip-%s", vmName),
-				Type:   "Azure",
-				Status: "Created",
-			})
-		}
-	}
-
-	// Process orchestrator node
-	if orchestratorNode != nil {
-		err := p.processMachines(ctx, []Machine{*orchestratorNode}, resourceGroupName, subnets, publicIPs, projectID, viper, disp)
-		if err != nil {
-			return fmt.Errorf("failed to process orchestrator node: %v", err)
-		}
-		deployment.OrchestratorNode = orchestratorNode
-		err = deployment.UpdateViperConfig()
-		if err != nil {
-			return fmt.Errorf("failed to update Viper configuration: %v", err)
-		}
-	}
-
-	// Process other machines
-	for _, machine := range machines {
-		err := p.processMachines(ctx, []Machine{machine}, resourceGroupName, subnets, publicIPs, projectID, viper, disp)
-		if err != nil {
-			return fmt.Errorf("failed to process non-orchestrator nodes: %v", err)
-		}
-		deployment.NonOrchestratorMachines = append(deployment.NonOrchestratorMachines, machine)
-		err = deployment.UpdateViperConfig()
-		if err != nil {
-			return fmt.Errorf("failed to update Viper configuration: %v", err)
-		}
-	}
-
-	if resourceGroup != nil && *resourceGroup.Name != "" {
-		fmt.Printf("Successfully deployed Azure VM '%s' in resource group '%s'\n", uniqueID, *resourceGroup.Name)
-	}
 	return nil
 }
 
-func (p *AzureProvider) processMachines(
+// createNetworkResourcesForLocation creates network resources for a specific location
+func (p *AzureProvider) createNetworkResourcesForLocation(
 	ctx context.Context,
-	machines []Machine,
-	resourceGroupName string,
-	subnets map[string][]*armnetwork.Subnet,
-	publicIPs map[string]string,
-	projectID string,
-	v *viper.Viper,
+	deployment *models.Deployment,
+	location string,
+	disp *display.Display,
+) ([]*armnetwork.Subnet, error) {
+	disp.UpdateStatus(&models.Status{
+		ID:     fmt.Sprintf("vnet-%s", location),
+		Type:   "VNET",
+		Status: "Creating",
+	})
+	vnet, err := p.Client.CreateVirtualNetwork(
+		ctx,
+		deployment.ResourceGroupName,
+		location+"-vnet",
+		location,
+		deployment.Tags,
+	)
+	if err != nil {
+		disp.UpdateStatus(&models.Status{
+			ID:     fmt.Sprintf("vnet-%s", location),
+			Type:   "VNET",
+			Status: "Failed",
+		})
+		return nil, fmt.Errorf("failed to create virtual network in %s: %v", location, err)
+	}
+	disp.UpdateStatus(&models.Status{
+		ID:     fmt.Sprintf("vnet-%s", location),
+		Type:   "VNET",
+		Status: "Created",
+	})
+
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"operation cancelled after creating VNET for location %s: %w",
+			location,
+			err,
+		)
+	}
+
+	disp.UpdateStatus(&models.Status{
+		ID:     fmt.Sprintf("nsg-%s", location),
+		Type:   "NSG",
+		Status: "Creating",
+	})
+	_, err = p.Client.CreateNetworkSecurityGroup(
+		ctx,
+		deployment.ResourceGroupName,
+		location+"-nsg",
+		location,
+		deployment.AllowedPorts,
+		deployment.Tags,
+	)
+	if err != nil {
+		disp.UpdateStatus(&models.Status{
+			ID:     fmt.Sprintf("nsg-%s", location),
+			Type:   "NSG",
+			Status: "Failed",
+		})
+		return nil, fmt.Errorf("failed to create network security group in %s: %v", location, err)
+	}
+	disp.UpdateStatus(&models.Status{
+		ID:     fmt.Sprintf("nsg-%s", location),
+		Type:   "NSG",
+		Status: "Created",
+	})
+
+	return []*armnetwork.Subnet{vnet.Properties.Subnets[0]}, nil
+}
+
+// createPublicIPs creates public IPs for all machines in the deployment
+func (p *AzureProvider) createPublicIPs(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display,
+) (*models.Deployment, error) {
+	l := logger.Get()
+
+	l.Debugf("Creating public IPs for deployment: %v", deployment)
+	publicIPs := make(map[string]string)
+	var allMachines []models.Machine
+
+	if deployment.OrchestratorNode != nil {
+		allMachines = append(allMachines, *deployment.OrchestratorNode)
+	}
+	allMachines = append(allMachines, deployment.NonOrchestratorMachines...)
+
+	for _, machine := range allMachines {
+		internalMachine := machine
+		for i := 0; i < machine.Parameters[0].Count; i++ {
+			vmName := fmt.Sprintf("%s-%d", machine.Location, i)
+			publicIP, err := p.createPublicIPForVM(ctx, deployment, &internalMachine, disp)
+			if err != nil {
+				return nil, err
+			}
+			publicIPs[vmName] = *publicIP.Properties.IPAddress
+		}
+	}
+
+	l.Debugf("Created public IPs for deployment: %v", deployment)
+	return deployment, nil
+}
+
+// createPublicIPForVM creates a public IP for a specific VM
+func (p *AzureProvider) createPublicIPForVM(
+	ctx context.Context,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
+) (*armnetwork.PublicIPAddress, error) {
+	disp.UpdateStatus(&models.Status{
+		ID:     fmt.Sprintf("public-ip-%s", machine.Name),
+		Type:   "PUBLIC-IP",
+		Status: "Creating",
+	})
+	publicIP, err := p.Client.CreatePublicIP(
+		ctx,
+		deployment.ResourceGroupName,
+		machine.Name+"-ip",
+		machine.Location,
+		deployment.Tags,
+	)
+	if err != nil {
+		disp.UpdateStatus(&models.Status{
+			ID:     fmt.Sprintf("public-ip-%s", machine.Name),
+			Type:   "PUBLIC-IP",
+			Status: "Failed",
+		})
+		return nil, fmt.Errorf("failed to create public IP for VM %s: %v", machine.Name, err)
+	}
+	disp.UpdateStatus(&models.Status{
+		ID:     fmt.Sprintf("public-ip-%s", machine.Name),
+		Type:   "PUBLIC-IP",
+		Status: "Created",
+	})
+	return &publicIP, nil
+}
+
+// processOrchestratorNode processes the orchestrator node if it exists
+func (p *AzureProvider) processOrchestratorNode(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display,
+) error {
+	if deployment.OrchestratorNode == nil {
+		return nil
+	}
+
+	err := p.processMachines(
+		ctx,
+		[]models.Machine{*deployment.OrchestratorNode},
+		deployment,
+		disp,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to process orchestrator node: %v", err)
+	}
+
+	return deployment.UpdateViperConfig()
+}
+
+// processNonOrchestratorMachines processes non-orchestrator machines
+func (p *AzureProvider) processNonOrchestratorMachines(ctx context.Context,
+	deployment *models.Deployment,
 	disp *display.Display) error {
-	defaultCount := v.GetInt("azure.default_count_per_zone")
-	defaultType := v.GetString("azure.default_machine_type")
+	err := p.processMachines(
+		ctx,
+		deployment.NonOrchestratorMachines,
+		deployment,
+		disp,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to process non-orchestrator nodes: %v", err)
+	}
+
+	return deployment.UpdateViperConfig()
+}
+
+// processMachines processes a list of machines
+func (p *AzureProvider) processMachines(ctx context.Context,
+	machines []models.Machine,
+	deployment *models.Deployment,
+	disp *display.Display) error {
+	l := logger.Get()
+
+	defaultCount := viper.GetInt("azure.default_count_per_zone")
+	defaultType := viper.GetString("azure.default_machine_type")
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("processMachines cancelled before starting: %w", err)
+	}
 
 	for _, machine := range machines {
 		internalMachine := machine
@@ -337,7 +328,7 @@ func (p *AzureProvider) processMachines(
 			isOrchestrator = internalMachine.Parameters[0].Orchestrator
 		}
 
-		internalMachine.Parameters = []Parameters{
+		internalMachine.Parameters = []models.Parameters{
 			{
 				Count:        count,
 				Type:         machineType,
@@ -352,49 +343,144 @@ func (p *AzureProvider) processMachines(
 			wg.Add(1)
 			go func(index int) {
 				defer wg.Done()
-				vmName := fmt.Sprintf("%s-%d", internalMachine.Location, index)
-				disp.UpdateStatus(&display.Status{
-					ID:     vmName,
-					Type:   "Azure",
-					Status: "Creating",
-				})
-				_, err := DeployVM(ctx,
-					projectID,
-					vmName,
-					p.Client,
-					v,
-					resourceGroupName,
-					internalMachine.Location,
-					internalMachine.Parameters[0].Type,
-					subnets[internalMachine.Location][0],
-				)
-				if err != nil {
-					errChan <- fmt.Errorf("error deploying VM %s in %s: %v", vmName, internalMachine.Location, err)
-					disp.UpdateStatus(&display.Status{
+				select {
+				case <-ctx.Done():
+					errChan <- fmt.Errorf("VM deployment cancelled: %w", ctx.Err())
+					return
+				default:
+					vmName := fmt.Sprintf("%s-%d", internalMachine.Location, index)
+					disp.UpdateStatus(&models.Status{
 						ID:     vmName,
 						Type:   "Azure",
-						Status: "Failed",
+						Status: "Creating",
 					})
-					return
+					_, err := DeployVM(ctx,
+						p.Client,
+						deployment,
+						&internalMachine,
+						disp,
+					)
+					if err != nil {
+						errChan <- fmt.Errorf("error deploying VM %s in %s: %v", vmName, internalMachine.Location, err)
+						disp.UpdateStatus(&models.Status{
+							ID:     vmName,
+							Type:   "Azure",
+							Status: "Failed",
+						})
+						return
+					}
+					disp.UpdateStatus(&models.Status{
+						ID:        vmName,
+						Type:      "Azure",
+						Status:    "Created",
+						PublicIP:  "",
+						PrivateIP: "",
+					})
 				}
-				disp.UpdateStatus(&display.Status{
-					ID:        vmName,
-					Type:      "Azure",
-					Status:    "Created",
-					PublicIP:  publicIPs[vmName],
-					PrivateIP: "", // You might want to fetch this after VM creation
-				})
 			}(i)
 		}
 
-		wg.Wait()
-		close(errChan)
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
 
-		for err := range errChan {
-			if err != nil {
-				return err
+		select {
+		case <-ctx.Done():
+			l.Info("Waiting for ongoing VM deployments to finish after cancellation")
+			<-done
+			return fmt.Errorf("VM deployment process cancelled: %w", ctx.Err())
+		case <-done:
+			close(errChan)
+			for err := range errChan {
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
+}
+
+// finalizeDeployment performs any necessary cleanup and final steps
+func (p *AzureProvider) finalizeDeployment(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display,
+) error {
+	l := logger.Get()
+
+	// Check for context cancellation
+	if err := ctx.Err(); err != nil {
+		l.Info("Deployment cancelled during finalization")
+		return fmt.Errorf("deployment cancelled: %w", err)
+	}
+
+	// Log successful completion
+	l.Info("Azure deployment completed successfully")
+
+	// Print summary of deployed resources
+	fmt.Printf("Deployment Summary for Resource Group: %s\n", deployment.ResourceGroupName)
+	fmt.Printf("Location: %s\n", deployment.ResourceGroupLocation)
+	if deployment.OrchestratorNode != nil {
+		fmt.Printf("Orchestrator Node: %+v\n", deployment.OrchestratorNode)
+	}
+	fmt.Printf("Non-Orchestrator Machines: %d\n", len(deployment.NonOrchestratorMachines))
+	for i, machine := range deployment.NonOrchestratorMachines {
+		fmt.Printf("  Machine %d: %+v\n", i+1, machine)
+	}
+
+	// Ensure all configurations are saved
+	if err := deployment.UpdateViperConfig(); err != nil {
+		l.Errorf("Failed to save final configuration: %v", err)
+		return fmt.Errorf("failed to save final configuration: %w", err)
+	}
+
+	// Update final status in the display
+	disp.UpdateStatus(&models.Status{
+		ID:     "azure-deployment",
+		Type:   "Azure",
+		Status: "Completed",
+	})
+
+	return nil
+}
+
+// prepareResourceGroup prepares or creates a resource group for the deployment
+func (p *AzureProvider) prepareResourceGroup(
+	ctx context.Context,
+	deployment *models.Deployment,
+	disp *display.Display) (string, string, error) {
+	resourceGroupName := fmt.Sprintf("%s-%s-rg", deployment.ProjectID, deployment.UniqueID)
+	resourceGroupLocation := deployment.ResourceGroupLocation
+
+	disp.UpdateStatus(&models.Status{
+		ID:     resourceGroupName,
+		Type:   "Resource Group",
+		Status: "Creating",
+	})
+
+	_, err := p.Client.GetOrCreateResourceGroup(
+		ctx,
+		resourceGroupName,
+		resourceGroupLocation,
+		deployment.Tags,
+	)
+	if err != nil {
+		disp.UpdateStatus(&models.Status{
+			ID:     resourceGroupName,
+			Type:   "Resource Group",
+			Status: "Failed",
+		})
+		return "", "", fmt.Errorf("failed to create resource group: %w", err)
+	}
+
+	disp.UpdateStatus(&models.Status{
+		ID:     resourceGroupName,
+		Type:   "Resource Group",
+		Status: "Created",
+	})
+
+	return resourceGroupName, resourceGroupLocation, nil
 }

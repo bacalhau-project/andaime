@@ -1,14 +1,47 @@
 package display
 
 import (
+	"bytes"
+	"context"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
-var testTasks []Status
+var testTasks []models.Status
+
+type Display struct {
+	Statuses           map[string]*models.Status
+	StatusesMu         sync.RWMutex
+	App                *tview.Application
+	Table              *tview.Table
+	TotalTasks         int
+	CompletedTasks     int
+	BaseHighlightColor tcell.Color
+	FadeSteps          int
+	StopOnce           sync.Once
+	StopChan           chan struct{}
+	Quit               chan struct{}
+	LastTableState     [][]string
+	DebugLog           logger.Logger
+	Logger             logger.Logger
+	LogFileName        string
+	LogFile            *os.File
+	LogBox             *tview.TextView
+	TestMode           bool
+	Ctx                context.Context
+	Cancel             context.CancelFunc
+	LogBuffer          *utils.CircularBuffer
+	UpdatePending      bool
+	UpdateMutex        sync.Mutex
+	VirtualConsole     *bytes.Buffer
+}
 
 type TestDisplay struct {
 	Display
@@ -30,7 +63,7 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 	d.Logger.Debug("Starting test display")
 	d.StopChan = make(chan struct{})
 	d.Quit = make(chan struct{})
-	d.Statuses = make(map[string]*Status)
+	d.Statuses = make(map[string]*models.Status)
 	go func() {
 		<-d.StopChan
 		close(d.Quit)
@@ -38,7 +71,7 @@ func (d *TestDisplay) Start(sigChan chan os.Signal) {
 }
 
 // Override the UpdateStatus method to skip tview operations
-func (d *TestDisplay) UpdateStatus(status *Status) {
+func (d *TestDisplay) UpdateStatus(status *models.Status) {
 	d.Logger.Debugf("UpdateStatus called with %s", status.ID)
 	d.StatusesMu.Lock()
 	defer d.StatusesMu.Unlock()
@@ -73,4 +106,24 @@ func (d *TestDisplay) GetHighlightColor(cycles int) tcell.Color {
 	}
 
 	return HighlightColor
+}
+
+// Global status map
+var (
+	GlobalStatusMap = make(map[string]*models.Status)
+	StatusMutex     sync.RWMutex
+)
+
+// UpdateStatus updates the global status map
+func UpdateStatus(id string, status *models.Status) {
+	StatusMutex.Lock()
+	defer StatusMutex.Unlock()
+	GlobalStatusMap[id] = status
+}
+
+// GetStatus retrieves a status from the global map
+func GetStatus(id string) *models.Status {
+	StatusMutex.RLock()
+	defer StatusMutex.RUnlock()
+	return GlobalStatusMap[id]
 }

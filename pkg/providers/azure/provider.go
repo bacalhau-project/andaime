@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 )
 
@@ -15,7 +16,7 @@ type AzureProviderer interface {
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 
-	DeployResources(ctx context.Context, disp *display.Display) error
+	DeployResources(ctx context.Context, deployment *models.Deployment, disp *display.Display) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
 }
 

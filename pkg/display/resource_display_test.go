@@ -45,7 +45,7 @@ func TestNewDisplayInternal(t *testing.T) {
 
 // 	// Update status to trigger table rendering
 // 	t.Log("Updating status")
-// 	testStatus := &Status{
+// 	testStatus := &models.Status{
 // 		ID:         "test-id",
 // 		Type:       "EC2",
 // 		Region:     "us-west-2",

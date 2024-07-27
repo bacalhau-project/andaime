@@ -8,6 +8,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -53,7 +54,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Update initial status
-	disp.UpdateStatus(&display.Status{
+	disp.UpdateStatus(&models.Status{
 		ID:     "aws-deployment",
 		Type:   "AWS",
 		Status: "Initializing",
@@ -63,7 +64,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		errString := fmt.Sprintf("Failed to create deployment: %s", err.Error())
 		log.Error(errString)
-		disp.UpdateStatus(&display.Status{
+		disp.UpdateStatus(&models.Status{
 			ID:     "aws-deployment",
 			Type:   "AWS",
 			Status: "Failed",
@@ -73,7 +74,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	// TODO: Implement resource status updates when AWS provider supports it
 
-	disp.UpdateStatus(&display.Status{
+	disp.UpdateStatus(&models.Status{
 		ID:     "aws-deployment",
 		Type:   "AWS",
 		Status: "Completed",

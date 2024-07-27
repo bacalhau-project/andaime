@@ -11,6 +11,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 
 	"github.com/spf13/viper"
@@ -26,11 +28,6 @@ func TestDeployVM(t *testing.T) {
 	defer cleanupPrivateKey()
 
 	mockClient := NewMockAzureClient()
-	// Create a mock for each method that will be called
-	mockClient.(*MockAzureClient).CreateVirtualNetworkFunc = func(ctx context.Context, resourceGroupName, vnetName, location string, tags map[string]*string) (armnetwork.VirtualNetwork, error) {
-		return testdata.TestVirtualNetwork, nil
-	}
-
 	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, location, ipName string, tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 		return testdata.TestPublicIPAddress, nil
 	}
@@ -67,15 +64,28 @@ func TestDeployVM(t *testing.T) {
 	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
 	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
 
+	deployment := &models.Deployment{
+		ProjectID:         "testProject",
+		UniqueID:          "testUniqueID",
+		AllowedPorts:      []int{22, 80, 443},
+		ResourceGroupName: "testRG",
+		Subnets: map[string][]*armnetwork.Subnet{
+			"eastus": {&testdata.TestSubnet},
+		},
+		SSHPublicKeyPath:  testSSHPublicKeyPath,
+		SSHPrivateKeyPath: testSSHPrivateKeyPath,
+	}
+
 	createdVM, err := DeployVM(ctx,
-		"testProject",
-		"testUniqueID",
 		mockClient,
-		viper.GetViper(),
-		"testRG",
-		"eastus",
-		"Standard_DS1_v2",
-		&armnetwork.Subnet{},
+		deployment,
+		&models.Machine{
+			Location:             "eastus",
+			PublicIP:             &testdata.TestPublicIPAddress,
+			NetworkSecurityGroup: &testdata.TestNSG,
+			Interface:            &testdata.TestInterface,
+		},
+		&display.Display{},
 	)
 	if err != nil {
 		t.Errorf("DeployVM failed: %v", err)
@@ -84,52 +94,44 @@ func TestDeployVM(t *testing.T) {
 	assert.Equal(t, *createdVM.Name, "testVM")
 }
 
-func TestCreateVirtualNetwork(t *testing.T) {
-	ctx := context.Background()
-	mockClient := NewMockAzureClient()
-	subnetName := "testSubnet"
-	addressPrefix := "10.0.0.0/24"
-	mockClient.(*MockAzureClient).CreateVirtualNetworkFunc = func(ctx context.Context,
-		resourceGroupName, vnetName, location string,
-		tags map[string]*string) (armnetwork.VirtualNetwork, error) {
-		tVN := testdata.TestVirtualNetwork
-		tVN.Name = to.Ptr(subnetName)
-		tVN.Properties.Subnets[0].Properties.AddressPrefix = to.Ptr(addressPrefix)
-		return tVN, nil
-	}
-	projectID := "testProject"
-	uniqueID := "testUniqueID"
-	tags := generateTags(projectID, uniqueID)
-
-	subnet, err := createVirtualNetwork(ctx, projectID, uniqueID, mockClient, "testRG", "testVNet", "testSubnet", "eastus", tags)
-	if err != nil {
-		t.Errorf("createVirtualNetwork failed: %v", err)
-	}
-
-	if subnet == nil {
-		t.Error("createVirtualNetwork returned nil subnet")
-	}
-
-	if subnet != nil && *subnet.Name != subnetName {
-		t.Errorf("Expected subnet name '%s', got '%s'", subnetName, *subnet.Name)
-	}
-
-	if subnet != nil && *subnet.Properties.AddressPrefix != addressPrefix {
-		t.Errorf("Expected subnet address prefix %s, got '%s'", subnetName, *subnet.Properties.AddressPrefix)
-	}
-}
-
 func TestCreatePublicIP(t *testing.T) {
 	ctx := context.Background()
 	mockClient := NewMockAzureClient()
 	mockClient.(*MockAzureClient).CreatePublicIPFunc = func(ctx context.Context, resourceGroupName, location, ipName string, tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 		return testdata.TestPublicIPAddress, nil
 	}
-	projectID := "testProject"
-	uniqueID := "testUniqueID"
-	tags := generateTags(projectID, uniqueID)
 
-	publicIP, err := createPublicIP(ctx, projectID, uniqueID, mockClient, "testRG", "testIP", "eastus", tags)
+	deployment := &models.Deployment{
+		ProjectID:         "testProject",
+		UniqueID:          "testUniqueID",
+		ResourceGroupName: "testRG",
+		Locations: []string{
+			"eastus",
+		},
+		Subnets: map[string][]*armnetwork.Subnet{
+			"eastus": {
+				{
+					Name: to.Ptr("testSubnet"),
+					Properties: &armnetwork.SubnetPropertiesFormat{
+						AddressPrefix: to.Ptr("10.0.0.0/24"),
+					},
+				},
+			},
+		},
+	}
+
+	machine := &models.Machine{
+		Location: "eastus",
+	}
+	display := &display.Display{}
+
+	publicIP, err := createPublicIP(
+		ctx,
+		mockClient,
+		deployment,
+		machine,
+		display,
+	)
 	if err != nil {
 		t.Errorf("createPublicIP failed: %v", err)
 	}
@@ -145,11 +147,21 @@ func TestCreateNSG(t *testing.T) {
 	mockClient.(*MockAzureClient).CreateNetworkSecurityGroupFunc = func(ctx context.Context, resourceGroupName, sgName string, location string, ports []int, tags map[string]*string) (armnetwork.SecurityGroup, error) {
 		return testdata.TestNSG, nil
 	}
-	projectID := "testProject"
-	uniqueID := "testUniqueID"
-	tags := generateTags(projectID, uniqueID)
 
-	nsg, err := createNSG(ctx, projectID, uniqueID, mockClient, "testRG", "testNSG", "eastus", []int{22, 80, 443}, tags)
+	deployment := &models.Deployment{}
+	machine := &models.Machine{}
+	display := &display.Display{}
+
+	nsg, err := createNSG(
+		ctx,
+		mockClient,
+		deployment,
+		machine,
+		display,
+	)
+	if err != nil {
+		t.Errorf("createNSG failed: %v", err)
+	}
 	if err != nil {
 		t.Errorf("createNSG failed: %v", err)
 	}
@@ -165,26 +177,35 @@ func TestCreateNIC(t *testing.T) {
 	mockClient.(*MockAzureClient).CreateNetworkInterfaceFunc = func(ctx context.Context, resourceGroupName, nicName string, parameters armnetwork.Interface, tags map[string]*string) (armnetwork.Interface, error) {
 		return testdata.TestInterface, nil
 	}
-	projectID := "testProject"
-	uniqueID := "testUniqueID"
-	tags := generateTags(projectID, uniqueID)
-
-	subnet := &armnetwork.Subnet{
-		Name: to.Ptr("testSubnet"),
-		Properties: &armnetwork.SubnetPropertiesFormat{
-			AddressPrefix: to.Ptr("10.0.0.0/24"),
+	deployment := &models.Deployment{
+		ProjectID:         "testProject",
+		UniqueID:          "testUniqueID",
+		ResourceGroupName: "testRG",
+		Locations: []string{
+			"eastus",
 		},
 	}
-
-	publicIP := &armnetwork.PublicIPAddress{
-		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-			IPAddress: to.Ptr("1.2.3.4"),
-		},
+	deployment.Tags = GenerateTags(deployment.ProjectID, deployment.UniqueID)
+	machine := &models.Machine{
+		Location: "eastus",
 	}
+	display := &display.Display{}
 
-	nsgID := to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkSecurityGroups/testNSG")
+	deployment.SetSubnet("eastus", &testdata.TestSubnet)
 
-	nic, err := createNIC(ctx, projectID, uniqueID, mockClient, "testRG", "testNIC", "eastus", subnet, publicIP, nsgID, tags)
+	machine.PublicIP = &testdata.TestPublicIPAddress
+	machine.NetworkSecurityGroup = &testdata.TestNSG
+
+	nic, err := createNIC(
+		ctx,
+		mockClient,
+		deployment,
+		machine,
+		display,
+	)
+	if err != nil {
+		t.Errorf("createNIC failed: %v", err)
+	}
 	if err != nil {
 		t.Errorf("createNIC failed: %v", err)
 	}
@@ -207,10 +228,28 @@ func TestCreateVM(t *testing.T) {
 	projectID := "testProject"
 	uniqueID := "testUniqueID"
 
-	tags := generateTags(projectID, uniqueID)
+	tags := GenerateTags(projectID, uniqueID)
 
-	nicID := "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/testRG/providers/Microsoft.Network/networkInterfaces/testNIC"
-	createdVM, err := createVM(ctx, projectID, uniqueID, mockClient, "testRG", "testVM", "eastus", nicID, 30, "Standard_DS1_v2", testdata.TestPublicSSHKeyMaterial, tags)
+	deployment := &models.Deployment{}
+	deployment.Tags = tags
+	deployment.ResourceGroupName = "testRG"
+	deployment.UniqueID = "testUniqueID"
+	deployment.Locations = []string{"eastus"}
+
+	machine := &models.Machine{}
+	machine.Interface = &testdata.TestInterface
+	machine.Location = "eastus"
+	machine.PublicIP = &testdata.TestPublicIPAddress
+	machine.NetworkSecurityGroup = &testdata.TestNSG
+
+	display := &display.Display{}
+	createdVM, err := createVM(
+		ctx,
+		mockClient,
+		deployment,
+		machine,
+		display,
+	)
 	if err != nil {
 		t.Errorf("createVM failed: %v", err)
 	}

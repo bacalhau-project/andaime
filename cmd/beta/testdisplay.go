@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +30,7 @@ func runTestDisplay() error {
 	go testDisplay.Start(sigChan)
 
 	for i := 0; i < totalTasks; i++ {
-		status := &display.Status{
+		status := &models.Status{
 			ID:     fmt.Sprintf("test%d", i+1),
 			Type:   "test",
 			Region: "us-west-2",

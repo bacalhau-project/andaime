@@ -91,6 +91,7 @@ resourcegraph
 resourcegroupname
 resourcemanager
 Retryable
+rgname
 rivo
 sess
 Sessioner

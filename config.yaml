@@ -1,28 +1,209 @@
 azure:
-  allowed_ports:
-  - 22
-  - 80
-  - 443
-  default_count_per_zone: 1
-  default_machine_type: Standard_DS1_v2
-  disk_size_gb: 30
-  machines:
-  - location: eastus
-    parameters:
-    - count: 2
-      type: Standard_DS1_v2
-  - location: centralus
-    parameters:
-    - count: 1
-      orchestrator: true
-      type: Standard_DS1_v2
-  - location: eastus2
-  resource_group_location: eastus
-  resource_group_name: andaime-rg-2407252200
-  resource_prefix: andaime
-  subscription_id: fd075559-43fc-4fbe-8dee-21e125a9dafc
+    allowed_ports:
+        - 22
+        - 80
+        - 443
+    default_count_per_zone: 1
+    default_machine_type: Standard_DS1_v2
+    disk_size_gb: 30
+    machines:
+        - location: eastus
+          parameters:
+            - count: 2
+              type: Standard_DS1_v2
+        - location: centralus
+          parameters:
+            - count: 1
+              orchestrator: true
+              type: Standard_DS1_v2
+        - location: eastus2
+    resource_group_location: eastus
+    resource_group_name: andaime-rg-2407260816
+    resource_prefix: andaime
+    subscription_id: fd075559-43fc-4fbe-8dee-21e125a9dafc
+deployments:
+    azure:
+        andaime-rg-2407252246:
+            nonorchestratormachines: []
+            projectid: andaime-project
+            resourcegrouplocation: eastus
+            resourcegroupname: andaime-rg-2407252246
+            tags:
+                andaime: "true"
+                andaime-project: -andaime-project
+                andaime-resource-tracking: "true"
+                deployed-by: andaime
+                project-id: andaime-project
+                unique-id: ""
+            uniqueid: ""
+            vnet:
+                centralus:
+                    - etag: W/"aa7d81be-e9a2-43c2-853b-55b70d147c89"
+                      id: /subscriptions/fd075559-43fc-4fbe-8dee-21e125a9dafc/resourceGroups/andaime-rg-2407252246/providers/Microsoft.Network/virtualNetworks/centralus-vnet/subnets/centralus-vnet-subnet
+                      name: centralus-vnet-subnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: Disabled
+                        privateendpoints: []
+                        privatelinkservicenetworkpolicies: Enabled
+                        provisioningstate: Succeeded
+                        purpose: null
+                        resourcenavigationlinks: []
+                        routetable: null
+                        serviceassociationlinks: []
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                      type: Microsoft.Network/virtualNetworks/subnets
+                eastus:
+                    - etag: W/"1c7f08ce-47d8-42b2-b388-9485754b2ac2"
+                      id: /subscriptions/fd075559-43fc-4fbe-8dee-21e125a9dafc/resourceGroups/andaime-rg-2407252246/providers/Microsoft.Network/virtualNetworks/eastus-vnet/subnets/eastus-vnet-subnet
+                      name: eastus-vnet-subnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: Disabled
+                        privateendpoints: []
+                        privatelinkservicenetworkpolicies: Enabled
+                        provisioningstate: Succeeded
+                        purpose: null
+                        resourcenavigationlinks: []
+                        routetable: null
+                        serviceassociationlinks: []
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                      type: Microsoft.Network/virtualNetworks/subnets
+                eastus2:
+                    - etag: W/"88374714-53e4-496f-a667-268708110034"
+                      id: /subscriptions/fd075559-43fc-4fbe-8dee-21e125a9dafc/resourceGroups/andaime-rg-2407252246/providers/Microsoft.Network/virtualNetworks/eastus2-vnet/subnets/eastus2-vnet-subnet
+                      name: eastus2-vnet-subnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: Disabled
+                        privateendpoints: []
+                        privatelinkservicenetworkpolicies: Enabled
+                        provisioningstate: Succeeded
+                        purpose: null
+                        resourcenavigationlinks: []
+                        routetable: null
+                        serviceassociationlinks: []
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                      type: Microsoft.Network/virtualNetworks/subnets
+        andaime-rg-2407260816:
+            nonorchestratormachines: []
+            orchestratornode: null
+            projectid: andaime-project
+            resourcegrouplocation: eastus
+            resourcegroupname: andaime-rg-2407260816
+            tags:
+                andaime: "true"
+                andaime-project: -andaime-project
+                andaime-resource-tracking: "true"
+                deployed-by: andaime
+                project-id: andaime-project
+                unique-id: ""
+            uniqueid: ""
+            vnet:
+                centralus:
+                    - id: /subscriptions/fd075559-43fc-4fbe-8dee-21e125a9dafc/resourceGroups/andaime-rg-2407260816/providers/Microsoft.Network/virtualNetworks/centralus-vnet/subnets/centralus-vnet-subnet
+                      name: centralus-vnet-subnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: Disabled
+                        privatelinkservicenetworkpolicies: Enabled
+                        routetable: null
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        privateendpoints: []
+                        provisioningstate: Succeeded
+                        purpose: null
+                        resourcenavigationlinks: []
+                        serviceassociationlinks: []
+                      type: Microsoft.Network/virtualNetworks/subnets
+                      etag: W/"912279e8-5b98-4eea-802b-93b36c018885"
+                eastus:
+                    - id: /subscriptions/fd075559-43fc-4fbe-8dee-21e125a9dafc/resourceGroups/andaime-rg-2407260816/providers/Microsoft.Network/virtualNetworks/eastus-vnet/subnets/eastus-vnet-subnet
+                      name: eastus-vnet-subnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: Disabled
+                        privatelinkservicenetworkpolicies: Enabled
+                        routetable: null
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        privateendpoints: []
+                        provisioningstate: Succeeded
+                        purpose: null
+                        resourcenavigationlinks: []
+                        serviceassociationlinks: []
+                      type: Microsoft.Network/virtualNetworks/subnets
+                      etag: W/"7bc756cb-7c8b-4458-a2b3-7e5e042e88b4"
+                eastus2:
+                    - id: /subscriptions/fd075559-43fc-4fbe-8dee-21e125a9dafc/resourceGroups/andaime-rg-2407260816/providers/Microsoft.Network/virtualNetworks/eastus2-vnet/subnets/eastus2-vnet-subnet
+                      name: eastus2-vnet-subnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: Disabled
+                        privatelinkservicenetworkpolicies: Enabled
+                        routetable: null
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        privateendpoints: []
+                        provisioningstate: Succeeded
+                        purpose: null
+                        resourcenavigationlinks: []
+                        serviceassociationlinks: []
+                      type: Microsoft.Network/virtualNetworks/subnets
+                      etag: W/"c9c75a51-1ca4-41a2-ade0-5689970c0533"
 general:
-  log_path: /tmp/andaime.log
-  project_id: andaime-project
-  ssh_private_key_path: ~/.ssh/id_rsa
-  ssh_public_key_path: ~/.ssh/id_rsa.pub
+    log_path: /tmp/andaime.log
+    project_id: andaime-project
+    ssh_private_key_path: ~/.ssh/id_rsa
+    ssh_public_key_path: ~/.ssh/id_rsa.pub

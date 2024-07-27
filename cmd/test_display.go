@@ -9,6 +9,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/cobra"
 )
 
@@ -130,10 +131,10 @@ func runTestDisplayInternal(totalTasks int) {
 	}
 }
 
-func generateEvents(ctx context.Context, statusChan chan<- *display.Status, logChan chan<- string) {
+func generateEvents(ctx context.Context, statusChan chan<- *models.Status, logChan chan<- string) {
 	log := logger.Get()
 
-	statuses := make(map[string]*display.Status)
+	statuses := make(map[string]*models.Status)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -171,7 +172,7 @@ func generateEvents(ctx context.Context, statusChan chan<- *display.Status, logC
 		}
 	}
 }
-func updateRandomStatus(status *display.Status) bool {
+func updateRandomStatus(status *models.Status) bool {
 	oldStatus := *status
 	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second
 	status.Status = randomStatus()
@@ -214,9 +215,9 @@ func generateRandomLogEntry() string {
 	return strings.Join(logWords, " ")
 }
 
-func createRandomStatus() *display.Status {
+func createRandomStatus() *models.Status {
 	id := fmt.Sprintf("i-%06d", rand.IntN(1000000)) //nolint:gomnd,gosec
-	return &display.Status{
+	return &models.Status{
 		ID:             id,
 		Type:           "EC2",
 		Region:         randomRegion(),
@@ -230,7 +231,7 @@ func createRandomStatus() *display.Status {
 	}
 }
 
-func getRandomStatus(statuses map[string]*display.Status) *display.Status {
+func getRandomStatus(statuses map[string]*models.Status) *models.Status {
 	if len(statuses) == 0 {
 		return nil
 	}

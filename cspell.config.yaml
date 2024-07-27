@@ -1,0 +1,7 @@
+version: "0.2"
+ignorePaths: ["~", "vendor", ".vscode", ".venv"]
+dictionaryDefinitions: []
+dictionaries: []
+words: []
+ignoreWords: []
+import: []

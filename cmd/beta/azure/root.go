@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/cmd/beta/destroy"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 var once sync.Once

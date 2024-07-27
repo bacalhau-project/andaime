@@ -20,7 +20,7 @@ var AzureListResourcesCmd = &cobra.Command{
 		projectID := viper.GetString("general.project_id")
 		uniqueID := viper.GetString("general.unique_id")
 		tags := make(map[string]*string)
-		azure.EnsureTags(tags, projectID, uniqueID)
+		azure.GenerateTags(projectID, uniqueID)
 
 		log.Info("Listing Azure resources...")
 
@@ -36,7 +36,10 @@ var AzureListResourcesCmd = &cobra.Command{
 		}
 
 		// List all resource groups in viper config
-		log.Debugf("Listing resource groups in viper config: %v", viper.GetStringMapString("deployed.azure"))
+		log.Debugf(
+			"Listing resource groups in viper config: %v",
+			viper.GetStringMapString("deployed.azure"),
+		)
 
 		// Get the Azure Resource Group Name from "deployed.azure" in viper
 		rgName := viper.GetString("deployed.azure.resource_group")
@@ -49,7 +52,8 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		resourceCount := 0
 		for {
-			result, err := azureProvider.GetClient().SearchResources(cmd.Context(), rgName, getSubscriptionID(), tags)
+			result, err := azureProvider.GetClient().
+				SearchResources(cmd.Context(), rgName, getSubscriptionID(), tags)
 			if err != nil {
 				log.Fatalf("Failed to query resources: %v", err)
 			}

@@ -3,15 +3,14 @@ package azure
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/utils"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -19,106 +18,51 @@ var (
 )
 
 func DeployVM(ctx context.Context,
-	projectID, uniqueID string,
 	client AzureClient,
-	config *viper.Viper,
-	resourceGroupName string,
-	location string,
-	vmSize string,
-	subnet *armnetwork.Subnet,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
 ) (*armcompute.VirtualMachine, error) {
-	// Read configuration values
-	diskSizeGB := config.GetInt32("azure.disk_size_gb")
-	ports := config.GetIntSlice("azure.allowed_ports")
-	publicKeyPath := config.GetString("general.ssh_public_key_path")
-	privateKeyPath := config.GetString("general.ssh_private_key_path")
-
-	tags := generateTags(uniqueID, projectID)
-	vmName := utils.GenerateUniqueName(projectID, uniqueID)
-
-	absPublicKeyPath, err := utils.ExpandPath(publicKeyPath)
+	absPrivateKeyPath, err := utils.ExpandPath(deployment.SSHPrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to expand path: %v", err)
-	}
-
-	SSHPublicKeyMaterial, err := os.ReadFile(absPublicKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read SSH public key: %v", err)
-	}
-
-	absPrivateKeyPath, err := utils.ExpandPath(privateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand path: %v", err)
-	}
-
-	_, err = os.ReadFile(absPrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read SSH private key: %v", err)
 	}
 
 	// Create Public IP
 	publicIP, err := createPublicIP(
 		ctx,
-		projectID,
-		uniqueID,
 		client,
-		resourceGroupName,
-		vmName+"-ip",
-		location,
-		tags,
+		deployment,
+		machine,
+		disp,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create public IP: %v", err)
 	}
 
-	// Create Network Security Group
-	nsg, err := createNSG(
-		ctx,
-		projectID,
-		uniqueID,
-		client,
-		resourceGroupName,
-		vmName+"-nsg",
-		location,
-		ports,
-		tags,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network security group: %v", err)
-	}
+	machine.PublicIP = publicIP
 
 	// Create Network Interface
 	nic, err := createNIC(
 		ctx,
-		projectID,
-		uniqueID,
 		client,
-		resourceGroupName,
-		vmName+"-nic",
-		location,
-		subnet,
-		publicIP,
-		nsg.ID,
-		tags,
+		deployment,
+		machine,
+		disp,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network interface: %v", err)
 	}
 
+	machine.Interface = nic
+
 	// Create Virtual Machine
 	createdVM, err := createVM(
 		ctx,
-		projectID,
-		uniqueID,
 		client,
-		resourceGroupName,
-		vmName,
-		location,
-		*nic.ID,
-		diskSizeGB,
-		string(SSHPublicKeyMaterial),
-		vmSize,
-		tags,
+		deployment,
+		machine,
+		disp,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
@@ -135,7 +79,7 @@ func DeployVM(ctx context.Context,
 	sshConfig, err := sshutils.NewSSHConfig(
 		publicIPAddress,
 		22, //nolint:gomnd
-		config.GetString("azure.admin_username"),
+		"azureuser",
 		sshDialer,
 		absPrivateKeyPath,
 	)
@@ -150,57 +94,21 @@ func DeployVM(ctx context.Context,
 	return createdVM, nil
 }
 
-// createVirtualNetwork creates a virtual network and subnet
-func createVirtualNetwork(ctx context.Context,
-	projectID, uniqueID string,
-	client AzureClient,
-	resourceGroupName, vnetName, subnetName, location string,
-	tags map[string]*string) (*armnetwork.Subnet, error) {
-	subnet := armnetwork.Subnet{
-		Name: to.Ptr(subnetName),
-		Properties: &armnetwork.SubnetPropertiesFormat{
-			AddressPrefix: to.Ptr("10.0.0.0/24"),
-		},
-	}
-
-	// In the createVirtualNetwork function, before creating the subnet:
-	log := logger.Get()
-	log.Debugf("Creating subnet with the following details:")
-	log.Debugf("  Name: %s", *subnet.Name)
-	log.Debugf("  Address Prefix: %s", *subnet.Properties.AddressPrefix)
-
-	createdVNet, err := client.CreateVirtualNetwork(ctx, resourceGroupName, vnetName, location, tags)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create virtual network: %v", err)
-	}
-
-	log.Debugf("Virtual network created successfully:")
-	log.Debugf("  ID: %s", *createdVNet.ID)
-	log.Debugf("  Name: %s", *createdVNet.Name)
-	log.Debugf("  Location: %s", *createdVNet.Location)
-	if createdVNet.Properties != nil && createdVNet.Properties.ProvisioningState != nil {
-		log.Debugf("  Provisioning State: %s", *createdVNet.Properties.ProvisioningState)
-	}
-
-	if createdVNet.Properties != nil && createdVNet.Properties.Subnets != nil && len(createdVNet.Properties.Subnets) > 0 {
-		return createdVNet.Properties.Subnets[0], nil
-	}
-
-	return nil, fmt.Errorf("subnet not found in the created virtual network")
-}
-
 // createPublicIP creates a public IP address
 func createPublicIP(
 	ctx context.Context,
-	projectID string,
-	uniqueID string,
 	client AzureClient,
-	resourceGroupName, ipName, location string,
-	tags map[string]*string,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
 ) (*armnetwork.PublicIPAddress, error) {
-	EnsureTags(tags, projectID, uniqueID)
-
-	createdIP, err := client.CreatePublicIP(ctx, resourceGroupName, ipName, location, tags)
+	createdIP, err := client.CreatePublicIP(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.UniqueID,
+		machine.Location,
+		deployment.Tags,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create public IP: %v", err)
 	}
@@ -211,37 +119,58 @@ func createPublicIP(
 // createNIC creates a network interface with both public and private IP
 func createNIC(
 	ctx context.Context,
-	projectID, uniqueID string,
 	client AzureClient,
-	resourceGroupName, nicName, location string,
-	subnet *armnetwork.Subnet,
-	publicIP *armnetwork.PublicIPAddress,
-	nsgID *string,
-	tags map[string]*string,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
 ) (*armnetwork.Interface, error) {
-	EnsureTags(tags, projectID, uniqueID)
+	if deployment.Subnets == nil {
+		return nil, fmt.Errorf("subnets not found")
+	}
+
+	if machine.Location == "" {
+		return nil, fmt.Errorf("location not found")
+	}
+
+	if len(deployment.Subnets[machine.Location]) == 0 {
+		return nil, fmt.Errorf("no subnets found for location %s", machine.Location)
+	}
+
+	if machine.NetworkSecurityGroup == nil {
+		return nil, fmt.Errorf("network security group not found")
+	}
+
+	if machine.NetworkSecurityGroup.ID == nil {
+		return nil, fmt.Errorf("network security group ID not found")
+	}
 
 	nic := armnetwork.Interface{
-		Location: to.Ptr(location),
-		Tags:     tags,
+		Location: to.Ptr(machine.Location),
+		Tags:     deployment.Tags,
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
 				{
 					Name: to.Ptr("ipconfig"),
 					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-						Subnet:                    subnet,
+						Subnet:                    deployment.Subnets[machine.Location][0],
 						PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
-						PublicIPAddress:           publicIP,
+						PublicIPAddress:           machine.PublicIP,
 					},
 				},
 			},
 			NetworkSecurityGroup: &armnetwork.SecurityGroup{
-				ID: nsgID,
+				ID: machine.NetworkSecurityGroup.ID,
 			},
 		},
 	}
 
-	createdNIC, err := client.CreateNetworkInterface(ctx, resourceGroupName, nicName, nic, tags)
+	createdNIC, err := client.CreateNetworkInterface(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.UniqueID+"-nic",
+		nic,
+		deployment.Tags,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network interface: %v", err)
 	}
@@ -252,25 +181,20 @@ func createNIC(
 // createVM creates the virtual machine
 func createVM(
 	ctx context.Context,
-	projectID, uniqueID string,
 	client AzureClient,
-	resourceGroupName, vmName, location, nicID string,
-	diskSizeGB int32,
-	sshPublicKeyMaterial string,
-	vmSize string,
-	tags map[string]*string,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
 ) (*armcompute.VirtualMachine, error) {
-	EnsureTags(tags, projectID, uniqueID)
-
 	vm := armcompute.VirtualMachine{
-		Location: to.Ptr(location),
-		Tags:     tags,
+		Location: to.Ptr(machine.Location),
+		Tags:     deployment.Tags,
 		Properties: &armcompute.VirtualMachineProperties{
 			HardwareProfile: &armcompute.HardwareProfile{
-				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(vmSize)),
+				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(machine.VMSize)),
 			},
 			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(vmName),
+				ComputerName:  to.Ptr(machine.Name),
 				AdminUsername: to.Ptr("azureuser"),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
@@ -278,7 +202,7 @@ func createVM(
 						PublicKeys: []*armcompute.SSHPublicKey{
 							{
 								Path:    to.Ptr("/home/azureuser/.ssh/authorized_keys"),
-								KeyData: to.Ptr(sshPublicKeyMaterial),
+								KeyData: to.Ptr(deployment.SSHPublicKeyPath),
 							},
 						},
 					},
@@ -296,13 +220,13 @@ func createVM(
 					ManagedDisk: &armcompute.ManagedDiskParameters{
 						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
 					},
-					DiskSizeGB: to.Ptr(diskSizeGB),
+					DiskSizeGB: to.Ptr(machine.DiskSizeGB),
 				},
 			},
 			NetworkProfile: &armcompute.NetworkProfile{
 				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
 					{
-						ID: to.Ptr(nicID),
+						ID: to.Ptr(*machine.Interface.ID),
 						Properties: &armcompute.NetworkInterfaceReferenceProperties{
 							Primary: to.Ptr(true),
 						},
@@ -312,7 +236,13 @@ func createVM(
 		},
 	}
 
-	createdVM, err := client.CreateVirtualMachine(ctx, resourceGroupName, vmName, vm, tags)
+	createdVM, err := client.CreateVirtualMachine(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.UniqueID,
+		vm,
+		deployment.Tags,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
 	}
@@ -323,20 +253,19 @@ func createVM(
 // createNSG creates a network security group with the specified open ports
 func createNSG(
 	ctx context.Context,
-	projectID, uniqueID string,
 	client AzureClient,
-	resourceGroupName, nsgName, location string,
-	ports []int,
-	tags map[string]*string,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
 ) (*armnetwork.SecurityGroup, error) {
-	EnsureTags(tags, projectID, uniqueID)
-
-	createdNSG, err := client.CreateNetworkSecurityGroup(ctx,
-		resourceGroupName,
-		nsgName,
-		location,
-		ports,
-		tags)
+	createdNSG, err := client.CreateNetworkSecurityGroup(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.UniqueID+"-nsg",
+		machine.Location,
+		deployment.AllowedPorts,
+		deployment.Tags,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network security group: %v", err)
 	}

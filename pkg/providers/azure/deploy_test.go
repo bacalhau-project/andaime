@@ -10,7 +10,7 @@ func TestGenerateTags(t *testing.T) {
 	tagsToTest := map[string]string{"project-id": "test-project",
 		"unique-id": utils.GenerateUniqueID()}
 
-	tags := generateTags(tagsToTest["project-id"], tagsToTest["unique-id"])
+	tags := GenerateTags(tagsToTest["project-id"], tagsToTest["unique-id"])
 
 	if tags == nil {
 		t.Error("generateTags returned nil tags")
