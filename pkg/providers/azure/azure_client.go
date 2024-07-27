@@ -4,8 +4,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
-	"strings"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -451,19 +449,12 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 
 	l := logger.Get()
 	l.Debugf("CreateNetworkSecurityGroup: Starting for %s", resourceGroupName)
-	logger.LogAzureAPIStart("CreateNetworkSecurityGroup")
-
-	defer func() {
-		if r := recover(); r != nil {
-			l.Errorf("CreateNetworkSecurityGroup: Panic recovered: %v", r)
-			debug.PrintStack()
-			logger.WriteToDebugLog(fmt.Sprintf("Panic in CreateNetworkSecurityGroup: %v\n%s", r, debug.Stack()))
-		}
-	}()
 
 	// Use LoadOrStore to ensure only one goroutine creates the cache entry
+	l.Debugf("CreateNetworkSecurityGroup: Loading or storing cache entry for %s", sgName)
 	entry, loaded := c.nsgCache.LoadOrStore(sgName, &nsgCacheEntry{})
 	cacheEntry := entry.(*nsgCacheEntry)
+	l.Debugf("CreateNetworkSecurityGroup: Cache entry loaded: %t", loaded)
 
 	if loaded {
 		// If the entry was already in the cache, wait for the result
@@ -473,9 +464,12 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 		return cacheEntry.result, cacheEntry.err
 	}
 
+	l.Debugf("CreateNetworkSecurityGroup: Starting creation of NSG %s", sgName)
 	// This goroutine is responsible for creating the NSG
 	cacheEntry.wg.Add(1)
 	defer cacheEntry.wg.Done()
+
+	l.Debugf("CreateNetworkSecurityGroup: Added to cache entry for %s", sgName)
 
 	// Check if the NSG already exists
 	l.Debugf("CreateNetworkSecurityGroup: Checking if NSG %s already exists", sgName)
@@ -486,19 +480,11 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 		cacheEntry.result = existingNSG
 		return existingNSG, nil
 	}
-	
-	// Log the error, but continue with creation if it's a "not found" error
-	if err != nil {
-		l.Debugf("CreateNetworkSecurityGroup: Error checking for existing NSG %s: %v", sgName, err)
-		logger.WriteToDebugLog(fmt.Sprintf("Error checking for existing NSG %s: %v", sgName, err))
-		// Only proceed if it's a "not found" error
-		if !strings.Contains(err.Error(), "ResourceNotFound") {
-			cacheEntry.err = err
-			return armnetwork.SecurityGroup{}, err
-		}
-	}
 
-	l.Debugf("CreateNetworkSecurityGroup: NSG %s does not exist or is still being created, proceeding with creation", sgName)
+	l.Debugf(
+		"CreateNetworkSecurityGroup: NSG %s does not exist or is still being created, proceeding with creation",
+		sgName,
+	)
 
 	securityRules := []*armnetwork.SecurityRule{}
 	for i, port := range ports {
@@ -538,7 +524,9 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	if err != nil {
 		l.Errorf("CreateNetworkSecurityGroup: Error starting creation of NSG %s: %v", sgName, err)
 		cacheEntry.err = err
-		logger.WriteToDebugLog(fmt.Sprintf("Error in CreateNetworkSecurityGroup (BeginCreateOrUpdate): %v", err))
+		logger.WriteToDebugLog(
+			fmt.Sprintf("Error in CreateNetworkSecurityGroup (BeginCreateOrUpdate): %v", err),
+		)
 		return armnetwork.SecurityGroup{}, err
 	}
 
@@ -547,7 +535,9 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	if err != nil {
 		l.Errorf("CreateNetworkSecurityGroup: Error during creation of NSG %s: %v", sgName, err)
 		cacheEntry.err = err
-		logger.WriteToDebugLog(fmt.Sprintf("Error in CreateNetworkSecurityGroup (PollUntilDone): %v", err))
+		logger.WriteToDebugLog(
+			fmt.Sprintf("Error in CreateNetworkSecurityGroup (PollUntilDone): %v", err),
+		)
 		return armnetwork.SecurityGroup{}, err
 	}
 
