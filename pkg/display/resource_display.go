@@ -21,7 +21,11 @@ import (
 var debugLogger *log.Logger
 
 func init() {
-	debugFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gomnd
+	debugFile, err := os.OpenFile(
+		"debug.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0644,
+	) //nolint:gomnd
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,11 +91,26 @@ type DisplayColumn struct {
 
 //nolint:gomnd
 var DisplayColumns = []DisplayColumn{
-	{Text: "ID", Width: 10, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.ID }},
-	{Text: "Type", Width: 10, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.Type }},
-	{Text: "Region", Width: 15, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.Region }},
-	{Text: "Zone", Width: 15, Color: tcell.ColorRed, DataFunc: func(status models.Status) string { return status.Zone }},
-	{Text: "Status",
+	{
+		Text:     "ID",
+		Width:    10,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status models.Status) string { return status.ID },
+	},
+	{
+		Text:     "Type",
+		Width:    20,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status models.Status) string { return status.Type },
+	},
+	{
+		Text:     "Location",
+		Width:    15,
+		Color:    tcell.ColorRed,
+		DataFunc: func(status models.Status) string { return status.Location },
+	},
+	{
+		Text:     "Status",
 		Width:    30,
 		Color:    tcell.ColorRed,
 		DataFunc: func(status models.Status) string { return fmt.Sprintf("%s (%s)", status.Status, status.DetailedStatus) }},
@@ -122,20 +141,50 @@ func (d *Display) setupLayout() {
 	d.App.SetRoot(flex, true).EnableMouse(false)
 }
 
-func (d *Display) UpdateStatus(status *models.Status) {
-	if d == nil || status == nil {
-		d.Logger.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, status)
+func (d *Display) UpdateStatus(newStatus *models.Status) {
+	if d == nil || newStatus == nil {
+		d.Logger.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, newStatus)
 		return
 	}
 
-	d.Logger.Infof("UpdateStatus called ID: %s", status.ID)
+	d.Logger.Debugf("UpdateStatus called ID: %s", newStatus.ID)
 
 	d.StatusesMu.Lock()
-	d.Statuses[status.ID] = status
+
+	if d.Statuses == nil {
+		d.Statuses = make(map[string]*models.Status)
+	}
+
+	if _, exists := d.Statuses[newStatus.ID]; !exists {
+		d.Statuses[newStatus.ID] = newStatus
+	} else {
+		s := d.Statuses[newStatus.ID]
+		s.Status = newStatus.Status
+		s.DetailedStatus = newStatus.DetailedStatus
+		if newStatus.StartTime.IsZero() {
+			s.StartTime = newStatus.StartTime
+		}
+		s.ElapsedTime = time.Since(s.StartTime)
+		s.PublicIP = newStatus.PublicIP
+		s.PrivateIP = newStatus.PrivateIP
+		if newStatus.PublicIP == "" {
+			s.PublicIP = newStatus.PublicIP
+		}
+		if newStatus.PrivateIP == "" {
+			s.PrivateIP = newStatus.PrivateIP
+		}
+		if newStatus.InstanceID == "" {
+			s.InstanceID = newStatus.InstanceID
+		}
+		if newStatus.Location == "" {
+			s.Location = newStatus.Location
+		}
+		d.Statuses[newStatus.ID] = s
+	}
 	d.StatusesMu.Unlock()
 
-	if status.Type != "VM" {
-		d.displayResourceProgress(status)
+	if newStatus.Type != "VM" {
+		d.displayResourceProgress(newStatus)
 	}
 
 	d.scheduleUpdate()

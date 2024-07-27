@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 	"sync"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -201,6 +203,30 @@ func SetupRootCommand() *cobra.Command {
 func Execute() error {
 	logger.InitProduction(false, true)
 	initConfig()
+
+	// Set up panic handling
+	defer func() {
+		if r := recover(); r != nil {
+			// Stop the display first
+			if disp := display.GetCurrentDisplay(); disp != nil {
+				disp.Stop()
+			}
+
+			// Log the panic to debug.log
+			debugLog, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err == nil {
+				defer debugLog.Close()
+				fmt.Fprintf(debugLog, "Panic occurred: %v\n", r)
+				debug.PrintStack()
+				fmt.Fprintln(debugLog, string(debug.Stack()))
+			}
+
+			// Print the stack trace to stderr
+			fmt.Fprintf(os.Stderr, "Panic occurred: %v\n", r)
+			debug.PrintStack()
+		}
+	}()
+
 	return SetupRootCommand().Execute()
 }
 
