@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -260,7 +261,7 @@ func getPublicIPName(machineID string) string {
 	return machineID + "-ip"
 }
 
-// CreatePublicIP creates a new public IP address
+// CreatePublicIP creates a new public IP address with retry mechanism
 func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 	resourceGroupName string,
 	location string,
@@ -279,25 +280,39 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 		},
 	}
 
-	poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(
-		ctx,
-		resourceGroupName,
-		ipName,
-		parameters,
-		nil,
-	)
-	if err != nil {
-		l.Errorf("CreatePublicIP: %s", err)
-		return armnetwork.PublicIPAddress{}, err
+	maxRetries := 5
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(
+			ctx,
+			resourceGroupName,
+			ipName,
+			parameters,
+			nil,
+		)
+		if err != nil {
+			l.Errorf("CreatePublicIP attempt %d failed: %s", attempt+1, err)
+			lastErr = err
+			time.Sleep(time.Duration(attempt*2) * time.Second) // Exponential backoff
+			continue
+		}
+
+		resp, err := poller.PollUntilDone(ctx, nil)
+		if err != nil {
+			if strings.Contains(err.Error(), "Canceled") {
+				l.Warnf("CreatePublicIP attempt %d was canceled, retrying...", attempt+1)
+				lastErr = err
+				time.Sleep(time.Duration(attempt*2) * time.Second) // Exponential backoff
+				continue
+			}
+			return armnetwork.PublicIPAddress{}, err
+		}
+
+		l.Debugf("CreatePublicIP: %s", *resp.PublicIPAddress.Name)
+		return resp.PublicIPAddress, nil
 	}
 
-	resp, err := poller.PollUntilDone(ctx, nil)
-	if err != nil {
-		return armnetwork.PublicIPAddress{}, err
-	}
-	l.Debugf("CreatePublicIP: %s", *resp.PublicIPAddress.Name)
-
-	return resp.PublicIPAddress, nil
+	return armnetwork.PublicIPAddress{}, fmt.Errorf("failed to create public IP after %d attempts: %v", maxRetries, lastErr)
 }
 
 func (c *LiveAzureClient) GetPublicIP(ctx context.Context,
