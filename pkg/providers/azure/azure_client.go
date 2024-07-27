@@ -378,6 +378,11 @@ func (c *LiveAzureClient) CreateNetworkInterface(ctx context.Context,
 	l := logger.Get()
 	l.Debugf("CreateNetworkInterface: %s", nicName)
 
+	// Validate location
+	if !IsValidLocation(location) {
+		return armnetwork.Interface{}, fmt.Errorf("invalid location: %s", location)
+	}
+
 	parameters := armnetwork.Interface{
 		Location: to.Ptr(location),
 		Tags:     tags,
