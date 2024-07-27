@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -452,7 +453,7 @@ func (p *AzureProvider) prepareResourceGroup(
 	ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display) (string, string, error) {
-	resourceGroupName := fmt.Sprintf("%s-%s-rg", deployment.ProjectID, deployment.UniqueID)
+	resourceGroupName := deployment.ResourceGroupName + "-rg-" + time.Now().Format("20060102150405")
 	resourceGroupLocation := deployment.ResourceGroupLocation
 
 	disp.UpdateStatus(&models.Status{
