@@ -8,6 +8,7 @@ import (
 )
 
 type Machine struct {
+	ID                   string
 	Name                 string
 	Location             string
 	Parameters           []Parameters
@@ -25,31 +26,32 @@ type Parameters struct {
 }
 
 type Deployment struct {
-	Name                    string
-	ResourceGroupName       string
-	ResourceGroupLocation   string
-	Locations               []string
-	OrchestratorNode        *Machine
-	NonOrchestratorMachines []Machine
-	Subnets                 map[string][]*armnetwork.Subnet
-	ProjectID               string
-	UniqueID                string
-	Tags                    map[string]*string
-	AllowedPorts            []int
-	SSHPublicKeyPath        string
-	SSHPrivateKeyPath       string
+	Name                  string
+	ResourceGroupName     string
+	ResourceGroupLocation string
+	Locations             []string
+	OrchestratorNode      *Machine
+	Machines              []Machine
+	Subnets               map[string][]*armnetwork.Subnet
+	NetworkSecurityGroups map[string]*armnetwork.SecurityGroup
+	ProjectID             string
+	UniqueID              string
+	Tags                  map[string]*string
+	AllowedPorts          []int
+	SSHPublicKeyPath      string
+	SSHPrivateKeyPath     string
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"ResourceGroupName":       d.ResourceGroupName,
-		"ResourceGroupLocation":   d.ResourceGroupLocation,
-		"OrchestratorNode":        d.OrchestratorNode,
-		"NonOrchestratorMachines": d.NonOrchestratorMachines,
-		"VNet":                    d.Subnets,
-		"ProjectID":               d.ProjectID,
-		"UniqueID":                d.UniqueID,
-		"Tags":                    d.Tags,
+		"ResourceGroupName":     d.ResourceGroupName,
+		"ResourceGroupLocation": d.ResourceGroupLocation,
+		"OrchestratorNode":      d.OrchestratorNode,
+		"Machines":              d.Machines,
+		"VNet":                  d.Subnets,
+		"ProjectID":             d.ProjectID,
+		"UniqueID":              d.UniqueID,
+		"Tags":                  d.Tags,
 	}
 }
 
@@ -61,9 +63,9 @@ func (d *Deployment) UpdateViperConfig() error {
 	return v.WriteConfig()
 }
 
-func (d *Deployment) SetSubnet(location string, subnet *armnetwork.Subnet) {
+func (d *Deployment) SetSubnet(location string, subnets ...*armnetwork.Subnet) {
 	if d.Subnets == nil {
 		d.Subnets = make(map[string][]*armnetwork.Subnet)
 	}
-	d.Subnets[location] = append(d.Subnets[location], subnet)
+	d.Subnets[location] = append(d.Subnets[location], subnets...)
 }
