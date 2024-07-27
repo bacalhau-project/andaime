@@ -155,7 +155,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 					ManagedDisk: &armcompute.ManagedDiskParameters{
 						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
 					},
-					DiskSizeGB: to.Ptr(machine.DiskSizeGB),
+					DiskSizeGB: to.Ptr(getDiskSizeGB(machine.DiskSizeGB)),
 				},
 			},
 			NetworkProfile: &armcompute.NetworkProfile{
@@ -220,4 +220,12 @@ func (p *AzureProvider) CreateNSG(
 	}
 
 	return &createdNSG, nil
+}
+
+// getDiskSizeGB returns the disk size in GB, using a default value if not set
+func getDiskSizeGB(diskSize int32) int32 {
+	if diskSize <= 0 {
+		return 30 // Default disk size in GB
+	}
+	return diskSize
 }
