@@ -4,6 +4,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -117,6 +118,13 @@ type LiveAzureClient struct {
 	resourceGroupsClient    *armresources.ResourceGroupsClient
 	resourceGraphClient     *armresourcegraph.Client
 	subscriptionsClient     *armsubscription.SubscriptionsClient
+	nsgCache                sync.Map
+}
+
+type nsgCacheEntry struct {
+	wg     sync.WaitGroup
+	result armnetwork.SecurityGroup
+	err    error
 }
 
 var NewAzureClientFunc = NewAzureClient
@@ -443,6 +451,23 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	l.Debugf("CreateNetworkSecurityGroup: %s", resourceGroupName)
 	logger.LogAzureAPIStart("CreateNetworkSecurityGroup")
 
+	// Check if the creation is already in progress
+	if entry, ok := c.nsgCache.Load(sgName); ok {
+		cacheEntry := entry.(*nsgCacheEntry)
+		cacheEntry.wg.Wait()
+		return cacheEntry.result, cacheEntry.err
+	}
+
+	// Create a new cache entry
+	cacheEntry := &nsgCacheEntry{}
+	cacheEntry.wg.Add(1)
+	c.nsgCache.Store(sgName, cacheEntry)
+
+	defer func() {
+		cacheEntry.wg.Done()
+		c.nsgCache.Delete(sgName)
+	}()
+
 	securityRules := []*armnetwork.SecurityRule{}
 	for i, port := range ports {
 		ruleName := fmt.Sprintf("Allow-%d", port)
@@ -479,6 +504,7 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	)
 	if err != nil {
 		l.Errorf("CreateNetworkSecurityGroup: %s", err)
+		cacheEntry.err = err
 		return armnetwork.SecurityGroup{}, err
 	}
 
@@ -486,9 +512,11 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	l.Debugf("CreateNetworkSecurityGroup: %s", sgName)
 	if err != nil {
 		l.Errorf("CreateNetworkSecurityGroup: %s", err)
+		cacheEntry.err = err
 		return armnetwork.SecurityGroup{}, err
 	}
 
+	cacheEntry.result = resp.SecurityGroup
 	return resp.SecurityGroup, nil
 }
 
