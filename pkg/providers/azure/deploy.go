@@ -203,6 +203,10 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 		return fmt.Errorf("processMachines cancelled before starting: %w", err)
 	}
 
+	if !IsValidVMSize(defaultType) {
+		return fmt.Errorf("invalid default VM size: %s", defaultType)
+	}
+
 	for _, machine := range deployment.Machines {
 		internalMachine := machine
 		count := defaultCount
@@ -215,6 +219,9 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 			}
 			if internalMachine.Parameters[0].Type != "" {
 				machineType = internalMachine.Parameters[0].Type
+				if !IsValidVMSize(machineType) {
+					return fmt.Errorf("invalid VM size for machine %s: %s", internalMachine.ID, machineType)
+				}
 			}
 			isOrchestrator = internalMachine.Parameters[0].Orchestrator
 		}

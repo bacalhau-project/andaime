@@ -18,7 +18,18 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/spf13/viper"
 )
+
+func IsValidVMSize(vmSize string) bool {
+	validSizes := viper.GetStringSlice("azure.valid_vm_sizes")
+	for _, size := range validSizes {
+		if size == vmSize {
+			return true
+		}
+	}
+	return false
+}
 
 type AzureClient interface {
 	// Resource Group API
