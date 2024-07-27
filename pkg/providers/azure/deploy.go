@@ -453,7 +453,11 @@ func (p *AzureProvider) prepareResourceGroup(
 	ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display) (string, string, error) {
-	resourceGroupName := deployment.ResourceGroupName + "-rg-" + time.Now().Format("20060102150405")
+	// Check if the resource group name already contains a timestamp
+	if !strings.Contains(deployment.ResourceGroupName, "-rg-") {
+		deployment.ResourceGroupName += "-rg-" + time.Now().Format("20060102150405")
+	}
+	resourceGroupName := deployment.ResourceGroupName
 	resourceGroupLocation := deployment.ResourceGroupLocation
 
 	disp.UpdateStatus(&models.Status{
