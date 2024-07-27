@@ -212,7 +212,7 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 		}
 
 		// Update machine with network information
-		machine.PublicIP = publicIP
+		machine.PublicIP = &publicIP
 		machine.Interface = &nic
 		
 		publicIPAddress := ""
