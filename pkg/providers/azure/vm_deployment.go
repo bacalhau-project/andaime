@@ -8,105 +8,26 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/utils"
 )
 
 var (
 	basePriority = 100
 )
 
-func DeployVM(ctx context.Context,
-	client AzureClient,
-	deployment *models.Deployment,
-	machine *models.Machine,
-	disp *display.Display,
-) (*armcompute.VirtualMachine, error) {
-	absPrivateKeyPath, err := utils.ExpandPath(deployment.SSHPrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand path: %v", err)
-	}
-
-	// Create Public IP
-	publicIP, err := createPublicIP(
-		ctx,
-		client,
-		deployment,
-		machine,
-		disp,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create public IP: %v", err)
-	}
-
-	machine.PublicIP = publicIP
-
-	// Create Network Interface
-	nic, err := createNIC(
-		ctx,
-		client,
-		deployment,
-		machine,
-		disp,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network interface: %v", err)
-	}
-
-	machine.Interface = nic
-
-	// Create Virtual Machine
-	createdVM, err := createVM(
-		ctx,
-		client,
-		deployment,
-		machine,
-		disp,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
-	}
-
-	// Wait for SSH to be available
-	publicIPAddress := ""
-	if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
-		publicIPAddress = *publicIP.Properties.IPAddress
-	}
-
-	sshDialer := &sshutils.MockSSHDialer{} //nolint:gomnd
-	sshDialer.On("Dial", "tcp", fmt.Sprintf("%s:22", publicIPAddress)).Return(nil, nil)
-	sshConfig, err := sshutils.NewSSHConfig(
-		publicIPAddress,
-		22, //nolint:gomnd
-		"azureuser",
-		sshDialer,
-		absPrivateKeyPath,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH config: %v", err)
-	}
-	err = sshutils.SSHWaiterFunc(sshConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to establish SSH connection: %v", err)
-	}
-
-	return createdVM, nil
-}
-
 // createPublicIP creates a public IP address
-func createPublicIP(
+func (p *AzureProvider) CreatePublicIP(
 	ctx context.Context,
-	client AzureClient,
 	deployment *models.Deployment,
 	machine *models.Machine,
 	disp *display.Display,
 ) (*armnetwork.PublicIPAddress, error) {
-	createdIP, err := client.CreatePublicIP(
+	createdIP, err := p.Client.CreatePublicIP(
 		ctx,
 		deployment.ResourceGroupName,
-		deployment.UniqueID,
 		machine.Location,
+		machine.ID,
 		deployment.Tags,
 	)
 	if err != nil {
@@ -117,9 +38,8 @@ func createPublicIP(
 }
 
 // createNIC creates a network interface with both public and private IP
-func createNIC(
+func (p *AzureProvider) CreateNIC(
 	ctx context.Context,
-	client AzureClient,
 	deployment *models.Deployment,
 	machine *models.Machine,
 	disp *display.Display,
@@ -144,32 +64,19 @@ func createNIC(
 		return nil, fmt.Errorf("network security group ID not found")
 	}
 
-	nic := armnetwork.Interface{
-		Location: to.Ptr(machine.Location),
-		Tags:     deployment.Tags,
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-				{
-					Name: to.Ptr("ipconfig"),
-					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-						Subnet:                    deployment.Subnets[machine.Location][0],
-						PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
-						PublicIPAddress:           machine.PublicIP,
-					},
-				},
-			},
-			NetworkSecurityGroup: &armnetwork.SecurityGroup{
-				ID: machine.NetworkSecurityGroup.ID,
-			},
-		},
+	if len(deployment.Subnets[machine.Location]) == 0 {
+		return nil, fmt.Errorf("no subnets found for location %s", machine.Location)
 	}
 
-	createdNIC, err := client.CreateNetworkInterface(
+	createdNIC, err := p.Client.CreateNetworkInterface(
 		ctx,
 		deployment.ResourceGroupName,
-		deployment.UniqueID+"-nic",
-		nic,
+		machine.Location,
+		getNetworkInterfaceName(machine.ID),
 		deployment.Tags,
+		deployment.Subnets[machine.Location][0],
+		machine.PublicIP,
+		machine.NetworkSecurityGroup,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network interface: %v", err)
@@ -179,14 +86,17 @@ func createNIC(
 }
 
 // createVM creates the virtual machine
-func createVM(
+func (p *AzureProvider) CreateVirtualMachine(
 	ctx context.Context,
-	client AzureClient,
 	deployment *models.Deployment,
-	machine *models.Machine,
+	machine models.Machine,
 	disp *display.Display,
 ) (*armcompute.VirtualMachine, error) {
-	vm := armcompute.VirtualMachine{
+	if machine.Interface == nil {
+		return nil, fmt.Errorf("network interface not created for machine %s", machine.ID)
+	}
+
+	params := armcompute.VirtualMachine{
 		Location: to.Ptr(machine.Location),
 		Tags:     deployment.Tags,
 		Properties: &armcompute.VirtualMachineProperties{
@@ -236,11 +146,12 @@ func createVM(
 		},
 	}
 
-	createdVM, err := client.CreateVirtualMachine(
+	createdVM, err := p.Client.CreateVirtualMachine(
 		ctx,
 		deployment.ResourceGroupName,
+		machine.Location,
 		deployment.UniqueID,
-		vm,
+		&params,
 		deployment.Tags,
 	)
 	if err != nil {
@@ -251,18 +162,29 @@ func createVM(
 }
 
 // createNSG creates a network security group with the specified open ports
-func createNSG(
+func (p *AzureProvider) CreateNSG(
 	ctx context.Context,
-	client AzureClient,
 	deployment *models.Deployment,
-	machine *models.Machine,
+	location string,
 	disp *display.Display,
 ) (*armnetwork.SecurityGroup, error) {
-	createdNSG, err := client.CreateNetworkSecurityGroup(
+	l := logger.Get()
+	l.Debugf("CreateNSG: %s", location)
+
+	for _, machine := range deployment.Machines {
+		if machine.Location == location {
+			disp.UpdateStatus(&models.Status{
+				ID:     machine.ID,
+				Type:   "VM",
+				Status: "Creating NSG for " + location,
+			})
+		}
+	}
+
+	createdNSG, err := p.Client.CreateNetworkSecurityGroup(
 		ctx,
 		deployment.ResourceGroupName,
-		deployment.UniqueID+"-nsg",
-		machine.Location,
+		location,
 		deployment.AllowedPorts,
 		deployment.Tags,
 	)
