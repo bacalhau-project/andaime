@@ -543,25 +543,27 @@ func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 
 	l.Debugf("CreateNetworkSecurityGroup: Successfully created NSG %s", sgName)
 	cacheEntry.result = resp.SecurityGroup
+	l.Infof("CreateNetworkSecurityGroup: Completed creation of NSG %s", sgName)
 	return resp.SecurityGroup, nil
 }
 
 func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context,
 	resourceGroupName, sgName string) (armnetwork.SecurityGroup, error) {
 	l := logger.Get()
-	l.Debugf("GetNetworkSecurityGroup: %s", sgName)
+	l.Debugf("GetNetworkSecurityGroup: Starting for %s", sgName)
 	resp, err := c.securityGroupsClient.Get(ctx, resourceGroupName, sgName, nil)
 	if err != nil {
 		// If it's just ResourceNotFound, that's ok, we'll create it
 		if strings.Contains(err.Error(), "ResourceNotFound") {
+			l.Debugf("GetNetworkSecurityGroup: NSG %s not found, will be created", sgName)
 			return armnetwork.SecurityGroup{}, nil
 		} else {
-			l.Errorf("GetNetworkSecurityGroup: %s", err)
+			l.Errorf("GetNetworkSecurityGroup: Error getting NSG %s: %v", sgName, err)
 			return armnetwork.SecurityGroup{}, err
 		}
 	}
 
-	l.Debugf("GetNetworkSecurityGroup: %s", *resp.SecurityGroup.Name)
+	l.Debugf("GetNetworkSecurityGroup: Successfully retrieved NSG %s", *resp.SecurityGroup.Name)
 	return resp.SecurityGroup, nil
 }
 
