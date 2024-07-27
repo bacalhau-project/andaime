@@ -151,11 +151,14 @@ func InitializeDeployment(
 	v.SetDefault("azure.resource_group_name", "andaime-rg")
 	v.SetDefault("azure.resource_group_location", "eastus")
 	v.SetDefault("azure.allowed_ports", []int{22, 80, 443})
+	v.SetDefault("azure.default_vm_size", "Standard_B2s")
+	v.SetDefault("azure.default_disk_size_gb", 30)
+	v.SetDefault("azure.default_location", "eastus")
 	v.SetDefault("azure.machines", []models.Machine{
 		{
 			Name:     "default-vm",
-			VMSize:   "Standard_B2s",
-			Location: "eastus",
+			VMSize:   v.GetString("azure.default_vm_size"),
+			Location: v.GetString("azure.default_location"),
 			Parameters: []models.Parameters{
 				{Orchestrator: true},
 			},
@@ -170,6 +173,11 @@ func InitializeDeployment(
 	if err != nil {
 		return nil, err
 	}
+
+	// Set default values for the deployment
+	deployment.DefaultVMSize = v.GetString("azure.default_vm_size")
+	deployment.DefaultDiskSizeGB = int32(v.GetInt("azure.default_disk_size_gb"))
+	deployment.DefaultLocation = v.GetString("azure.default_location")
 
 	return deployment, nil
 }
@@ -271,6 +279,7 @@ func PrepareDeployment(
 	orchestratorNode, allMachines, locations, err := ProcessMachinesConfig(
 		machines,
 		disp,
+		deployment,
 	)
 	if err != nil {
 		return nil, err
@@ -349,6 +358,7 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 func ProcessMachinesConfig(
 	machines []models.Machine,
 	disp *display.Display,
+	deployment *models.Deployment,
 ) (*models.Machine, []models.Machine, []string, error) {
 	var orchestratorNode *models.Machine
 	var allMachines []models.Machine
@@ -358,13 +368,21 @@ func ProcessMachinesConfig(
 		internalMachine := machine
 
 		if internalMachine.Location == "" {
-			return nil, nil, nil, fmt.Errorf("machine location is empty")
+			internalMachine.Location = deployment.DefaultLocation
 		}
 
 		if !internal.IsValidLocation(internalMachine.Location) {
 			return nil, nil, nil, fmt.Errorf("invalid location: %s", internalMachine.Location)
 		}
 		locations[internalMachine.Location] = true
+
+		if internalMachine.VMSize == "" {
+			internalMachine.VMSize = deployment.DefaultVMSize
+		}
+
+		if internalMachine.DiskSizeGB == 0 {
+			internalMachine.DiskSizeGB = deployment.DefaultDiskSizeGB
+		}
 
 		internalMachine.ID = utils.CreateShortID()
 
@@ -382,7 +400,6 @@ func ProcessMachinesConfig(
 			Location: internalMachine.Location,
 			Status:   "Initializing",
 		})
-
 	}
 
 	uniqueLocations := make([]string, 0, len(locations))

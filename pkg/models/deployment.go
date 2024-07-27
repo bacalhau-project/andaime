@@ -40,6 +40,9 @@ type Deployment struct {
 	AllowedPorts          []int
 	SSHPublicKeyPath      string
 	SSHPrivateKeyPath     string
+	DefaultVMSize         string `default:"Standard_B2s"`
+	DefaultDiskSizeGB     int32  `default:"30"`
+	DefaultLocation       string `default:"eastus"`
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
