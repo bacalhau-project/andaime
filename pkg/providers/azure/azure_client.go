@@ -59,7 +59,7 @@ type AzureClient interface {
 		resourceGroupName string,
 		location string,
 		machineID string,
-		parameters armcompute.VirtualMachine,
+		parameters *armcompute.VirtualMachine,
 		tags map[string]*string,
 	) (armcompute.VirtualMachine, error)
 	GetVirtualMachine(
@@ -269,7 +269,7 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 	tags map[string]*string) (armnetwork.PublicIPAddress, error) {
 	l := logger.Get()
 	ipName := getPublicIPName(machineID)
-	l.Debugf("CreatePublicIP: %s", ipName)
+	l.Debugf("CreatePublicIP - starting: %s", ipName)
 
 	// First, try to get the existing public IP
 	existingIP, err := c.GetPublicIP(ctx, resourceGroupName, location, ipName)
@@ -345,18 +345,18 @@ func (c *LiveAzureClient) CreateVirtualMachine(ctx context.Context,
 	resourceGroupName string,
 	location string,
 	machineID string,
-	parameters armcompute.VirtualMachine,
+	parameters *armcompute.VirtualMachine,
 	tags map[string]*string) (armcompute.VirtualMachine, error) {
 	vmName := getVMName(machineID)
 
 	l := logger.Get()
-	l.Debugf("CreateVirtualMachine: %s", vmName)
+	l.Debugf("CreateVirtualMachine: Beginning - %s", vmName)
 
 	poller, err := c.virtualMachinesClient.BeginCreateOrUpdate(
 		ctx,
 		resourceGroupName,
 		vmName,
-		parameters,
+		*parameters,
 		nil,
 	)
 	if err != nil {
