@@ -4,6 +4,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
