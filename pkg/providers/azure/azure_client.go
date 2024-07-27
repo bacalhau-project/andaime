@@ -476,13 +476,13 @@ func getNetworkSecurityGroupName(resourceGroupName string) string {
 func (c *LiveAzureClient) CreateNetworkSecurityGroup(ctx context.Context,
 	resourceGroupName string,
 	location string,
+	sgName string,
 	ports []int,
 	tags map[string]*string,
 ) (armnetwork.SecurityGroup, error) {
 	l := logger.Get()
-	sgName := getNetworkSecurityGroupName(resourceGroupName)
 
-	l.Debugf("CreateNetworkSecurityGroup: Starting for %s", resourceGroupName)
+	l.Debugf("CreateNetworkSecurityGroup: Starting for %s in %s", sgName, location)
 
 	// Use LoadOrStore to ensure only one goroutine creates the cache entry
 	l.Debugf("CreateNetworkSecurityGroup: Loading or storing cache entry for %s", sgName)
