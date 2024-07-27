@@ -189,109 +189,6 @@ func (p *AzureProvider) CreateNetworkResourcesForLocation(
 	return []*armnetwork.Subnet{vnet.Properties.Subnets[0]}, nil
 }
 
-func (p *AzureProvider) CreateNetworkResourcesForMachine(
-	ctx context.Context,
-	deployment *models.Deployment,
-	disp *display.Display,
-) error {
-	l := logger.Get()
-	for i, machine := range deployment.Machines {
-		l.Debugf("Creating network resources for machine %s in location %s", machine.ID, machine.Location)
-
-		// Create Public IP
-		publicIP, err := p.Client.CreatePublicIP(
-			ctx,
-			deployment.ResourceGroupName,
-			machine.Location,
-			machine.ID,
-			deployment.Tags,
-		)
-		if err != nil {
-			l.Errorf("Failed to create public IP for machine %s: %v", machine.ID, err)
-			return fmt.Errorf("failed to create public IP for machine %s: %w", machine.ID, err)
-		}
-		l.Debugf("Created public IP for machine %s", machine.ID)
-
-		// Get subnet for the machine's location
-		subnet, ok := deployment.Subnets[machine.Location]
-		if !ok || len(subnet) == 0 {
-			l.Errorf("No subnet found for location %s", machine.Location)
-			return fmt.Errorf("no subnet found for location %s", machine.Location)
-		}
-		l.Debugf("Found subnet for machine %s in location %s", machine.ID, machine.Location)
-
-		nsg := deployment.NetworkSecurityGroups[machine.Location]
-		if nsg == nil {
-			l.Errorf("No network security group found for location %s", machine.Location)
-			return fmt.Errorf("no network security group found for location %s", machine.Location)
-		}
-		l.Debugf("Found network security group for machine %s in location %s", machine.ID, machine.Location)
-
-		// Create NIC
-		nic, err := p.Client.CreateNetworkInterface(
-			ctx,
-			deployment.ResourceGroupName,
-			machine.Location,
-			machine.ID,
-			deployment.Tags,
-			subnet[0],
-			&publicIP,
-			nsg,
-		)
-		if err != nil {
-			l.Errorf("Failed to create network interface for machine %s: %v", machine.ID, err)
-			return fmt.Errorf(
-				"failed to create network interface for machine %s: %w",
-				machine.ID,
-				err,
-			)
-		}
-		l.Debugf("Created network interface for machine %s", machine.ID)
-
-		// Update machine with network information
-		deployment.Machines[i].PublicIP = &publicIP
-		deployment.Machines[i].Interface = &nic
-		deployment.Machines[i].NetworkSecurityGroup = nsg
-
-		publicIPAddress := ""
-		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
-			publicIPAddress = *publicIP.Properties.IPAddress
-		}
-		privateIPAddress := ""
-		if nic.Properties != nil && nic.Properties.IPConfigurations != nil &&
-			len(nic.Properties.IPConfigurations) > 0 {
-			if nic.Properties.IPConfigurations[0].Properties != nil &&
-				nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress != nil {
-				privateIPAddress = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
-			}
-		}
-
-		logMessage := fmt.Sprintf(
-			"Created network resources for machine %s: Public IP: %s, Private IP: %s",
-			machine.ID,
-			publicIPAddress,
-			privateIPAddress,
-		)
-		l.Info(logMessage)
-		disp.Log(logMessage)
-
-		// Log the updated machine details
-		l.Debugf("Updated machine %s: PublicIP: %v, Interface: %v, NetworkSecurityGroup: %v",
-			machine.ID,
-			deployment.Machines[i].PublicIP != nil,
-			deployment.Machines[i].Interface != nil,
-			deployment.Machines[i].NetworkSecurityGroup != nil)
-	}
-
-	// After the loop, update the global deployment struct
-	if err := deployment.UpdateViperConfig(); err != nil {
-		l.Errorf("Failed to update viper config: %v", err)
-		return fmt.Errorf("failed to update viper config: %w", err)
-	}
-	l.Debug("Successfully updated viper config after creating network resources")
-	return nil
-}
-
 // processMachines processes a list of machines
 func (p *AzureProvider) ProcessMachines(ctx context.Context,
 	deployment *models.Deployment,
@@ -304,12 +201,6 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 		return fmt.Errorf("processMachines cancelled before starting: %w", err)
 	}
 
-	// Create network resources for all machines first
-	if err := p.CreateNetworkResourcesForMachine(ctx, deployment, disp); err != nil {
-		l.Errorf("Failed to create network resources: %v", err)
-		return fmt.Errorf("failed to create network resources: %w", err)
-	}
-
 	for _, machine := range deployment.Machines {
 		internalMachine := machine
 		count := defaultCount
@@ -317,11 +208,8 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 		isOrchestrator := false
 
 		if len(internalMachine.Parameters) > 0 {
-			// Check if Count is a valid positive integer
 			if internalMachine.Parameters[0].Count > 0 {
 				count = internalMachine.Parameters[0].Count
-			} else {
-				count = defaultCount
 			}
 			if internalMachine.Parameters[0].Type != "" {
 				machineType = internalMachine.Parameters[0].Type
@@ -354,49 +242,50 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 						ID:   vmName,
 						Type: "VM",
 						Status: fmt.Sprintf(
-							"Creating VM %s in %s",
+							"Creating network resources and VM %s in %s",
 							vmName,
 							internalMachine.Location,
 						),
 					})
 					
-					// Check if all required network resources are set
-					if internalMachine.Interface == nil {
-						errChan <- fmt.Errorf("network interface not set for machine %s", vmName)
-						return
-					}
-					if internalMachine.NetworkSecurityGroup == nil {
-						errChan <- fmt.Errorf("network security group not set for machine %s", vmName)
-						return
-					}
-					if internalMachine.PublicIP == nil {
-						errChan <- fmt.Errorf("public IP not set for machine %s", vmName)
+					// Create network resources for the machine
+					publicIP, nic, nsg, err := p.createNetworkResourcesForMachine(ctx, deployment, internalMachine, disp)
+					if err != nil {
+						errChan <- fmt.Errorf("failed to create network resources for VM %s in %s: %v", vmName, internalMachine.Location, err)
+						disp.UpdateStatus(&models.Status{
+							ID:     vmName,
+							Type:   "VM",
+							Status: "Failed to create network resources",
+						})
 						return
 					}
 
-					_, err := p.CreateVirtualMachine(ctx,
-						deployment,
-						internalMachine,
-						disp,
-					)
+					// Update machine with network information
+					internalMachine.PublicIP = publicIP
+					internalMachine.Interface = nic
+					internalMachine.NetworkSecurityGroup = nsg
+
+					// Create the virtual machine
+					_, err = p.CreateVirtualMachine(ctx, deployment, internalMachine, disp)
 					if err != nil {
 						errChan <- fmt.Errorf("error deploying VM %s in %s: %v", vmName, internalMachine.Location, err)
 						disp.UpdateStatus(&models.Status{
 							ID:     vmName,
 							Type:   "VM",
-							Status: "Failed",
+							Status: "Failed to create VM",
 						})
 						return
 					}
-					publicIP := ""
-					if internalMachine.PublicIP != nil && internalMachine.PublicIP.Properties != nil && internalMachine.PublicIP.Properties.IPAddress != nil {
-						publicIP = *internalMachine.PublicIP.Properties.IPAddress
+
+					publicIPAddress := ""
+					if publicIP != nil && publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
+						publicIPAddress = *publicIP.Properties.IPAddress
 					}
 					disp.UpdateStatus(&models.Status{
 						ID:        vmName,
 						Type:      "VM",
 						Status:    "Created",
-						PublicIP:  publicIP,
+						PublicIP:  publicIPAddress,
 						PrivateIP: "",
 					})
 				}
@@ -423,7 +312,95 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 			}
 		}
 	}
+
+	// After processing all machines, update the global deployment struct
+	if err := deployment.UpdateViperConfig(); err != nil {
+		l.Errorf("Failed to update viper config: %v", err)
+		return fmt.Errorf("failed to update viper config: %w", err)
+	}
+	l.Debug("Successfully updated viper config after processing machines")
 	return nil
+}
+
+// createNetworkResourcesForMachine creates network resources for a single machine
+func (p *AzureProvider) createNetworkResourcesForMachine(
+	ctx context.Context,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	disp *display.Display,
+) (*armnetwork.PublicIPAddress, *armnetwork.Interface, *armnetwork.SecurityGroup, error) {
+	l := logger.Get()
+	l.Debugf("Creating network resources for machine %s in location %s", machine.ID, machine.Location)
+
+	// Create Public IP
+	publicIP, err := p.Client.CreatePublicIP(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation, // Use the resource group location for all resources
+		machine.ID,
+		deployment.Tags,
+	)
+	if err != nil {
+		l.Errorf("Failed to create public IP for machine %s: %v", machine.ID, err)
+		return nil, nil, nil, fmt.Errorf("failed to create public IP for machine %s: %w", machine.ID, err)
+	}
+	l.Debugf("Created public IP for machine %s", machine.ID)
+
+	// Get subnet for the machine's location
+	subnet, ok := deployment.Subnets[deployment.ResourceGroupLocation]
+	if !ok || len(subnet) == 0 {
+		l.Errorf("No subnet found for location %s", deployment.ResourceGroupLocation)
+		return nil, nil, nil, fmt.Errorf("no subnet found for location %s", deployment.ResourceGroupLocation)
+	}
+	l.Debugf("Found subnet for machine %s in location %s", machine.ID, deployment.ResourceGroupLocation)
+
+	nsg := deployment.NetworkSecurityGroups[deployment.ResourceGroupLocation]
+	if nsg == nil {
+		l.Errorf("No network security group found for location %s", deployment.ResourceGroupLocation)
+		return nil, nil, nil, fmt.Errorf("no network security group found for location %s", deployment.ResourceGroupLocation)
+	}
+	l.Debugf("Found network security group for machine %s in location %s", machine.ID, deployment.ResourceGroupLocation)
+
+	// Create NIC
+	nic, err := p.Client.CreateNetworkInterface(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation, // Use the resource group location for all resources
+		machine.ID,
+		deployment.Tags,
+		subnet[0],
+		&publicIP,
+		nsg,
+	)
+	if err != nil {
+		l.Errorf("Failed to create network interface for machine %s: %v", machine.ID, err)
+		return nil, nil, nil, fmt.Errorf("failed to create network interface for machine %s: %w", machine.ID, err)
+	}
+	l.Debugf("Created network interface for machine %s", machine.ID)
+
+	publicIPAddress := ""
+	if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
+		publicIPAddress = *publicIP.Properties.IPAddress
+	}
+	privateIPAddress := ""
+	if nic.Properties != nil && nic.Properties.IPConfigurations != nil &&
+		len(nic.Properties.IPConfigurations) > 0 {
+		if nic.Properties.IPConfigurations[0].Properties != nil &&
+			nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress != nil {
+			privateIPAddress = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
+		}
+	}
+
+	logMessage := fmt.Sprintf(
+		"Created network resources for machine %s: Public IP: %s, Private IP: %s",
+		machine.ID,
+		publicIPAddress,
+		privateIPAddress,
+	)
+	l.Info(logMessage)
+	disp.Log(logMessage)
+
+	return &publicIP, &nic, nsg, nil
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
