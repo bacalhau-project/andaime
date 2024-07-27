@@ -258,10 +258,10 @@ func (c *LiveAzureClient) GetVirtualNetwork(ctx context.Context,
 }
 
 func getPublicIPName(machineID string) string {
-	return machineID + "-ip"
+	return fmt.Sprintf("ip-%s", machineID)
 }
 
-// CreatePublicIP creates a new public IP address with retry mechanism
+// CreatePublicIP creates a new public IP address or returns an existing one
 func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 	resourceGroupName string,
 	location string,
@@ -270,6 +270,13 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 	l := logger.Get()
 	ipName := getPublicIPName(machineID)
 	l.Debugf("CreatePublicIP: %s", ipName)
+
+	// First, try to get the existing public IP
+	existingIP, err := c.GetPublicIP(ctx, resourceGroupName, location, ipName)
+	if err == nil {
+		l.Infof("Public IP %s already exists, returning existing IP", ipName)
+		return existingIP, nil
+	}
 
 	parameters := armnetwork.PublicIPAddress{
 		Name:     to.Ptr(ipName),
@@ -280,39 +287,26 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 		},
 	}
 
-	maxRetries := 5
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(
-			ctx,
-			resourceGroupName,
-			ipName,
-			parameters,
-			nil,
-		)
-		if err != nil {
-			l.Errorf("CreatePublicIP attempt %d failed: %s", attempt+1, err)
-			lastErr = err
-			time.Sleep(time.Duration(attempt*2) * time.Second) // Exponential backoff
-			continue
-		}
-
-		resp, err := poller.PollUntilDone(ctx, nil)
-		if err != nil {
-			if strings.Contains(err.Error(), "Canceled") {
-				l.Warnf("CreatePublicIP attempt %d was canceled, retrying...", attempt+1)
-				lastErr = err
-				time.Sleep(time.Duration(attempt*2) * time.Second) // Exponential backoff
-				continue
-			}
-			return armnetwork.PublicIPAddress{}, err
-		}
-
-		l.Debugf("CreatePublicIP: %s", *resp.PublicIPAddress.Name)
-		return resp.PublicIPAddress, nil
+	poller, err := c.publicIPAddressesClient.BeginCreateOrUpdate(
+		ctx,
+		resourceGroupName,
+		ipName,
+		parameters,
+		nil,
+	)
+	if err != nil {
+		l.Errorf("CreatePublicIP failed: %s", err)
+		return armnetwork.PublicIPAddress{}, err
 	}
 
-	return armnetwork.PublicIPAddress{}, fmt.Errorf("failed to create public IP after %d attempts: %v", maxRetries, lastErr)
+	resp, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		l.Errorf("CreatePublicIP polling failed: %s", err)
+		return armnetwork.PublicIPAddress{}, err
+	}
+
+	l.Infof("CreatePublicIP: Successfully created %s", *resp.PublicIPAddress.Name)
+	return resp.PublicIPAddress, nil
 }
 
 func (c *LiveAzureClient) GetPublicIP(ctx context.Context,
