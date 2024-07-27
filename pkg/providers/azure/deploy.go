@@ -249,7 +249,7 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 					})
 					
 					// Create network resources for the machine
-					publicIP, nic, nsg, err := p.createNetworkResourcesForMachine(ctx, deployment, internalMachine, disp)
+					publicIP, nic, nsg, err := p.createNetworkResourcesForMachine(ctx, deployment, &internalMachine, disp)
 					if err != nil {
 						errChan <- fmt.Errorf("failed to create network resources for VM %s in %s: %v", vmName, internalMachine.Location, err)
 						disp.UpdateStatus(&models.Status{
