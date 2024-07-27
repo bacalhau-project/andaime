@@ -251,6 +251,7 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 		// Update machine with network information
 		deployment.Machines[i].PublicIP = &publicIP
 		deployment.Machines[i].Interface = &nic
+		deployment.Machines[i].NetworkSecurityGroup = nsg
 
 		publicIPAddress := ""
 		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
@@ -273,6 +274,13 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 		)
 		l.Info(logMessage)
 		disp.Log(logMessage)
+
+		// Log the updated machine details
+		l.Debugf("Updated machine %s: PublicIP: %v, Interface: %v, NetworkSecurityGroup: %v",
+			machine.ID,
+			deployment.Machines[i].PublicIP != nil,
+			deployment.Machines[i].Interface != nil,
+			deployment.Machines[i].NetworkSecurityGroup != nil)
 	}
 
 	// After the loop, update the global deployment struct
@@ -351,6 +359,21 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 							internalMachine.Location,
 						),
 					})
+					
+					// Check if all required network resources are set
+					if internalMachine.Interface == nil {
+						errChan <- fmt.Errorf("network interface not set for machine %s", vmName)
+						return
+					}
+					if internalMachine.NetworkSecurityGroup == nil {
+						errChan <- fmt.Errorf("network security group not set for machine %s", vmName)
+						return
+					}
+					if internalMachine.PublicIP == nil {
+						errChan <- fmt.Errorf("public IP not set for machine %s", vmName)
+						return
+					}
+
 					_, err := p.CreateVirtualMachine(ctx,
 						deployment,
 						internalMachine,
