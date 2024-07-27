@@ -16,7 +16,7 @@ type Machine struct {
 	NetworkSecurityGroup *armnetwork.SecurityGroup
 	Interface            *armnetwork.Interface
 	VMSize               string
-	DiskSizeGB           int32
+	DiskSizeGB           int32 `default:"30"`
 }
 
 type Parameters struct {
