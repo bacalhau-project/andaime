@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
