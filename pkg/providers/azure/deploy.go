@@ -336,7 +336,7 @@ func (p *AzureProvider) createNetworkResourcesForMachine(
 	publicIP, err := p.Client.CreatePublicIP(
 		ctx,
 		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation, // Use the resource group location for all resources
+		machine.Location,
 		machine.ID,
 		deployment.Tags,
 	)
@@ -347,25 +347,25 @@ func (p *AzureProvider) createNetworkResourcesForMachine(
 	l.Debugf("Created public IP for machine %s", machine.ID)
 
 	// Get subnet for the machine's location
-	subnet, ok := deployment.Subnets[deployment.ResourceGroupLocation]
+	subnet, ok := deployment.Subnets[machine.Location]
 	if !ok || len(subnet) == 0 {
-		l.Errorf("No subnet found for location %s", deployment.ResourceGroupLocation)
-		return nil, nil, nil, fmt.Errorf("no subnet found for location %s", deployment.ResourceGroupLocation)
+		l.Errorf("No subnet found for location %s", machine.Location)
+		return nil, nil, nil, fmt.Errorf("no subnet found for location %s", machine.Location)
 	}
-	l.Debugf("Found subnet for machine %s in location %s", machine.ID, deployment.ResourceGroupLocation)
+	l.Debugf("Found subnet for machine %s in location %s", machine.ID, machine.Location)
 
-	nsg := deployment.NetworkSecurityGroups[deployment.ResourceGroupLocation]
+	nsg := deployment.NetworkSecurityGroups[machine.Location]
 	if nsg == nil {
-		l.Errorf("No network security group found for location %s", deployment.ResourceGroupLocation)
-		return nil, nil, nil, fmt.Errorf("no network security group found for location %s", deployment.ResourceGroupLocation)
+		l.Errorf("No network security group found for location %s", machine.Location)
+		return nil, nil, nil, fmt.Errorf("no network security group found for location %s", machine.Location)
 	}
-	l.Debugf("Found network security group for machine %s in location %s", machine.ID, deployment.ResourceGroupLocation)
+	l.Debugf("Found network security group for machine %s in location %s", machine.ID, machine.Location)
 
 	// Create NIC
 	nic, err := p.Client.CreateNetworkInterface(
 		ctx,
 		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation, // Use the resource group location for all resources
+		machine.Location,
 		machine.ID,
 		deployment.Tags,
 		subnet[0],
