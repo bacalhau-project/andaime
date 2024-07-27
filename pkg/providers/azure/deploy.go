@@ -167,7 +167,7 @@ func (p *AzureProvider) CreateNetworkResourcesForLocation(
 		)
 	}
 
-	_, err = p.Client.CreateNetworkSecurityGroup(
+	createdNSG, err := p.Client.CreateNetworkSecurityGroup(
 		ctx,
 		deployment.ResourceGroupName,
 		location,
@@ -178,6 +178,14 @@ func (p *AzureProvider) CreateNetworkResourcesForLocation(
 		return nil, fmt.Errorf("failed to create network security group in %s: %v", location, err)
 	}
 
+	if deployment.NetworkSecurityGroups == nil {
+		deployment.NetworkSecurityGroups = make(map[string]*armnetwork.SecurityGroup)
+	}
+	deployment.NetworkSecurityGroups[location] = &createdNSG
+	if deployment.Subnets == nil {
+		deployment.Subnets = make(map[string][]*armnetwork.Subnet)
+	}
+	deployment.Subnets[location] = []*armnetwork.Subnet{vnet.Properties.Subnets[0]}
 	return []*armnetwork.Subnet{vnet.Properties.Subnets[0]}, nil
 }
 
@@ -186,9 +194,15 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 	deployment *models.Deployment,
 	disp *display.Display,
 ) error {
-	for _, machine := range deployment.Machines {
+	for i, machine := range deployment.Machines {
 		// Create Public IP
-		publicIP, err := p.Client.CreatePublicIP(ctx, deployment.ResourceGroupName, machine.Location, machine.ID, deployment.Tags)
+		publicIP, err := p.Client.CreatePublicIP(
+			ctx,
+			deployment.ResourceGroupName,
+			machine.Location,
+			machine.ID,
+			deployment.Tags,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create public IP for machine %s: %w", machine.ID, err)
 		}
@@ -199,36 +213,58 @@ func (p *AzureProvider) CreateNetworkResourcesForMachine(
 			return fmt.Errorf("no subnet found for location %s", machine.Location)
 		}
 
-		// Create Network Security Group
-		nsg, err := p.Client.CreateNetworkSecurityGroup(ctx, deployment.ResourceGroupName, machine.Location, []int{22}, deployment.Tags)
-		if err != nil {
-			return fmt.Errorf("failed to create network security group for machine %s: %w", machine.ID, err)
-		}
+		nsg := deployment.NetworkSecurityGroups[machine.Location]
 
 		// Create NIC
-		nic, err := p.Client.CreateNetworkInterface(ctx, deployment.ResourceGroupName, machine.Location, machine.ID, deployment.Tags, subnet[0], &publicIP, &nsg)
+		nic, err := p.Client.CreateNetworkInterface(
+			ctx,
+			deployment.ResourceGroupName,
+			machine.Location,
+			machine.ID,
+			deployment.Tags,
+			subnet[0],
+			&publicIP,
+			nsg,
+		)
 		if err != nil {
-			return fmt.Errorf("failed to create network interface for machine %s: %w", machine.ID, err)
+			return fmt.Errorf(
+				"failed to create network interface for machine %s: %w",
+				machine.ID,
+				err,
+			)
 		}
 
 		// Update machine with network information
-		machine.PublicIP = &publicIP
-		machine.Interface = &nic
-		
+		deployment.Machines[i].PublicIP = &publicIP
+		deployment.Machines[i].Interface = &nic
+
 		publicIPAddress := ""
 		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
 			publicIPAddress = *publicIP.Properties.IPAddress
 		}
 		privateIPAddress := ""
-		if nic.Properties != nil && nic.Properties.IPConfigurations != nil && len(nic.Properties.IPConfigurations) > 0 {
-			if nic.Properties.IPConfigurations[0].Properties != nil && nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress != nil {
+		if nic.Properties != nil && nic.Properties.IPConfigurations != nil &&
+			len(nic.Properties.IPConfigurations) > 0 {
+			if nic.Properties.IPConfigurations[0].Properties != nil &&
+				nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress != nil {
 				privateIPAddress = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
 			}
 		}
 
-		disp.Log(fmt.Sprintf("Created network resources for machine %s: Public IP: %s, Private IP: %s", machine.ID, publicIPAddress, privateIPAddress))
+		disp.Log(
+			fmt.Sprintf(
+				"Created network resources for machine %s: Public IP: %s, Private IP: %s",
+				machine.ID,
+				publicIPAddress,
+				privateIPAddress,
+			),
+		)
 	}
 
+	// After the loop, update the global deployment struct
+	if err := deployment.UpdateViperConfig(); err != nil {
+		return fmt.Errorf("failed to update viper config: %w", err)
+	}
 	return nil
 }
 
