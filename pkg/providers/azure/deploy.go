@@ -199,6 +199,8 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 	defaultCount := viper.GetInt("azure.default_count_per_zone")
 	defaultType := viper.GetString("azure.default_machine_type")
 
+	l.Debugf("Starting ProcessMachines with defaultCount: %d, defaultType: %s", defaultCount, defaultType)
+
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("processMachines cancelled before starting: %w", err)
 	}
@@ -213,6 +215,8 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 		machineType := defaultType
 		isOrchestrator := false
 
+		l.Debugf("Processing machine: %s", internalMachine.ID)
+
 		if len(internalMachine.Parameters) > 0 {
 			if internalMachine.Parameters[0].Count > 0 {
 				count = internalMachine.Parameters[0].Count
@@ -226,6 +230,8 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 			isOrchestrator = internalMachine.Parameters[0].Orchestrator
 		}
 
+		l.Debugf("Machine %s: count=%d, type=%s, isOrchestrator=%v", internalMachine.ID, count, machineType, isOrchestrator)
+
 		internalMachine.Parameters = []models.Parameters{
 			{
 				Count:        count,
@@ -235,9 +241,9 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 		}
 
 		var wg sync.WaitGroup
-		errChan := make(chan error, internalMachine.Parameters[0].Count)
+		errChan := make(chan error, count)
 
-		for i := 0; i < internalMachine.Parameters[0].Count; i++ {
+		for i := 0; i < count; i++ {
 			wg.Add(1)
 			go func(index int) {
 				defer wg.Done()
@@ -247,8 +253,9 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 					return
 				default:
 					vmName := fmt.Sprintf("%s-%d-%s", internalMachine.Location, index, internalMachine.ID)
+					l.Debugf("Starting deployment for VM: %s", vmName)
 					disp.UpdateStatus(&models.Status{
-						ID:   vmName,
+						ID:   internalMachine.ID,
 						Type: "VM",
 						Status: fmt.Sprintf(
 							"Creating network resources and VM %s in %s",
@@ -258,6 +265,7 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 					})
 					
 					// Create Public IP
+					l.Debugf("Creating Public IP for VM: %s", vmName)
 					publicIP, err := p.Client.CreatePublicIP(
 						ctx,
 						deployment.ResourceGroupName,
@@ -266,29 +274,37 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 						deployment.Tags,
 					)
 					if err != nil {
-						errChan <- fmt.Errorf("failed to create public IP for VM %s in %s: %v", vmName, internalMachine.Location, err)
+						errMsg := fmt.Sprintf("failed to create public IP for VM %s in %s: %v", vmName, internalMachine.Location, err)
+						l.Errorf(errMsg)
+						errChan <- fmt.Errorf(errMsg)
 						disp.UpdateStatus(&models.Status{
-							ID:     vmName,
+							ID:     internalMachine.ID,
 							Type:   "VM",
 							Status: "Failed to create public IP",
 						})
 						return
 					}
+					l.Debugf("Public IP created for VM: %s", vmName)
 
 					// Get subnet for the machine's location
 					subnet, ok := deployment.Subnets[internalMachine.Location]
 					if !ok || len(subnet) == 0 {
-						errChan <- fmt.Errorf("no subnet found for location %s", internalMachine.Location)
+						errMsg := fmt.Sprintf("no subnet found for location %s", internalMachine.Location)
+						l.Errorf(errMsg)
+						errChan <- fmt.Errorf(errMsg)
 						return
 					}
 
 					nsg := deployment.NetworkSecurityGroups[internalMachine.Location]
 					if nsg == nil {
-						errChan <- fmt.Errorf("no network security group found for location %s", internalMachine.Location)
+						errMsg := fmt.Sprintf("no network security group found for location %s", internalMachine.Location)
+						l.Errorf(errMsg)
+						errChan <- fmt.Errorf(errMsg)
 						return
 					}
 
 					// Create NIC
+					l.Debugf("Creating Network Interface for VM: %s", vmName)
 					nic, err := p.Client.CreateNetworkInterface(
 						ctx,
 						deployment.ResourceGroupName,
@@ -300,14 +316,17 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 						nsg,
 					)
 					if err != nil {
-						errChan <- fmt.Errorf("failed to create network interface for VM %s in %s: %v", vmName, internalMachine.Location, err)
+						errMsg := fmt.Sprintf("failed to create network interface for VM %s in %s: %v", vmName, internalMachine.Location, err)
+						l.Errorf(errMsg)
+						errChan <- fmt.Errorf(errMsg)
 						disp.UpdateStatus(&models.Status{
-							ID:     vmName,
+							ID:     internalMachine.ID,
 							Type:   "VM",
 							Status: "Failed to create network interface",
 						})
 						return
 					}
+					l.Debugf("Network Interface created for VM: %s", vmName)
 
 					// Update machine with network information
 					internalMachine.PublicIP = &publicIP
@@ -315,28 +334,33 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 					internalMachine.NetworkSecurityGroup = nsg
 
 					// Create the virtual machine
+					l.Debugf("Creating Virtual Machine: %s", vmName)
 					_, err = p.CreateVirtualMachine(ctx, deployment, internalMachine, disp)
 					if err != nil {
-						errChan <- fmt.Errorf("error deploying VM %s in %s: %v", vmName, internalMachine.Location, err)
+						errMsg := fmt.Sprintf("error deploying VM %s in %s: %v", vmName, internalMachine.Location, err)
+						l.Errorf(errMsg)
+						errChan <- fmt.Errorf(errMsg)
 						disp.UpdateStatus(&models.Status{
-							ID:     vmName,
+							ID:     internalMachine.ID,
 							Type:   "VM",
 							Status: "Failed to create VM",
 						})
 						return
 					}
+					l.Debugf("Virtual Machine created: %s", vmName)
 
 					publicIPAddress := ""
 					if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
 						publicIPAddress = *publicIP.Properties.IPAddress
 					}
 					disp.UpdateStatus(&models.Status{
-						ID:        vmName,
+						ID:        internalMachine.ID,
 						Type:      "VM",
 						Status:    "Created",
 						PublicIP:  publicIPAddress,
 						PrivateIP: "",
 					})
+					l.Infof("VM %s successfully created with public IP: %s", vmName, publicIPAddress)
 				}
 			}(i)
 		}
