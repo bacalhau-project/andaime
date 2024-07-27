@@ -16,7 +16,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/internal/clouds/azure"
+	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
 )
 
 type AzureClient interface {
@@ -575,7 +575,7 @@ func (c *LiveAzureClient) GetNetworkSecurityGroup(ctx context.Context,
 }
 
 func IsValidLocation(location string) bool {
-	locations, err := azure.GetLocations()
+	locations, err := azureutils.GetLocations()
 	if err != nil {
 		logger.Get().Errorf("Failed to get Azure locations: %v", err)
 		return false
