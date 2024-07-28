@@ -78,9 +78,6 @@ func (p *AzureProvider) DeployResources(
 		Status: "Completed",
 	})
 
-	// Close the display
-	disp.Close()
-
 	// Print the table of machines and IPs
 	printMachineIPTable(deployment)
 
@@ -376,11 +373,6 @@ func createVMs(
 					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
 				}
 
-				// Store the public IP address
-				publicIPAddress := publicIP.IpAddress.ApplyT(func(ip string) string {
-					return ip
-				}).(pulumi.StringOutput)
-
 				// Create network interface
 				nic, err := createNetworkInterface(
 					pulumiCtx,
@@ -420,10 +412,13 @@ func createVMs(
 					Name: vmName,
 					PublicIPAddress: &armnetwork.PublicIPAddress{
 						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-							IPAddress: publicIP.IpAddress,
+							IPAddress: publicIP.IpAddress.ToStringPtrOutput().ApplyT(func(s *string) *string { return s }).(pulumi.StringPtrOutput),
 						},
 					},
 				})
+
+				// Store the VM ID for future reference if needed
+				machine.ID = vm.ID().ToStringOutput()
 
 				l.Infof("VM created successfully: %s", vmName)
 			}
