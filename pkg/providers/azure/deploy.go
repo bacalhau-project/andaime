@@ -6,18 +6,19 @@ import (
 	"runtime/debug"
 	"time"
 
+	"os"
+
+	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/olekukonko/tablewriter"
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/compute"
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/network"
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/resources"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/olekukonko/tablewriter"
-	"os"
-	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 )
 
 // DeployResources deploys Azure resources based on the provided configuration.
@@ -76,6 +77,9 @@ func (p *AzureProvider) DeployResources(
 		Type:   "Deployment",
 		Status: "Completed",
 	})
+
+	// Close the display
+	disp.Close()
 
 	// Print the table of machines and IPs
 	printMachineIPTable(deployment)
@@ -397,7 +401,7 @@ func createVMs(
 				}
 
 				// Create VM
-				err = createVirtualMachine(
+				vm, err := createVirtualMachine(
 					pulumiCtx,
 					vmName,
 					resourceGroupName,
@@ -416,7 +420,7 @@ func createVMs(
 					Name: vmName,
 					PublicIPAddress: &armnetwork.PublicIPAddress{
 						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-							IPAddress: &publicIPAddress,
+							IPAddress: publicIP.IpAddress,
 						},
 					},
 				})
@@ -490,8 +494,8 @@ func createVirtualMachine(
 	nic *network.NetworkInterface,
 	sshPublicKeyData []byte,
 	tags pulumi.StringMap,
-) error {
-	_, err := compute.NewVirtualMachine(
+) (*compute.VirtualMachine, error) {
+	vm, err := compute.NewVirtualMachine(
 		pulumiCtx,
 		name,
 		&compute.VirtualMachineArgs{
@@ -544,7 +548,7 @@ func createVirtualMachine(
 			Tags: tags,
 		},
 	)
-	return err
+	return vm, err
 }
 
 func createNSGs(
