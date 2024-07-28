@@ -94,20 +94,20 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	}
 
 	// Create resource group
-	_, err := createResourceGroup(pulumiCtx, deployment, tags)
+	rg, err := createResourceGroup(pulumiCtx, deployment, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
 	// Create virtual networks
-	vnets, err := createVNets(pulumiCtx, deployment, deployment.ResourceGroupName, tags)
+	vnets, err := createVNets(pulumiCtx, deployment, deployment.ResourceGroupName, tags, rg)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual networks: %w", err)
 	}
 
 	// Create network security groups and rules
 	l.Info("Creating network security groups")
-	nsgs, err := createNSGs(pulumiCtx, deployment, deployment.ResourceGroupName, tags)
+	nsgs, err := createNSGs(pulumiCtx, deployment, deployment.ResourceGroupName, tags, rg)
 	if err != nil {
 		return fmt.Errorf("failed to create network security groups: %w", err)
 	}
@@ -128,7 +128,7 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		vnets,
 		nsgs,
 		tags,
-		nsgResources,
+		append(nsgResources, rg),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
@@ -384,6 +384,7 @@ func createNSGs(
 	deployment *models.Deployment,
 	resourceGroupName string,
 	tags pulumi.StringMap,
+	rg *resources.ResourceGroup,
 ) (map[string]*network.NetworkSecurityGroup, error) {
 	nsgs := make(map[string]*network.NetworkSecurityGroup)
 	for _, location := range deployment.Locations {
@@ -429,6 +430,7 @@ func createVNets(
 	deployment *models.Deployment,
 	resourceGroupName string,
 	tags pulumi.StringMap,
+	rg *resources.ResourceGroup,
 ) (map[string]*network.VirtualNetwork, error) {
 	l := logger.Get()
 	l.Info("Creating virtual networks")
