@@ -91,7 +91,7 @@ func (p *AzureProvider) DeployBicepTemplate(
 	}
 
 	// Start the deployment
-	future, err := p.Client.DeployTemplate(ctx, deployment.ResourceGroupName, "vm-deployment", params)
+	future, err := p.Client.DeployTemplate(ctx, deployment.ResourceGroupName, "vm-deployment", params, nil, nil)
 	if err != nil {
 		l.Errorf("Failed to start Bicep template deployment: %v", err)
 		return fmt.Errorf("failed to start Bicep template deployment: %w", err)
@@ -105,14 +105,14 @@ func (p *AzureProvider) DeployBicepTemplate(
 			l.Info("Deployment cancelled")
 			return ctx.Err()
 		default:
-			done, err := future.DoneWithContext(ctx, p.Client.GetClient())
+			status, err := future.PollUntilDone(ctx, nil)
 			if err != nil {
 				l.Errorf("Error checking deployment status: %v", err)
 				return fmt.Errorf("error checking deployment status: %w", err)
 			}
 
-			if done {
-				deploymentResult, err := future.Result(p.Client.GetClient())
+			if status.Properties != nil && status.Properties.ProvisioningState != nil {
+				state := *status.Properties.ProvisioningState
 				if err != nil {
 					l.Errorf("Failed to get deployment result: %v", err)
 					return fmt.Errorf("failed to get deployment result: %w", err)
