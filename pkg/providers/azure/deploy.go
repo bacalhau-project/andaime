@@ -43,12 +43,22 @@ func (p *AzureProvider) DeployResources(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Create a WaitGroup to wait for all goroutines to finish
+	var wg sync.WaitGroup
+
 	// Start a goroutine to handle cancellation
+	wg.Add(1)
 	go func() {
-		<-ctx.Done()
-		l.Info("Deployment cancelled, closing display channel")
-		disp.Close()
+		defer wg.Done()
+		select {
+		case <-ctx.Done():
+			l.Info("Deployment cancelled, closing display channel")
+			disp.Close()
+		}
 	}()
+
+	// Ensure all goroutines finish before returning
+	defer wg.Wait()
 
 	// Wrap the entire function in a defer/recover block
 	defer func() {
