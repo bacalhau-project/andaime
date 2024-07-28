@@ -111,22 +111,35 @@ func (p *AzureProvider) DeployResources(
 		Status: "Completed",
 	})
 
-	// Wait for a short time to allow for IP addresses to be populated
-	time.Sleep(5 * time.Second)
+	// Wait for IP addresses to be populated or timeout
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-	// Print the table of machines and IPs
-	printMachineIPTable(deployment)
-
-	// Handle graceful shutdown
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		l.Info("Received interrupt signal, initiating graceful shutdown")
-		cancel()
-	}()
-
-	return nil
+	for {
+		select {
+		case <-ticker.C:
+			allIPsValid := true
+			for _, machine := range deployment.Machines {
+				if machine.PublicIP == "" {
+					allIPsValid = false
+					break
+				}
+			}
+			if allIPsValid {
+				// Print the table of machines and IPs
+				printMachineIPTable(deployment)
+				return nil
+			}
+		case <-timeout:
+			l.Warn("Timeout waiting for IP addresses to be populated")
+			printMachineIPTable(deployment)
+			return nil
+		case <-ctx.Done():
+			l.Info("Deployment cancelled while waiting for IP addresses")
+			return ctx.Err()
+		}
+	}
 }
 
 // deploymentProgram defines the Pulumi program for Azure resource deployment
