@@ -413,7 +413,10 @@ func createVirtualMachine(
 		},
 		pulumi.DependsOn(dependsOn),
 	)
-	return vm, err
+	if err != nil {
+		return nil, HandleAzureError(err)
+	}
+	return vm, nil
 }
 
 func createNSGs(
