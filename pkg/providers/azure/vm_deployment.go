@@ -142,9 +142,6 @@ func (p *AzureProvider) CreateVirtualMachine(
 		"adminUsername": map[string]interface{}{
 			"value": "azureuser",
 		},
-		"adminPublicKey": map[string]interface{}{
-			"value": string(deployment.SSHPublicKeyData),
-		},
 		"networkInterfaceId": map[string]interface{}{
 			"value": *machine.Interface.ID,
 		},
@@ -180,7 +177,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 								"publicKeys": []interface{}{
 									map[string]interface{}{
 										"path":    "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
-										"keyData": "[parameters('adminPublicKey')]",
+										"keyData": string(deployment.SSHPublicKeyData),
 									},
 								},
 							},
