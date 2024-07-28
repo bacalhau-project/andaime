@@ -39,6 +39,17 @@ func (p *AzureProvider) DeployResources(
 		disp.Close()
 	}()
 
+	// Create a context with cancellation
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Start a goroutine to handle cancellation
+	go func() {
+		<-ctx.Done()
+		l.Info("Deployment cancelled, closing display channel")
+		disp.Close()
+	}()
+
 	// Wrap the entire function in a defer/recover block
 	defer func() {
 		if r := recover(); r != nil {
