@@ -333,7 +333,7 @@ func createVMs(
 	deployment *models.Deployment,
 	resourceGroupName pulumi.StringInput,
 	vnets map[string]*network.VirtualNetwork,
-	nsg *network.NetworkSecurityGroup,
+	nsgs map[string]*network.NetworkSecurityGroup,
 	tags pulumi.StringMap,
 ) error {
 	l := logger.Get()
