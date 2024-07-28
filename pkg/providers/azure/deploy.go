@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"runtime/debug"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
