@@ -13,9 +13,9 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/olekukonko/tablewriter"
-	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/compute"
-	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/network"
-	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/resources"
+	"github.com/pulumi/pulumi-azure-native-sdk/compute"
+	"github.com/pulumi/pulumi-azure-native-sdk/network"
+	"github.com/pulumi/pulumi-azure-native-sdk/resources"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -412,13 +412,13 @@ func createVMs(
 					Name: vmName,
 					PublicIPAddress: &armnetwork.PublicIPAddress{
 						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-							IPAddress: publicIP.IpAddress.ToStringPtrOutput().ApplyT(func(s *string) *string { return s }).(pulumi.StringPtrOutput),
+							IPAddress: publicIP.IpAddress,
 						},
 					},
 				})
 
 				// Store the VM ID for future reference if needed
-				machine.ID = vm.ID().ToStringOutput()
+				machine.ID = vm.ID().ToStringOutput().ApplyT(func(s string) string { return s }).(pulumi.StringOutput)
 
 				l.Infof("VM created successfully: %s", vmName)
 			}
