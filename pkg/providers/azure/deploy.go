@@ -86,21 +86,29 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		tags[k] = pulumi.String(*v)
 	}
 
-	// Check for context cancellation
-	vnets, err := createVNets(pulumiCtx, deployment, tags)
+	// Create resource group
+	rg, err := createResourceGroup(pulumiCtx, deployment, tags)
+	if err != nil {
+		return fmt.Errorf("failed to create resource group: %w", err)
+	}
+
+	// Create virtual networks
+	vnets, err := createVNets(pulumiCtx, deployment, rg.Name, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual networks: %w", err)
 	}
 
+	// Create network security group and rules
 	l.Info("Creating network security group")
-	nsg, err := createNSG(pulumiCtx, deployment, tags)
+	nsg, err := createNSG(pulumiCtx, deployment, rg.Name, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create network security group: %w", err)
 	}
 	l.Info("Network security group created successfully")
 
+	// Create virtual machines
 	l.Info("Creating virtual machines")
-	err = createVMs(pulumiCtx, deployment, vnets, nsg, tags)
+	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsg, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
@@ -108,9 +116,27 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	return nil
 }
 
+func createResourceGroup(pulumiCtx *pulumi.Context, deployment *models.Deployment, tags pulumi.StringMap) (*resources.ResourceGroup, error) {
+	l := logger.Get()
+	l.Info("Creating resource group")
+	
+	rg, err := resources.NewResourceGroup(pulumiCtx, deployment.ResourceGroupName, &resources.ResourceGroupArgs{
+		ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
+		Location:          pulumi.String(deployment.ResourceGroupLocation),
+		Tags:              tags,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource group: %w", err)
+	}
+	
+	l.Infof("Resource group created: %s", deployment.ResourceGroupName)
+	return rg, nil
+}
+
 func createVMs(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
+	resourceGroupName pulumi.StringInput,
 	vnets map[string]*network.VirtualNetwork,
 	nsg *network.NetworkSecurityGroup,
 	tags pulumi.StringMap,
@@ -132,7 +158,7 @@ func createVMs(
 					pulumiCtx,
 					vmName+"-ip",
 					&network.PublicIPAddressArgs{
-						ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
+						ResourceGroupName: resourceGroupName,
 						Location:          pulumi.String(machine.Location),
 						Tags:              tags,
 					},
@@ -146,7 +172,7 @@ func createVMs(
 					pulumiCtx,
 					vmName+"-nic",
 					&network.NetworkInterfaceArgs{
-						ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
+						ResourceGroupName: resourceGroupName,
 						Location:          pulumi.String(machine.Location),
 						IpConfigurations: network.NetworkInterfaceIPConfigurationArray{
 							&network.NetworkInterfaceIPConfigurationArgs{
@@ -179,7 +205,7 @@ func createVMs(
 					pulumiCtx,
 					vmName,
 					&compute.VirtualMachineArgs{
-						ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
+						ResourceGroupName: resourceGroupName,
 						Location:          pulumi.String(machine.Location),
 						NetworkProfile: &compute.NetworkProfileArgs{
 							NetworkInterfaces: compute.NetworkInterfaceReferenceArray{
@@ -240,6 +266,7 @@ func createVMs(
 func createNSG(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
+	resourceGroupName pulumi.StringInput,
 	tags pulumi.StringMap,
 ) (*network.NetworkSecurityGroup, error) {
 	nsgRules := network.SecurityRuleTypeArray{}
@@ -261,7 +288,7 @@ func createNSG(
 		pulumiCtx,
 		"nsg-"+deployment.ResourceGroupName,
 		&network.NetworkSecurityGroupArgs{
-			ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
+			ResourceGroupName: resourceGroupName,
 			Location:          pulumi.String(deployment.ResourceGroupLocation),
 			SecurityRules:     nsgRules,
 			Tags:              tags,
@@ -276,6 +303,7 @@ func createNSG(
 func createVNets(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
+	resourceGroupName pulumi.StringInput,
 	tags pulumi.StringMap,
 ) (map[string]*network.VirtualNetwork, error) {
 	l := logger.Get()
@@ -294,7 +322,7 @@ func createVNets(
 			pulumiCtx,
 			"vnet-"+location,
 			&network.VirtualNetworkArgs{
-				ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
+				ResourceGroupName: resourceGroupName,
 				Location:          pulumi.String(location),
 				AddressSpace: &network.AddressSpaceArgs{
 					AddressPrefixes: pulumi.StringArray{pulumi.String("10.0.0.0/16")},
