@@ -508,7 +508,7 @@ func createVirtualMachine(
 					},
 					DiskSizeGB: pulumi.Int(func() int {
 						if machine.DiskSizeGB > 0 {
-							return machine.DiskSizeGB
+							return int(machine.DiskSizeGB)
 						}
 						return 30 // Default disk size in GB
 					}()),
