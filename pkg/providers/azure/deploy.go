@@ -61,14 +61,85 @@ func (p *AzureProvider) DeployBicepTemplate(
 
 	l.Debugf("Deploying Bicep template for deployment: %v", deployment)
 
-	// TODO: Implement the logic to deploy the Bicep template
-	// This should include:
-	// 1. Preparing the template parameters
-	// 2. Calling the Azure API to deploy the template
-	// 3. Handling any errors and updating the deployment status
+	// Prepare deployment parameters
+	params := struct {
+		VMName                   string `json:"vmName"`
+		AdminUsername            string `json:"adminUsername"`
+		AuthenticationType       string `json:"authenticationType"`
+		AdminPasswordOrKey       string `json:"adminPasswordOrKey"`
+		DNSLabelPrefix           string `json:"dnsLabelPrefix"`
+		UbuntuOSVersion          string `json:"ubuntuOSVersion"`
+		VMSize                   string `json:"vmSize"`
+		VirtualNetworkName       string `json:"virtualNetworkName"`
+		SubnetName               string `json:"subnetName"`
+		NetworkSecurityGroupName string `json:"networkSecurityGroupName"`
+		Location                 string `json:"location"`
+		SecurityType             string `json:"securityType"`
+	}{
+		VMName:                   deployment.Machines[0].ID,
+		AdminUsername:            "azureuser",
+		AuthenticationType:       "password",
+		AdminPasswordOrKey:       "MyP@ssw0rd123!",
+		DNSLabelPrefix:           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
+		UbuntuOSVersion:          "Ubuntu-2004",
+		VMSize:                   deployment.Machines[0].Parameters[0].Type,
+		VirtualNetworkName:       fmt.Sprintf("%s-vnet", deployment.ResourceGroupName),
+		SubnetName:               fmt.Sprintf("%s-subnet", deployment.ResourceGroupName),
+		NetworkSecurityGroupName: fmt.Sprintf("%s-nsg", deployment.ResourceGroupName),
+		Location:                 deployment.Machines[0].Location,
+		SecurityType:             "TrustedLaunch",
+	}
 
-	l.Debugf("Bicep template deployed for deployment: %v", deployment)
-	return nil
+	// Start the deployment
+	future, err := p.Client.DeployTemplate(ctx, deployment.ResourceGroupName, "vm-deployment", params)
+	if err != nil {
+		l.Errorf("Failed to start Bicep template deployment: %v", err)
+		return fmt.Errorf("failed to start Bicep template deployment: %w", err)
+	}
+
+	// Poll the deployment status
+	pollInterval := 10 * time.Second
+	for {
+		select {
+		case <-ctx.Done():
+			l.Info("Deployment cancelled")
+			return ctx.Err()
+		default:
+			done, err := future.DoneWithContext(ctx, p.Client.GetClient())
+			if err != nil {
+				l.Errorf("Error checking deployment status: %v", err)
+				return fmt.Errorf("error checking deployment status: %w", err)
+			}
+
+			if done {
+				deploymentResult, err := future.Result(p.Client.GetClient())
+				if err != nil {
+					l.Errorf("Failed to get deployment result: %v", err)
+					return fmt.Errorf("failed to get deployment result: %w", err)
+				}
+
+				if deploymentResult.Properties != nil && deploymentResult.Properties.ProvisioningState != nil {
+					state := *deploymentResult.Properties.ProvisioningState
+					l.Infof("Deployment completed with state: %s", state)
+					if state == "Succeeded" {
+						l.Debugf("Bicep template deployed successfully for deployment: %v", deployment)
+						return nil
+					} else {
+						return fmt.Errorf("deployment failed with state: %s", state)
+					}
+				}
+			}
+
+			l.Debugf("Deployment in progress...")
+			disp.UpdateStatus(&models.Status{
+				ID:     "bicep-deployment",
+				Type:   "Azure",
+				Status: "In Progress",
+			})
+
+			time.Sleep(pollInterval)
+		}
+	}
 }
 
 // ProcessMachines processes the machines defined in the deployment
