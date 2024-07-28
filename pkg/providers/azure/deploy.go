@@ -506,7 +506,12 @@ func createVirtualMachine(
 					ManagedDisk: &compute.ManagedDiskParametersArgs{
 						StorageAccountType: pulumi.String("Premium_LRS"),
 					},
-					DiskSizeGB: pulumi.Int(machine.DiskSizeGB),
+					DiskSizeGB: pulumi.Int(func() int {
+						if machine.DiskSizeGB > 0 {
+							return machine.DiskSizeGB
+						}
+						return 30 // Default disk size in GB
+					}()),
 				},
 				ImageReference: &compute.ImageReferenceArgs{
 					Publisher: pulumi.String("Canonical"),
