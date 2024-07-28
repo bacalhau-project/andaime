@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"runtime"
 	"sort"
@@ -19,29 +18,12 @@ import (
 )
 
 var (
-	debugLogger *log.Logger
 	currentDisplay *Display
 )
-
-func init() {
-	debugFile, err := os.OpenFile(
-		"debug.log",
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0644,
-	) //nolint:gomnd
-	if err != nil {
-		log.Fatal(err)
-	}
-	debugLogger = log.New(debugFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
-}
 
 // GetCurrentDisplay returns the current display instance
 func GetCurrentDisplay() *Display {
 	return currentDisplay
-}
-
-func logDebugf(format string, v ...interface{}) {
-	debugLogger.Printf(format, v...)
 }
 
 const NumberOfCyclesToHighlight = 8
@@ -168,27 +150,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
 		s := d.Statuses[newStatus.ID]
-		s.Status = newStatus.Status
-		s.DetailedStatus = newStatus.DetailedStatus
-		if newStatus.StartTime.IsZero() {
-			s.StartTime = newStatus.StartTime
-		}
-		s.ElapsedTime = time.Since(s.StartTime)
-		s.PublicIP = newStatus.PublicIP
-		s.PrivateIP = newStatus.PrivateIP
-		if newStatus.PublicIP == "" {
-			s.PublicIP = newStatus.PublicIP
-		}
-		if newStatus.PrivateIP == "" {
-			s.PrivateIP = newStatus.PrivateIP
-		}
-		if newStatus.InstanceID == "" {
-			s.InstanceID = newStatus.InstanceID
-		}
-		if newStatus.Location == "" {
-			s.Location = newStatus.Location
-		}
-		d.Statuses[newStatus.ID] = s
+		d.Statuses[newStatus.ID] = utils.UpdateStatus(s, newStatus)
 	}
 	d.StatusesMu.Unlock()
 
@@ -374,7 +336,8 @@ func (d *Display) Stop() {
 }
 
 func (d *Display) resetTerminal() {
-	logDebugf("Resetting terminal")
+	l := logger.Get()
+	l.Debug("Resetting terminal")
 	if !d.TestMode {
 		d.App.Suspend(func() {
 			fmt.Print("\033[?1049l") // Exit alternate screen buffer
@@ -489,7 +452,8 @@ func (d *Display) updateDisplay() {
 }
 
 func (d *Display) renderTable() {
-	logDebugf("Rendering table started")
+	l := logger.Get()
+	l.Debug("Rendering table started")
 
 	// Add header row
 	for col, column := range DisplayColumns {
@@ -514,7 +478,7 @@ func (d *Display) renderTable() {
 		return nodes[i].ID < nodes[j].ID
 	})
 
-	logDebugf("Nodes sorted")
+	l.Debug("Nodes sorted")
 
 	// Initialize lastTableState with header row
 	d.LastTableState = [][]string{make([]string, len(DisplayColumns))}
@@ -535,7 +499,7 @@ func (d *Display) renderTable() {
 		d.LastTableState = append(d.LastTableState, tableRow)
 	}
 
-	logDebugf("Table rendered")
+	l.Debug("Table rendered")
 }
 
 func (d *Display) displayResourceProgress(status *models.Status) {

@@ -31,6 +31,7 @@ var (
 	GlobalEnableFileLogger    bool
 	GlobalLogPath             string = "/tmp/andaime.log"
 	GlobalLogLevel            string
+	GlobalInstantSync         bool
 )
 
 var (
@@ -118,7 +119,7 @@ func InitProduction(enableConsole bool, enableFile bool) {
 			debugFile, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err == nil {
 				fileCore := zapcore.NewCore(
-					zapcore.NewJSONEncoder(fileEncoderConfig),
+					zapcore.NewConsoleEncoder(fileEncoderConfig),
 					zapcore.AddSync(debugFile),
 					logLevel,
 				)
@@ -181,69 +182,75 @@ func Get() *Logger {
 	return l
 }
 
+func (l *Logger) syncIfNeeded() {
+	if GlobalInstantSync {
+		_ = l.Sync() // Ignore the error for now, but you might want to handle it in a production environment
+	}
+}
+
 // With creates a child logger and adds structured context to it
 func (l *Logger) With(fields ...zap.Field) *Logger {
 	return &Logger{l.Logger.With(fields...)}
 }
 
-// Debug logs a message at DebugLevel
 func (l *Logger) Debug(msg string) {
 	l.Logger.Debug(msg)
+	l.syncIfNeeded()
 }
 
-// Info logs a message at InfoLevel
 func (l *Logger) Info(msg string) {
 	l.Logger.Info(msg)
+	l.syncIfNeeded()
 }
 
-// Warn logs a message at WarnLevel
 func (l *Logger) Warn(msg string) {
 	l.Logger.Warn(msg)
+	l.syncIfNeeded()
 }
 
-// Error logs a message at ErrorLevel
 func (l *Logger) Error(msg string) {
 	l.Logger.Error(msg)
+	l.syncIfNeeded()
 }
 
-// Fatal logs a message at FatalLevel and then calls os.Exit(1)
 func (l *Logger) Fatal(msg string) {
 	l.Logger.Fatal(msg)
+	// No need to sync here as Fatal will exit the program
+}
+
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Debug(msg)
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Infof(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Info(msg)
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Warnf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Warn(msg)
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Error(msg)
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.Logger.Fatal(msg)
+	// No need to sync here as Fatalf will exit the program
 }
 
 // Sync flushes any buffered log entries
 func (l *Logger) Sync() error {
 	return l.Logger.Sync()
-}
-
-// Debugf logs a formatted message at DebugLevel
-func (l *Logger) Debugf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	l.Logger.Debug(msg)
-}
-
-// Infof logs a formatted message at InfoLevel
-func (l *Logger) Infof(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	l.Logger.Info(msg)
-}
-
-// Warnf logs a formatted message at WarnLevel
-func (l *Logger) Warnf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	l.Logger.Warn(msg)
-}
-
-// Errorf logs a formatted message at ErrorLevel
-func (l *Logger) Errorf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	l.Logger.Error(msg)
-}
-
-// Fatalf logs a formatted message at FatalLevel and then calls os.Exit(1)
-func (l *Logger) Fatalf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	l.Logger.Fatal(msg)
 }
 
 // NewNopLogger returns a no-op Logger
@@ -303,6 +310,9 @@ func DebugPrint(msg string) {
 		InitProduction(false, true)
 	}
 	globalLogger.Debug(msg)
+	if GlobalInstantSync {
+		_ = globalLogger.Sync()
+	}
 }
 
 func LogInitialization(msg string) {
@@ -310,6 +320,9 @@ func LogInitialization(msg string) {
 		InitProduction(false, true)
 	}
 	globalLogger.Info(msg)
+	if GlobalInstantSync {
+		_ = globalLogger.Sync()
+	}
 }
 
 // Fields is a type alias for zap.Field for convenience

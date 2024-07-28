@@ -10,12 +10,6 @@ const (
 	ResourceTypeAzure ResourceType = "azure"
 )
 
-import (
-	"time"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-)
-
 type Status struct {
 	ID              string
 	Type            string
@@ -26,8 +20,6 @@ type Status struct {
 	StartTime       time.Time
 	InstanceID      string
 	PublicIP        string
-	PrivateIP       string
-	HighlightCycles int
 	PrivateIP       string
 	HighlightCycles int
 }

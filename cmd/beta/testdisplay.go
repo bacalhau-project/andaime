@@ -31,10 +31,10 @@ func runTestDisplay() error {
 
 	for i := 0; i < totalTasks; i++ {
 		status := &models.Status{
-			ID:     fmt.Sprintf("test%d", i+1),
-			Type:   "test",
-			Region: "us-west-2",
-			Status: "Running",
+			ID:       fmt.Sprintf("test%d", i+1),
+			Type:     "test",
+			Location: "us-west-2",
+			Status:   "Running",
 		}
 		testDisplay.UpdateStatus(status)
 		time.Sleep(1 * time.Second)

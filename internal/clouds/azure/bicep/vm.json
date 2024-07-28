@@ -11,23 +11,23 @@
   "parameters": {
     "vmName": {
       "type": "string",
-      "defaultValue": "simpleLinuxVM",
+      "defaultValue": "DEFAULT_LINUX_VM_NAME",
       "metadata": {
         "description": "The name of your Virtual Machine."
       }
     },
     "adminUsername": {
       "type": "string",
+      "defaultValue": "azureuser",
       "metadata": {
         "description": "Username for the Virtual Machine."
       }
     },
     "authenticationType": {
       "type": "string",
-      "defaultValue": "password",
+      "defaultValue": "sshPublicKey",
       "allowedValues": [
-        "sshPublicKey",
-        "password"
+        "sshPublicKey"
       ],
       "metadata": {
         "description": "Type of authentication to use on the Virtual Machine. SSH key is recommended."
@@ -87,9 +87,15 @@
     },
     "networkSecurityGroupName": {
       "type": "string",
-      "defaultValue": "SecGroupNet",
       "metadata": {
         "description": "Name of the Network Security Group"
+      }
+    },
+    "osDiskSizeGB": {
+      "type": "int",
+      "defaultValue": 30,
+      "metadata": {
+        "description": "The size of the OS disk in GB."
       }
     },
     "securityType": {
@@ -256,7 +262,8 @@
             "createOption": "FromImage",
             "managedDisk": {
               "storageAccountType": "[variables('osDiskType')]"
-            }
+            },
+            "diskSizeGB": "[parameters('osDiskSizeGB')]"
           },
           "imageReference": "[variables('imageReference')[parameters('ubuntuOSVersion')]]"
         },

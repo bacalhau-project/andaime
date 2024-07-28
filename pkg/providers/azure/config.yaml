@@ -1,0 +1,54 @@
+azure:
+    default_count_per_zone: 1
+    default_machine_type: Standard_DS1_v2
+    disk_size_gb: 30
+    machines:
+        - location: eastus
+          parameters:
+            - count: 2
+              type: Standard_DS1_v2
+        - location: westus
+    resource_group_location: eastus
+    resource_group_name: your-resource-group-name
+    subscription_id: your-subscription-id
+deployments:
+    azure:
+        testrg:
+            machines: []
+            orchestratornode: null
+            projectid: testProject
+            resourcegrouplocation: ""
+            resourcegroupname: testRG
+            tags: {}
+            uniqueid: testUniqueID
+            vnet:
+                eastus:
+                    - id: null
+                      name: testSubnet
+                      properties:
+                        addressprefix: 10.0.0.0/24
+                        addressprefixes: []
+                        applicationgatewayipconfigurations: []
+                        delegations: []
+                        ipallocations: []
+                        natgateway: null
+                        networksecuritygroup: null
+                        privateendpointnetworkpolicies: null
+                        privatelinkservicenetworkpolicies: null
+                        routetable: null
+                        serviceendpointpolicies: []
+                        serviceendpoints: []
+                        ipconfigurationprofiles: []
+                        ipconfigurations: []
+                        privateendpoints: []
+                        provisioningstate: null
+                        purpose: null
+                        resourcenavigationlinks: []
+                        serviceassociationlinks: []
+                      type: null
+                      etag: null
+general:
+    project_id: andaime-project
+    ssh_key_dir: ./testdata/dummy_keys
+    ssh_private_key_path: /var/folders/22/0hyg7lbs2fb34hr0ryq3sl1m0000gn/T/temp-3474841598
+    ssh_public_key_path: /var/folders/22/0hyg7lbs2fb34hr0ryq3sl1m0000gn/T/temp-3207525976

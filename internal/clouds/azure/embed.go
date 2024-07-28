@@ -11,6 +11,9 @@ var machineTypes embed.FS
 //go:embed locations.yaml
 var locations embed.FS
 
+//go:embed bicep/vm.json
+var vmBicep embed.FS
+
 func GetMachineTypes() ([]string, error) {
 	data, err := machineTypes.ReadFile("machine_types.yaml")
 	if err != nil {
@@ -31,6 +34,14 @@ func GetLocations() ([]string, error) {
 	dataString := strings.Split(string(data), "\n")
 
 	return dataString, nil
+}
+
+func GetVMBicep() ([]byte, error) {
+	data, err := vmBicep.ReadFile("bicep/vm.json")
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func IsValidLocation(location string) bool {

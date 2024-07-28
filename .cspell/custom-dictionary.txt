@@ -17,6 +17,7 @@ azcore
 azidentity
 azureprovider
 azureuser
+azureutils
 bacalhau
 BADKEYPATH
 bodyclose
@@ -80,6 +81,7 @@ noinit
 nolint
 nolintlint
 northeurope
+NSGID
 olekukonko
 panicnil
 practise

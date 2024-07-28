@@ -26,9 +26,19 @@ func ParseStringToIntOrZero(row string) int {
 	return parsedInt
 }
 
+// GenerateUniqueID generates a unique ID of length 8
 func GenerateUniqueID() string {
+	return generateID(8) //nolint:gomnd
+}
+
+// CreateShortID generates a short ID of length 6
+func CreateShortID() string {
+	return generateID(6) //nolint:gomnd
+}
+
+func generateID(length int) string {
 	var lettersAndDigits = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
-	b := make([]rune, 8) //nolint:gomnd
+	b := make([]rune, length)
 	for i := range b {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(lettersAndDigits))))
 		if err != nil {

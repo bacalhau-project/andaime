@@ -69,7 +69,7 @@ azure:
 		}
 
 		// Check for missing required fields
-		requiredFields := []string{"azure.resource_group_name"}
+		requiredFields := []string{"azure.resource_group_name", "azure.resource_group_location"}
 		missingFields := []string{}
 		for _, field := range requiredFields {
 			if !v.IsSet(field) {
@@ -274,7 +274,11 @@ aws:
 	// Check if the loaded config matches the expected values
 	expectedRegions := []string{"us-west-2", "us-east-1", "eu-west-1"}
 	if !reflect.DeepEqual(config.GetStringSlice("aws.regions"), expectedRegions) {
-		t.Errorf("Loaded regions do not match expected. Got %v, want %v", config.GetStringSlice("aws.regions"), expectedRegions)
+		t.Errorf(
+			"Loaded regions do not match expected. Got %v, want %v",
+			config.GetStringSlice("aws.regions"),
+			expectedRegions,
+		)
 	}
 }
 

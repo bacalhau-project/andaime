@@ -10,6 +10,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 )
 
@@ -97,6 +98,7 @@ func (p *AWSProvider) validateRegion(region string) error {
 }
 
 func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
+	l := logger.Get()
 	region, err := p.getRegion()
 	if err != nil {
 		return fmt.Errorf("failed to get region: %w", err)
@@ -107,7 +109,7 @@ func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
 		return fmt.Errorf("failed to get latest Ubuntu image: %w", err)
 	}
 
-	fmt.Printf("Latest Ubuntu AMI ID for region %s: %s\n", region, *image.ImageId)
+	l.Infof("Latest Ubuntu AMI ID for region %s: %s\n", region, *image.ImageId)
 	return nil
 }
 
@@ -172,7 +174,10 @@ func (p *AWSProvider) DestroyDeployment(ctx context.Context) error {
 }
 
 // GetLatestUbuntuImage gets the latest Ubuntu AMI for the specified region
-func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error) {
+func (p *AWSProvider) GetLatestUbuntuImage(
+	ctx context.Context,
+	region string,
+) (*types.Image, error) {
 	if err := p.validateRegion(region); err != nil {
 		return nil, err
 	}

@@ -36,8 +36,6 @@ var (
 var (
 	NumberOfDefaultOrchestratorNodes = 1
 	NumberOfDefaultComputeNodes      = 2
-	logPath                          = "/tmp/andaime.log"
-	logLevel                         = "info"
 	GlobalEnableConsoleLogger        = false
 	GlobalEnableFileLogger           = true
 	GlobalLogPath                    = "/tmp/andaime.log"
@@ -57,36 +55,6 @@ var rootCmd = &cobra.Command{
 including deploying and managing Bacalhau nodes across multiple cloud providers.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		initConfig()
-	},
-}
-
-// createCmd represents the create command
-var createCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create resources for Bacalhau nodes",
-	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement create functionality
-		fmt.Println("Create command called")
-	},
-}
-
-// destroyCmd represents the destroy command
-var destroyCmd = &cobra.Command{
-	Use:   "destroy",
-	Short: "Destroy resources for Bacalhau nodes",
-	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement destroy functionality
-		fmt.Println("Destroy command called")
-	},
-}
-
-// listCmd represents the list command
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List resources for Bacalhau nodes",
-	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement list functionality
-		fmt.Println("List command called")
 	},
 }
 
@@ -149,6 +117,7 @@ func initConfig() {
 	// Initialize the logger after config is read
 	logger.InitProduction(false, true)
 	logger.SetOutputFormat(outputFormat)
+	logger.GlobalInstantSync = true
 	log := logger.Get()
 
 	// Set log level based on verbose flag
@@ -157,7 +126,10 @@ func initConfig() {
 	}
 
 	if os.Getenv("LOG_LEVEL") == "debug" {
-		log.Debugf("Logger initialized with configuration: %v", zap.String("outputFormat", outputFormat))
+		log.Debugf(
+			"Logger initialized with configuration: %v",
+			zap.String("outputFormat", outputFormat),
+		)
 		log.Debug("Configuration initialization complete")
 	}
 }
@@ -207,13 +179,19 @@ func Execute() error {
 	// Set up panic handling
 	defer func() {
 		if r := recover(); r != nil {
+			_ = logger.Get().Sync()
+
 			// Stop the display first
 			if disp := display.GetCurrentDisplay(); disp != nil {
 				disp.Stop()
 			}
 
 			// Log the panic to debug.log
-			debugLog, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			debugLog, err := os.OpenFile(
+				"/tmp/andaime.log",
+				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+				0644,
+			)
 			if err == nil {
 				defer debugLog.Close()
 				fmt.Fprintf(debugLog, "Panic occurred: %v\n", r)
@@ -231,12 +209,15 @@ func Execute() error {
 }
 
 func setupFlags() {
-	rootCmd.PersistentFlags().StringVar(&ConfigFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
+	rootCmd.PersistentFlags().
+		StringVar(&ConfigFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
-	rootCmd.PersistentFlags().StringVar(&outputFormat, "output", "text", "Output format: text or json")
+	rootCmd.PersistentFlags().
+		StringVar(&outputFormat, "output", "text", "Output format: text or json")
 
 	rootCmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
-	rootCmd.PersistentFlags().StringVar(&targetPlatform, "target-platform", "", "Set target platform")
+	rootCmd.PersistentFlags().
+		StringVar(&targetPlatform, "target-platform", "", "Set target platform")
 	rootCmd.PersistentFlags().IntVar(&numberOfOrchestratorNodes,
 		"orchestrator-nodes",
 		NumberOfDefaultOrchestratorNodes,
@@ -249,8 +230,10 @@ func setupFlags() {
 		"target-regions",
 		"us-east-1",
 		"Comma-separated list of target AWS regions")
-	rootCmd.PersistentFlags().StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
-	rootCmd.PersistentFlags().StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
+	rootCmd.PersistentFlags().
+		StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
+	rootCmd.PersistentFlags().
+		StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
 }
 
 func initializeCloudProviders() *CloudProvider {

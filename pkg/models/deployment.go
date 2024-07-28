@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/spf13/viper"
@@ -11,8 +12,10 @@ type Machine struct {
 	ID                   string
 	Name                 string
 	Location             string
+	Status               string
 	Parameters           []Parameters
-	PublicIP             *armnetwork.PublicIPAddress
+	PublicIPAddress      *armnetwork.PublicIPAddress
+	PrivateIPAddress     *armnetwork.PrivateEndpointIPConfiguration
 	NetworkSecurityGroup *armnetwork.SecurityGroup
 	Interface            *armnetwork.Interface
 	VMSize               string
@@ -45,6 +48,7 @@ type Deployment struct {
 	DefaultVMSize         string `default:"Standard_B2s"`
 	DefaultDiskSizeGB     int32  `default:"30"`
 	DefaultLocation       string `default:"eastus"`
+	StartTime             time.Time
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {

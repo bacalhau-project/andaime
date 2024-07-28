@@ -9,13 +9,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/spf13/viper"
 )
 
 // CreateResourceGroup creates a new resource group or returns an existing one
 func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
-	rgLocation string,
 	rgName string,
+	rgLocation string,
 	tags map[string]*string) (*armresources.ResourceGroup, error) {
 	log := logger.Get()
 
@@ -53,12 +52,6 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	if err != nil {
 		logger.LogAzureAPIEnd("CreateResourceGroup", err)
 		return nil, fmt.Errorf("failed to create resource group: %v", err)
-	}
-
-	// Update Viper config with the new resource group name
-	viper.Set("azure.resource_group_name", rgName)
-	if err := viper.WriteConfig(); err != nil {
-		log.Warnf("Failed to update config file with new resource group name: %v", err)
 	}
 
 	log.Infof("Created resource group: %s", rgName)

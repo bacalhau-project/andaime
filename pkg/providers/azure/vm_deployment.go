@@ -2,6 +2,7 @@ package azure
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -127,6 +129,8 @@ func (p *AzureProvider) CreateVirtualMachine(
 	machine models.Machine,
 	disp *display.Display,
 ) (*armcompute.VirtualMachine, error) {
+	l := logger.Get()
+
 	if machine.Interface == nil {
 		return nil, fmt.Errorf("network interface not created for machine %s", machine.ID)
 	}
@@ -134,80 +138,54 @@ func (p *AzureProvider) CreateVirtualMachine(
 	// Prepare parameters for Bicep template
 	params := map[string]interface{}{
 		"vmName": map[string]interface{}{
-			"value": machine.ComputerName,
+			"value": machine.ID,
+		},
+		"adminUsername": map[string]interface{}{
+			"value": "azureuser",
+		},
+		"authenticationType": map[string]interface{}{
+			"value": "sshPublicKey",
+		},
+		"adminPasswordOrKey": map[string]interface{}{
+			"value": string(deployment.SSHPublicKeyData),
+		},
+		"dnsLabelPrefix": map[string]interface{}{
+			"value": "dns-" + machine.ID,
+		},
+		"ubuntuOSVersion": map[string]interface{}{
+			"value": "Ubuntu-2004",
 		},
 		"vmSize": map[string]interface{}{
-			"value": machine.VMSize,
+			"value": machine.Parameters[0].Type,
 		},
-		"networkInterfaceId": map[string]interface{}{
-			"value": *machine.Interface.ID,
+		"virtualNetworkName": map[string]interface{}{
+			"value": fmt.Sprintf("%s-vnet", deployment.ResourceGroupName),
+		},
+		"subnetName": map[string]interface{}{
+			"value": fmt.Sprintf("%s-subnet", deployment.ResourceGroupName),
+		},
+		"networkSecurityGroupName": map[string]interface{}{
+			"value": fmt.Sprintf("%s-nsg", deployment.ResourceGroupName),
 		},
 		"location": map[string]interface{}{
 			"value": machine.Location,
 		},
-		"osDiskSizeGB": map[string]interface{}{
-			"value": getDiskSizeGB(machine.DiskSizeGB),
+		"securityType": map[string]interface{}{
+			"value": "TrustedLaunch",
 		},
 	}
 
 	// Create the ARM template
-	template := map[string]interface{}{
-		"$schema":        "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-		"contentVersion": "1.0.0.0",
-		"parameters":     params,
-		"resources": []interface{}{
-			map[string]interface{}{
-				"type":       "Microsoft.Compute/virtualMachines",
-				"apiVersion": "2021-03-01",
-				"name":       "[parameters('vmName')]",
-				"location":   "[parameters('location')]",
-				"properties": map[string]interface{}{
-					"hardwareProfile": map[string]interface{}{
-						"vmSize": "[parameters('vmSize')]",
-					},
-					"osProfile": map[string]interface{}{
-						"computerName":  "[parameters('vmName')]",
-						"adminUsername": "azureuser",
-						"linuxConfiguration": map[string]interface{}{
-							"disablePasswordAuthentication": true,
-							"ssh": map[string]interface{}{
-								"publicKeys": []interface{}{
-									map[string]interface{}{
-										"path":    "/home/azureuser/.ssh/authorized_keys",
-										"keyData": string(deployment.SSHPublicKeyData),
-									},
-								},
-							},
-						},
-					},
-					"storageProfile": map[string]interface{}{
-						"imageReference": map[string]interface{}{
-							"publisher": "Canonical",
-							"offer":     "UbuntuServer",
-							"sku":       "18.04-LTS",
-							"version":   "latest",
-						},
-						"osDisk": map[string]interface{}{
-							"createOption": "FromImage",
-							"managedDisk": map[string]interface{}{
-								"storageAccountType": "Premium_LRS",
-							},
-							"diskSizeGB": "[parameters('osDiskSizeGB')]",
-						},
-					},
-					"networkProfile": map[string]interface{}{
-						"networkInterfaces": []interface{}{
-							map[string]interface{}{
-								"id": "[parameters('networkInterfaceId')]",
-								"properties": map[string]interface{}{
-									"primary": true,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+	template, err := internal.GetVMBicep()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Bicep template: %v", err)
+	}
+
+	// Convert the Bicep template to a map[string]interface{}
+	var templateMap map[string]interface{}
+	err = json.Unmarshal(template, &templateMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal Bicep template: %v", err)
 	}
 
 	// Deploy the ARM template
@@ -215,7 +193,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 		ctx,
 		deployment.ResourceGroupName,
 		machine.ComputerName+"-deployment",
-		template,
+		templateMap,
 		params,
 		deployment.Tags,
 	)
@@ -223,12 +201,14 @@ func (p *AzureProvider) CreateVirtualMachine(
 		return nil, fmt.Errorf("failed to deploy VM template: %v", err)
 	}
 
-	_, err = future.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{
+	resp, err := future.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{
 		Frequency: time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll for VM deployment completion: %v", err)
 	}
+
+	l.Debugf("CreateVirtualMachine: Deployment response: %v", resp)
 
 	// Get the created VM
 	createdVM, err := p.Client.GetVirtualMachine(

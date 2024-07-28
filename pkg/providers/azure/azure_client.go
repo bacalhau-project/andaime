@@ -128,7 +128,7 @@ type AzureClient interface {
 		ctx context.Context,
 		resourceGroupName string,
 		deploymentName string,
-		template string,
+		template map[string]interface{},
 		parameters map[string]interface{},
 		tags map[string]*string,
 	) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error)
@@ -382,7 +382,7 @@ func (c *LiveAzureClient) DeployTemplate(
 	ctx context.Context,
 	resourceGroupName string,
 	deploymentName string,
-	template string,
+	template map[string]interface{},
 	parameters map[string]interface{},
 	tags map[string]*string,
 ) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
@@ -391,7 +391,7 @@ func (c *LiveAzureClient) DeployTemplate(
 
 	deployment := armresources.Deployment{
 		Properties: &armresources.DeploymentProperties{
-			Template:   &template,
+			Template:   template,
 			Parameters: &parameters,
 			Mode:       to.Ptr(armresources.DeploymentModeIncremental),
 		},

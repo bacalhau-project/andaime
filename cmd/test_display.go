@@ -220,8 +220,7 @@ func createRandomStatus() *models.Status {
 	return &models.Status{
 		ID:             id,
 		Type:           "EC2",
-		Region:         randomRegion(),
-		Zone:           randomZone(),
+		Location:       randomRegion(),
 		Status:         "Initializing",
 		DetailedStatus: "Starting",
 		ElapsedTime:    0,
