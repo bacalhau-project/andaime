@@ -139,9 +139,6 @@ func (p *AzureProvider) CreateVirtualMachine(
 		"vmSize": map[string]interface{}{
 			"value": machine.VMSize,
 		},
-		"adminUsername": map[string]interface{}{
-			"value": "azureuser",
-		},
 		"networkInterfaceId": map[string]interface{}{
 			"value": *machine.Interface.ID,
 		},
@@ -170,13 +167,13 @@ func (p *AzureProvider) CreateVirtualMachine(
 					},
 					"osProfile": map[string]interface{}{
 						"computerName":  "[parameters('vmName')]",
-						"adminUsername": "[parameters('adminUsername')]",
+						"adminUsername": "azureuser",
 						"linuxConfiguration": map[string]interface{}{
 							"disablePasswordAuthentication": true,
 							"ssh": map[string]interface{}{
 								"publicKeys": []interface{}{
 									map[string]interface{}{
-										"path":    "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+										"path":    "/home/azureuser/.ssh/authorized_keys",
 										"keyData": string(deployment.SSHPublicKeyData),
 									},
 								},
