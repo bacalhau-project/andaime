@@ -122,6 +122,17 @@ type AzureClient interface {
 		ctx context.Context,
 		options *armsubscription.SubscriptionsClientListOptions,
 	) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
+
+	// New methods for ARM template deployment
+	DeployTemplate(
+		ctx context.Context,
+		resourceGroupName string,
+		deploymentName string,
+		template string,
+		parameters map[string]interface{},
+		tags map[string]*string,
+	) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error)
+	GetDeploymentsClient() *armresources.DeploymentsClient
 }
 
 // LiveAzureClient wraps all Azure SDK calls
@@ -134,7 +145,12 @@ type LiveAzureClient struct {
 	resourceGroupsClient    *armresources.ResourceGroupsClient
 	resourceGraphClient     *armresourcegraph.Client
 	subscriptionsClient     *armsubscription.SubscriptionsClient
+	deploymentsClient       *armresources.DeploymentsClient
 	nsgCache                sync.Map
+}
+
+func (c *LiveAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient {
+	return c.deploymentsClient
 }
 
 type nsgCacheEntry struct {
@@ -185,6 +201,10 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 	if err != nil {
 		return &LiveAzureClient{}, err
 	}
+	deploymentsClient, err := armresources.NewDeploymentsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
 
 	return &LiveAzureClient{
 		virtualNetworksClient:   virtualNetworksClient,
@@ -195,6 +215,7 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		resourceGroupsClient:    resourceGroupsClient,
 		resourceGraphClient:     resourceGraphClient,
 		subscriptionsClient:     subscriptionsClient,
+		deploymentsClient:       deploymentsClient,
 	}, nil
 }
 
@@ -322,7 +343,8 @@ func (c *LiveAzureClient) CreatePublicIP(ctx context.Context,
 
 		resp, err := poller.PollUntilDone(ctx, nil)
 		if err != nil {
-			if strings.Contains(err.Error(), "Canceled") || strings.Contains(err.Error(), "Conflict") {
+			if strings.Contains(err.Error(), "Canceled") ||
+				strings.Contains(err.Error(), "Conflict") {
 				l.Warnf("CreatePublicIP polling encountered an error, retrying: %s", err)
 				lastErr = err
 				backoffDuration := time.Duration(math.Pow(2, float64(attempt))) * time.Second
@@ -363,12 +385,10 @@ func (c *LiveAzureClient) DeployTemplate(
 	template string,
 	parameters map[string]interface{},
 	tags map[string]*string,
-) (armresources.DeploymentsCreateOrUpdateFuture, error) {
+) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
 	l := logger.Get()
 	l.Debugf("DeployTemplate: Beginning - %s", deploymentName)
 
-	deploymentsClient := armresources.NewDeploymentsClient(c.subscriptionID, c.cred, nil)
-	
 	deployment := armresources.Deployment{
 		Properties: &armresources.DeploymentProperties{
 			Template:   &template,
@@ -378,11 +398,18 @@ func (c *LiveAzureClient) DeployTemplate(
 		Tags: tags,
 	}
 
-	return deploymentsClient.BeginCreateOrUpdate(ctx, resourceGroupName, deploymentName, deployment, nil)
-}
+	future, err := c.GetDeploymentsClient().BeginCreateOrUpdate(
+		ctx,
+		resourceGroupName,
+		deploymentName,
+		deployment,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin deployment: %w", err)
+	}
 
-func (c *LiveAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient {
-	return armresources.NewDeploymentsClient(c.subscriptionID, c.cred, nil)
+	return future, nil
 }
 
 func (c *LiveAzureClient) CreateVirtualMachine(ctx context.Context,

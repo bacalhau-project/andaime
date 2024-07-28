@@ -158,7 +158,64 @@ func (p *AzureProvider) CreateVirtualMachine(
 	}
 
 	// Get the Bicep template
-	template := internal.VMBicep
+	template := map[string]interface{}{
+		"$schema":        "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+		"contentVersion": "1.0.0.0",
+		"parameters":     params,
+		"resources": []interface{}{
+			map[string]interface{}{
+				"type":       "Microsoft.Compute/virtualMachines",
+				"apiVersion": "2021-03-01",
+				"name":       "[parameters('vmName')]",
+				"location":   "[parameters('location')]",
+				"properties": map[string]interface{}{
+					"hardwareProfile": map[string]interface{}{
+						"vmSize": "[parameters('vmSize')]",
+					},
+					"osProfile": map[string]interface{}{
+						"computerName":  "[parameters('vmName')]",
+						"adminUsername": "[parameters('adminUsername')]",
+						"linuxConfiguration": map[string]interface{}{
+							"disablePasswordAuthentication": true,
+							"ssh": map[string]interface{}{
+								"publicKeys": []interface{}{
+									map[string]interface{}{
+										"path":    "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+										"keyData": "[parameters('adminPublicKey')]",
+									},
+								},
+							},
+						},
+					},
+					"storageProfile": map[string]interface{}{
+						"imageReference": map[string]interface{}{
+							"publisher": "Canonical",
+							"offer":     "UbuntuServer",
+							"sku":       "18.04-LTS",
+							"version":   "latest",
+						},
+						"osDisk": map[string]interface{}{
+							"createOption": "FromImage",
+							"managedDisk": map[string]interface{}{
+								"storageAccountType": "Premium_LRS",
+							},
+							"diskSizeGB": "[parameters('osDiskSizeGB')]",
+						},
+					},
+					"networkProfile": map[string]interface{}{
+						"networkInterfaces": []interface{}{
+							map[string]interface{}{
+								"id": "[parameters('networkInterfaceId')]",
+								"properties": map[string]interface{}{
+									"primary": true,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 
 	// Deploy the ARM template
 	future, err := p.Client.DeployTemplate(
