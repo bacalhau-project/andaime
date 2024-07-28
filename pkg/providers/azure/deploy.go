@@ -242,7 +242,7 @@ func createVMs(
 				}
 
 				// Use Output.All to wait for the VM to be created before looking up its public IP
-				_, err = pulumi.All(vm.ID(), publicIP.Name).ApplyT(func(args []interface{}) (string, error) {
+				pulumi.All(vm.ID(), publicIP.Name).ApplyT(func(args []interface{}) error {
 					vmID := args[0].(string)
 					publicIPName := args[1].(string)
 
@@ -255,18 +255,14 @@ func createVMs(
 						pulumi.Parent(vm),
 					)
 					if err != nil {
-						return "", fmt.Errorf("failed to lookup public IP address: %w", err)
+						return fmt.Errorf("failed to lookup public IP address: %w", err)
 					}
 
 					machine.PublicIP = *publicIPResult.IpAddress
 					machine.InstanceID = vmID
 
-					return "", nil
-				}).(pulumi.StringOutput).ToStringOutput()
-
-				if err != nil {
-					return fmt.Errorf("failed to get VM details: %w", err)
-				}
+					return nil
+				})
 
 				l.Infof("VM created successfully: %s", vmName)
 			}
