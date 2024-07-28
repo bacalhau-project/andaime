@@ -21,6 +21,24 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+var globalChannels []chan struct{}
+var globalChannelsMutex sync.Mutex
+
+func registerChannel(ch chan struct{}) {
+	globalChannelsMutex.Lock()
+	defer globalChannelsMutex.Unlock()
+	globalChannels = append(globalChannels, ch)
+}
+
+func closeAllChannels() {
+	globalChannelsMutex.Lock()
+	defer globalChannelsMutex.Unlock()
+	for _, ch := range globalChannels {
+		close(ch)
+	}
+	globalChannels = nil
+}
+
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(
@@ -43,6 +61,7 @@ func (p *AzureProvider) DeployResources(
 
 	// Create a done channel to signal completion
 	done := make(chan struct{})
+	registerChannel(done)
 
 	// Start a goroutine to handle cancellation and completion
 	wg.Add(1)
@@ -50,11 +69,12 @@ func (p *AzureProvider) DeployResources(
 		defer wg.Done()
 		select {
 		case <-ctx.Done():
-			l.Info("Deployment cancelled, closing display channel")
+			l.Info("Deployment cancelled, closing all channels")
+			closeAllChannels()
 		case <-done:
 			l.Info("Deployment completed, closing display channel")
+			disp.Close()
 		}
-		disp.Close()
 	}()
 
 	// Ensure all goroutines finish before returning
