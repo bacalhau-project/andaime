@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/bacalhau-project/andaime/internal"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -133,13 +134,13 @@ func (p *AzureProvider) CreateVirtualMachine(
 
 	// Prepare parameters for Bicep template
 	params := map[string]interface{}{
-		"vmName":           machine.ComputerName,
-		"vmSize":           machine.VMSize,
-		"adminUsername":    "azureuser",
-		"adminPublicKey":   string(deployment.SSHPublicKeyData),
+		"vmName":             machine.ComputerName,
+		"vmSize":             machine.VMSize,
+		"adminUsername":      "azureuser",
+		"adminPublicKey":     string(deployment.SSHPublicKeyData),
 		"networkInterfaceId": *machine.Interface.ID,
-		"location":         machine.Location,
-		"osDiskSizeGB":     getDiskSizeGB(machine.DiskSizeGB),
+		"location":           machine.Location,
+		"osDiskSizeGB":       getDiskSizeGB(machine.DiskSizeGB),
 	}
 
 	// Get the Bicep template
@@ -158,13 +159,20 @@ func (p *AzureProvider) CreateVirtualMachine(
 		return nil, fmt.Errorf("failed to deploy VM template: %v", err)
 	}
 
-	err = future.WaitForCompletionRef(ctx, p.Client.GetDeploymentsClient())
+	_, err = future.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{
+		Frequency: time.Second,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for VM deployment completion: %v", err)
+		return nil, fmt.Errorf("failed to poll for VM deployment completion: %v", err)
 	}
 
 	// Get the created VM
-	createdVM, err := p.Client.GetVirtualMachine(ctx, deployment.ResourceGroupName, machine.ComputerName)
+	createdVM, err := p.Client.GetVirtualMachine(
+		ctx,
+		deployment.ResourceGroupName,
+		machine.Location,
+		machine.ComputerName,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get created virtual machine: %v", err)
 	}
