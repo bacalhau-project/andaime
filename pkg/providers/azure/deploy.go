@@ -115,7 +115,7 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	
 	// Create virtual machines, depending on NSGs
 	l.Info("Creating virtual machines")
-	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsgs, tags, pulumi.DependsOn(nsgResources))
+	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsgs, tags, nsgResources)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
