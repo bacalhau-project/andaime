@@ -17,6 +17,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/olekukonko/tablewriter"
 	"os"
+	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 )
 
 // DeployResources deploys Azure resources based on the provided configuration.
@@ -413,7 +414,7 @@ func createVMs(
 				// Store the VM and its public IP in the deployment
 				deployment.Machines = append(deployment.Machines, models.Machine{
 					Name:            vmName,
-					PublicIPAddress: &armnetwork.PublicIPAddress{IPAddress: &armnetwork.PublicIPAddressIPAddress{IPAddress: publicIPAddress}},
+					PublicIPAddress: &armnetwork.PublicIPAddress{IPAddress: &armnetwork.PublicIPAddressIPAddress{IPAddress: &publicIPAddress}},
 				})
 
 				l.Infof("VM created successfully: %s", vmName)
