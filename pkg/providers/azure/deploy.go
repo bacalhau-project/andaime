@@ -15,6 +15,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/olekukonko/tablewriter"
+	"os"
 )
 
 // DeployResources deploys Azure resources based on the provided configuration.
@@ -73,6 +75,12 @@ func (p *AzureProvider) DeployResources(
 		Type:   "Deployment",
 		Status: "Completed",
 	})
+
+	// Close the display
+	disp.Close()
+
+	// Print the table of machines and IPs
+	printMachineIPTable(deployment)
 
 	return nil
 }
@@ -366,6 +374,11 @@ func createVMs(
 					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
 				}
 
+				// Store the public IP address
+				publicIPAddress := publicIP.IpAddress.ApplyT(func(ip string) string {
+					return ip
+				}).(pulumi.StringOutput)
+
 				// Create network interface
 				nic, err := createNetworkInterface(
 					pulumiCtx,
@@ -399,6 +412,12 @@ func createVMs(
 				if err != nil {
 					return fmt.Errorf("failed to create VM %s: %w", vmName, err)
 				}
+
+				// Store the VM and its public IP in the deployment
+				deployment.Machines = append(deployment.Machines, models.Machine{
+					Name:            vmName,
+					PublicIPAddress: &network.PublicIPAddress{IpAddress: publicIPAddress},
+				})
 
 				l.Infof("VM created successfully: %s", vmName)
 			}
@@ -618,4 +637,19 @@ func createVNets(
 		l.Infof("Virtual network created in %s", location)
 	}
 	return vnets, nil
+}
+func printMachineIPTable(deployment *models.Deployment) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Machine Name", "Public IP"})
+
+	for _, machine := range deployment.Machines {
+		if machine.PublicIPAddress != nil {
+			ipAddress := machine.PublicIPAddress.IpAddress.ApplyT(func(ip string) string {
+				return ip
+			}).(pulumi.StringOutput)
+			table.Append([]string{machine.Name, ipAddress.ToStringOutput().GetString()})
+		}
+	}
+
+	table.Render()
 }
