@@ -108,14 +108,14 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	l.Info("Network security groups created successfully")
 
 	// Ensure NSGs are created before proceeding
-	var nsgIDs []pulumi.IDOutput
+	var nsgResources []pulumi.Resource
 	for _, nsg := range nsgs {
-		nsgIDs = append(nsgIDs, nsg.ID())
+		nsgResources = append(nsgResources, nsg)
 	}
 	
 	// Create virtual machines, depending on NSGs
 	l.Info("Creating virtual machines")
-	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsgs, tags, pulumi.DependsOn(nsgIDs))
+	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsgs, tags, pulumi.DependsOn(nsgResources))
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
@@ -341,7 +341,7 @@ func createVMs(
 	vnets map[string]*network.VirtualNetwork,
 	nsgs map[string]*network.NetworkSecurityGroup,
 	tags pulumi.StringMap,
-	opts ...pulumi.ResourceOption,
+	dependsOn []pulumi.Resource,
 ) error {
 	l := logger.Get()
 	for _, machine := range deployment.Machines {
@@ -517,7 +517,7 @@ func createVirtualMachine(
 			},
 			Tags: tags,
 		},
-		pulumi.Merge(opts...),
+		pulumi.DependsOn(dependsOn),
 	)
 	return err
 }
