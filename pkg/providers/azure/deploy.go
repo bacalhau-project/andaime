@@ -54,7 +54,9 @@ func (p *AzureProvider) DeployResources(
 			utils.CloseAllChannels()
 		case <-done.Ch:
 			l.Info("Deployment completed, closing display channel")
-			disp.Close()
+			if disp != nil {
+				disp.Close()
+			}
 		}
 	}()
 
