@@ -134,6 +134,12 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
 
+	// Create a pulumi.All to wait for all resources to be created
+	pulumi.All(append([]pulumi.Resource{rg}, append(nsgResources, mapToResourceSlice(vnets)...)...)...).ApplyT(func(args []interface{}) error {
+		l.Info("All resources created successfully")
+		return nil
+	})
+
 	return nil
 }
 
@@ -181,6 +187,7 @@ func createVMs(
 	dependsOn []pulumi.Resource,
 ) error {
 	l := logger.Get()
+	var lastVM pulumi.Resource
 	for _, machine := range deployment.Machines {
 		for _, param := range machine.Parameters {
 			for i := 0; i < param.Count; i++ {
@@ -199,7 +206,7 @@ func createVMs(
 					resourceGroupName,
 					machine.Location,
 					tags,
-					dependsOn,
+					append(dependsOn, lastVM),
 				)
 				if err != nil {
 					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
@@ -265,6 +272,7 @@ func createVMs(
 				})
 
 				l.Infof("VM created successfully: %s", vmName)
+				lastVM = vm
 			}
 		}
 	}
