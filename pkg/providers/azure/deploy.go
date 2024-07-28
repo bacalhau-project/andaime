@@ -135,7 +135,12 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	}
 
 	// Create a pulumi.All to wait for all resources to be created
-	pulumi.All(append([]pulumi.Resource{rg}, append(nsgResources, mapToResourceSlice(vnets)...)...)...).ApplyT(func(args []interface{}) error {
+	resources := append([]pulumi.Resource{rg}, append(nsgResources, mapToResourceSlice(vnets)...)...)
+	interfaceResources := make([]interface{}, len(resources))
+	for i, r := range resources {
+		interfaceResources[i] = r
+	}
+	pulumi.All(interfaceResources...).ApplyT(func(args []interface{}) error {
 		l.Info("All resources created successfully")
 		return nil
 	})
