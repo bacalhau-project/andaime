@@ -367,7 +367,7 @@ func createVMs(
 					machine.Location,
 					vnets[machine.Location],
 					publicIP,
-					nsg,
+					nsgs[machine.Location],
 					tags,
 				)
 				if err != nil {
