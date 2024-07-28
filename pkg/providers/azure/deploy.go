@@ -99,15 +99,19 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
+	dependencies := []pulumi.Resource{rg}
+
 	// Create virtual networks
-	vnets, err := createVNets(pulumiCtx, deployment, deployment.ResourceGroupName, tags, rg)
+	vnets, err := createVNets(pulumiCtx, deployment, tags, dependencies)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual networks: %w", err)
 	}
 
+	dependencies = append(dependencies, mapToResourceSlice(vnets)...)
+
 	// Create network security groups and rules
 	l.Info("Creating network security groups")
-	nsgs, err := createNSGs(pulumiCtx, deployment, deployment.ResourceGroupName, tags, rg)
+	nsgs, err := createNSGs(pulumiCtx, deployment, tags, dependencies)
 	if err != nil {
 		return fmt.Errorf("failed to create network security groups: %w", err)
 	}
@@ -119,6 +123,8 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		nsgResources = append(nsgResources, nsg)
 	}
 
+	dependencies = append(dependencies, nsgResources...)
+
 	// Create virtual machines, depending on NSGs and VNets
 	l.Info("Creating virtual machines")
 	err = createVMs(
@@ -128,16 +134,15 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		vnets,
 		nsgs,
 		tags,
-		append(nsgResources, append([]pulumi.Resource{rg}, mapToResourceSlice(vnets)...)...),
+		dependencies,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
 
 	// Create a pulumi.All to wait for all resources to be created
-	resources := append([]pulumi.Resource{rg}, append(nsgResources, mapToResourceSlice(vnets)...)...)
-	interfaceResources := make([]interface{}, len(resources))
-	for i, r := range resources {
+	interfaceResources := make([]interface{}, len(dependencies))
+	for i, r := range dependencies {
 		interfaceResources[i] = r
 	}
 	pulumi.All(interfaceResources...).ApplyT(func(args []interface{}) error {
@@ -192,7 +197,6 @@ func createVMs(
 	dependsOn []pulumi.Resource,
 ) error {
 	l := logger.Get()
-	var lastVM pulumi.Resource
 	for _, machine := range deployment.Machines {
 		for _, param := range machine.Parameters {
 			for i := 0; i < param.Count; i++ {
@@ -211,11 +215,13 @@ func createVMs(
 					resourceGroupName,
 					machine.Location,
 					tags,
-					append(dependsOn, lastVM),
+					dependsOn,
 				)
 				if err != nil {
 					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
 				}
+
+				dependsOn = append(dependsOn, publicIP)
 
 				// Create network interface
 				nic, err := createNetworkInterface(
@@ -227,7 +233,7 @@ func createVMs(
 					publicIP,
 					nsgs[machine.Location],
 					tags,
-					append(dependsOn, publicIP),
+					dependsOn,
 				)
 				if err != nil {
 					return fmt.Errorf(
@@ -236,6 +242,8 @@ func createVMs(
 						err,
 					)
 				}
+
+				dependsOn = append(dependsOn, nic)
 
 				// Create VM
 				vm, err := createVirtualMachine(
@@ -247,7 +255,7 @@ func createVMs(
 					nic,
 					deployment.SSHPublicKeyData,
 					tags,
-					append(dependsOn, nic),
+					dependsOn,
 				)
 				if err != nil {
 					return fmt.Errorf("failed to create VM %s: %w", vmName, err)
@@ -255,8 +263,8 @@ func createVMs(
 
 				// Use Output.All to wait for the VM to be created before looking up its public IP
 				pulumi.All(vm.ID(), publicIP.Name).ApplyT(func(args []interface{}) error {
-					vmID := args[0].(string)
-					publicIPName := args[1].(string)
+					vmID := fmt.Sprintf("%v", args[0])
+					publicIPName := fmt.Sprintf("%v", args[1])
 
 					publicIPResult, err := network.LookupPublicIPAddress(
 						pulumiCtx,
@@ -277,7 +285,6 @@ func createVMs(
 				})
 
 				l.Infof("VM created successfully: %s", vmName)
-				lastVM = vm
 			}
 		}
 	}
@@ -412,14 +419,17 @@ func createVirtualMachine(
 func createNSGs(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
-	resourceGroupName string,
 	tags pulumi.StringMap,
-	rg *resources.ResourceGroup,
+	dependencies []pulumi.Resource,
 ) (map[string]*network.NetworkSecurityGroup, error) {
+	l := logger.Get()
+	l.Debug("Creating network security groups")
 	nsgs := make(map[string]*network.NetworkSecurityGroup)
 	for _, location := range deployment.Locations {
+		l.Debugf("Creating network security group for location: %s", location)
 		nsgRules := network.SecurityRuleTypeArray{}
 		for i, port := range deployment.AllowedPorts {
+			l.Debugf("Creating NSG rule for location - %s - port: %d", location, port)
 			nsgRules = append(nsgRules, &network.SecurityRuleTypeArgs{
 				Name:                     pulumi.Sprintf("Port%d", port),
 				Priority:                 pulumi.Int(1000 + i),
@@ -437,11 +447,12 @@ func createNSGs(
 			pulumiCtx,
 			fmt.Sprintf("nsg-%s-%s", deployment.ResourceGroupName, location),
 			&network.NetworkSecurityGroupArgs{
-				ResourceGroupName: pulumi.String(resourceGroupName),
+				ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
 				Location:          pulumi.String(location),
 				SecurityRules:     nsgRules,
 				Tags:              tags,
 			},
+			pulumi.DependsOn(dependencies),
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -451,6 +462,7 @@ func createNSGs(
 			)
 		}
 		nsgs[location] = nsg
+		l.Debugf("Network security group created in %s", location)
 	}
 	return nsgs, nil
 }
@@ -458,9 +470,8 @@ func createNSGs(
 func createVNets(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
-	resourceGroupName string,
 	tags pulumi.StringMap,
-	rg *resources.ResourceGroup,
+	dependencies []pulumi.Resource,
 ) (map[string]*network.VirtualNetwork, error) {
 	l := logger.Get()
 	l.Info("Creating virtual networks")
@@ -478,7 +489,7 @@ func createVNets(
 			pulumiCtx,
 			"vnet-"+location,
 			&network.VirtualNetworkArgs{
-				ResourceGroupName: pulumi.String(resourceGroupName),
+				ResourceGroupName: pulumi.String(deployment.ResourceGroupName),
 				Location:          pulumi.String(location),
 				AddressSpace: &network.AddressSpaceArgs{
 					AddressPrefixes: pulumi.StringArray{pulumi.String("10.0.0.0/16")},
@@ -491,6 +502,7 @@ func createVNets(
 				},
 				Tags: tags,
 			},
+			pulumi.DependsOn(dependencies),
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
