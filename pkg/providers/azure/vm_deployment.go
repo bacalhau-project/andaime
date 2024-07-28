@@ -3,8 +3,8 @@ package azure
 import (
 	"context"
 	"fmt"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -30,7 +30,12 @@ func (p *AzureProvider) CreatePublicIP(
 	var lastErr error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		l.Debugf("CreatePublicIP: Attempt %d of %d for machine %s", attempt+1, maxRetries, machine.ID)
+		l.Debugf(
+			"CreatePublicIP: Attempt %d of %d for machine %s",
+			attempt+1,
+			maxRetries,
+			machine.ID,
+		)
 
 		createdIP, err := p.Client.CreatePublicIP(
 			ctx,
@@ -41,13 +46,21 @@ func (p *AzureProvider) CreatePublicIP(
 		)
 
 		if err == nil {
-			l.Infof("CreatePublicIP: Successfully created public IP for machine %s on attempt %d", machine.ID, attempt+1)
+			l.Infof(
+				"CreatePublicIP: Successfully created public IP for machine %s on attempt %d",
+				machine.ID,
+				attempt+1,
+			)
 			return &createdIP, nil
 		}
 
 		lastErr = err
 		if strings.Contains(err.Error(), "Canceled") {
-			l.Warnf("CreatePublicIP: Operation was canceled, retrying for machine %s: %v", machine.ID, err)
+			l.Warnf(
+				"CreatePublicIP: Operation was canceled, retrying for machine %s: %v",
+				machine.ID,
+				err,
+			)
 			time.Sleep(time.Duration(attempt+1) * time.Second)
 			continue
 		}
@@ -97,7 +110,7 @@ func (p *AzureProvider) CreateNIC(
 		getNetworkInterfaceName(machine.ID),
 		deployment.Tags,
 		deployment.Subnets[machine.Location][0],
-		machine.PublicIP,
+		machine.PublicIPAddress,
 		machine.NetworkSecurityGroup,
 	)
 	if err != nil {
@@ -107,7 +120,7 @@ func (p *AzureProvider) CreateNIC(
 	return &createdNIC, nil
 }
 
-// createVM creates the virtual machine
+// createVM creates the virtual machine using Bicep template
 func (p *AzureProvider) CreateVirtualMachine(
 	ctx context.Context,
 	deployment *models.Deployment,
@@ -118,71 +131,42 @@ func (p *AzureProvider) CreateVirtualMachine(
 		return nil, fmt.Errorf("network interface not created for machine %s", machine.ID)
 	}
 
-	vmSize := machine.VMSize
-	if vmSize == "" {
-		vmSize = "Standard_DS1_v2" // Default VM size if not specified
+	// Prepare parameters for Bicep template
+	params := map[string]interface{}{
+		"vmName":           machine.ComputerName,
+		"vmSize":           machine.VMSize,
+		"adminUsername":    "azureuser",
+		"adminPublicKey":   string(deployment.SSHPublicKeyData),
+		"networkInterfaceId": *machine.Interface.ID,
+		"location":         machine.Location,
+		"osDiskSizeGB":     getDiskSizeGB(machine.DiskSizeGB),
 	}
 
-	params := armcompute.VirtualMachine{
-		Location: to.Ptr(machine.Location),
-		Tags:     deployment.Tags,
-		Properties: &armcompute.VirtualMachineProperties{
-			HardwareProfile: &armcompute.HardwareProfile{
-				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(vmSize)),
-			},
-			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(machine.ComputerName),
-				AdminUsername: to.Ptr("azureuser"),
-				LinuxConfiguration: &armcompute.LinuxConfiguration{
-					DisablePasswordAuthentication: to.Ptr(true),
-					SSH: &armcompute.SSHConfiguration{
-						PublicKeys: []*armcompute.SSHPublicKey{
-							{
-								Path:    to.Ptr("/home/azureuser/.ssh/authorized_keys"),
-								KeyData: to.Ptr(string(deployment.SSHPublicKeyData)),
-							},
-						},
-					},
-				},
-			},
-			StorageProfile: &armcompute.StorageProfile{
-				ImageReference: &armcompute.ImageReference{
-					Publisher: to.Ptr("Canonical"),
-					Offer:     to.Ptr("UbuntuServer"),
-					SKU:       to.Ptr("18.04-LTS"),
-					Version:   to.Ptr("latest"),
-				},
-				OSDisk: &armcompute.OSDisk{
-					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
-					ManagedDisk: &armcompute.ManagedDiskParameters{
-						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
-					},
-					DiskSizeGB: to.Ptr(getDiskSizeGB(machine.DiskSizeGB)),
-				},
-			},
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-					{
-						ID: to.Ptr(*machine.Interface.ID),
-						Properties: &armcompute.NetworkInterfaceReferenceProperties{
-							Primary: to.Ptr(true),
-						},
-					},
-				},
-			},
-		},
-	}
+	// Get the Bicep template
+	template := internal.VMBicep
 
-	createdVM, err := p.Client.CreateVirtualMachine(
+	// Deploy the ARM template
+	future, err := p.Client.DeployTemplate(
 		ctx,
 		deployment.ResourceGroupName,
-		machine.Location,
-		machine.ComputerName,
-		&params,
+		machine.ComputerName+"-deployment",
+		template,
+		params,
 		deployment.Tags,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create virtual machine: %v", err)
+		return nil, fmt.Errorf("failed to deploy VM template: %v", err)
+	}
+
+	err = future.WaitForCompletionRef(ctx, p.Client.GetDeploymentsClient())
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for VM deployment completion: %v", err)
+	}
+
+	// Get the created VM
+	createdVM, err := p.Client.GetVirtualMachine(ctx, deployment.ResourceGroupName, machine.ComputerName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get created virtual machine: %v", err)
 	}
 
 	return &createdVM, nil

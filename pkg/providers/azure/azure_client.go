@@ -356,6 +356,35 @@ func getVMName(machineID string) string {
 	return machineID + "-vm"
 }
 
+func (c *LiveAzureClient) DeployTemplate(
+	ctx context.Context,
+	resourceGroupName string,
+	deploymentName string,
+	template string,
+	parameters map[string]interface{},
+	tags map[string]*string,
+) (armresources.DeploymentsCreateOrUpdateFuture, error) {
+	l := logger.Get()
+	l.Debugf("DeployTemplate: Beginning - %s", deploymentName)
+
+	deploymentsClient := armresources.NewDeploymentsClient(c.subscriptionID, c.cred, nil)
+	
+	deployment := armresources.Deployment{
+		Properties: &armresources.DeploymentProperties{
+			Template:   &template,
+			Parameters: &parameters,
+			Mode:       to.Ptr(armresources.DeploymentModeIncremental),
+		},
+		Tags: tags,
+	}
+
+	return deploymentsClient.BeginCreateOrUpdate(ctx, resourceGroupName, deploymentName, deployment, nil)
+}
+
+func (c *LiveAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient {
+	return armresources.NewDeploymentsClient(c.subscriptionID, c.cred, nil)
+}
+
 func (c *LiveAzureClient) CreateVirtualMachine(ctx context.Context,
 	resourceGroupName string,
 	location string,
