@@ -271,12 +271,8 @@ func (p *AzureProvider) ProcessMachines(ctx context.Context,
 					errChan <- fmt.Errorf("VM deployment cancelled: %w", ctx.Err())
 					return
 				default:
-					vmName := fmt.Sprintf(
-						"%s-%d-%s",
-						internalMachine.Location,
-						index,
-						internalMachine.ID,
-					)
+					// VM name format: vm-{machine_id}
+					vmName := fmt.Sprintf("vm-%s", internalMachine.ID)
 					l.Debugf("Starting deployment for VM: %s", vmName)
 					disp.UpdateStatus(&models.Status{
 						ID:   internalMachine.ID,
@@ -459,11 +455,12 @@ func (p *AzureProvider) createNetworkResourcesForMachine(
 	)
 
 	// Create Public IP
+	// Create Public IP with consistent VM naming
 	publicIP, err := p.Client.CreatePublicIP(
 		ctx,
 		deployment.ResourceGroupName,
 		machine.Location,
-		machine.ID,
+		fmt.Sprintf("vm-%s", machine.ID),
 		deployment.Tags,
 	)
 	if err != nil {
@@ -499,11 +496,12 @@ func (p *AzureProvider) createNetworkResourcesForMachine(
 	)
 
 	// Create NIC
+	// Create NIC with consistent VM naming
 	nic, err := p.Client.CreateNetworkInterface(
 		ctx,
 		deployment.ResourceGroupName,
 		machine.Location,
-		machine.ID,
+		fmt.Sprintf("vm-%s", machine.ID),
 		deployment.Tags,
 		subnet[0],
 		&publicIP,
