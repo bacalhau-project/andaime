@@ -22,3 +22,4 @@ release/
 code_execution_env/**
 process_*
 coverage.log
+config.yaml

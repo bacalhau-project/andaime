@@ -14,6 +14,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
 var (
@@ -201,14 +203,17 @@ func (p *AzureProvider) CreateVirtualMachine(
 		return nil, fmt.Errorf("failed to deploy VM template: %v", err)
 	}
 
-	resp, err := future.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{
-		Frequency: time.Second,
-	})
+	// Call the new function to handle deployment polling
+	err = p.pollDeploymentStatus(ctx, future, deployment, machine.ID, disp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to poll for VM deployment completion: %v", err)
+		return nil, err
+	}
+	result, err := future.Result(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment result: %v", err)
 	}
 
-	l.Debugf("CreateVirtualMachine: Deployment response: %v", resp)
+	l.Debugf("CreateVirtualMachine: Deployment response: %v", result)
 
 	// Get the created VM
 	createdVM, err := p.Client.GetVirtualMachine(
@@ -222,6 +227,64 @@ func (p *AzureProvider) CreateVirtualMachine(
 	}
 
 	return &createdVM, nil
+}
+
+// New function to handle deployment polling
+func (p *AzureProvider) pollDeploymentStatus(
+	ctx context.Context,
+	future *runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse],
+	deployment *models.Deployment,
+	statusID string,
+	disp *display.Display,
+) error {
+	l := logger.Get()
+	pollInterval := 1 * time.Second
+	i := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			l.Info("Deployment cancelled")
+			return ctx.Err()
+		default:
+			status, err := future.PollUntilDone(ctx, nil)
+			if err != nil {
+				l.Errorf("Error checking deployment status: %v", err)
+				return fmt.Errorf("error checking deployment status: %w", err)
+			}
+
+			if future.Done() {
+				deploymentResult, err := future.Result(ctx)
+				if err != nil {
+					l.Errorf("Failed to get deployment result: %v", err)
+					return fmt.Errorf("failed to get deployment result: %w", err)
+				}
+				if deploymentResult.Properties != nil &&
+					deploymentResult.Properties.ProvisioningState != nil {
+					state := *deploymentResult.Properties.ProvisioningState
+					l.Infof("Deployment completed with state: %s", state)
+					if state == "Succeeded" {
+						l.Debugf(
+							"Bicep template deployed successfully for deployment: %v",
+							deployment,
+						)
+						return nil
+					} else {
+						return fmt.Errorf("deployment failed with state: %s", state)
+					}
+				}
+			}
+
+			i++
+			l.Debugf("Deployment Loop Tick - %d - %s", i, *status.Properties.ProvisioningState)
+			disp.UpdateStatus(&models.Status{
+				ID:     statusID,
+				Status: string(*status.Properties.ProvisioningState),
+			})
+
+			time.Sleep(pollInterval)
+		}
+	}
 }
 
 // createNSG creates a network security group with the specified open ports
