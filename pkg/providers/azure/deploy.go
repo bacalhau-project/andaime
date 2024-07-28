@@ -517,7 +517,6 @@ func createVirtualMachine(
 			},
 			Tags: tags,
 		},
-		pulumi.DependsOn(dependsOn),
 	)
 	return err
 }
