@@ -413,8 +413,12 @@ func createVMs(
 
 				// Store the VM and its public IP in the deployment
 				deployment.Machines = append(deployment.Machines, models.Machine{
-					Name:            vmName,
-					PublicIPAddress: &armnetwork.PublicIPAddress{IPAddress: &armnetwork.PublicIPAddressIPAddress{IPAddress: &publicIPAddress}},
+					Name: vmName,
+					PublicIPAddress: &armnetwork.PublicIPAddress{
+						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+							IPAddress: &publicIPAddress,
+						},
+					},
 				})
 
 				l.Infof("VM created successfully: %s", vmName)
@@ -641,8 +645,8 @@ func printMachineIPTable(deployment *models.Deployment) {
 	table.SetHeader([]string{"Machine Name", "Public IP"})
 
 	for _, machine := range deployment.Machines {
-		if machine.PublicIPAddress != nil && machine.PublicIPAddress.IPAddress != nil {
-			ipAddress := machine.PublicIPAddress.IPAddress.IPAddress
+		if machine.PublicIPAddress != nil && machine.PublicIPAddress.Properties != nil {
+			ipAddress := machine.PublicIPAddress.Properties.IPAddress
 			if ipAddress != nil {
 				table.Append([]string{machine.Name, *ipAddress})
 			}
