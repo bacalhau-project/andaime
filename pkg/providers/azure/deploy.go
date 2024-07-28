@@ -119,7 +119,7 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		nsgResources = append(nsgResources, nsg)
 	}
 
-	// Create virtual machines, depending on NSGs
+	// Create virtual machines, depending on NSGs and VNets
 	l.Info("Creating virtual machines")
 	err = createVMs(
 		pulumiCtx,
@@ -128,13 +128,22 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		vnets,
 		nsgs,
 		tags,
-		append(nsgResources, rg),
+		append(nsgResources, append([]pulumi.Resource{rg}, mapToResourceSlice(vnets)...)...),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
 
 	return nil
+}
+
+// Helper function to convert map of VNets to a slice of pulumi.Resource
+func mapToResourceSlice(m map[string]*network.VirtualNetwork) []pulumi.Resource {
+	result := make([]pulumi.Resource, 0, len(m))
+	for _, v := range m {
+		result = append(result, v)
+	}
+	return result
 }
 
 func createResourceGroup(
@@ -190,6 +199,7 @@ func createVMs(
 					resourceGroupName,
 					machine.Location,
 					tags,
+					dependsOn,
 				)
 				if err != nil {
 					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
@@ -205,6 +215,7 @@ func createVMs(
 					publicIP,
 					nsgs[machine.Location],
 					tags,
+					append(dependsOn, publicIP),
 				)
 				if err != nil {
 					return fmt.Errorf(
@@ -215,7 +226,7 @@ func createVMs(
 				}
 
 				// Create VM
-				_, err = createVirtualMachine(
+				vm, err := createVirtualMachine(
 					pulumiCtx,
 					vmName,
 					resourceGroupName,
@@ -224,34 +235,38 @@ func createVMs(
 					nic,
 					deployment.SSHPublicKeyData,
 					tags,
+					append(dependsOn, nic),
 				)
 				if err != nil {
 					return fmt.Errorf("failed to create VM %s: %w", vmName, err)
 				}
 
-				publicIPResult, err := network.LookupPublicIPAddress(
-					pulumiCtx,
-					&network.LookupPublicIPAddressArgs{
-						PublicIpAddressName: publicIPAddressName,
-						ResourceGroupName:   resourceGroupName,
-					},
-					nil,
-				)
+				// Use Output.All to wait for the VM to be created before looking up its public IP
+				_, err = pulumi.All(vm.ID(), publicIP.Name).ApplyT(func(args []interface{}) (string, error) {
+					vmID := args[0].(string)
+					publicIPName := args[1].(string)
 
-				machine.PublicIP = *publicIPResult.IpAddress
+					publicIPResult, err := network.LookupPublicIPAddress(
+						pulumiCtx,
+						&network.LookupPublicIPAddressArgs{
+							PublicIpAddressName: publicIPName,
+							ResourceGroupName:   resourceGroupName,
+						},
+						pulumi.Parent(vm),
+					)
+					if err != nil {
+						return "", fmt.Errorf("failed to lookup public IP address: %w", err)
+					}
 
-				// Store the VM ID for future reference if needed
-				vmResult, err := compute.LookupVirtualMachine(
-					pulumiCtx,
-					&compute.LookupVirtualMachineArgs{
-						ResourceGroupName: resourceGroupName,
-						VmName:            vmName,
-					},
-				)
+					machine.PublicIP = *publicIPResult.IpAddress
+					machine.InstanceID = vmID
+
+					return "", nil
+				}).(pulumi.StringOutput).ToStringOutput()
+
 				if err != nil {
-					return fmt.Errorf("failed to lookup virtual machine: %w", err)
+					return fmt.Errorf("failed to get VM details: %w", err)
 				}
-				machine.InstanceID = vmResult.Id
 
 				l.Infof("VM created successfully: %s", vmName)
 			}
@@ -266,6 +281,7 @@ func createPublicIP(
 	resourceGroupName string,
 	location string,
 	tags pulumi.StringMap,
+	dependsOn []pulumi.Resource,
 ) (*network.PublicIPAddress, error) {
 	return network.NewPublicIPAddress(
 		pulumiCtx,
@@ -275,6 +291,7 @@ func createPublicIP(
 			Location:          pulumi.String(location),
 			Tags:              tags,
 		},
+		pulumi.DependsOn(dependsOn),
 	)
 }
 
@@ -287,6 +304,7 @@ func createNetworkInterface(
 	publicIP *network.PublicIPAddress,
 	nsg *network.NetworkSecurityGroup,
 	tags pulumi.StringMap,
+	dependsOn []pulumi.Resource,
 ) (*network.NetworkInterface, error) {
 	return network.NewNetworkInterface(
 		pulumiCtx,
@@ -310,6 +328,7 @@ func createNetworkInterface(
 			},
 			Tags: tags,
 		},
+		pulumi.DependsOn(dependsOn),
 	)
 }
 
@@ -322,6 +341,7 @@ func createVirtualMachine(
 	nic *network.NetworkInterface,
 	sshPublicKeyData []byte,
 	tags pulumi.StringMap,
+	dependsOn []pulumi.Resource,
 ) (*compute.VirtualMachine, error) {
 	vm, err := compute.NewVirtualMachine(
 		pulumiCtx,
@@ -375,6 +395,7 @@ func createVirtualMachine(
 			},
 			Tags: tags,
 		},
+		pulumi.DependsOn(dependsOn),
 	)
 	return vm, err
 }
