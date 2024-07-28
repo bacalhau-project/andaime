@@ -76,9 +76,6 @@ func (p *AzureProvider) DeployResources(
 		Status: "Completed",
 	})
 
-	// Close the display
-	disp.Close()
-
 	// Print the table of machines and IPs
 	printMachineIPTable(deployment)
 
@@ -416,7 +413,7 @@ func createVMs(
 				// Store the VM and its public IP in the deployment
 				deployment.Machines = append(deployment.Machines, models.Machine{
 					Name:            vmName,
-					PublicIPAddress: &network.PublicIPAddress{IpAddress: publicIPAddress},
+					PublicIPAddress: &armnetwork.PublicIPAddress{IPAddress: &armnetwork.PublicIPAddressIPAddress{IPAddress: publicIPAddress}},
 				})
 
 				l.Infof("VM created successfully: %s", vmName)
@@ -643,11 +640,11 @@ func printMachineIPTable(deployment *models.Deployment) {
 	table.SetHeader([]string{"Machine Name", "Public IP"})
 
 	for _, machine := range deployment.Machines {
-		if machine.PublicIPAddress != nil {
-			ipAddress := machine.PublicIPAddress.IpAddress.ApplyT(func(ip string) string {
-				return ip
-			}).(pulumi.StringOutput)
-			table.Append([]string{machine.Name, ipAddress.ToStringOutput().GetString()})
+		if machine.PublicIPAddress != nil && machine.PublicIPAddress.IPAddress != nil {
+			ipAddress := machine.PublicIPAddress.IPAddress.IPAddress
+			if ipAddress != nil {
+				table.Append([]string{machine.Name, *ipAddress})
+			}
 		}
 	}
 
