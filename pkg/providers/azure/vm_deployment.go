@@ -134,13 +134,27 @@ func (p *AzureProvider) CreateVirtualMachine(
 
 	// Prepare parameters for Bicep template
 	params := map[string]interface{}{
-		"vmName":             machine.ComputerName,
-		"vmSize":             machine.VMSize,
-		"adminUsername":      "azureuser",
-		"adminPublicKey":     string(deployment.SSHPublicKeyData),
-		"networkInterfaceId": *machine.Interface.ID,
-		"location":           machine.Location,
-		"osDiskSizeGB":       getDiskSizeGB(machine.DiskSizeGB),
+		"vmName": map[string]interface{}{
+			"value": machine.ComputerName,
+		},
+		"vmSize": map[string]interface{}{
+			"value": machine.VMSize,
+		},
+		"adminUsername": map[string]interface{}{
+			"value": "azureuser",
+		},
+		"adminPublicKey": map[string]interface{}{
+			"value": string(deployment.SSHPublicKeyData),
+		},
+		"networkInterfaceId": map[string]interface{}{
+			"value": *machine.Interface.ID,
+		},
+		"location": map[string]interface{}{
+			"value": machine.Location,
+		},
+		"osDiskSizeGB": map[string]interface{}{
+			"value": getDiskSizeGB(machine.DiskSizeGB),
+		},
 	}
 
 	// Get the Bicep template
