@@ -8,7 +8,6 @@ import (
 
 	"os"
 
-	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -95,20 +94,20 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	}
 
 	// Create resource group
-	rg, err := createResourceGroup(pulumiCtx, deployment, tags)
+	_, err := createResourceGroup(pulumiCtx, deployment, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
 	// Create virtual networks
-	vnets, err := createVNets(pulumiCtx, deployment, rg.Name, tags)
+	vnets, err := createVNets(pulumiCtx, deployment, deployment.ResourceGroupName, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual networks: %w", err)
 	}
 
 	// Create network security groups and rules
 	l.Info("Creating network security groups")
-	nsgs, err := createNSGs(pulumiCtx, deployment, rg.Name, tags)
+	nsgs, err := createNSGs(pulumiCtx, deployment, deployment.ResourceGroupName, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create network security groups: %w", err)
 	}
@@ -122,199 +121,21 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 
 	// Create virtual machines, depending on NSGs
 	l.Info("Creating virtual machines")
-	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsgs, tags, nsgResources)
+	err = createVMs(
+		pulumiCtx,
+		deployment,
+		deployment.ResourceGroupName,
+		vnets,
+		nsgs,
+		tags,
+		nsgResources,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
 
 	return nil
 }
-
-// func createVMs(
-// 	pulumiCtx *pulumi.Context,
-// 	deployment *models.Deployment,
-// 	resourceGroupName pulumi.StringInput,
-// 	vnets map[string]*network.VirtualNetwork,
-// 	nsg *network.NetworkSecurityGroup,
-// 	tags pulumi.StringMap,
-// ) error {
-// 	l := logger.Get()
-// 	for _, machine := range deployment.Machines {
-// 		for _, param := range machine.Parameters {
-// 			for i := 0; i < param.Count; i++ {
-// 				if err := pulumiCtx.Context().Err(); err != nil {
-// 					return fmt.Errorf("deployment cancelled while creating VMs: %w", err)
-// 				}
-
-// 				vmName := machine.Name + "-" + fmt.Sprint(i)
-// 				l.Debugf("Creating VM: %s", vmName)
-
-// 				// Create public IP
-// 				publicIP, err := createPublicIP(
-// 					pulumiCtx,
-// 					vmName,
-// 					resourceGroupName,
-// 					machine.Location,
-// 					tags,
-// 				)
-// 				if err != nil {
-// 					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
-// 				}
-
-// 				// Create network interface
-// 				nic, err := createNetworkInterface(
-// 					pulumiCtx,
-// 					vmName,
-// 					resourceGroupName,
-// 					machine.Location,
-// 					vnets[machine.Location],
-// 					publicIP,
-// 					nsg,
-// 					tags,
-// 				)
-// 				if err != nil {
-// 					return fmt.Errorf(
-// 						"failed to create network interface for VM %s: %w",
-// 						vmName,
-// 						err,
-// 					)
-// 				}
-
-// 				// Create VM
-// 				err = createVirtualMachine(
-// 					pulumiCtx,
-// 					vmName,
-// 					resourceGroupName,
-// 					machine,
-// 					param,
-// 					nic,
-// 					deployment.SSHPublicKeyData,
-// 					tags,
-// 				)
-// 				if err != nil {
-// 					return fmt.Errorf("failed to create VM %s: %w", vmName, err)
-// 				}
-
-// 				l.Infof("VM created successfully: %s", vmName)
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
-
-// func createPublicIP(
-// 	pulumiCtx *pulumi.Context,
-// 	name string,
-// 	resourceGroupName pulumi.StringInput,
-// 	location string,
-// 	tags pulumi.StringMap,
-// ) (*network.PublicIPAddress, error) {
-// 	return network.NewPublicIPAddress(
-// 		pulumiCtx,
-// 		name+"-ip",
-// 		&network.PublicIPAddressArgs{
-// 			ResourceGroupName: resourceGroupName,
-// 			Location:          pulumi.String(location),
-// 			Tags:              tags,
-// 		},
-// 	)
-// }
-
-// func createNetworkInterface(
-// 	pulumiCtx *pulumi.Context,
-// 	name string,
-// 	resourceGroupName pulumi.StringInput,
-// 	location string,
-// 	vnet *network.VirtualNetwork,
-// 	publicIP *network.PublicIPAddress,
-// 	nsg *network.NetworkSecurityGroup,
-// 	tags pulumi.StringMap,
-// ) (*network.NetworkInterface, error) {
-// 	return network.NewNetworkInterface(
-// 		pulumiCtx,
-// 		name+"-nic",
-// 		&network.NetworkInterfaceArgs{
-// 			ResourceGroupName: resourceGroupName,
-// 			Location:          pulumi.String(location),
-// 			IpConfigurations: network.NetworkInterfaceIPConfigurationArray{
-// 				&network.NetworkInterfaceIPConfigurationArgs{
-// 					Name: pulumi.String("ipconfig"),
-// 					Subnet: &network.SubnetTypeArgs{
-// 						Id: vnet.Subnets.Index(pulumi.Int(0)).Id(),
-// 					},
-// 					PublicIPAddress: &network.PublicIPAddressTypeArgs{
-// 						Id: publicIP.ID(),
-// 					},
-// 				},
-// 			},
-// 			NetworkSecurityGroup: &network.NetworkSecurityGroupTypeArgs{
-// 				Id: nsg.ID(),
-// 			},
-// 			Tags: tags,
-// 		},
-// 	)
-// }
-
-// func createVirtualMachine(
-// 	pulumiCtx *pulumi.Context,
-// 	name string,
-// 	resourceGroupName pulumi.StringInput,
-// 	machine models.Machine,
-// 	param models.Parameters,
-// 	nic *network.NetworkInterface,
-// 	sshPublicKeyData []byte,
-// 	tags pulumi.StringMap,
-// ) error {
-// 	_, err := compute.NewVirtualMachine(
-// 		pulumiCtx,
-// 		name,
-// 		&compute.VirtualMachineArgs{
-// 			ResourceGroupName: resourceGroupName,
-// 			Location:          pulumi.String(machine.Location),
-// 			NetworkProfile: &compute.NetworkProfileArgs{
-// 				NetworkInterfaces: compute.NetworkInterfaceReferenceArray{
-// 					&compute.NetworkInterfaceReferenceArgs{
-// 						Id: nic.ID(),
-// 					},
-// 				},
-// 			},
-// 			HardwareProfile: &compute.HardwareProfileArgs{
-// 				VmSize: pulumi.String(param.Type),
-// 			},
-// 			OsProfile: &compute.OSProfileArgs{
-// 				ComputerName:  pulumi.String(machine.ComputerName),
-// 				AdminUsername: pulumi.String("azureuser"),
-// 				LinuxConfiguration: &compute.LinuxConfigurationArgs{
-// 					Ssh: &compute.SshConfigurationArgs{
-// 						PublicKeys: compute.SshPublicKeyTypeArray{
-// 							&compute.SshPublicKeyTypeArgs{
-// 								KeyData: pulumi.String(string(sshPublicKeyData)),
-// 								Path:    pulumi.String("/home/azureuser/.ssh/authorized_keys"),
-// 							},
-// 						},
-// 					},
-// 				},
-// 			},
-// 			StorageProfile: &compute.StorageProfileArgs{
-// 				OsDisk: &compute.OSDiskArgs{
-// 					CreateOption: pulumi.String("FromImage"),
-// 					ManagedDisk: &compute.ManagedDiskParametersArgs{
-// 						StorageAccountType: pulumi.String("Premium_LRS"),
-// 					},
-// 					DiskSizeGB: pulumi.Int(machine.DiskSizeGB),
-// 				},
-// 				ImageReference: &compute.ImageReferenceArgs{
-// 					Publisher: pulumi.String("Canonical"),
-// 					Offer:     pulumi.String("UbuntuServer"),
-// 					Sku:       pulumi.String("18.04-LTS"),
-// 					Version:   pulumi.String("latest"),
-// 				},
-// 			},
-// 			Tags: tags,
-// 		},
-// 	)
-// 	return err
-// }
 
 func createResourceGroup(
 	pulumiCtx *pulumi.Context,
@@ -344,7 +165,7 @@ func createResourceGroup(
 func createVMs(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
-	resourceGroupName pulumi.StringInput,
+	resourceGroupName string,
 	vnets map[string]*network.VirtualNetwork,
 	nsgs map[string]*network.NetworkSecurityGroup,
 	tags pulumi.StringMap,
@@ -362,9 +183,10 @@ func createVMs(
 				l.Debugf("Creating VM: %s", vmName)
 
 				// Create public IP
+				publicIPAddressName := vmName + "-ip"
 				publicIP, err := createPublicIP(
 					pulumiCtx,
-					vmName,
+					publicIPAddressName,
 					resourceGroupName,
 					machine.Location,
 					tags,
@@ -393,7 +215,7 @@ func createVMs(
 				}
 
 				// Create VM
-				vm, err := createVirtualMachine(
+				_, err = createVirtualMachine(
 					pulumiCtx,
 					vmName,
 					resourceGroupName,
@@ -407,18 +229,29 @@ func createVMs(
 					return fmt.Errorf("failed to create VM %s: %w", vmName, err)
 				}
 
-				// Store the VM and its public IP in the deployment
-				deployment.Machines = append(deployment.Machines, models.Machine{
-					Name: vmName,
-					PublicIPAddress: &armnetwork.PublicIPAddress{
-						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
-							IPAddress: publicIP.IpAddress,
-						},
+				publicIPResult, err := network.LookupPublicIPAddress(
+					pulumiCtx,
+					&network.LookupPublicIPAddressArgs{
+						PublicIpAddressName: publicIPAddressName,
+						ResourceGroupName:   resourceGroupName,
 					},
-				})
+					nil,
+				)
+
+				machine.PublicIP = *publicIPResult.IpAddress
 
 				// Store the VM ID for future reference if needed
-				machine.ID = vm.ID().ToStringOutput().ApplyT(func(s string) string { return s }).(pulumi.StringOutput)
+				vmResult, err := compute.LookupVirtualMachine(
+					pulumiCtx,
+					&compute.LookupVirtualMachineArgs{
+						ResourceGroupName: resourceGroupName,
+						VmName:            vmName,
+					},
+				)
+				if err != nil {
+					return fmt.Errorf("failed to lookup virtual machine: %w", err)
+				}
+				machine.InstanceID = vmResult.Id
 
 				l.Infof("VM created successfully: %s", vmName)
 			}
@@ -429,16 +262,16 @@ func createVMs(
 
 func createPublicIP(
 	pulumiCtx *pulumi.Context,
-	name string,
-	resourceGroupName pulumi.StringInput,
+	publicIPAddressName string,
+	resourceGroupName string,
 	location string,
 	tags pulumi.StringMap,
 ) (*network.PublicIPAddress, error) {
 	return network.NewPublicIPAddress(
 		pulumiCtx,
-		name+"-ip",
+		publicIPAddressName,
 		&network.PublicIPAddressArgs{
-			ResourceGroupName: resourceGroupName,
+			ResourceGroupName: pulumi.String(resourceGroupName),
 			Location:          pulumi.String(location),
 			Tags:              tags,
 		},
@@ -448,7 +281,7 @@ func createPublicIP(
 func createNetworkInterface(
 	pulumiCtx *pulumi.Context,
 	name string,
-	resourceGroupName pulumi.StringInput,
+	resourceGroupName string,
 	location string,
 	vnet *network.VirtualNetwork,
 	publicIP *network.PublicIPAddress,
@@ -459,7 +292,7 @@ func createNetworkInterface(
 		pulumiCtx,
 		name+"-nic",
 		&network.NetworkInterfaceArgs{
-			ResourceGroupName: resourceGroupName,
+			ResourceGroupName: pulumi.String(resourceGroupName),
 			Location:          pulumi.String(location),
 			IpConfigurations: network.NetworkInterfaceIPConfigurationArray{
 				&network.NetworkInterfaceIPConfigurationArgs{
@@ -483,7 +316,7 @@ func createNetworkInterface(
 func createVirtualMachine(
 	pulumiCtx *pulumi.Context,
 	name string,
-	resourceGroupName pulumi.StringInput,
+	resourceGroupName string,
 	machine models.Machine,
 	param models.Parameters,
 	nic *network.NetworkInterface,
@@ -494,7 +327,7 @@ func createVirtualMachine(
 		pulumiCtx,
 		name,
 		&compute.VirtualMachineArgs{
-			ResourceGroupName: resourceGroupName,
+			ResourceGroupName: pulumi.String(resourceGroupName),
 			Location:          pulumi.String(machine.Location),
 			NetworkProfile: &compute.NetworkProfileArgs{
 				NetworkInterfaces: compute.NetworkInterfaceReferenceArray{
@@ -549,7 +382,7 @@ func createVirtualMachine(
 func createNSGs(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
-	resourceGroupName pulumi.StringInput,
+	resourceGroupName string,
 	tags pulumi.StringMap,
 ) (map[string]*network.NetworkSecurityGroup, error) {
 	nsgs := make(map[string]*network.NetworkSecurityGroup)
@@ -573,7 +406,7 @@ func createNSGs(
 			pulumiCtx,
 			fmt.Sprintf("nsg-%s-%s", deployment.ResourceGroupName, location),
 			&network.NetworkSecurityGroupArgs{
-				ResourceGroupName: resourceGroupName,
+				ResourceGroupName: pulumi.String(resourceGroupName),
 				Location:          pulumi.String(location),
 				SecurityRules:     nsgRules,
 				Tags:              tags,
@@ -594,7 +427,7 @@ func createNSGs(
 func createVNets(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
-	resourceGroupName pulumi.StringInput,
+	resourceGroupName string,
 	tags pulumi.StringMap,
 ) (map[string]*network.VirtualNetwork, error) {
 	l := logger.Get()
@@ -613,7 +446,7 @@ func createVNets(
 			pulumiCtx,
 			"vnet-"+location,
 			&network.VirtualNetworkArgs{
-				ResourceGroupName: resourceGroupName,
+				ResourceGroupName: pulumi.String(resourceGroupName),
 				Location:          pulumi.String(location),
 				AddressSpace: &network.AddressSpaceArgs{
 					AddressPrefixes: pulumi.StringArray{pulumi.String("10.0.0.0/16")},
@@ -644,10 +477,10 @@ func printMachineIPTable(deployment *models.Deployment) {
 	table.SetHeader([]string{"Machine Name", "Public IP"})
 
 	for _, machine := range deployment.Machines {
-		if machine.PublicIPAddress != nil && machine.PublicIPAddress.Properties != nil {
-			ipAddress := machine.PublicIPAddress.Properties.IPAddress
-			if ipAddress != nil {
-				table.Append([]string{machine.Name, *ipAddress})
+		if machine.PublicIP != "" {
+			ipAddress := machine.PublicIP
+			if ipAddress != "" {
+				table.Append([]string{machine.Name, ipAddress})
 			}
 		}
 	}
