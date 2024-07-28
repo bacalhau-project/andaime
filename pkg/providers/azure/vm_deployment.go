@@ -156,7 +156,7 @@ func (p *AzureProvider) CreateVirtualMachine(
 		},
 	}
 
-	// Get the Bicep template
+	// Create the ARM template
 	template := map[string]interface{}{
 		"$schema":        "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
 		"contentVersion": "1.0.0.0",
