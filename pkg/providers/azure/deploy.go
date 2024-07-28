@@ -3,11 +3,12 @@ package azure
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"runtime/debug"
 	"sync"
+	"syscall"
 	"time"
-
-	"os"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -110,8 +111,20 @@ func (p *AzureProvider) DeployResources(
 		Status: "Completed",
 	})
 
+	// Wait for a short time to allow for IP addresses to be populated
+	time.Sleep(5 * time.Second)
+
 	// Print the table of machines and IPs
 	printMachineIPTable(deployment)
+
+	// Handle graceful shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		l.Info("Received interrupt signal, initiating graceful shutdown")
+		cancel()
+	}()
 
 	return nil
 }
@@ -557,13 +570,17 @@ func printMachineIPTable(deployment *models.Deployment) {
 	table.SetHeader([]string{"Machine Name", "Public IP"})
 
 	for _, machine := range deployment.Machines {
-		if machine.PublicIP != "" {
-			ipAddress := machine.PublicIP
-			if ipAddress != "" {
-				table.Append([]string{machine.Name, ipAddress})
-			}
+		ipAddress := machine.PublicIP
+		if ipAddress == "" {
+			ipAddress = "Pending"
 		}
+		table.Append([]string{machine.Name, ipAddress})
 	}
 
-	table.Render()
+	if table.NumLines() > 0 {
+		fmt.Println("Deployed Machines:")
+		table.Render()
+	} else {
+		fmt.Println("No machines have been deployed yet.")
+	}
 }
