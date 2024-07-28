@@ -34,7 +34,10 @@ func (p *AzureProvider) DeployResources(
 	deployment.StartTime = time.Now()
 
 	// Ensure the display channel is closed when the function exits
-	defer disp.Close()
+	defer func() {
+		l.Info("Closing display channel")
+		disp.Close()
+	}()
 
 	// Wrap the entire function in a defer/recover block
 	defer func() {
