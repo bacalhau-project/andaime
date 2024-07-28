@@ -99,17 +99,17 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		return fmt.Errorf("failed to create virtual networks: %w", err)
 	}
 
-	// Create network security group and rules
-	l.Info("Creating network security group")
-	nsg, err := createNSG(pulumiCtx, deployment, rg.Name, tags)
+	// Create network security groups and rules
+	l.Info("Creating network security groups")
+	nsgs, err := createNSGs(pulumiCtx, deployment, rg.Name, tags)
 	if err != nil {
-		return fmt.Errorf("failed to create network security group: %w", err)
+		return fmt.Errorf("failed to create network security groups: %w", err)
 	}
-	l.Info("Network security group created successfully")
+	l.Info("Network security groups created successfully")
 
 	// Create virtual machines
 	l.Info("Creating virtual machines")
-	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsg, tags)
+	err = createVMs(pulumiCtx, deployment, rg.Name, vnets, nsgs, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
@@ -514,41 +514,45 @@ func createVirtualMachine(
 	return err
 }
 
-func createNSG(
+func createNSGs(
 	pulumiCtx *pulumi.Context,
 	deployment *models.Deployment,
 	resourceGroupName pulumi.StringInput,
 	tags pulumi.StringMap,
-) (*network.NetworkSecurityGroup, error) {
-	nsgRules := network.SecurityRuleTypeArray{}
-	for i, port := range deployment.AllowedPorts {
-		nsgRules = append(nsgRules, &network.SecurityRuleTypeArgs{
-			Name:                     pulumi.Sprintf("Port%d", port),
-			Priority:                 pulumi.Int(1000 + i),
-			Direction:                pulumi.String("Inbound"),
-			Access:                   pulumi.String("Allow"),
-			Protocol:                 pulumi.String("Tcp"),
-			SourceAddressPrefix:      pulumi.String("*"),
-			SourcePortRange:          pulumi.String("*"),
-			DestinationAddressPrefix: pulumi.String("*"),
-			DestinationPortRange:     pulumi.Sprintf("%d", port),
-		})
-	}
+) (map[string]*network.NetworkSecurityGroup, error) {
+	nsgs := make(map[string]*network.NetworkSecurityGroup)
+	for _, location := range deployment.Locations {
+		nsgRules := network.SecurityRuleTypeArray{}
+		for i, port := range deployment.AllowedPorts {
+			nsgRules = append(nsgRules, &network.SecurityRuleTypeArgs{
+				Name:                     pulumi.Sprintf("Port%d", port),
+				Priority:                 pulumi.Int(1000 + i),
+				Direction:                pulumi.String("Inbound"),
+				Access:                   pulumi.String("Allow"),
+				Protocol:                 pulumi.String("Tcp"),
+				SourceAddressPrefix:      pulumi.String("*"),
+				SourcePortRange:          pulumi.String("*"),
+				DestinationAddressPrefix: pulumi.String("*"),
+				DestinationPortRange:     pulumi.Sprintf("%d", port),
+			})
+		}
 
-	nsg, err := network.NewNetworkSecurityGroup(
-		pulumiCtx,
-		"nsg-"+deployment.ResourceGroupName,
-		&network.NetworkSecurityGroupArgs{
-			ResourceGroupName: resourceGroupName,
-			Location:          pulumi.String(deployment.ResourceGroupLocation),
-			SecurityRules:     nsgRules,
-			Tags:              tags,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network security group: %w", err)
+		nsg, err := network.NewNetworkSecurityGroup(
+			pulumiCtx,
+			fmt.Sprintf("nsg-%s-%s", deployment.ResourceGroupName, location),
+			&network.NetworkSecurityGroupArgs{
+				ResourceGroupName: resourceGroupName,
+				Location:          pulumi.String(location),
+				SecurityRules:     nsgRules,
+				Tags:              tags,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create network security group in %s: %w", location, err)
+		}
+		nsgs[location] = nsg
 	}
-	return nsg, nil
+	return nsgs, nil
 }
 
 func createVNets(
