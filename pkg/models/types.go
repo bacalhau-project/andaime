@@ -23,3 +23,9 @@ type Status struct {
 	PrivateIP       string
 	HighlightCycles int
 }
+
+type AzureEvent struct {
+	Type       string
+	ResourceID string
+	Message    string
+}
