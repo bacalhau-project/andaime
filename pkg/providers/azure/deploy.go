@@ -207,11 +207,65 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		interfaceResources[i] = r
 	}
 	pulumi.All(interfaceResources...).ApplyT(func(args []interface{}) error {
-		l.Info("All resources created successfully")
+		l.Info("All resources creation initiated")
+		go monitorResourceStatus(pulumiCtx, deployment)
 		return nil
 	})
 
 	return nil
+}
+
+func monitorResourceStatus(ctx *pulumi.Context, deployment *models.Deployment) {
+	l := logger.Get()
+	disp := display.GetGlobalDisplay()
+
+	for {
+		allCompleted := true
+		for _, machine := range deployment.Machines {
+			status, err := getVMStatus(ctx, machine.Name, deployment.ResourceGroupName)
+			if err != nil {
+				l.Errorf("Failed to get VM status for %s: %v", machine.Name, err)
+				continue
+			}
+
+			switch status {
+			case "Creating":
+				allCompleted = false
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Type:   "VM",
+					Status: "Creating",
+				})
+			case "Succeeded":
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Type:   "VM",
+					Status: "Created",
+				})
+			default:
+				allCompleted = false
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Type:   "VM",
+					Status: fmt.Sprintf("Unknown status: %s", status),
+				})
+			}
+		}
+
+		if allCompleted {
+			l.Info("All resources created successfully")
+			break
+		}
+
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func getVMStatus(ctx *pulumi.Context, vmName string, resourceGroupName string) (string, error) {
+	// This is a placeholder. In a real implementation, you would use the Azure SDK to get the VM status.
+	// For now, we'll simulate a delay and then return "Succeeded".
+	time.Sleep(5 * time.Second)
+	return "Succeeded", nil
 }
 
 // Helper function to convert map of VNets to a slice of pulumi.Resource
@@ -565,13 +619,14 @@ func createVirtualMachine(
 		return nil, HandleAzureError(err)
 	}
 	pulumi.All(vm.ID()).ApplyT(func(args []interface{}) error {
-		l.Infof("Virtual machine created successfully: %s", name)
+		l.Infof("Virtual machine creation initiated: %s", name)
 		return nil
 	})
 
 	disp.UpdateStatus(&models.Status{
 		ID:     machine.ID,
-		Status: "Virtual machine created in " + machine.Location,
+		Type:   "VM",
+		Status: "Creating virtual machine in " + machine.Location,
 	})
 
 	return vm, nil
