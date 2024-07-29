@@ -88,19 +88,21 @@ var DisplayColumns = []DisplayColumn{
 		Text:     "ID",
 		Width:    10,
 		Color:    TextColor,
-		Align:    tview.AlignLeft,
+		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.ID },
 	},
 	{
 		Text:     "Type",
 		Width:    20,
 		Color:    TextColor,
+		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.Type },
 	},
 	{
 		Text:     "Location",
 		Width:    15,
 		Color:    TextColor,
+		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.Location },
 	},
 	{
@@ -111,6 +113,7 @@ var DisplayColumns = []DisplayColumn{
 	{Text: "Elapsed",
 		Width: 10,
 		Color: TextColor,
+		Align: tview.AlignCenter,
 		DataFunc: func(status models.Status) string {
 			elapsedTime := time.Since(status.StartTime)
 			//l := logger.Get()
@@ -118,26 +121,32 @@ var DisplayColumns = []DisplayColumn{
 
 			// Format the elapsed time
 			minutes := int(elapsedTime.Minutes())
-			seconds := int(elapsedTime.Seconds()) % 60
+			seconds := float64(elapsedTime.Milliseconds()) / 1000.0
 
-			if minutes == 0 {
-				return fmt.Sprintf("%02ds", seconds)
+			if seconds < 10 {
+				return fmt.Sprintf("%1.1fs", seconds)
 			}
-			return fmt.Sprintf("%dm%02ds", minutes, seconds)
+			if minutes == 0 {
+				return fmt.Sprintf("%01.1fs", seconds)
+			}
+			return fmt.Sprintf("%dm%01.1fs", minutes, seconds)
 		},
 	},
 	{
 		Text:     "Instance ID",
 		Width:    20,
 		Color:    TextColor,
+		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.InstanceID }},
 	{Text: "Public IP",
 		Width:    15,
 		Color:    TextColor,
+		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.PublicIP }},
 	{Text: "Private IP",
 		Width:    15,
 		Color:    TextColor,
+		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.PrivateIP }},
 }
 
