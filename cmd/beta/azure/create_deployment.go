@@ -104,7 +104,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		// Start display in a goroutine
 		go func() {
 			l.Debug("Display Start() called")
-			disp.Start(sigChan)
+			summaryReceived := make(chan struct{})
+			disp.Start(sigChan, summaryReceived)
 			l.Debug("Display Start() returned")
 		}()
 
