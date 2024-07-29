@@ -10,6 +10,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -42,15 +43,17 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errString)
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	//nolint:gomnd
+	sigChan := utils.CreateSignalChannel(5)
+
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM) //nolint:sigchanyzer
 
 	disp := display.NewDisplay(1)
 	go disp.Start(sigChan)
 
 	defer func() {
 		disp.Stop()
-		<-sigChan
+		utils.CloseChannel(sigChan)
 	}()
 
 	// Update initial status

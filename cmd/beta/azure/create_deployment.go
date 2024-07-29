@@ -1,12 +1,12 @@
 package azure
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -18,7 +18,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/utils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -42,88 +42,155 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	logger.InitProduction(false, true)
 	l := logger.Get()
+	l.Info("Starting executeCreateDeployment")
 
-	l.Debug("Starting executeCreateDeployment")
+	// Create a context that can be cancelled
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
+	// Create a channel to signal when cleanup is done
+	cleanupDone := utils.CreateStructChannel(1)
+
+	// Create a channel for error communication
+	errorChan := utils.CreateErrorChannel(5)
+
+	// Catch panics and log them
+	defer func() {
+		if r := recover(); r != nil {
+			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
+			l.Error(string(debug.Stack()))
+			errorChan <- fmt.Errorf("panic occurred: %v", r)
+		}
+		cancel() // Cancel the context
+		utils.CloseChannel(cleanupDone)
+		l.Info("Cleanup completed")
+	}()
 
 	// Create a unique ID for the deployment
-	UniqueID := fmt.Sprintf(
-		"%s-%s",
-		viper.GetString("general.project_id"),
-		time.Now().Format("060102150405"),
-	)
+	UniqueID := time.Now().Format("060102150405")
+	l.Infof("Generated UniqueID: %s", UniqueID)
 
 	// Set the UniqueID on the context
-	ctx := context.WithValue(cmd.Context(), uniqueDeploymentIDKey, UniqueID)
+	ctx = context.WithValue(ctx, uniqueDeploymentIDKey, UniqueID)
 
 	l.Debug("Initializing Azure provider")
 	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
 	if err != nil {
-		errString := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
-		l.Error(errString)
-		return fmt.Errorf(errString)
+		errMsg := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
+		l.Error(errMsg)
+		return fmt.Errorf(errMsg)
 	}
-	l.Debug("Azure provider initialized successfully")
+	l.Info("Azure provider initialized successfully")
 
 	l.Debug("Setting up signal channel")
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	sigChan := utils.CreateSignalChannel(1)
+	signal.Notify(
+		sigChan,
+		os.Interrupt,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+		syscall.SIGHUP,
+	)
 
 	l.Debug("Creating display")
-	disp := display.NewDisplay(1)
+	disp := display.GetGlobalDisplay()
 	l.Debug("Starting display")
-	go func() {
-		l.Debug("Display Start() called")
-		disp.Start(sigChan)
-		l.Debug("Display Start() returned")
-	}()
 
-	defer func() {
-		l.Debug("Stopping display")
-		disp.Stop()
-		l.Debug("Display stopped")
-	}()
+	noDisplay := false
+	if os.Getenv("ANDAIME_NO_DISPLAY") != "" {
+		noDisplay = true
+	}
+	if !noDisplay {
+		// Start display in a goroutine
+		go func() {
+			l.Debug("Display Start() called")
+			disp.Start(sigChan)
+			l.Debug("Display Start() returned")
+		}()
 
-	l.Debug("Updating initial status")
+		// Ensure display is stopped in all scenarios
+		defer func() {
+			l.Debug("Stopping display")
+			disp.Stop()
+			l.Debug("Display stopped")
+			utils.CloseAllChannels()
+		}()
+	}
 
 	// Create a new deployment object
 	deployment, err := InitializeDeployment(ctx, UniqueID, disp)
 	if err != nil {
-		return err
+		errMsg := fmt.Sprintf("Failed to initialize deployment: %s", err.Error())
+		l.Error(errMsg)
+		return fmt.Errorf(errMsg)
 	}
-	l.Debug("Starting resource deployment")
-	err = azureProvider.DeployResources(ctx, deployment, disp)
-	if err != nil {
-		errString := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
-		l.Error(errString)
-		return fmt.Errorf(errString)
+	l.Info("Starting resource deployment")
+
+	for _, machine := range deployment.Machines {
+		l.Debugf("Deploying machine: %s", machine.Name)
+		disp.UpdateStatus(&models.Status{
+			ID:        machine.ID,
+			Status:    "Initializing",
+			Type:      "VM",
+			StartTime: time.Now(),
+		})
 	}
 
-	l.Debug("Resource deployment completed")
-
-	l.Info("Azure deployment created successfully")
-	cmd.Println("Azure deployment created successfully")
-	cmd.Println("Press 'q' and Enter to quit")
+	// Create ticker channel
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
 	go func() {
-		reader := bufio.NewReader(os.Stdin)
-		for {
-			l.Debug("Waiting for input")
-			char, _, err := reader.ReadRune()
-			if err != nil {
-				l.Error(fmt.Sprintf("Error reading input: %s", err.Error()))
-				continue
-			}
-			if char == 'q' || char == 'Q' {
-				l.Debug("Quit signal received")
-				sigChan <- os.Interrupt
-				return
+		for range ticker.C {
+			for _, machine := range deployment.Machines {
+				if machine.Status == models.MachineStatusComplete {
+					continue
+				}
+				disp.UpdateStatus(&models.Status{
+					ID: machine.ID,
+					ElapsedTime: time.Duration(
+						time.Since(machine.StartTime).
+							Milliseconds() /
+							1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
+					),
+				})
 			}
 		}
 	}()
 
-	l.Debug("Waiting for signal")
-	<-sigChan
-	l.Debug("Signal received, exiting")
+	// Start resource deployment in a goroutine
+	go func() {
+		err := azureProvider.DeployResources(ctx, deployment, disp)
+		if err != nil {
+			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
+			l.Error(errMsg)
+			errorChan <- fmt.Errorf(errMsg)
+		} else {
+			l.Info("Azure deployment created successfully")
+			cmd.Println("Azure deployment created successfully")
+			cmd.Println("Press 'q' and Enter to quit")
+		}
+	}()
+
+	// Wait for signal, error, or user input
+	select {
+	case <-sigChan:
+		l.Info("Interrupt signal received, initiating graceful shutdown")
+		disp.Close()
+		l.Info("Display closed - sigChan")
+	case err := <-errorChan:
+		l.Errorf("Error occurred during deployment: %v", err)
+		disp.Close()
+		l.Info("Display closed - errorChan")
+		return err
+	case <-ctx.Done():
+		l.Info("Context cancelled, initiating graceful shutdown")
+		disp.Close()
+		l.Info("Display closed - ctx.Done()")
+	}
+
+	utils.CloseAllChannels()
+
 	return nil
 }
 
@@ -133,13 +200,11 @@ func InitializeDeployment(
 	uniqueID string,
 	disp *display.Display,
 ) (*models.Deployment, error) {
-	l := logger.Get()
 	v := viper.GetViper()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
-		l.Info("Deployment cancelled before starting")
-		return nil, fmt.Errorf("deployment cancelled: %w", err)
+		return nil, fmt.Errorf("deployment cancelled before starting: %w", err)
 	}
 
 	// Set default values for all configuration items
@@ -171,13 +236,8 @@ func InitializeDeployment(
 	// Create deployment object
 	deployment, err := PrepareDeployment(ctx, v, projectID, uniqueID, disp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
-
-	// Set default values for the deployment
-	deployment.DefaultVMSize = v.GetString("azure.default_vm_size")
-	deployment.DefaultDiskSizeGB = int32(v.GetInt("azure.default_disk_size_gb"))
-	deployment.DefaultLocation = v.GetString("azure.default_location")
 
 	return deployment, nil
 }
@@ -215,11 +275,18 @@ func PrepareDeployment(
 	disp *display.Display,
 ) (*models.Deployment, error) {
 	l := logger.Get()
+	deployment := &models.Deployment{}
+	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")
+	deployment.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
+	deployment.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
+	deployment.DefaultVMSize = viper.GetString("azure.default_vm_size")
+	deployment.DefaultDiskSizeGB = int32(viper.GetInt("azure.default_disk_size_gb"))
+	deployment.DefaultLocation = viper.GetString("azure.default_location")
 
 	// Extract SSH keys
 	sshPublicKeyPath, sshPrivateKeyPath, sshPublicKeyData, err := ExtractSSHKeyPaths()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
 	}
 
 	// Ensure tags
@@ -227,13 +294,13 @@ func PrepareDeployment(
 
 	// Validate SSH keys
 	if err := sshutils.ValidateSSHKeysFromPath(sshPublicKeyPath, sshPrivateKeyPath); err != nil {
-		return nil, fmt.Errorf("failed to validate SSH keys: %v", err)
+		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
 	}
 
 	// Unmarshal machines configuration
 	var machines []models.Machine
 	if err := viper.UnmarshalKey("azure.machines", &machines); err != nil {
-		return nil, fmt.Errorf("error unmarshaling machines: %v", err)
+		return nil, fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
 	// Get resource group location
@@ -242,13 +309,11 @@ func PrepareDeployment(
 		return nil, fmt.Errorf("resource group location is empty")
 	}
 
-	deployment := &models.Deployment{
-		ProjectID:             projectID,
-		UniqueID:              uniqueID,
-		ResourceGroupLocation: resourceGroupLocation,
-		Tags:                  tags,
-		SSHPublicKeyData:      sshPublicKeyData,
-	}
+	deployment.ProjectID = projectID
+	deployment.UniqueID = uniqueID
+	deployment.ResourceGroupLocation = resourceGroupLocation
+	deployment.Tags = tags
+	deployment.SSHPublicKeyData = sshPublicKeyData
 
 	// Set ResourceGroupName only if it's not already set
 	if deployment.ResourceGroupName == "" {
@@ -258,6 +323,7 @@ func PrepareDeployment(
 		}
 		deployment.ResourceGroupName = resourceGroupName
 	}
+	deployment.ResourceGroupName = fmt.Sprintf("%s-%s", deployment.ResourceGroupName, uniqueID)
 
 	// Ensure the deployment has a name
 	if deployment.Name == "" {
@@ -266,7 +332,7 @@ func PrepareDeployment(
 
 	// Update Viper configuration
 	if err := deployment.UpdateViperConfig(); err != nil {
-		return nil, fmt.Errorf("failed to update Viper configuration: %v", err)
+		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
 	}
 
 	// Get allowed ports
@@ -283,7 +349,7 @@ func PrepareDeployment(
 		deployment,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
 	}
 
 	deployment.OrchestratorNode = orchestratorNode
@@ -394,6 +460,7 @@ func ProcessMachinesConfig(
 		internalMachine.ID = utils.CreateShortID()
 		internalMachine.Name = fmt.Sprintf("vm-%s", internalMachine.ID)
 		internalMachine.ComputerName = fmt.Sprintf("vm-%s", internalMachine.ID)
+		internalMachine.StartTime = time.Now()
 
 		if len(machine.Parameters) > 0 && machine.Parameters[0].Orchestrator {
 			if orchestratorNode != nil {
@@ -404,10 +471,11 @@ func ProcessMachinesConfig(
 		allMachines = append(allMachines, internalMachine)
 
 		disp.UpdateStatus(&models.Status{
-			ID:       internalMachine.ID,
-			Type:     "VM",
-			Location: internalMachine.Location,
-			Status:   "Initializing",
+			ID:        internalMachine.ID,
+			Type:      "VM",
+			Location:  internalMachine.Location,
+			Status:    "Initializing",
+			StartTime: time.Now(),
 		})
 	}
 
