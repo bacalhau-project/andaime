@@ -63,11 +63,12 @@ func CloseAllChannels() {
 	l.Debugf("Closing all channels")
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for _, ch := range GlobalChannels {
+	for i, ch := range GlobalChannels {
 		l.Debugf("Closing channel %v", ch)
-		if ch != nil {
+		if ch != nil && !ch.IsClosed() {
 			ch.Close()
 		}
+		GlobalChannels[i] = nil
 	}
 	GlobalChannels = nil
 }

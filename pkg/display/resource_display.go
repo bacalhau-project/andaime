@@ -165,7 +165,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		return
 	}
 
-	// d.Logger.Debugf("UpdateStatus called ID: %s", newStatus.ID)
+	d.Logger.Debugf("UpdateStatus called ID: %s, Type: %s", newStatus.ID, newStatus.Type)
 
 	d.StatusesMu.Lock()
 
@@ -174,19 +174,16 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	}
 
 	if _, exists := d.Statuses[newStatus.ID]; !exists {
-		// d.Logger.Debugf("Adding new status ID: %s", newStatus.ID)
+		d.Logger.Debugf("Adding new status ID: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
-		// d.Logger.Debugf("Updating existing status ID: %s", newStatus.ID)
+		d.Logger.Debugf("Updating existing status ID: %s", newStatus.ID)
 		s := d.Statuses[newStatus.ID]
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(s, newStatus)
 	}
 	d.StatusesMu.Unlock()
 
-	if newStatus.Type != "VM" {
-		d.displayResourceProgress(newStatus)
-	}
-
+	d.displayResourceProgress(newStatus)
 	d.scheduleUpdate()
 }
 
@@ -505,17 +502,13 @@ func (d *Display) renderTable() {
 		d.Table.SetCell(0, col, cell)
 	}
 
-	nodes := make([]*models.Status, 0)
+	resources := make([]*models.Status, 0)
 	for _, status := range d.Statuses {
-		if status.Type == "VM" {
-			nodes = append(nodes, status)
-		} else {
-			d.displayResourceProgress(status)
-		}
+		resources = append(resources, status)
 	}
 
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID < nodes[j].ID
+	sort.Slice(resources, func(i, j int) bool {
+		return resources[i].ID < resources[j].ID
 	})
 
 	// Initialize lastTableState with header row
@@ -524,10 +517,10 @@ func (d *Display) renderTable() {
 		d.LastTableState[0][col] = column.Text
 	}
 
-	for row, node := range nodes {
+	for row, resource := range resources {
 		tableRow := make([]string, len(DisplayColumns))
 		for col, column := range DisplayColumns {
-			cellText := column.DataFunc(*node)
+			cellText := column.DataFunc(*resource)
 			tableRow[col] = cellText
 			cell := tview.NewTableCell(cellText).
 				SetMaxWidth(column.Width).
@@ -537,7 +530,6 @@ func (d *Display) renderTable() {
 		}
 		d.LastTableState = append(d.LastTableState, tableRow)
 	}
-
 }
 
 func (d *Display) displayResourceProgress(status *models.Status) {
