@@ -3,7 +3,9 @@ package azure
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"reflect"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -12,14 +14,21 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pulumi/pulumi-azure-native-sdk/compute"
 	"github.com/pulumi/pulumi-azure-native-sdk/network"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/sanity-io/litter"
 )
+
+var progressStream io.Writer
+
+const progressFilePath = "/tmp/progress.log"
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
@@ -39,7 +48,7 @@ func (p *AzureProvider) DeployResources(
 	var wg sync.WaitGroup
 
 	// Create a done channel to signal completion
-	done := utils.NewSafeChannel[struct{}](1)
+	done := utils.CreateStructChannel(1)
 
 	// Start a goroutine to handle cancellation and completion
 	wg.Add(1)
@@ -48,8 +57,8 @@ func (p *AzureProvider) DeployResources(
 		select {
 		case <-ctx.Done():
 			l.Info("Deployment cancelled, closing all channels")
-			utils.CloseAllChannels()
-		case <-done.Ch:
+			disp.Close()
+		case <-done:
 			l.Info("Deployment completed, closing display channel")
 			if disp != nil {
 				disp.Close()
@@ -59,7 +68,7 @@ func (p *AzureProvider) DeployResources(
 
 	// Ensure all goroutines finish before returning
 	defer func() {
-		done.Close()
+		utils.CloseChannel(done)
 		wg.Wait()
 		l.Info("All goroutines finished, exiting")
 	}()
@@ -82,17 +91,76 @@ func (p *AzureProvider) DeployResources(
 		return deploymentProgram(ctx, deployment)
 	}
 
+	// err := os.Truncate(progressFilePath, 0)
+	// if err != nil {
+	// 	l.Errorf("Failed to truncate /tmp/process.log: %v", err)
+	// }
+
+	//nolint:gomnd // this is a temp file
+	eventStream := utils.CreateEventChannel(
+		100,
+	)
+
+	// Open progressStream
+	progressStream, err := os.Create(progressFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create progress file: %w", err)
+	}
+	defer progressStream.Close()
+
+	opts := []optup.Option{
+		optup.EventStreams(eventStream),
+		optup.ProgressStreams(progressStream),
+	}
+
 	// Create a stack (this will create a project if it doesn't exist)
-	stack, err := auto.UpsertStackInlineSource(ctx, stackName, projectName, runProgram)
+	stack, err := auto.UpsertStackInlineSource(
+		ctx,
+		stackName,
+		projectName,
+		runProgram,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create/update stack: %w", err)
 	}
 
-	// Configure the stack (if needed)
-	// stack.SetConfig(ctx, "azure:location", auto.ConfigValue{Value: deployment.ResourceGroupLocation})
+	// Create a go func event loop to watch eventStream
+	go func() {
+		collect := []events.EngineEvent{}
+		eventTypes := []string{}
+		eventFilePath := "/tmp/event.log"
+		f, err := os.Create(eventFilePath)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		for d := range eventStream {
+			_, err = fmt.Fprintln(f, d)
+			collect = append(collect, d)
+			eventTypes = append(eventTypes, typeOfEvent(d))
+			if err != nil {
+				l.Errorf("Failed to write to event file: %v", err)
+				f.Close()
+				return
+			}
+		}
+
+		err = f.Close()
+		if err != nil {
+			l.Errorf("Failed to close event file: %v", err)
+			return
+		}
+
+		for _, event := range collect {
+			if event.SummaryEvent != nil {
+				l.Debugf("Summary event: %v", event.SummaryEvent)
+				l.Debugf("Open channels: %v", utils.GlobalChannels)
+			}
+		}
+	}()
 
 	// Run the update
-	_, err = stack.Up(ctx, optup.Message("Updating Azure resources"))
+	_, err = stack.Up(ctx, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to update stack: %w", err)
 	}
@@ -144,6 +212,10 @@ func (p *AzureProvider) DeployResources(
 	}
 }
 
+func typeOfEvent(event events.EngineEvent) string {
+	return reflect.TypeOf(event).String()
+}
+
 // deploymentProgram defines the Pulumi program for Azure resource deployment
 func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment) error {
 	l := logger.Get()
@@ -188,7 +260,7 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 
 	// Create virtual machines, depending on NSGs and VNets
 	l.Info("Creating virtual machines")
-	err = createVMs(
+	vms, err := createVMs(
 		pulumiCtx,
 		deployment,
 		deployment.ResourceGroupName,
@@ -201,71 +273,34 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 		return fmt.Errorf("failed to create virtual machines: %w", err)
 	}
 
-	// Create a pulumi.All to wait for all resources to be created
-	interfaceResources := sliceToInterfaceSlice(dependencies)
-	for i, r := range dependencies {
-		interfaceResources[i] = r
-	}
-	pulumi.All(interfaceResources...).ApplyT(func(args []interface{}) error {
-		l.Info("All resources creation initiated")
-		go monitorResourceStatus(pulumiCtx, deployment)
+	// Create/truncate progressFilePath
+	// err = os.Truncate(progressFilePath, 0)
+	// if err != nil {
+	// 	l.Errorf("Failed to truncate /tmp/progress.log: %v", err)
+	// }
+
+	// Add a single pulumi.All at the end to process events and update status
+	pulumi.All(sliceToInterfaceSlice(vms)...).ApplyT(func(args []interface{}) error {
+		for _, arg := range args {
+			// If ProgressStream is nil, create it
+			if progressStream == nil {
+				progressStream, err = os.Create(progressFilePath)
+				if err != nil {
+					l.Errorf("Failed to create progress file: %v", err)
+				}
+			}
+			// Print out information about the resource, to the progress file. Format the resource as an interface, and print
+			// it out nicely, with keys and values, with indentation
+			l.Debugf(spew.Sprint(arg))
+			_, err := progressStream.Write([]byte(litter.Sdump(arg)))
+			if err != nil {
+				l.Errorf("Failed to write to progress file: %v", err)
+			}
+		}
 		return nil
 	})
 
 	return nil
-}
-
-func monitorResourceStatus(ctx *pulumi.Context, deployment *models.Deployment) {
-	l := logger.Get()
-	disp := display.GetGlobalDisplay()
-
-	for {
-		allCompleted := true
-		for _, machine := range deployment.Machines {
-			status, err := getVMStatus(ctx, machine.Name, deployment.ResourceGroupName)
-			if err != nil {
-				l.Errorf("Failed to get VM status for %s: %v", machine.Name, err)
-				continue
-			}
-
-			switch status {
-			case "Creating":
-				allCompleted = false
-				disp.UpdateStatus(&models.Status{
-					ID:     machine.ID,
-					Type:   "VM",
-					Status: "Creating",
-				})
-			case "Succeeded":
-				disp.UpdateStatus(&models.Status{
-					ID:     machine.ID,
-					Type:   "VM",
-					Status: "Created",
-				})
-			default:
-				allCompleted = false
-				disp.UpdateStatus(&models.Status{
-					ID:     machine.ID,
-					Type:   "VM",
-					Status: fmt.Sprintf("Unknown status: %s", status),
-				})
-			}
-		}
-
-		if allCompleted {
-			l.Info("All resources created successfully")
-			break
-		}
-
-		time.Sleep(30 * time.Second)
-	}
-}
-
-func getVMStatus(ctx *pulumi.Context, vmName string, resourceGroupName string) (string, error) {
-	// This is a placeholder. In a real implementation, you would use the Azure SDK to get the VM status.
-	// For now, we'll simulate a delay and then return "Succeeded".
-	time.Sleep(5 * time.Second)
-	return "Succeeded", nil
 }
 
 // Helper function to convert map of VNets to a slice of pulumi.Resource
@@ -338,17 +373,18 @@ func createVMs(
 	nsgs map[string]*network.NetworkSecurityGroup,
 	tags pulumi.StringMap,
 	dependsOn []pulumi.Resource,
-) error {
+) ([]pulumi.Resource, error) {
 	l := logger.Get()
+	resourcesToReturn := []pulumi.Resource{}
 	for _, machine := range deployment.Machines {
 		for _, param := range machine.Parameters {
 			for i := 0; i < param.Count; i++ {
 				if err := pulumiCtx.Context().Err(); err != nil {
-					return fmt.Errorf("deployment cancelled while creating VMs: %w", err)
+					return nil, fmt.Errorf("deployment cancelled while creating VMs: %w", err)
 				}
 
 				vmName := machine.Name + "-" + fmt.Sprint(i)
-				l.Debugf("Creating VM: %s", vmName)
+				l.Debugf("Starting Public IP creation for VM: %s", vmName)
 
 				// Create public IP
 				publicIPAddressName := vmName + "-ip"
@@ -362,10 +398,14 @@ func createVMs(
 					dependsOn,
 				)
 				if err != nil {
-					return fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
+					return nil, fmt.Errorf("failed to create public IP for VM %s: %w", vmName, err)
 				}
 
 				dependsOn = append(dependsOn, publicIP)
+
+				l.Debugf("Starting Network Interface creation for VM: %s", vmName)
+
+				resourcesToReturn = append(resourcesToReturn, publicIP)
 
 				// Create network interface
 				nic, err := createNetworkInterface(
@@ -381,7 +421,7 @@ func createVMs(
 					dependsOn,
 				)
 				if err != nil {
-					return fmt.Errorf(
+					return nil, fmt.Errorf(
 						"failed to create network interface for VM %s: %w",
 						vmName,
 						err,
@@ -389,6 +429,9 @@ func createVMs(
 				}
 
 				dependsOn = append(dependsOn, nic)
+				resourcesToReturn = append(resourcesToReturn, nic)
+
+				l.Debugf("Starting Virtual Machine creation for VM: %s", vmName)
 
 				// Create VM
 				vm, err := createVirtualMachine(
@@ -403,37 +446,13 @@ func createVMs(
 					dependsOn,
 				)
 				if err != nil {
-					return fmt.Errorf("failed to create VM %s: %w", vmName, err)
+					return nil, fmt.Errorf("failed to start creating VM %s: %w", vmName, err)
 				}
-
-				// Use Output.All to wait for the VM to be created before looking up its public IP
-				pulumi.All(vm.ID(), publicIP.Name).ApplyT(func(args []interface{}) error {
-					vmID := fmt.Sprintf("%v", args[0])
-					publicIPName := fmt.Sprintf("%v", args[1])
-
-					publicIPResult, err := network.LookupPublicIPAddress(
-						pulumiCtx,
-						&network.LookupPublicIPAddressArgs{
-							PublicIpAddressName: publicIPName,
-							ResourceGroupName:   resourceGroupName,
-						},
-						pulumi.Parent(vm),
-					)
-					if err != nil {
-						return fmt.Errorf("failed to lookup public IP address: %w", err)
-					}
-
-					machine.PublicIP = *publicIPResult.IpAddress
-					machine.InstanceID = vmID
-
-					return nil
-				})
-
-				l.Infof("VM created successfully: %s", vmName)
+				resourcesToReturn = append(resourcesToReturn, vm)
 			}
 		}
 	}
-	return nil
+	return resourcesToReturn, nil
 }
 
 func createPublicIP(
@@ -494,11 +513,6 @@ func createNetworkInterface(
 ) (*network.NetworkInterface, error) {
 	l := logger.Get()
 	l.Debugf("Creating network interface in %s for machine %s", location, machine.Name)
-	disp := display.GetGlobalDisplay()
-	disp.UpdateStatus(&models.Status{
-		ID:     machine.ID,
-		Status: "Creating network interface in " + location,
-	})
 
 	nic, err := network.NewNetworkInterface(
 		pulumiCtx,
@@ -527,15 +541,6 @@ func createNetworkInterface(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network interface: %w", err)
 	}
-	pulumi.All(nic.ID()).ApplyT(func(args []interface{}) error {
-		l.Infof("Network interface created successfully: %s", name)
-		return nil
-	})
-
-	disp.UpdateStatus(&models.Status{
-		ID:     machine.ID,
-		Status: "Network interface created in " + location,
-	})
 
 	return nic, nil
 
@@ -554,11 +559,6 @@ func createVirtualMachine(
 ) (*compute.VirtualMachine, error) {
 	l := logger.Get()
 	l.Debugf("Creating virtual machine in %s for machine %s", machine.Location, machine.Name)
-	disp := display.GetGlobalDisplay()
-	disp.UpdateStatus(&models.Status{
-		ID:     machine.ID,
-		Status: "Creating virtual machine in " + machine.Location,
-	})
 
 	vm, err := compute.NewVirtualMachine(
 		pulumiCtx,
@@ -618,16 +618,6 @@ func createVirtualMachine(
 	if err != nil {
 		return nil, HandleAzureError(err)
 	}
-	pulumi.All(vm.ID()).ApplyT(func(args []interface{}) error {
-		l.Infof("Virtual machine creation initiated: %s", name)
-		return nil
-	})
-
-	disp.UpdateStatus(&models.Status{
-		ID:     machine.ID,
-		Type:   "VM",
-		Status: "Creating virtual machine in " + machine.Location,
-	})
 
 	return vm, nil
 }

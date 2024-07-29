@@ -52,7 +52,7 @@ func newDisplayInternal(totalTasks int, testMode bool) *Display {
 		TotalTasks:         totalTasks,
 		BaseHighlightColor: HighlightColor,
 		FadeSteps:          NumberOfCyclesToHighlight,
-		Quit:               utils.NewSafeChannel[struct{}](1),
+		Quit:               utils.CreateStructChannel(1),
 		TestMode:           testMode,
 		LogBox:             tview.NewTextView().SetDynamicColors(true),
 		LogFileName:        logger.GlobalLogPath,
@@ -285,22 +285,23 @@ func (d *Display) padText(text string, width int) string {
 	return text + strings.Repeat(" ", width-len(text))
 }
 
-func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
+func (d *Display) Start(sigChan chan os.Signal) {
 	if d.Logger.Logger == nil {
 		d.Logger = *logger.Get()
 	}
 	d.Logger.Debug("Starting display")
 	d.Statuses = make(map[string]*models.Status)
 
-	stopChan := make(chan struct{})
+	stopChan := utils.CreateSignalChannel(1)
+	allDone := utils.CreateStructChannel(1)
 
 	go func() {
 		d.Logger.Debug("Starting signal handler goroutine")
 		select {
-		case <-sigChan.Ch:
+		case <-sigChan:
 			d.Logger.Debug("Received signal, stopping display")
 			close(stopChan)
-		case <-d.Quit.Ch:
+		case <-d.Quit:
 			d.Logger.Debug("Stop channel closed, stopping display")
 			close(stopChan)
 		}
@@ -337,10 +338,25 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 				d.Logger.Errorf("Error running display: %v", err)
 			}
 			d.Logger.Debug("tview application stopped")
-			close(stopChan)
+			utils.CloseChannel(stopChan)
 		}()
 
-		<-stopChan
+		go func() {
+			<-stopChan
+			d.Logger.Debug("Stop channel closed, waiting for goroutines to finish")
+			utils.CloseChannel(allDone)
+		}()
+
+		select {
+		case <-allDone:
+			d.Logger.Debug("All goroutines finished")
+		case <-time.After(10 * time.Second):
+			d.Logger.Warn("Timeout waiting for goroutines to finish")
+			d.Logger.Debug("Channels still open:")
+			if !utils.IsChannelClosed(d.Quit) {
+				d.Logger.Debug("- Quit channel is still open")
+			}
+		}
 	} else {
 		d.Logger.Debug("Running in test mode")
 		// In test mode, just render to the virtual console
@@ -364,7 +380,7 @@ func (d *Display) Stop() {
 		d.App.Stop()
 	})
 	d.resetTerminal()
-	d.Quit.Close()
+	utils.CloseChannel(d.Quit)
 }
 
 func (d *Display) resetTerminal() {
@@ -381,7 +397,7 @@ func (d *Display) resetTerminal() {
 func (d *Display) WaitForStop() {
 	d.Logger.Debug("Waiting for display to stop")
 	select {
-	case <-d.Quit.Ch:
+	case <-d.Quit:
 		d.Logger.Debug("Display stopped")
 	case <-time.After(5 * time.Second): //nolint:gomnd
 		d.Logger.Debug("Timeout waiting for display to stop")
