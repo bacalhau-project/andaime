@@ -52,7 +52,6 @@ func newDisplayInternal(totalTasks int, testMode bool) *Display {
 		TotalTasks:         totalTasks,
 		BaseHighlightColor: HighlightColor,
 		FadeSteps:          NumberOfCyclesToHighlight,
-		StopChan:           utils.NewSafeChannel[struct{}](1),
 		Quit:               utils.NewSafeChannel[struct{}](1),
 		TestMode:           testMode,
 		LogBox:             tview.NewTextView().SetDynamicColors(true),
@@ -108,14 +107,23 @@ var DisplayColumns = []DisplayColumn{
 		Text:     "Status",
 		Width:    30,
 		Color:    TextColor,
-		DataFunc: func(status models.Status) string { return fmt.Sprintf("%s (%s)", status.Status, status.DetailedStatus) }},
+		DataFunc: func(status models.Status) string { return status.Status }},
 	{Text: "Elapsed",
 		Width: 10,
 		Color: TextColor,
 		DataFunc: func(status models.Status) string {
-			l := logger.Get()
-			l.Debugf("ID: %s, Elapsed time: %s", status.ID, status.ElapsedTime)
-			return status.ElapsedTime.Round(time.Second).String()
+			elapsedTime := time.Since(status.StartTime)
+			//l := logger.Get()
+			//l.Debugf("ID: %s, Elapsed time: %s", status.ID, elapsedTime)
+
+			// Format the elapsed time
+			minutes := int(elapsedTime.Minutes())
+			seconds := int(elapsedTime.Seconds()) % 60
+
+			if minutes == 0 {
+				return fmt.Sprintf("%02ds", seconds)
+			}
+			return fmt.Sprintf("%dm%02ds", minutes, seconds)
 		},
 	},
 	{
@@ -273,8 +281,6 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 		d.Logger = *logger.Get()
 	}
 	d.Logger.Debug("Starting display")
-	d.StopChan = utils.NewSafeChannel[struct{}](1)
-	d.Quit = utils.NewSafeChannel[struct{}](1)
 	d.Statuses = make(map[string]*models.Status)
 
 	go func() {
@@ -283,11 +289,12 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 		case <-sigChan.Ch:
 			d.Logger.Debug("Received signal, stopping display")
 			d.Stop()
-		case <-d.StopChan.Ch:
+			return
+		case <-d.Quit.Ch:
 			d.Logger.Debug("Stop channel closed, stopping display")
+			d.Stop()
+			return
 		}
-		d.Quit.Close()
-		d.Logger.Debug("Signal handler goroutine exiting")
 	}()
 
 	if !d.TestMode {
@@ -303,7 +310,7 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 			d.Logger.Debug("Starting update loop")
 			for {
 				select {
-				case <-d.StopChan.Ch:
+				case <-d.Quit.Ch:
 					d.Logger.Debug("Received stop signal in update loop")
 					return
 				case <-ticker.C:
@@ -338,11 +345,9 @@ func (d *Display) updateFromGlobalMap() {
 
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
-	d.StopOnce.Do(func() {
-		d.StopChan.Close()
-		d.App.Stop()
-		d.resetTerminal()
-	})
+	d.App.Stop()
+	d.resetTerminal()
+	d.Quit.Close()
 }
 
 func (d *Display) resetTerminal() {
@@ -434,7 +439,7 @@ func (d *Display) scheduleUpdate() {
 	d.UpdateMutex.Lock()
 	defer d.UpdateMutex.Unlock()
 
-	l := logger.Get()
+	// l := logger.Get()
 	// l.Debug("Scheduling update")
 
 	if !d.UpdatePending {
@@ -446,8 +451,6 @@ func (d *Display) scheduleUpdate() {
 				d.UpdateMutex.Lock()
 				d.UpdatePending = false
 				d.UpdateMutex.Unlock()
-
-				l.Debug("Update completed")
 				d.updateDisplay()
 			})
 		}()
