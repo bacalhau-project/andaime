@@ -283,17 +283,17 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 	d.Logger.Debug("Starting display")
 	d.Statuses = make(map[string]*models.Status)
 
+	stopChan := make(chan struct{})
+
 	go func() {
 		d.Logger.Debug("Starting signal handler goroutine")
 		select {
 		case <-sigChan.Ch:
 			d.Logger.Debug("Received signal, stopping display")
-			d.Stop()
-			return
+			close(stopChan)
 		case <-d.Quit.Ch:
 			d.Logger.Debug("Stop channel closed, stopping display")
-			d.Stop()
-			return
+			close(stopChan)
 		}
 	}()
 
@@ -310,8 +310,9 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 			d.Logger.Debug("Starting update loop")
 			for {
 				select {
-				case <-d.Quit.Ch:
+				case <-stopChan:
 					d.Logger.Debug("Received stop signal in update loop")
+					d.Stop()
 					return
 				case <-ticker.C:
 					d.updateFromGlobalMap()
@@ -322,10 +323,15 @@ func (d *Display) Start(sigChan *utils.SafeChannel[os.Signal]) {
 		}()
 
 		d.Logger.Debug("Starting tview application")
-		if err := d.App.Run(); err != nil {
-			d.Logger.Errorf("Error running display: %v", err)
-		}
-		d.Logger.Debug("tview application stopped")
+		go func() {
+			if err := d.App.Run(); err != nil {
+				d.Logger.Errorf("Error running display: %v", err)
+			}
+			d.Logger.Debug("tview application stopped")
+			close(stopChan)
+		}()
+
+		<-stopChan
 	} else {
 		d.Logger.Debug("Running in test mode")
 		// In test mode, just render to the virtual console
@@ -345,7 +351,9 @@ func (d *Display) updateFromGlobalMap() {
 
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
-	d.App.Stop()
+	d.App.QueueUpdateDraw(func() {
+		d.App.Stop()
+	})
 	d.resetTerminal()
 	d.Quit.Close()
 }
