@@ -57,6 +57,12 @@ func (sc *SafeChannel[T]) Close() {
 	}
 }
 
+func (sc *SafeChannel[T]) IsClosed() bool {
+	sc.Mu.Lock()
+	defer sc.Mu.Unlock()
+	return sc.Closed
+}
+
 func RegisterChannel(ch chan struct{}) {
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
