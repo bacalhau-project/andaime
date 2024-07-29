@@ -31,9 +31,6 @@ func (p *AzureProvider) DeployResources(
 	l := logger.Get()
 	l.Info("Starting Azure resource deployment")
 
-	// Set the start time for the deployment
-	deployment.StartTime = time.Now()
-
 	// Create a context with cancellation
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -105,6 +102,11 @@ func (p *AzureProvider) DeployResources(
 		"Azure deployment completed successfully in %v",
 		deployment.EndTime.Sub(deployment.StartTime),
 	)
+	// Print all open channels
+	for _, channel := range utils.GlobalChannels {
+		l.Debugf("Open channel: %v", channel)
+	}
+
 	disp.UpdateStatus(&models.Status{
 		ID:     deployment.UniqueID,
 		Type:   "Deployment",
@@ -200,7 +202,7 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 	}
 
 	// Create a pulumi.All to wait for all resources to be created
-	interfaceResources := make([]interface{}, len(dependencies))
+	interfaceResources := sliceToInterfaceSlice(dependencies)
 	for i, r := range dependencies {
 		interfaceResources[i] = r
 	}
@@ -213,10 +215,18 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 }
 
 // Helper function to convert map of VNets to a slice of pulumi.Resource
-func mapToResourceSlice(m map[string]*network.VirtualNetwork) []pulumi.Resource {
+func mapToResourceSlice[T pulumi.Resource](m map[string]T) []pulumi.Resource {
 	result := make([]pulumi.Resource, 0, len(m))
 	for _, v := range m {
 		result = append(result, v)
+	}
+	return result
+}
+
+func sliceToInterfaceSlice(slice []pulumi.Resource) []interface{} {
+	result := make([]interface{}, len(slice))
+	for i, v := range slice {
+		result[i] = v
 	}
 	return result
 }
@@ -228,6 +238,14 @@ func createResourceGroup(
 ) (*resources.ResourceGroup, error) {
 	l := logger.Get()
 	l.Info("Creating resource group")
+
+	disp := display.GetGlobalDisplay()
+	for _, machine := range deployment.Machines {
+		disp.UpdateStatus(&models.Status{
+			ID:     machine.ID,
+			Status: "Creating resource group",
+		})
+	}
 
 	rg, err := resources.NewResourceGroup(
 		pulumiCtx,
@@ -242,7 +260,19 @@ func createResourceGroup(
 		return nil, fmt.Errorf("failed to create resource group: %w", err)
 	}
 
+	// Wait for the resource group to be created
+	pulumi.All(rg.ID()).ApplyT(func(args []interface{}) error {
+		l.Debugf("Resource group created: %s", deployment.ResourceGroupName)
+		return nil
+	})
+
 	l.Infof("Resource group created: %s", deployment.ResourceGroupName)
+	for _, machine := range deployment.Machines {
+		disp.UpdateStatus(&models.Status{
+			ID:     machine.ID,
+			Status: "RG created - " + deployment.ResourceGroupName,
+		})
+	}
 	return rg, nil
 }
 
@@ -270,6 +300,7 @@ func createVMs(
 				publicIPAddressName := vmName + "-ip"
 				publicIP, err := createPublicIP(
 					pulumiCtx,
+					machine,
 					publicIPAddressName,
 					resourceGroupName,
 					machine.Location,
@@ -285,6 +316,7 @@ func createVMs(
 				// Create network interface
 				nic, err := createNetworkInterface(
 					pulumiCtx,
+					machine,
 					vmName,
 					resourceGroupName,
 					machine.Location,
@@ -352,13 +384,22 @@ func createVMs(
 
 func createPublicIP(
 	pulumiCtx *pulumi.Context,
+	machine models.Machine,
 	publicIPAddressName string,
 	resourceGroupName string,
 	location string,
 	tags pulumi.StringMap,
 	dependsOn []pulumi.Resource,
 ) (*network.PublicIPAddress, error) {
-	return network.NewPublicIPAddress(
+	l := logger.Get()
+
+	disp := display.GetGlobalDisplay()
+	disp.UpdateStatus(&models.Status{
+		ID:     machine.ID,
+		Status: "Creating public IP in " + location,
+	})
+
+	publicIP, err := network.NewPublicIPAddress(
 		pulumiCtx,
 		publicIPAddressName,
 		&network.PublicIPAddressArgs{
@@ -368,10 +409,26 @@ func createPublicIP(
 		},
 		pulumi.DependsOn(dependsOn),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public IP: %w", err)
+	}
+
+	pulumi.All(publicIP.ID()).ApplyT(func(args []interface{}) error {
+		l.Infof("Public IP created successfully: %s", publicIPAddressName)
+		return nil
+	})
+
+	disp.UpdateStatus(&models.Status{
+		ID:     machine.ID,
+		Status: "Public IP created in " + location,
+	})
+
+	return publicIP, nil
 }
 
 func createNetworkInterface(
 	pulumiCtx *pulumi.Context,
+	machine models.Machine,
 	name string,
 	resourceGroupName string,
 	location string,
@@ -381,7 +438,15 @@ func createNetworkInterface(
 	tags pulumi.StringMap,
 	dependsOn []pulumi.Resource,
 ) (*network.NetworkInterface, error) {
-	return network.NewNetworkInterface(
+	l := logger.Get()
+	l.Debugf("Creating network interface in %s for machine %s", location, machine.Name)
+	disp := display.GetGlobalDisplay()
+	disp.UpdateStatus(&models.Status{
+		ID:     machine.ID,
+		Status: "Creating network interface in " + location,
+	})
+
+	nic, err := network.NewNetworkInterface(
 		pulumiCtx,
 		name+"-nic",
 		&network.NetworkInterfaceArgs{
@@ -405,6 +470,21 @@ func createNetworkInterface(
 		},
 		pulumi.DependsOn(dependsOn),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network interface: %w", err)
+	}
+	pulumi.All(nic.ID()).ApplyT(func(args []interface{}) error {
+		l.Infof("Network interface created successfully: %s", name)
+		return nil
+	})
+
+	disp.UpdateStatus(&models.Status{
+		ID:     machine.ID,
+		Status: "Network interface created in " + location,
+	})
+
+	return nic, nil
+
 }
 
 func createVirtualMachine(
@@ -418,6 +498,14 @@ func createVirtualMachine(
 	tags pulumi.StringMap,
 	dependsOn []pulumi.Resource,
 ) (*compute.VirtualMachine, error) {
+	l := logger.Get()
+	l.Debugf("Creating virtual machine in %s for machine %s", machine.Location, machine.Name)
+	disp := display.GetGlobalDisplay()
+	disp.UpdateStatus(&models.Status{
+		ID:     machine.ID,
+		Status: "Creating virtual machine in " + machine.Location,
+	})
+
 	vm, err := compute.NewVirtualMachine(
 		pulumiCtx,
 		name,
@@ -472,9 +560,20 @@ func createVirtualMachine(
 		},
 		pulumi.DependsOn(dependsOn),
 	)
+
 	if err != nil {
 		return nil, HandleAzureError(err)
 	}
+	pulumi.All(vm.ID()).ApplyT(func(args []interface{}) error {
+		l.Infof("Virtual machine created successfully: %s", name)
+		return nil
+	})
+
+	disp.UpdateStatus(&models.Status{
+		ID:     machine.ID,
+		Status: "Virtual machine created in " + machine.Location,
+	})
+
 	return vm, nil
 }
 
@@ -486,6 +585,14 @@ func createNSGs(
 ) (map[string]*network.NetworkSecurityGroup, error) {
 	l := logger.Get()
 	l.Debug("Creating network security groups")
+	disp := display.GetGlobalDisplay()
+	for _, machine := range deployment.Machines {
+		disp.UpdateStatus(&models.Status{
+			ID:     machine.ID,
+			Status: "Creating network security groups",
+		})
+	}
+
 	nsgs := make(map[string]*network.NetworkSecurityGroup)
 	for _, location := range deployment.Locations {
 		l.Debugf("Creating network security group for location: %s", location)
@@ -526,6 +633,12 @@ func createNSGs(
 		nsgs[location] = nsg
 		l.Debugf("Network security group created in %s", location)
 	}
+	pulumi.All(sliceToInterfaceSlice(mapToResourceSlice(nsgs))...).
+		ApplyT(func(args []interface{}) error {
+			l.Info("All network security groups created successfully")
+			return nil
+		})
+
 	return nsgs, nil
 }
 
@@ -536,9 +649,19 @@ func createVNets(
 	dependencies []pulumi.Resource,
 ) (map[string]*network.VirtualNetwork, error) {
 	l := logger.Get()
-	l.Info("Creating virtual networks")
+	l.Debugf("Creating virtual networks for deployment: %+v", deployment)
 	vnets := make(map[string]*network.VirtualNetwork)
+	disp := display.GetGlobalDisplay()
 	for _, location := range deployment.Locations {
+		for _, machine := range deployment.Machines {
+			if machine.Location == location {
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Status: "Creating VNet - " + location,
+				})
+			}
+		}
+
 		if err := pulumiCtx.Context().Err(); err != nil {
 			return nil, fmt.Errorf(
 				"deployment cancelled while creating virtual networks: %w",
@@ -575,7 +698,22 @@ func createVNets(
 		}
 		vnets[location] = vnet
 		l.Infof("Virtual network created in %s", location)
+		for _, machine := range deployment.Machines {
+			if machine.Location == location {
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Status: "VNet created - " + location,
+				})
+			}
+		}
 	}
+
+	pulumi.All(sliceToInterfaceSlice(mapToResourceSlice(vnets))...).
+		ApplyT(func(args []interface{}) error {
+			l.Info("All virtual networks created successfully")
+			return nil
+		})
+
 	return vnets, nil
 }
 func printMachineIPTable(deployment *models.Deployment) {
