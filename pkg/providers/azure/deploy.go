@@ -50,6 +50,9 @@ func (p *AzureProvider) DeployResources(
 	// Create a done channel to signal completion
 	done := utils.CreateStructChannel(1)
 
+	// Create a channel to signal that the summary has been received
+	summaryReceived := utils.CreateStructChannel(1)
+
 	// Start a goroutine to handle cancellation and completion
 	wg.Add(1)
 	go func() {
@@ -57,9 +60,11 @@ func (p *AzureProvider) DeployResources(
 		select {
 		case <-ctx.Done():
 			l.Info("Deployment cancelled, closing all channels")
-			disp.Close()
+			close(summaryReceived)
 		case <-done:
-			l.Info("Deployment completed, closing display channel")
+			l.Info("Deployment completed, waiting for summary")
+			<-summaryReceived
+			l.Info("Summary received, closing display channel")
 			if disp != nil {
 				disp.Close()
 			}
@@ -72,6 +77,9 @@ func (p *AzureProvider) DeployResources(
 		wg.Wait()
 		l.Info("All goroutines finished, exiting")
 	}()
+
+	// Start the display with the summaryReceived channel
+	go disp.Start(make(chan os.Signal), summaryReceived)
 
 	// Wrap the entire function in a defer/recover block
 	defer func() {
@@ -155,6 +163,8 @@ func (p *AzureProvider) DeployResources(
 			if event.SummaryEvent != nil {
 				l.Debugf("Summary event: %v", event.SummaryEvent)
 				l.Debugf("Open channels: %v", utils.GlobalChannels)
+				close(summaryReceived)
+				break
 			}
 		}
 	}()
