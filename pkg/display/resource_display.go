@@ -363,6 +363,7 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		d.renderToVirtualConsole()
 	}
 	d.Logger.Debug("Display Start method completed")
+	d.Stop() // Ensure the display stops after completion
 }
 
 func (d *Display) updateFromGlobalMap() {

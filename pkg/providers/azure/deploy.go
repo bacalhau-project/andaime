@@ -170,10 +170,6 @@ func (p *AzureProvider) DeployResources(
 		"Azure deployment completed successfully in %v",
 		deployment.EndTime.Sub(deployment.StartTime),
 	)
-	// Print all open channels
-	for _, channel := range utils.GlobalChannels {
-		l.Debugf("Open channel: %v", channel)
-	}
 
 	disp.UpdateStatus(&models.Status{
 		ID:     deployment.UniqueID,
@@ -186,9 +182,9 @@ func (p *AzureProvider) DeployResources(
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
+	allIPsPopulated := make(chan bool, 1)
+	go func() {
+		for {
 			allIPsValid := true
 			for _, machine := range deployment.Machines {
 				if machine.PublicIP == "" {
@@ -197,19 +193,28 @@ func (p *AzureProvider) DeployResources(
 				}
 			}
 			if allIPsValid {
-				// Print the table of machines and IPs
-				printMachineIPTable(deployment)
-				return nil
+				allIPsPopulated <- true
+				return
 			}
-		case <-timeout:
-			l.Warn("Timeout waiting for IP addresses to be populated")
-			printMachineIPTable(deployment)
-			return nil
-		case <-ctx.Done():
-			l.Info("Deployment cancelled while waiting for IP addresses")
-			return ctx.Err()
+			time.Sleep(5 * time.Second)
 		}
+	}()
+
+	select {
+	case <-allIPsPopulated:
+		printMachineIPTable(deployment)
+	case <-timeout:
+		l.Warn("Timeout waiting for IP addresses to be populated")
+		printMachineIPTable(deployment)
+	case <-ctx.Done():
+		l.Info("Deployment cancelled while waiting for IP addresses")
+		return ctx.Err()
 	}
+
+	// Close all channels
+	utils.CloseAllChannels()
+
+	return nil
 }
 
 func typeOfEvent(event events.EngineEvent) string {
