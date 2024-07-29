@@ -285,7 +285,7 @@ func (d *Display) padText(text string, width int) string {
 	return text + strings.Repeat(" ", width-len(text))
 }
 
-func (d *Display) Start(sigChan chan os.Signal) {
+func (d *Display) Start(sigChan chan os.Signal, summaryReceived chan struct{}) {
 	if d.Logger.Logger == nil {
 		d.Logger = *logger.Get()
 	}
@@ -303,6 +303,9 @@ func (d *Display) Start(sigChan chan os.Signal) {
 			close(stopChan)
 		case <-d.Quit:
 			d.Logger.Debug("Stop channel closed, stopping display")
+			close(stopChan)
+		case <-summaryReceived:
+			d.Logger.Debug("Summary received, stopping display")
 			close(stopChan)
 		}
 	}()
@@ -322,7 +325,6 @@ func (d *Display) Start(sigChan chan os.Signal) {
 				select {
 				case <-stopChan:
 					d.Logger.Debug("Received stop signal in update loop")
-					d.Stop()
 					return
 				case <-ticker.C:
 					d.updateFromGlobalMap()
@@ -338,14 +340,11 @@ func (d *Display) Start(sigChan chan os.Signal) {
 				d.Logger.Errorf("Error running display: %v", err)
 			}
 			d.Logger.Debug("tview application stopped")
-			utils.CloseChannel(stopChan)
 		}()
 
-		go func() {
-			<-stopChan
-			d.Logger.Debug("Stop channel closed, waiting for goroutines to finish")
-			utils.CloseChannel(allDone)
-		}()
+		<-stopChan
+		d.Logger.Debug("Stop channel closed, stopping display")
+		d.Stop()
 
 		select {
 		case <-allDone:
@@ -363,7 +362,6 @@ func (d *Display) Start(sigChan chan os.Signal) {
 		d.renderToVirtualConsole()
 	}
 	d.Logger.Debug("Display Start method completed")
-	d.Stop() // Ensure the display stops after completion
 }
 
 func (d *Display) updateFromGlobalMap() {

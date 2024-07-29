@@ -78,8 +78,8 @@ func (p *AzureProvider) DeployResources(
 		l.Info("All goroutines finished, exiting")
 	}()
 
-	// Start the display with the summaryReceived channel
-	go disp.Start(make(chan os.Signal), summaryReceived)
+	// Start the display
+	display.Start(ctx.Done())
 
 	// Wrap the entire function in a defer/recover block
 	defer func() {
