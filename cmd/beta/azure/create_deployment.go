@@ -230,7 +230,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Close all channels and finalize
 	utils.CloseAllChannels()
 	l.Debug("All channels closed - at the end of executeCreateDeployment")
-	disp.Stop() // Ensure display is stopped
+	disp.Stop()        // Ensure display is stopped
+	disp.WaitForStop() // Wait for the display to fully stop
 	return nil
 }
 
@@ -396,6 +397,14 @@ func PrepareDeployment(
 	deployment.Machines = allMachines
 	deployment.Locations = locations
 
+	for _, machine := range deployment.Machines {
+		disp.UpdateStatus(&models.Status{
+			ID:        machine.ID,
+			Status:    "Initializing machine...",
+			Location:  machine.Location,
+			StartTime: time.Now(),
+		})
+	}
 	return deployment, nil
 }
 
@@ -499,6 +508,8 @@ func ProcessMachinesConfig(
 			for i := 0; i < rawMachine.Parameters.Count; i++ {
 				machines = append(machines, thisMachine)
 			}
+		} else {
+			machines = append(machines, thisMachine)
 		}
 	}
 
