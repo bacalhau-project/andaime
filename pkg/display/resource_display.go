@@ -7,7 +7,6 @@ import (
 	"runtime/pprof"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
