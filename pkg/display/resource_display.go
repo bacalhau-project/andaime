@@ -269,6 +269,7 @@ func (d *Display) padText(text string, width int) string {
 
 func (d *Display) Start() {
 	d.Logger.Debug("Starting display")
+	d.StopChan = make(chan struct{})
 
 	d.Table.SetTitle("Deployment Status").
 		SetBorder(true).
@@ -280,6 +281,9 @@ func (d *Display) Start() {
 			select {
 			case <-d.Ctx.Done():
 				d.Logger.Debug("Context cancelled, stopping display")
+				return
+			case <-d.StopChan:
+				d.Logger.Debug("Stop signal received, stopping display")
 				return
 			case <-d.updateChan:
 				d.App.QueueUpdateDraw(func() {
@@ -307,6 +311,7 @@ func (d *Display) updateFromGlobalMap() {
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
+	close(d.StopChan)
 	d.App.Stop()
 	defer d.DumpGoroutines()
 	d.resetTerminal()
