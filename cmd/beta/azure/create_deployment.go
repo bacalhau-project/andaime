@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
@@ -30,8 +31,11 @@ type contextKey string
 const uniqueDeploymentIDKey contextKey = "UniqueDeploymentID"
 const MillisecondsBetweenUpdates = 100
 const DefaultDiskSizeGB = 30
+const StatusCreating = "creating"
 
-var DefaultAllowedPorts = []int{22, 80, 443}
+var (
+	DefaultAllowedPorts = []int{22, 80, 443}
+)
 
 var createAzureDeploymentCmd = &cobra.Command{
 	Use:   "create-deployment",
@@ -44,9 +48,16 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 	return createAzureDeploymentCmd
 }
 
+func printFinalState(disp *display.Display) {
+	fmt.Println("Final Deployment State:")
+	fmt.Println(disp.GetTableString())
+	fmt.Println("\nLogged Buffer:")
+	fmt.Println(logger.GlobalLoggedBuffer.String())
+}
+
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
-	logger.InitProduction(false, true)
 	l := logger.Get()
+
 	l.Info("Starting executeCreateDeployment")
 
 	// Create a context that can be cancelled
@@ -54,22 +65,30 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Create a channel to signal when cleanup is done
-	cleanupDone := utils.CreateStructChannel(1)
+	cleanupDone := utils.CreateBoolChannel("azure_createDeployment_cleanupDone", 1)
+	l.Debugf("Channel created: azure_cleanup_done")
 
 	// Create a channel for error communication
-	errorChan := utils.CreateErrorChannel(1)
+	errorChan := utils.CreateErrorChannel("azure_createDeployment_errorChan", 1)
+	l.Debugf("Channel created: azure_error_channel")
+
+	// Create a channel to signal deployment completion
+	deploymentDone := utils.CreateBoolChannel("azure_createDeployment_deploymentDone", 1)
+	l.Debugf("Channel created: azure_deployment_done")
 
 	// Catch panics and log them
 	defer func() {
 		if r := recover(); r != nil {
 			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
 			l.Error(string(debug.Stack()))
+			l.Debugf("Closing channel: azure_error_channel")
 			errorChan <- fmt.Errorf("panic occurred: %v", r)
 		}
 		cancel() // Cancel the context
+		l.Debugf("Closing channel: azure_cleanup_done")
 		utils.CloseChannel(cleanupDone)
 		l.Info("Cleanup completed")
-		
+
 		// Debug information about open channels
 		l.Debug("Checking for open channels:")
 		utils.DebugOpenChannels()
@@ -92,7 +111,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Azure provider initialized successfully")
 
 	l.Debug("Setting up signal channel")
-	sigChan := utils.CreateSignalChannel(1)
+	sigChan := utils.CreateSignalChannel("azure_createDeployment_signalChan", 1)
+	l.Debugf("Channel created: azure_signal_channel")
 
 	signal.Notify(
 		sigChan,
@@ -112,8 +132,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		// Start display in a goroutine
 		go func() {
 			l.Debug("Display Start() called")
-			summaryReceived := utils.CreateStructChannel(1)
-			disp.Start(sigChan, summaryReceived)
+			disp.Start()
 			l.Debug("Display Start() returned")
 		}()
 
@@ -134,16 +153,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errMsg)
 	}
 	l.Info("Starting resource deployment")
-
-	for _, machine := range deployment.Machines {
-		l.Debugf("Deploying machine: %s", machine.Name)
-		disp.UpdateStatus(&models.Status{
-			ID:        machine.ID,
-			Status:    "Initializing",
-			Type:      "VM",
-			StartTime: time.Now(),
-		})
-	}
 
 	// Create ticker channel
 	ticker := time.NewTicker(MillisecondsBetweenUpdates * time.Millisecond)
@@ -173,33 +182,43 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
-			errorChan <- fmt.Errorf(errMsg)
 		} else {
 			l.Info("Azure deployment created successfully")
 			cmd.Println("Azure deployment created successfully")
-			cmd.Println("Press 'q' and Enter to quit")
+			utils.CloseChannel(deploymentDone)
 		}
 	}()
 
-	// Wait for signal, error, or user input
+	// Wait for signal, error, or deployment completion
 	select {
 	case <-sigChan:
 		l.Info("Interrupt signal received, initiating graceful shutdown")
-		disp.Close()
-		l.Info("Display closed - sigChan")
+		l.Debugf("Closing channel: azure_signal_channel")
+		utils.CloseChannel(sigChan)
+		printFinalState(disp)
+		return nil
 	case err := <-errorChan:
 		l.Errorf("Error occurred during deployment: %v", err)
-		disp.Close()
-		l.Info("Display closed - errorChan")
+		l.Debugf("Closing channel: azure_error_channel")
+		utils.CloseChannel(errorChan)
+		printFinalState(disp)
 		return err
+	case <-deploymentDone:
+		l.Info("Deployment completed successfully")
+		printFinalState(disp)
 	case <-ctx.Done():
 		l.Info("Context cancelled, initiating graceful shutdown")
-		disp.Close()
-		l.Info("Display closed - ctx.Done()")
+		printFinalState(disp)
+		return ctx.Err()
 	}
 
-	utils.CloseAllChannels()
+	// Enable pprof profiling
+	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
+	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
 
+	// Close all channels and finalize
+	utils.CloseAllChannels()
+	l.Debug("All channels closed - at the end of executeCreateDeployment")
 	return nil
 }
 
@@ -232,8 +251,8 @@ func InitializeDeployment(
 			Name:     "default-vm",
 			VMSize:   v.GetString("azure.default_vm_size"),
 			Location: v.GetString("azure.default_location"),
-			Parameters: []models.Parameters{
-				{Orchestrator: true},
+			Parameters: models.Parameters{
+				Orchestrator: true,
 			},
 		},
 	})
@@ -307,8 +326,8 @@ func PrepareDeployment(
 	}
 
 	// Unmarshal machines configuration
-	var machines []models.Machine
-	if err := viper.UnmarshalKey("azure.machines", &machines); err != nil {
+	var rawMachines []models.Machine
+	if err := viper.UnmarshalKey("azure.machines", &rawMachines); err != nil {
 		return nil, fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
@@ -353,7 +372,7 @@ func PrepareDeployment(
 
 	// Process machines
 	orchestratorNode, allMachines, locations, err := ProcessMachinesConfig(
-		machines,
+		rawMachines,
 		disp,
 		deployment,
 	)
@@ -438,13 +457,38 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 
 // processMachinesConfig processes the machine configurations
 func ProcessMachinesConfig(
-	machines []models.Machine,
+	rawMachines []models.Machine,
 	disp *display.Display,
 	deployment *models.Deployment,
 ) (*models.Machine, []models.Machine, []string, error) {
 	var orchestratorNode *models.Machine
 	var allMachines []models.Machine
 	locations := make(map[string]bool)
+
+	machines := make([]models.Machine, 0)
+	for _, rawMachine := range rawMachines {
+		var thisMachine models.Machine
+		thisMachine.DiskSizeGB = deployment.DefaultDiskSizeGB
+		thisMachine.VMSize = deployment.DefaultVMSize
+
+		// Upsert machine parameters from rawMachine
+		if (rawMachine.Parameters != models.Parameters{}) {
+			if rawMachine.Parameters.Type != "" {
+				thisMachine.VMSize = rawMachine.Parameters.Type
+			}
+		}
+
+		if rawMachine.Parameters.Orchestrator {
+			thisMachine.Parameters.Orchestrator = rawMachine.Parameters.Orchestrator
+		}
+
+		// If rawMachine.Parameters.Count is an int, and > 1, then replicate this machine
+		if rawMachine.Parameters.Count > 1 {
+			for i := 0; i < rawMachine.Parameters.Count; i++ {
+				machines = append(machines, thisMachine)
+			}
+		}
+	}
 
 	for _, machine := range machines {
 		internalMachine := machine
@@ -471,21 +515,13 @@ func ProcessMachinesConfig(
 		internalMachine.ComputerName = fmt.Sprintf("vm-%s", internalMachine.ID)
 		internalMachine.StartTime = time.Now()
 
-		if len(machine.Parameters) > 0 && machine.Parameters[0].Orchestrator {
+		if (machine.Parameters != models.Parameters{}) && (machine.Parameters.Orchestrator) {
 			if orchestratorNode != nil {
 				return nil, nil, nil, fmt.Errorf("multiple orchestrator nodes found")
 			}
 			orchestratorNode = &internalMachine
 		}
 		allMachines = append(allMachines, internalMachine)
-
-		disp.UpdateStatus(&models.Status{
-			ID:        internalMachine.ID,
-			Type:      "VM",
-			Location:  internalMachine.Location,
-			Status:    "Initializing",
-			StartTime: time.Now(),
-		})
 	}
 
 	uniqueLocations := make([]string, 0, len(locations))
@@ -494,4 +530,160 @@ func ProcessMachinesConfig(
 	}
 
 	return orchestratorNode, allMachines, uniqueLocations, nil
+}
+
+func updateMachineStatuses(deployment *models.Deployment, event string) {
+	l := logger.Get()
+	numberOfParts := 5
+	// Split the event into parts
+	// parts := strings.SplitN(" + azure-native:network:PublicIPAddress vm-ceob5r-0-ip created (3s)", " ", 5)
+	parts := strings.SplitN(event, " ", numberOfParts)
+	if len(parts) < numberOfParts {
+		return // Not enough information in the event
+	}
+
+	// Wait until after we know it's worth getting the display
+	disp := display.GetGlobalDisplay()
+
+	resourceType := parts[1] // Part 1 is the resource type
+	resourceName := parts[2] // Part 2 is the resource name
+	status := parts[3]       // Part 3 is the status
+	timeStr := strings.TrimSuffix(strings.TrimPrefix(parts[4], "("), ")")
+	_, err := time.ParseDuration(timeStr)
+	if err != nil {
+		l.Debugf("Failed to parse time taken: %v", err)
+	}
+
+	var machineID, location string
+	if strings.HasPrefix(resourceName, "vm-") {
+		vmNameParts := strings.Split(resourceName, "-")
+		machineID = strings.Join(vmNameParts[:1], "-")
+	} else {
+		locationParts := strings.Split(resourceName, "-")
+		location = locationParts[len(parts)-1]
+	}
+
+	// resourceList := []string{
+	// 	"pulumi:pulumi:Stack",
+	// 	"azure-native:resources:ResourceGroup",
+	// 	"azure-native:network:VirtualNetwork",
+	// 	"azure-native:network:NetworkSecurityGroup",
+	// 	"azure-native:network:PublicIPAddress",
+	// 	"azure-native:network:NetworkInterface",
+	// 	"azure-native:compute:VirtualMachine",
+	// }
+
+	// finalStatus := &models.Status{}
+
+	switch resourceType {
+	case "pulumi:pulumi:Stack":
+		// If the resource type is a Stack, we need to update the deployment status
+		l.Debugf("Deployment started, put it on all machines")
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating Stack %s deployment ...", resourceName)
+		} else {
+			msg = fmt.Sprint("Completed.", resourceName)
+		}
+
+		for _, machine := range deployment.Machines {
+			disp.UpdateStatus(&models.Status{
+				ID:     machine.ID,
+				Status: msg,
+			})
+		}
+	case "azure-native:resources:ResourceGroup":
+		l.Debugf("RG started, put it on all machines")
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating RG %s ...", resourceName)
+		} else {
+			msg = fmt.Sprintf("Creating RG %s ... Done ✅", resourceName)
+		}
+
+		for _, machine := range deployment.Machines {
+			disp.UpdateStatus(&models.Status{
+				ID:     machine.ID,
+				Status: msg,
+			})
+		}
+	case "azure-native:network:VirtualNetwork":
+		l.Debugf("VNet started, put it on all machines in a location: %s", location)
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating VNet %s ...", resourceName)
+		} else {
+			msg = fmt.Sprintf("Creating VNet %s ... Done ✅", resourceName)
+		}
+
+		for _, machine := range deployment.Machines {
+			if machine.Location == location {
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Status: msg,
+				})
+			}
+		}
+	case "azure-native:network:NetworkSecurityGroup":
+		l.Debugf("NSG started, put it on all machines in a location: %s", location)
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating NSG %s ...", resourceName)
+		} else {
+			msg = fmt.Sprintf("Creating NSG %s ... Done ✅", resourceName)
+		}
+
+		for _, machine := range deployment.Machines {
+			if machine.Location == location {
+				disp.UpdateStatus(&models.Status{
+					ID:     machine.ID,
+					Status: msg,
+				})
+			}
+		}
+	case "azure-native:network:PublicIPAddress":
+		l.Debugf("PublicIP started: %s", resourceName)
+
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating PublicIP %s ...", resourceName)
+		} else {
+			msg = fmt.Sprintf("Creating PublicIP %s ... Done ✅", resourceName)
+		}
+
+		disp.UpdateStatus(&models.Status{
+			ID:     machineID,
+			Status: msg,
+		})
+
+	case "azure-native:network:NetworkInterface":
+		l.Debugf("NIC started: %s", resourceName)
+
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating NIC %s ...", resourceName)
+		} else {
+			msg = fmt.Sprintf("Creating NIC %s ... Done ✅", resourceName)
+		}
+
+		disp.UpdateStatus(&models.Status{
+			ID:     machineID,
+			Status: msg,
+		})
+	case "azure-native:compute:VirtualMachine":
+		// If the resource type is a VirtualMachine, we need to update machine statuses
+		l.Debugf("VM started: %s", resourceName)
+
+		var msg string
+		if status == StatusCreating {
+			msg = fmt.Sprintf("Creating VM %s ...", resourceName)
+		} else {
+			msg = fmt.Sprintf("Creating VM %s ... Done ✅", resourceName)
+		}
+
+		disp.UpdateStatus(&models.Status{
+			ID:     machineID,
+			Status: msg,
+		})
+	}
 }

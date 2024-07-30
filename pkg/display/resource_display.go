@@ -1,10 +1,9 @@
 package display
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
+	"runtime/pprof"
 	"sort"
 	"strings"
 	"time"
@@ -49,7 +48,10 @@ func NewDisplay() *Display {
 		updateChan: make(chan struct{}, 1),
 	}
 
-	d.LogBox.SetBorder(true).SetBorderColor(tcell.ColorWhite).SetTitle("Log").SetTitleColor(tcell.ColorWhite)
+	d.LogBox.SetBorder(true).
+		SetBorderColor(tcell.ColorWhite).
+		SetTitle("Log").
+		SetTitleColor(tcell.ColorWhite)
 	d.setupLayout()
 
 	return d
@@ -76,24 +78,25 @@ var DisplayColumns = []DisplayColumn{
 	},
 	{
 		Text:     "Type",
-		Width:    20,
+		Width:    8,
 		Color:    TextColor,
 		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.Type },
 	},
 	{
 		Text:     "Location",
-		Width:    15,
+		Width:    12,
 		Color:    TextColor,
 		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.Location },
 	},
 	{
 		Text:     "Status",
-		Width:    30,
+		Width:    36,
 		Color:    TextColor,
 		DataFunc: func(status models.Status) string { return status.Status }},
-	{Text: "Elapsed",
+	{
+		Text:  "Elapsed",
 		Width: 10,
 		Color: TextColor,
 		Align: tview.AlignCenter,
@@ -106,10 +109,9 @@ var DisplayColumns = []DisplayColumn{
 			minutes := int(elapsedTime.Minutes())
 			seconds := float64(elapsedTime.Milliseconds()%60000) / 1000.0
 
-			if seconds < 10 {
+			if minutes < 1 && seconds < 10 {
 				return fmt.Sprintf("%1.1fs", seconds)
-			}
-			if minutes == 0 {
+			} else if minutes < 1 {
 				return fmt.Sprintf("%01.1fs", seconds)
 			}
 			return fmt.Sprintf("%dm%01.1fs", minutes, seconds)
@@ -134,7 +136,6 @@ var DisplayColumns = []DisplayColumn{
 }
 
 func (d *Display) setupLayout() {
-	d.DebugLog.Debug("Setting up layout")
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.Table, 0, 3, true).
 		AddItem(d.LogBox, 12, 1, false)
@@ -161,7 +162,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	d.StatusesMu.Unlock()
 
 	d.displayResourceProgress(newStatus)
-	
+
 	select {
 	case d.updateChan <- struct{}{}:
 	default:
@@ -191,7 +192,7 @@ func (d *Display) getHighlightColor(cycles int) tcell.Color {
 	return tcell.NewRGBColor(int32(r), int32(g), int32(b))
 }
 
-func (d *Display) getTableString() string {
+func (d *Display) GetTableString() string {
 	var tableContent strings.Builder
 	tableContent.WriteString(d.getTableHeader())
 	if len(d.LastTableState) > 1 {
@@ -260,15 +261,19 @@ func (d *Display) padText(text string, width int) string {
 	if len(text) >= width {
 		return text[:width]
 	}
-	return text + strings.Repeat(" ", width-len(text))
+	padding := width - len(text)
+	leftPadding := padding / 2 //nolint:gomnd
+	rightPadding := padding - leftPadding
+	return strings.Repeat(" ", leftPadding) + text + strings.Repeat(" ", rightPadding)
 }
-
-var i = 0
 
 func (d *Display) Start() {
 	d.Logger.Debug("Starting display")
-	
-	d.Table.SetTitle("Deployment Status").SetBorder(true).SetBorderColor(tcell.ColorWhite).SetTitleColor(tcell.ColorWhite)
+
+	d.Table.SetTitle("Deployment Status").
+		SetBorder(true).
+		SetBorderColor(tcell.ColorWhite).
+		SetTitleColor(tcell.ColorWhite)
 
 	go func() {
 		for {
@@ -303,18 +308,18 @@ func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 	d.App.Stop()
+	defer d.DumpGoroutines()
 	d.resetTerminal()
 }
 
 func (d *Display) resetTerminal() {
 	l := logger.Get()
 	l.Debug("Resetting terminal")
-	if !d.TestMode {
-		d.App.Suspend(func() {
-			fmt.Print("\033[?1049l") // Exit alternate screen buffer
-			fmt.Print("\033[?25h")   // Show cursor
-		})
-	}
+	d.App.Suspend(func() {
+		fmt.Print("\033[?1049l") // Exit alternate screen buffer
+		fmt.Print("\033[?25h")   // Show cursor
+	})
+	fmt.Printf(logger.GlobalLoggedBuffer.String())
 }
 
 func (d *Display) WaitForStop() {
@@ -328,21 +333,12 @@ func (d *Display) WaitForStop() {
 }
 
 func (d *Display) AddLogEntry(logEntry string) {
-	d.DebugLog.Debug(logEntry)
-	if d.TestMode {
-		_, err := d.LogBox.Write([]byte(logEntry + "\n"))
-		if err != nil {
-			d.DebugLog.Error(fmt.Sprintf("Error writing to log box: %v", err))
-		}
-	} else {
-		d.App.QueueUpdateDraw(func() {
-			fmt.Fprintf(d.LogBox, "%s\n", logEntry)
-		})
-	}
+	d.App.QueueUpdateDraw(func() {
+		fmt.Fprintf(d.LogBox, "%s\n", logEntry)
+	})
 }
 
 func (d *Display) printFinalTableState() {
-	d.DebugLog.Debug("Printing final table state")
 	if len(d.LastTableState) == 0 {
 		fmt.Println("No data to display")
 		return
@@ -392,11 +388,8 @@ func (d *Display) printFinalTableState() {
 	printSeparator() // Print bottom separator
 }
 func (d *Display) scheduleUpdate() {
-	d.UpdateMutex.Lock()
-	defer d.UpdateMutex.Unlock()
-
-	// l := logger.Get()
-	// l.Debug("Scheduling update")
+	d.UpdateMu.Lock()
+	defer d.UpdateMu.Unlock()
 
 	if !d.UpdatePending {
 		d.UpdatePending = true
@@ -404,9 +397,9 @@ func (d *Display) scheduleUpdate() {
 		go func() {
 			time.Sleep(250 * time.Millisecond) // Increased delay to reduce update frequency
 			d.App.QueueUpdateDraw(func() {
-				d.UpdateMutex.Lock()
+				d.UpdateMu.Lock()
 				d.UpdatePending = false
-				d.UpdateMutex.Unlock()
+				d.UpdateMu.Unlock()
 				d.updateDisplay()
 			})
 		}()
@@ -421,7 +414,8 @@ func (d *Display) updateDisplay() {
 func (d *Display) renderTable() {
 	// Add header row
 	for col, column := range DisplayColumns {
-		cell := tview.NewTableCell(column.Text).
+		textWithPadding := d.padText(column.Text, column.Width)
+		cell := tview.NewTableCell(textWithPadding).
 			SetMaxWidth(column.Width).
 			SetTextColor(tcell.ColorYellow).
 			SetSelectable(false).
@@ -465,7 +459,7 @@ func (d *Display) displayResourceProgress(status *models.Status) {
 }
 
 func (d *Display) updateLogBox() {
-	lines := logger.GetLastLines(d.LogFileName, MaxLogLines)
+	lines := logger.GetLastLines(logger.GlobalLogPath, MaxLogLines)
 	d.LogBox.Clear()
 	for _, line := range lines {
 		fmt.Fprintln(d.LogBox, line)
@@ -477,15 +471,7 @@ func (d *Display) Log(message string) {
 	d.scheduleUpdate()
 }
 
-func (d *Display) renderToVirtualConsole() {
-	if d.VirtualConsole == nil {
-		d.VirtualConsole = &bytes.Buffer{}
-	}
-
-	d.VirtualConsole.Reset()
-	d.VirtualConsole.WriteString(d.getTableString())
-	d.VirtualConsole.WriteString("\nLog:\n")
-	if d.LogBox != nil {
-		d.VirtualConsole.WriteString(d.LogBox.GetText(false))
-	}
+func (d *Display) DumpGoroutines() {
+	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
+	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
 }
