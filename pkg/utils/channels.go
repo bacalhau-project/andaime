@@ -144,3 +144,14 @@ func IsChannelClosed(ch interface{}) bool {
 	}
 	return true
 }
+
+func DebugOpenChannels() {
+	l := logger.Get()
+	GlobalChannelsMutex.Lock()
+	defer GlobalChannelsMutex.Unlock()
+	for i, ch := range GlobalChannels {
+		if ch != nil && !ch.IsClosed() {
+			l.Debugf("Open channel %d: %v", i, ch)
+		}
+	}
+}

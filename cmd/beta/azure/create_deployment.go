@@ -69,6 +69,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		cancel() // Cancel the context
 		utils.CloseChannel(cleanupDone)
 		l.Info("Cleanup completed")
+		
+		// Debug information about open channels
+		l.Debug("Checking for open channels:")
+		utils.DebugOpenChannels()
 	}()
 
 	// Create a unique ID for the deployment

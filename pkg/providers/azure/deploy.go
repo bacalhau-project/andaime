@@ -70,6 +70,10 @@ func (p *AzureProvider) DeployResources(
 		disp.Stop()
 		utils.CloseAllChannels()
 		l.Info("All channels closed")
+		
+		// Debug information about open channels
+		l.Debug("Checking for open channels after cleanup:")
+		utils.DebugOpenChannels()
 	}()
 
 	// Wrap the entire function in a defer/recover block

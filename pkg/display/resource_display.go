@@ -380,11 +380,26 @@ func (d *Display) updateFromGlobalMap() {
 
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
+	d.Cancel() // Cancel the context
 	d.App.QueueUpdateDraw(func() {
 		d.App.Stop()
 	})
 	d.resetTerminal()
 	utils.CloseChannel(d.Quit)
+	
+	// Wait for all goroutines to finish
+	timeout := time.After(5 * time.Second)
+	done := make(chan bool)
+	go func() {
+		d.App.Stop()
+		done <- true
+	}()
+	select {
+	case <-done:
+		d.Logger.Debug("Display stopped successfully")
+	case <-timeout:
+		d.Logger.Warn("Timeout while stopping display")
+	}
 }
 
 func (d *Display) resetTerminal() {
