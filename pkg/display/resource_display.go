@@ -277,6 +277,11 @@ func (d *Display) Start() {
 		SetTitleColor(tcell.ColorWhite)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				d.Logger.Errorf("Panic in display goroutine: %v", r)
+			}
+		}()
 		for {
 			select {
 			case <-d.Ctx.Done():
@@ -311,8 +316,21 @@ func (d *Display) updateFromGlobalMap() {
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
-	close(d.StopChan)
-	d.App.Stop()
+
+	// Use a sync.Once to ensure StopChan is closed only once
+	var stopOnce sync.Once
+	stopOnce.Do(func() {
+		close(d.StopChan)
+	})
+
+	// Stop the application in a separate goroutine to avoid deadlock
+	go func() {
+		d.App.Stop()
+	}()
+
+	// Wait for the application to stop
+	<-d.App.QueueUpdateDraw(func() {})
+
 	defer d.DumpGoroutines()
 	d.resetTerminal()
 }
