@@ -39,13 +39,14 @@ const RelativeSizeForLogBox = 1
 func NewDisplay() *Display {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Display{
-		Statuses: make(map[string]*models.Status),
-		App:      tview.NewApplication(),
-		Table:    tview.NewTable().SetBorders(true),
-		LogBox:   tview.NewTextView().SetDynamicColors(true),
-		Ctx:      ctx,
-		Cancel:   cancel,
-		Logger:   logger.Get(),
+		Statuses:   make(map[string]*models.Status),
+		App:        tview.NewApplication(),
+		Table:      tview.NewTable().SetBorders(true),
+		LogBox:     tview.NewTextView().SetDynamicColors(true),
+		Ctx:        ctx,
+		Cancel:     cancel,
+		Logger:     logger.Get(),
+		updateChan: make(chan struct{}, 1),
 	}
 
 	d.LogBox.SetBorder(true).SetBorderColor(tcell.ColorWhite).SetTitle("Log").SetTitleColor(tcell.ColorWhite)
@@ -147,26 +148,24 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		return
 	}
 
-	// d.Logger.Debugf("UpdateStatus called ID: %s, Type: %s", newStatus.ID, newStatus.Type)
-
 	d.StatusesMu.Lock()
-
 	if d.Statuses == nil {
 		d.Statuses = make(map[string]*models.Status)
 	}
 
 	if _, exists := d.Statuses[newStatus.ID]; !exists {
-		// d.Logger.Debugf("Adding new status ID: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
-		// d.Logger.Debugf("Updating existing status ID: %s", newStatus.ID)
-		s := d.Statuses[newStatus.ID]
-		d.Statuses[newStatus.ID] = utils.UpdateStatus(s, newStatus)
+		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 	}
 	d.StatusesMu.Unlock()
 
 	d.displayResourceProgress(newStatus)
-	d.scheduleUpdate()
+	
+	select {
+	case d.updateChan <- struct{}{}:
+	default:
+	}
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -272,14 +271,12 @@ func (d *Display) Start() {
 	d.Table.SetTitle("Deployment Status").SetBorder(true).SetBorderColor(tcell.ColorWhite).SetTitleColor(tcell.ColorWhite)
 
 	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
 		for {
 			select {
 			case <-d.Ctx.Done():
 				d.Logger.Debug("Context cancelled, stopping display")
 				return
-			case <-ticker.C:
+			case <-d.updateChan:
 				d.App.QueueUpdateDraw(func() {
 					d.renderTable()
 					d.updateLogBox()
