@@ -12,6 +12,7 @@ import (
 var GlobalChannels []interface {
 	Close()
 	IsClosed() bool
+	SetClosed()
 }
 var GlobalChannelsMutex sync.Mutex
 
@@ -44,6 +45,12 @@ func (sc *SafeChannel) IsClosed() bool {
 	return sc.Closed
 }
 
+func (sc *SafeChannel) SetClosed() {
+	sc.Mu.Lock()
+	defer sc.Mu.Unlock()
+	sc.Closed = true
+}
+
 // CreateAndRegisterChannel creates a new channel of the specified type and capacity, and registers it
 func CreateAndRegisterChannel(channelType reflect.Type, capacity int) interface{} {
 	ch := reflect.MakeChan(channelType, capacity).Interface()
@@ -63,12 +70,11 @@ func CloseAllChannels() {
 	l.Debugf("Closing all channels")
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for i, ch := range GlobalChannels {
-		l.Debugf("Closing channel %v", ch)
+	for _, ch := range GlobalChannels {
 		if ch != nil && !ch.IsClosed() {
+			l.Debugf("Closing channel %v", ch)
 			ch.Close()
 		}
-		GlobalChannels[i] = nil
 	}
 	GlobalChannels = nil
 }
@@ -95,15 +101,20 @@ func CreateEventChannel(capacity int) chan events.EngineEvent {
 		capacity).(chan events.EngineEvent)
 }
 
+func CreateBoolChannel(capacity int) chan bool {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan bool)(nil)).Elem(), capacity).(chan bool)
+}
+
 // CloseChannel closes a specific channel
 func CloseChannel(ch interface{}) {
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for i, safeChannel := range GlobalChannels {
+	for _, safeChannel := range GlobalChannels {
 		if reflect.ValueOf(safeChannel).Pointer() == reflect.ValueOf(ch).Pointer() {
+			if safeChannel.IsClosed() {
+				continue
+			}
 			safeChannel.Close()
-			// Remove the closed channel from the GlobalChannels slice
-			GlobalChannels = append(GlobalChannels[:i], GlobalChannels[i+1:]...)
 			return
 		}
 	}
