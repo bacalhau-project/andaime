@@ -34,6 +34,12 @@ func (sc *SafeChannel) Close() {
 	sc.Mu.Lock()
 	defer sc.Mu.Unlock()
 	if !sc.Closed {
+		defer func() {
+			if r := recover(); r != nil {
+				// Channel was already closed, just log it
+				logger.Get().Warnf("Attempted to close an already closed channel: %v", sc.Ch)
+			}
+		}()
 		reflect.ValueOf(sc.Ch).Close()
 		sc.Closed = true
 	}
@@ -70,11 +76,16 @@ func CloseAllChannels() {
 	l.Debugf("Closing all channels")
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for _, ch := range GlobalChannels {
-		if ch != nil && !ch.IsClosed() {
-			l.Debugf("Closing channel %v", ch)
-			ch.Close()
+	for i, ch := range GlobalChannels {
+		if ch != nil {
+			if !ch.IsClosed() {
+				l.Debugf("Closing channel %v", ch)
+				ch.Close()
+			} else {
+				l.Debugf("Channel %v is already closed", ch)
+			}
 		}
+		GlobalChannels[i] = nil
 	}
 	GlobalChannels = nil
 }
