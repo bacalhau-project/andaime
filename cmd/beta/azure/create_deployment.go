@@ -230,6 +230,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Close all channels and finalize
 	utils.CloseAllChannels()
 	l.Debug("All channels closed - at the end of executeCreateDeployment")
+	disp.Stop() // Ensure display is stopped
 	return nil
 }
 
