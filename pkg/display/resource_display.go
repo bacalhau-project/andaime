@@ -317,16 +317,6 @@ func (d *Display) Stop() {
 	d.resetTerminal()
 }
 
-func (d *Display) resetTerminal() {
-	l := logger.Get()
-	l.Debug("Resetting terminal")
-	d.App.Suspend(func() {
-		fmt.Print("\033[?1049l") // Exit alternate screen buffer
-		fmt.Print("\033[?25h")   // Show cursor
-	})
-	fmt.Printf(logger.GlobalLoggedBuffer.String())
-}
-
 func (d *Display) WaitForStop() {
 	d.Logger.Debug("Waiting for display to stop")
 	select {
@@ -335,6 +325,16 @@ func (d *Display) WaitForStop() {
 	case <-time.After(5 * time.Second): //nolint:gomnd
 		d.Logger.Debug("Timeout waiting for display to stop")
 	}
+}
+
+func (d *Display) resetTerminal() {
+	l := logger.Get()
+	l.Debug("Resetting terminal")
+	d.App.Suspend(func() {
+		fmt.Print("\033[?1049l") // Exit alternate screen buffer
+		fmt.Print("\033[?25h")   // Show cursor
+	})
+	fmt.Print(logger.GlobalLoggedBuffer.String())
 }
 
 func (d *Display) AddLogEntry(logEntry string) {
