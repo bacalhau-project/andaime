@@ -295,7 +295,7 @@ func (d *Display) Start() {
 				d.Logger.Debug("Stop signal received, stopping display")
 				return
 			case <-d.updateChan:
-				d.Logger.Debug("Update signal received")
+				// d.Logger.Debug("Update signal received")
 				d.App.QueueUpdateDraw(func() {
 					d.renderTable()
 					d.updateLogBox()
