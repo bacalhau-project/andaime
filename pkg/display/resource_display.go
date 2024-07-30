@@ -158,8 +158,10 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	}
 
 	if _, exists := d.Statuses[newStatus.ID]; !exists {
+		d.Logger.Debugf("New status added: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
+		d.Logger.Debugf("Status updated: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 	}
 	d.StatusesMu.Unlock()
@@ -168,7 +170,9 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 
 	select {
 	case d.updateChan <- struct{}{}:
+		d.Logger.Debugf("Update signal sent for status: %s", newStatus.ID)
 	default:
+		d.Logger.Debugf("Update channel full, skipped update for status: %s", newStatus.ID)
 	}
 }
 
@@ -328,23 +332,27 @@ func (d *Display) Stop() {
 	utils.CloseChannel(d.StopChan)
 
 	// Stop the application in a separate goroutine to avoid deadlock
+	stopDone := make(chan struct{})
 	go func() {
+		defer close(stopDone)
 		d.Logger.Debug("Stopping tview application")
 		d.App.Stop()
 		d.Logger.Debug("tview application stopped")
 	}()
 
-	// Wait for the application to stop
-	done := utils.CreateStructChannel("display_stop_done", 1)
-	d.App.QueueUpdateDraw(func() {
-		d.Logger.Debug("Closing done channel")
-		utils.CloseChannel(done)
-	})
-	<-done
-	d.Logger.Debug("Application stop confirmed")
+	// Wait for the application to stop with a timeout
+	select {
+	case <-stopDone:
+		d.Logger.Debug("Application stop confirmed")
+	case <-time.After(5 * time.Second):
+		d.Logger.Warn("Timeout waiting for application to stop")
+	}
 
 	d.Logger.Debug("Closing updateChan")
 	utils.CloseChannel(d.updateChan)
+
+	d.Logger.Debug("Closing all registered channels")
+	utils.CloseAllChannels()
 
 	defer d.DumpGoroutines()
 	d.resetTerminal()
