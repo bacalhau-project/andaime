@@ -158,20 +158,31 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	ticker := time.NewTicker(MillisecondsBetweenUpdates * time.Millisecond)
 	defer ticker.Stop()
 
+	tickerDone := make(chan struct{})
+	defer close(tickerDone)
+
 	go func() {
-		for range ticker.C {
-			for _, machine := range deployment.Machines {
-				if machine.Status == models.MachineStatusComplete {
-					continue
+		defer l.Debug("Ticker goroutine exited")
+		for {
+			select {
+			case <-ticker.C:
+				for _, machine := range deployment.Machines {
+					if machine.Status == models.MachineStatusComplete {
+						continue
+					}
+					disp.UpdateStatus(&models.Status{
+						ID: machine.ID,
+						ElapsedTime: time.Duration(
+							time.Since(machine.StartTime).
+								Milliseconds() /
+								1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
+						),
+					})
 				}
-				disp.UpdateStatus(&models.Status{
-					ID: machine.ID,
-					ElapsedTime: time.Duration(
-						time.Since(machine.StartTime).
-							Milliseconds() /
-							1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
-					),
-				})
+			case <-tickerDone:
+				return
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
