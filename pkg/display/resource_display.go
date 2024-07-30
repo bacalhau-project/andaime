@@ -121,7 +121,7 @@ var DisplayColumns = []DisplayColumn{
 
 			// Format the elapsed time
 			minutes := int(elapsedTime.Minutes())
-			seconds := float64(elapsedTime.Milliseconds()) / 1000.0
+			seconds := float64(elapsedTime.Milliseconds()%60000) / 1000.0
 
 			if seconds < 10 {
 				return fmt.Sprintf("%1.1fs", seconds)

@@ -14,7 +14,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pulumi/pulumi-azure-native-sdk/compute"
 	"github.com/pulumi/pulumi-azure-native-sdk/network"
@@ -23,12 +22,17 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/sanity-io/litter"
 )
 
 var progressStream io.Writer
 
 const progressFilePath = "/tmp/progress.log"
+
+const WaitForIPAddressesTimeout = 20 * time.Second
+const WaitForResourcesTimeout = 2 * time.Minute
+const WaitForResourcesTicker = 5 * time.Second
+
+const DefaultDiskSize = 30
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
@@ -40,6 +44,13 @@ func (p *AzureProvider) DeployResources(
 	l := logger.Get()
 	l.Info("Starting Azure resource deployment")
 
+	defer func() {
+		if r := recover(); r != nil {
+			l.Errorf("Panic occurred during Azure deployment: %v", r)
+			debug.PrintStack()
+		}
+	}()
+
 	// Create a context with cancellation
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -50,46 +61,21 @@ func (p *AzureProvider) DeployResources(
 	// Create a done channel to signal completion
 	done := utils.CreateStructChannel(1)
 
-	// Create a channel to signal that the summary has been received
-	summaryReceived := utils.CreateStructChannel(1)
-
-	// Start a goroutine to handle cancellation and completion
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		select {
-		case <-ctx.Done():
-			l.Info("Deployment cancelled, closing all channels")
-			close(summaryReceived)
-		case <-done:
-			l.Info("Deployment completed, waiting for summary")
-			<-summaryReceived
-			l.Info("Summary received, closing display channel")
-			if disp != nil {
-				disp.Close()
-			}
-		}
-	}()
-
-	// Ensure all goroutines finish before returning
+	// Ensure all goroutines finish and channels are closed before returning
 	defer func() {
+		cancel() // Cancel the context
 		utils.CloseChannel(done)
 		wg.Wait()
 		l.Info("All goroutines finished, exiting")
+		disp.Stop()
+		utils.CloseAllChannels()
+		l.Info("All channels closed")
 	}()
-
-	// Start the display
-	display.Start(ctx.Done())
 
 	// Wrap the entire function in a defer/recover block
 	defer func() {
 		if r := recover(); r != nil {
 			l.Errorf("Panic occurred during Azure deployment: %v\n%s", r, debug.Stack())
-			disp.UpdateStatus(&models.Status{
-				ID:     deployment.UniqueID,
-				Type:   "Deployment",
-				Status: "Failed - Panic occurred",
-			})
 		}
 	}()
 
@@ -98,11 +84,6 @@ func (p *AzureProvider) DeployResources(
 	runProgram := func(ctx *pulumi.Context) error {
 		return deploymentProgram(ctx, deployment)
 	}
-
-	// err := os.Truncate(progressFilePath, 0)
-	// if err != nil {
-	// 	l.Errorf("Failed to truncate /tmp/process.log: %v", err)
-	// }
 
 	//nolint:gomnd // this is a temp file
 	eventStream := utils.CreateEventChannel(
@@ -163,7 +144,6 @@ func (p *AzureProvider) DeployResources(
 			if event.SummaryEvent != nil {
 				l.Debugf("Summary event: %v", event.SummaryEvent)
 				l.Debugf("Open channels: %v", utils.GlobalChannels)
-				close(summaryReceived)
 				break
 			}
 		}
@@ -181,18 +161,12 @@ func (p *AzureProvider) DeployResources(
 		deployment.EndTime.Sub(deployment.StartTime),
 	)
 
-	disp.UpdateStatus(&models.Status{
-		ID:     deployment.UniqueID,
-		Type:   "Deployment",
-		Status: "Completed",
-	})
-
 	// Wait for IP addresses to be populated or timeout
-	timeout := time.After(2 * time.Minute)
-	ticker := time.NewTicker(5 * time.Second)
+	timeout := time.After(WaitForResourcesTimeout)
+	ticker := time.NewTicker(WaitForResourcesTicker)
 	defer ticker.Stop()
 
-	allIPsPopulated := make(chan bool, 1)
+	allIPsPopulated := utils.CreateBoolChannel(1)
 	go func() {
 		for {
 			allIPsValid := true
@@ -206,16 +180,18 @@ func (p *AzureProvider) DeployResources(
 				allIPsPopulated <- true
 				return
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(WaitForIPAddressesTimeout)
 		}
 	}()
 
 	select {
 	case <-allIPsPopulated:
 		printMachineIPTable(deployment)
+		allIPsPopulated <- true
 	case <-timeout:
 		l.Warn("Timeout waiting for IP addresses to be populated")
 		printMachineIPTable(deployment)
+		allIPsPopulated <- true
 	case <-ctx.Done():
 		l.Info("Deployment cancelled while waiting for IP addresses")
 		return ctx.Err()
@@ -304,13 +280,8 @@ func deploymentProgram(pulumiCtx *pulumi.Context, deployment *models.Deployment)
 					l.Errorf("Failed to create progress file: %v", err)
 				}
 			}
-			// Print out information about the resource, to the progress file. Format the resource as an interface, and print
-			// it out nicely, with keys and values, with indentation
-			l.Debugf(spew.Sprint(arg))
-			_, err := progressStream.Write([]byte(litter.Sdump(arg)))
-			if err != nil {
-				l.Errorf("Failed to write to progress file: %v", err)
-			}
+			argType := reflect.TypeOf(arg)
+			l.Debugf("%s: Arg received - %v", time.Now().Format(time.RFC3339), argType)
 		}
 		return nil
 	})
@@ -558,7 +529,6 @@ func createNetworkInterface(
 	}
 
 	return nic, nil
-
 }
 
 func createVirtualMachine(
@@ -575,7 +545,7 @@ func createVirtualMachine(
 	l := logger.Get()
 	l.Debugf("Creating virtual machine in %s for machine %s", machine.Location, machine.Name)
 
-	vm, err := compute.NewVirtualMachine(
+	vm, _ := compute.NewVirtualMachine(
 		pulumiCtx,
 		name,
 		&compute.VirtualMachineArgs{
@@ -615,7 +585,7 @@ func createVirtualMachine(
 						if machine.DiskSizeGB > 0 {
 							return int(machine.DiskSizeGB)
 						}
-						return 30 // Default disk size in GB
+						return DefaultDiskSize
 					}()),
 				},
 				ImageReference: &compute.ImageReferenceArgs{
@@ -629,10 +599,6 @@ func createVirtualMachine(
 		},
 		pulumi.DependsOn(dependsOn),
 	)
-
-	if err != nil {
-		return nil, HandleAzureError(err)
-	}
 
 	return vm, nil
 }
@@ -661,7 +627,7 @@ func createNSGs(
 			l.Debugf("Creating NSG rule for location - %s - port: %d", location, port)
 			nsgRules = append(nsgRules, &network.SecurityRuleTypeArgs{
 				Name:                     pulumi.Sprintf("Port%d", port),
-				Priority:                 pulumi.Int(1000 + i),
+				Priority:                 pulumi.Int(basePriority + i),
 				Direction:                pulumi.String("Inbound"),
 				Access:                   pulumi.String("Allow"),
 				Protocol:                 pulumi.String("Tcp"),
