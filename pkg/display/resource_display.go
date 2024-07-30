@@ -46,7 +46,7 @@ func NewDisplay() *Display {
 		Ctx:        ctx,
 		Cancel:     cancel,
 		Logger:     logger.Get(),
-		updateChan: make(chan struct{}, 1),
+		updateChan: utils.CreateStructChannel("display_update_chan", 1),
 	}
 
 	d.LogBox.SetBorder(true).
@@ -54,6 +54,8 @@ func NewDisplay() *Display {
 		SetTitle("Log").
 		SetTitleColor(tcell.ColorWhite)
 	d.setupLayout()
+
+	d.Logger.Debugf("Display created with updateChan: %v", d.updateChan)
 
 	return d
 }
@@ -270,7 +272,7 @@ func (d *Display) padText(text string, width int) string {
 
 func (d *Display) Start() {
 	d.Logger.Debug("Starting display")
-	d.StopChan = make(chan struct{})
+	d.StopChan = utils.CreateStructChannel("display_stop_chan", 1)
 
 	d.Table.SetTitle("Deployment Status").
 		SetBorder(true).
@@ -281,6 +283,7 @@ func (d *Display) Start() {
 		defer func() {
 			if r := recover(); r != nil {
 				d.Logger.Errorf("Panic in display goroutine: %v", r)
+				d.Logger.Debugf("Stack trace:\n%s", debug.Stack())
 			}
 		}()
 		for {
@@ -292,6 +295,7 @@ func (d *Display) Start() {
 				d.Logger.Debug("Stop signal received, stopping display")
 				return
 			case <-d.updateChan:
+				d.Logger.Debug("Update signal received")
 				d.App.QueueUpdateDraw(func() {
 					d.renderTable()
 					d.updateLogBox()
@@ -300,9 +304,11 @@ func (d *Display) Start() {
 		}
 	}()
 
+	d.Logger.Debug("Starting tview application")
 	if err := d.App.Run(); err != nil {
 		d.Logger.Errorf("Error running display: %v", err)
 	}
+	d.Logger.Debug("tview application stopped")
 }
 
 func (d *Display) updateFromGlobalMap() {
@@ -318,23 +324,27 @@ func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 
-	// Use a sync.Once to ensure StopChan is closed only once
-	var stopOnce sync.Once
-	stopOnce.Do(func() {
-		close(d.StopChan)
-	})
+	d.Logger.Debug("Closing StopChan")
+	utils.CloseChannel(d.StopChan)
 
 	// Stop the application in a separate goroutine to avoid deadlock
 	go func() {
+		d.Logger.Debug("Stopping tview application")
 		d.App.Stop()
+		d.Logger.Debug("tview application stopped")
 	}()
 
 	// Wait for the application to stop
-	done := make(chan struct{})
+	done := utils.CreateStructChannel("display_stop_done", 1)
 	d.App.QueueUpdateDraw(func() {
-		close(done)
+		d.Logger.Debug("Closing done channel")
+		utils.CloseChannel(done)
 	})
 	<-done
+	d.Logger.Debug("Application stop confirmed")
+
+	d.Logger.Debug("Closing updateChan")
+	utils.CloseChannel(d.updateChan)
 
 	defer d.DumpGoroutines()
 	d.resetTerminal()
@@ -421,7 +431,7 @@ func (d *Display) scheduleUpdate() {
 
 	if !d.UpdatePending {
 		d.UpdatePending = true
-		// l.Debug("Update pending")
+		d.Logger.Debug("Update scheduled")
 		go func() {
 			time.Sleep(250 * time.Millisecond) // Increased delay to reduce update frequency
 			d.App.QueueUpdateDraw(func() {
@@ -431,6 +441,8 @@ func (d *Display) scheduleUpdate() {
 				d.updateDisplay()
 			})
 		}()
+	} else {
+		d.Logger.Debug("Update already pending, skipping")
 	}
 }
 
