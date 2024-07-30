@@ -22,7 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
-var VERSION_NUMBER string = "v0.0.1"
+var VERSION_NUMBER string = "v0.0.1-alpha"
 
 //go:embed startup_scripts/*
 var startupScriptsFS embed.FS
