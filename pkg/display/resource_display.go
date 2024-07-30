@@ -284,12 +284,18 @@ func (d *Display) Start() {
 		SetTitleColor(tcell.ColorWhite)
 
 	go func() {
+		d.Logger.Debug("Display goroutine started")
 		defer func() {
 			if r := recover(); r != nil {
 				d.Logger.Errorf("Panic in display goroutine: %v", r)
 				d.Logger.Debugf("Stack trace:\n%s", debug.Stack())
 			}
+			d.Logger.Debug("Display goroutine exiting")
 		}()
+
+		updateTimeout := time.NewTimer(30 * time.Second)
+		defer updateTimeout.Stop()
+
 		for {
 			select {
 			case <-d.Ctx.Done():
@@ -299,11 +305,15 @@ func (d *Display) Start() {
 				d.Logger.Debug("Stop signal received, stopping display")
 				return
 			case <-d.updateChan:
-				// d.Logger.Debug("Update signal received")
+				d.Logger.Debug("Update signal received")
+				updateTimeout.Reset(30 * time.Second)
 				d.App.QueueUpdateDraw(func() {
 					d.renderTable()
 					d.updateLogBox()
 				})
+			case <-updateTimeout.C:
+				d.Logger.Warn("Update timeout reached, possible hang detected")
+				// Optionally, you could trigger some recovery action here
 			}
 		}
 	}()
