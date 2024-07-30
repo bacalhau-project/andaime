@@ -1,3 +1,4 @@
+//nolint:sigchanyzer
 package azure
 
 import (
@@ -27,6 +28,10 @@ import (
 type contextKey string
 
 const uniqueDeploymentIDKey contextKey = "UniqueDeploymentID"
+const MillisecondsBetweenUpdates = 100
+const DefaultDiskSizeGB = 30
+
+var DefaultAllowedPorts = []int{22, 80, 443}
 
 var createAzureDeploymentCmd = &cobra.Command{
 	Use:   "create-deployment",
@@ -52,7 +57,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	cleanupDone := utils.CreateStructChannel(1)
 
 	// Create a channel for error communication
-	errorChan := utils.CreateErrorChannel(5)
+	errorChan := utils.CreateErrorChannel(1)
 
 	// Catch panics and log them
 	defer func() {
@@ -84,12 +89,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	l.Debug("Setting up signal channel")
 	sigChan := utils.CreateSignalChannel(1)
+
 	signal.Notify(
 		sigChan,
 		os.Interrupt,
 		syscall.SIGTERM,
-		syscall.SIGQUIT,
-		syscall.SIGHUP,
 	)
 
 	l.Debug("Creating display")
@@ -104,7 +108,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		// Start display in a goroutine
 		go func() {
 			l.Debug("Display Start() called")
-			summaryReceived := make(chan struct{})
+			summaryReceived := utils.CreateStructChannel(1)
 			disp.Start(sigChan, summaryReceived)
 			l.Debug("Display Start() returned")
 		}()
@@ -119,7 +123,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create a new deployment object
-	deployment, err := InitializeDeployment(ctx, UniqueID, disp)
+	deployment, err := InitializeDeployment(ctx, UniqueID)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to initialize deployment: %s", err.Error())
 		l.Error(errMsg)
@@ -138,7 +142,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create ticker channel
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(MillisecondsBetweenUpdates * time.Millisecond)
 	defer ticker.Stop()
 
 	go func() {
@@ -199,7 +203,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 func InitializeDeployment(
 	ctx context.Context,
 	uniqueID string,
-	disp *display.Display,
 ) (*models.Deployment, error) {
 	v := viper.GetViper()
 
@@ -216,9 +219,9 @@ func InitializeDeployment(
 	v.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
 	v.SetDefault("azure.resource_group_name", "andaime-rg")
 	v.SetDefault("azure.resource_group_location", "eastus")
-	v.SetDefault("azure.allowed_ports", []int{22, 80, 443})
+	v.SetDefault("azure.allowed_ports", DefaultAllowedPorts)
 	v.SetDefault("azure.default_vm_size", "Standard_B2s")
-	v.SetDefault("azure.default_disk_size_gb", 30)
+	v.SetDefault("azure.default_disk_size_gb", DefaultDiskSizeGB)
 	v.SetDefault("azure.default_location", "eastus")
 	v.SetDefault("azure.machines", []models.Machine{
 		{
@@ -235,7 +238,7 @@ func InitializeDeployment(
 	projectID := v.GetString("general.project_id")
 
 	// Create deployment object
-	deployment, err := PrepareDeployment(ctx, v, projectID, uniqueID, disp)
+	deployment, err := PrepareDeployment(ctx, v, projectID, uniqueID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
@@ -273,9 +276,10 @@ func PrepareDeployment(
 	ctx context.Context,
 	viper *viper.Viper,
 	projectID, uniqueID string,
-	disp *display.Display,
 ) (*models.Deployment, error) {
 	l := logger.Get()
+	disp := display.GetGlobalDisplay()
+
 	deployment := &models.Deployment{}
 	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")
 	deployment.ResourceGroupLocation = viper.GetString("azure.resource_group_location")

@@ -165,7 +165,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		return
 	}
 
-	d.Logger.Debugf("UpdateStatus called ID: %s, Type: %s", newStatus.ID, newStatus.Type)
+	// d.Logger.Debugf("UpdateStatus called ID: %s, Type: %s", newStatus.ID, newStatus.Type)
 
 	d.StatusesMu.Lock()
 
@@ -174,10 +174,10 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	}
 
 	if _, exists := d.Statuses[newStatus.ID]; !exists {
-		d.Logger.Debugf("Adding new status ID: %s", newStatus.ID)
+		// d.Logger.Debugf("Adding new status ID: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
-		d.Logger.Debugf("Updating existing status ID: %s", newStatus.ID)
+		// d.Logger.Debugf("Updating existing status ID: %s", newStatus.ID)
 		s := d.Statuses[newStatus.ID]
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(s, newStatus)
 	}
@@ -282,7 +282,13 @@ func (d *Display) padText(text string, width int) string {
 	return text + strings.Repeat(" ", width-len(text))
 }
 
+var i = 0
+
 func (d *Display) Start(sigChan chan os.Signal, summaryReceived chan struct{}) {
+	if i > 0 {
+		panic("Start is deprecated, use StartDisplay instead")
+	}
+	i++
 	if d.Logger.Logger == nil {
 		d.Logger = *logger.Get()
 	}
@@ -297,13 +303,13 @@ func (d *Display) Start(sigChan chan os.Signal, summaryReceived chan struct{}) {
 		select {
 		case <-sigChan:
 			d.Logger.Debug("Received signal, stopping display")
-			close(stopChan)
+			utils.CloseChannel(stopChan)
 		case <-d.Quit:
 			d.Logger.Debug("Stop channel closed, stopping display")
-			close(stopChan)
+			utils.CloseChannel(stopChan)
 		case <-summaryReceived:
 			d.Logger.Debug("Summary received, stopping display")
-			close(stopChan)
+			utils.CloseChannel(stopChan)
 		}
 	}()
 
