@@ -6,6 +6,7 @@ import (
 	"runtime/pprof"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -329,7 +330,11 @@ func (d *Display) Stop() {
 	}()
 
 	// Wait for the application to stop
-	<-d.App.QueueUpdateDraw(func() {})
+	done := make(chan struct{})
+	d.App.QueueUpdateDraw(func() {
+		close(done)
+	})
+	<-done
 
 	defer d.DumpGoroutines()
 	d.resetTerminal()
