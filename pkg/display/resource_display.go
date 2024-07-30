@@ -3,6 +3,7 @@ package display
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"strings"
