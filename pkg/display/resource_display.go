@@ -303,14 +303,16 @@ func (d *Display) Start(sigChan chan os.Signal, summaryReceived chan struct{}) {
 		select {
 		case <-sigChan:
 			d.Logger.Debug("Received signal, stopping display")
-			utils.CloseChannel(stopChan)
+			d.Stop()
 		case <-d.Quit:
 			d.Logger.Debug("Stop channel closed, stopping display")
-			utils.CloseChannel(stopChan)
+			d.Stop()
 		case <-summaryReceived:
 			d.Logger.Debug("Summary received, stopping display")
-			utils.CloseChannel(stopChan)
+			d.Stop()
 		}
+		utils.CloseChannel(stopChan)
+		utils.CloseChannel(allDone)
 	}()
 
 	if !d.TestMode {
