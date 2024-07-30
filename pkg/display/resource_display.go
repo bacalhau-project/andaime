@@ -36,37 +36,19 @@ const MaxLogLines = 8
 const RelativeSizeForTable = 5
 const RelativeSizeForLogBox = 1
 
-func NewDisplay(totalTasks int) *Display {
-	d := newDisplayInternal(totalTasks, false)
-	d.LogFileName = logger.GlobalLogPath
-	currentDisplay = d
-	return d
-}
-
-func newDisplayInternal(totalTasks int, testMode bool) *Display {
+func NewDisplay() *Display {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Display{
-		Statuses:           make(map[string]*models.Status),
-		App:                tview.NewApplication(),
-		Table:              tview.NewTable().SetBorders(true),
-		TotalTasks:         totalTasks,
-		BaseHighlightColor: HighlightColor,
-		FadeSteps:          NumberOfCyclesToHighlight,
-		Quit:               utils.CreateStructChannel(1),
-		TestMode:           testMode,
-		LogBox:             tview.NewTextView().SetDynamicColors(true),
-		LogFileName:        logger.GlobalLogPath,
-		Ctx:                ctx,
-		Cancel:             cancel,
-		LogBuffer:          utils.NewCircularBuffer(MaxLogLines),
+		Statuses: make(map[string]*models.Status),
+		App:      tview.NewApplication(),
+		Table:    tview.NewTable().SetBorders(true),
+		LogBox:   tview.NewTextView().SetDynamicColors(true),
+		Ctx:      ctx,
+		Cancel:   cancel,
+		Logger:   logger.Get(),
 	}
 
-	d.DebugLog = *logger.Get()
-	d.Logger = *logger.Get()
-	d.LogBox.SetBorder(true)
-	d.LogBox.SetBorderColor(tcell.ColorWhite)
-	d.LogBox.SetTitle("Log")
-	d.LogBox.SetTitleColor(tcell.ColorWhite)
+	d.LogBox.SetBorder(true).SetBorderColor(tcell.ColorWhite).SetTitle("Log").SetTitleColor(tcell.ColorWhite)
 	d.setupLayout()
 
 	return d
@@ -284,89 +266,31 @@ func (d *Display) padText(text string, width int) string {
 
 var i = 0
 
-func (d *Display) Start(sigChan chan os.Signal, summaryReceived chan struct{}) {
-	if i > 0 {
-		panic("Start is deprecated, use StartDisplay instead")
-	}
-	i++
-	if d.Logger.Logger == nil {
-		d.Logger = *logger.Get()
-	}
+func (d *Display) Start() {
 	d.Logger.Debug("Starting display")
-	d.Statuses = make(map[string]*models.Status)
-
-	stopChan := utils.CreateSignalChannel(1)
-	allDone := utils.CreateStructChannel(1)
+	
+	d.Table.SetTitle("Deployment Status").SetBorder(true).SetBorderColor(tcell.ColorWhite).SetTitleColor(tcell.ColorWhite)
 
 	go func() {
-		d.Logger.Debug("Starting signal handler goroutine")
-		select {
-		case <-sigChan:
-			d.Logger.Debug("Received signal, stopping display")
-			d.Stop()
-		case <-d.Quit:
-			d.Logger.Debug("Stop channel closed, stopping display")
-			d.Stop()
-		case <-summaryReceived:
-			d.Logger.Debug("Summary received, stopping display")
-			d.Stop()
-		}
-		utils.CloseChannel(stopChan)
-		utils.CloseChannel(allDone)
-	}()
-
-	if !d.TestMode {
-		go func() {
-			d.Logger.Debug("Setting up table")
-			d.Table.SetTitle("Deployment Status")
-			d.Table.SetBorder(true)
-			d.Table.SetBorderColor(tcell.ColorWhite)
-			d.Table.SetTitleColor(tcell.ColorWhite)
-
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-			d.Logger.Debug("Starting update loop")
-			for {
-				select {
-				case <-stopChan:
-					d.Logger.Debug("Received stop signal in update loop")
-					return
-				case <-ticker.C:
-					d.updateFromGlobalMap()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-d.Ctx.Done():
+				d.Logger.Debug("Context cancelled, stopping display")
+				return
+			case <-ticker.C:
+				d.App.QueueUpdateDraw(func() {
 					d.renderTable()
 					d.updateLogBox()
-				}
-			}
-		}()
-
-		d.Logger.Debug("Starting tview application")
-		go func() {
-			if err := d.App.Run(); err != nil {
-				d.Logger.Errorf("Error running display: %v", err)
-			}
-			d.Logger.Debug("tview application stopped")
-		}()
-
-		<-stopChan
-		d.Logger.Debug("Stop channel closed, stopping display")
-		d.Stop()
-
-		select {
-		case <-allDone:
-			d.Logger.Debug("All goroutines finished")
-		case <-time.After(10 * time.Second):
-			d.Logger.Warn("Timeout waiting for goroutines to finish")
-			d.Logger.Debug("Channels still open:")
-			if !utils.IsChannelClosed(d.Quit) {
-				d.Logger.Debug("- Quit channel is still open")
+				})
 			}
 		}
-	} else {
-		d.Logger.Debug("Running in test mode")
-		// In test mode, just render to the virtual console
-		d.renderToVirtualConsole()
+	}()
+
+	if err := d.App.Run(); err != nil {
+		d.Logger.Errorf("Error running display: %v", err)
 	}
-	d.Logger.Debug("Display Start method completed")
 }
 
 func (d *Display) updateFromGlobalMap() {
@@ -381,25 +305,8 @@ func (d *Display) updateFromGlobalMap() {
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
-	d.App.QueueUpdateDraw(func() {
-		d.App.Stop()
-	})
+	d.App.Stop()
 	d.resetTerminal()
-	utils.CloseChannel(d.Quit)
-	
-	// Wait for all goroutines to finish
-	timeout := time.After(5 * time.Second)
-	done := make(chan bool)
-	go func() {
-		d.App.Stop()
-		done <- true
-	}()
-	select {
-	case <-done:
-		d.Logger.Debug("Display stopped successfully")
-	case <-timeout:
-		d.Logger.Warn("Timeout while stopping display")
-	}
 }
 
 func (d *Display) resetTerminal() {
