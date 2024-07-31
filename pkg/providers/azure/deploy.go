@@ -2,6 +2,7 @@ package azure
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -92,7 +93,7 @@ func (p *AzureProvider) DeployARMTemplate(
 		VMName:                   deployment.Machines[0].ID,
 		AdminUsername:            "azureuser",
 		AuthenticationType:       "sshPublicKey",
-		AdminPasswordOrKey:       string(deployment.SSHPublicKeyData),
+		AdminPasswordOrKey:       base64.StdEncoding.EncodeToString(deployment.SSHPublicKeyData),
 		DNSLabelPrefix:           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
 		UbuntuOSVersion:          "Ubuntu-2004",
 		VMSize:                   deployment.Machines[0].VMSize,
