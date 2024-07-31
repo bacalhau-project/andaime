@@ -49,7 +49,6 @@ func (p *AzureProvider) DeployResources(
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	// Deploy Bicep template
 	err = p.DeployARMTemplate(ctx, deployment, disp)
 	if err != nil {
 		return err
@@ -63,14 +62,14 @@ func (p *AzureProvider) DeployResources(
 	return p.FinalizeDeployment(ctx, deployment, disp)
 }
 
-// DeployARMTemplate deploys the Bicep template for the deployment
+// DeployARMTemplate deploys the template for the deployment
 func (p *AzureProvider) DeployARMTemplate(
 	ctx context.Context,
 	deployment *models.Deployment,
 	disp *display.Display,
 ) error {
 	l := logger.Get()
-	l.Debugf("Deploying Bicep template for deployment: %v", deployment)
+	l.Debugf("Deploying template for deployment: %v", deployment)
 
 	tags := utils.EnsureAzureTags(deployment.Tags, deployment.ProjectID, deployment.UniqueID)
 
@@ -92,7 +91,7 @@ func (p *AzureProvider) DeployARMTemplate(
 		VMName:                   deployment.Machines[0].ID,
 		AdminUsername:            "azureuser",
 		AuthenticationType:       "sshPublicKey",
-		AdminPasswordOrKey:       string(deployment.SSHPublicKeyData),
+		AdminPasswordOrKey:       deployment.SSHPublicKeyMaterial,
 		DNSLabelPrefix:           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
 		UbuntuOSVersion:          "Ubuntu-2004",
 		VMSize:                   deployment.Machines[0].VMSize,
@@ -105,8 +104,8 @@ func (p *AzureProvider) DeployARMTemplate(
 
 	vmTemplate, err := internal.GetARMTemplate()
 	if err != nil {
-		l.Errorf("Failed to get Bicep template: %v", err)
-		return fmt.Errorf("failed to get Bicep template: %w", err)
+		l.Errorf("Failed to get template: %v", err)
+		return fmt.Errorf("failed to get template: %w", err)
 	}
 
 	paramsMap, err := utils.StructToMap(params)
@@ -125,8 +124,8 @@ func (p *AzureProvider) DeployARMTemplate(
 		tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to start Bicep template deployment: %v", err)
-		return fmt.Errorf("failed to start Bicep template deployment: %w", err)
+		l.Errorf("Failed to start template deployment: %v", err)
+		return fmt.Errorf("failed to start template deployment: %w", err)
 	}
 
 	// Poll the deployment status
