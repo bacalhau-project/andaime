@@ -90,7 +90,7 @@ func (p *AzureProvider) DeployARMTemplate(
 	}{
 		VMName:                   deployment.Machines[0].ID,
 		AdminUsername:            "azureuser",
-		AuthenticationType:       "sshPublicKey",
+		AuthenticationType:       "sshPublicKey", // Always set to sshPublicKey
 		AdminPasswordOrKey:       deployment.SSHPublicKeyMaterial,
 		DNSLabelPrefix:           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
 		UbuntuOSVersion:          "Ubuntu-2004",
