@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -293,31 +292,6 @@ func InitializeDeployment(
 	return deployment, nil
 }
 
-func EnsureTags(tags map[string]*string, projectID, uniqueID string) map[string]*string {
-	if tags == nil {
-		tags = map[string]*string{}
-	}
-	if tags["andaime"] == nil {
-		tags["andaime"] = to.Ptr("true")
-	}
-	if tags["deployed-by"] == nil {
-		tags["deployed-by"] = to.Ptr("andaime")
-	}
-	if tags["andaime-resource-tracking"] == nil {
-		tags["andaime-resource-tracking"] = to.Ptr("true")
-	}
-	if tags["unique-id"] == nil {
-		tags["unique-id"] = to.Ptr(uniqueID)
-	}
-	if tags["project-id"] == nil {
-		tags["project-id"] = to.Ptr(projectID)
-	}
-	if tags["andaime-project"] == nil {
-		tags["andaime-project"] = to.Ptr(fmt.Sprintf("%s-%s", uniqueID, projectID))
-	}
-	return tags
-}
-
 // prepareDeployment sets up the initial deployment configuration
 func PrepareDeployment(
 	ctx context.Context,
@@ -342,7 +316,7 @@ func PrepareDeployment(
 	}
 
 	// Ensure tags
-	tags := EnsureTags(make(map[string]*string), projectID, uniqueID)
+	tags := utils.EnsureAzureTags(make(map[string]*string), projectID, uniqueID)
 
 	// Validate SSH keys
 	if err := sshutils.ValidateSSHKeysFromPath(sshPublicKeyPath, sshPrivateKeyPath); err != nil {
@@ -365,7 +339,7 @@ func PrepareDeployment(
 	deployment.UniqueID = uniqueID
 	deployment.ResourceGroupLocation = resourceGroupLocation
 	deployment.Tags = tags
-	deployment.SSHPublicKeyData = sshPublicKeyData
+	deployment.SSHPublicKeyMaterial = sshPublicKeyData
 
 	// Set ResourceGroupName only if it's not already set
 	if deployment.ResourceGroupName == "" {
@@ -419,24 +393,35 @@ func PrepareDeployment(
 	return deployment, nil
 }
 
-// extractSSHKeys extracts SSH public and private key contents from Viper configuration
-func ExtractSSHKeyPaths() (string, string, []byte, error) {
+// ExtractSSHKeyPaths retrieves the paths for SSH public and private keys and the content of the public key.
+//
+// This function extracts the file paths for the SSH public and private keys from the configuration,
+// reads the content of the public key file, and returns the necessary information for SSH authentication.
+//
+// Returns:
+//   - string: The file path of the SSH public key.
+//   - string: The file path of the SSH private key.
+//   - string: The content of the SSH public key file, trimmed of newline characters.
+//   - error: An error if any step in the process fails, such as extracting key paths or reading the public key file.
+func ExtractSSHKeyPaths() (string, string, string, error) {
 	publicKeyPath, err := extractSSHKeyPath("general.ssh_public_key_path")
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to extract public key material: %w", err)
+		return "", "", "", fmt.Errorf("failed to extract public key material: %w", err)
 	}
 
 	privateKeyPath, err := extractSSHKeyPath("general.ssh_private_key_path")
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to extract private key material: %w", err)
+		return "", "", "", fmt.Errorf("failed to extract private key material: %w", err)
 	}
 
 	publicKeyData, err := os.ReadFile(publicKeyPath)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to read public key file: %w", err)
+		return "", "", "", fmt.Errorf("failed to read public key file: %w", err)
 	}
 
-	return publicKeyPath, privateKeyPath, publicKeyData, nil
+	returnPublicKeyData := strings.Trim(string(publicKeyData), "\n")
+
+	return publicKeyPath, privateKeyPath, returnPublicKeyData, nil
 }
 
 func extractSSHKeyPath(configKeyString string) (string, error) {
