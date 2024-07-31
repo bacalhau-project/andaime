@@ -3,7 +3,7 @@ package azure
 import (
 	"testing"
 
-	"github.com/bacalhau-project/andaime/utils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
 func TestGenerateTags(t *testing.T) {

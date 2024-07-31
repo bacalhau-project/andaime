@@ -232,13 +232,14 @@ func (p *AWSProvider) GetLatestUbuntuImage(
 	var latestTime time.Time
 
 	for _, image := range result.Images {
+		internalImage := image
 		creationTime, err := time.Parse(time.RFC3339, *image.CreationDate)
 		if err != nil {
 			continue
 		}
 
 		if latestImage == nil || creationTime.After(latestTime) {
-			latestImage = &image
+			latestImage = &internalImage
 			latestTime = creationTime
 		}
 	}

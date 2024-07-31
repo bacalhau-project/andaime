@@ -8,7 +8,6 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
@@ -33,7 +32,7 @@ var createDeploymentCmd = &cobra.Command{
 }
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
-	logger.InitProduction(false, true)
+	logger.InitProduction()
 	log := logger.Get()
 
 	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
@@ -44,45 +43,25 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	//nolint:gomnd
-	sigChan := utils.CreateSignalChannel(5)
+	sigChan := utils.CreateSignalChannel("sigChan", 5)
 
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM) //nolint:sigchanyzer
 
-	disp := display.NewDisplay(1)
-	go disp.Start(sigChan)
+	disp := display.NewDisplay()
 
 	defer func() {
 		disp.Stop()
 		utils.CloseChannel(sigChan)
 	}()
 
-	// Update initial status
-	disp.UpdateStatus(&models.Status{
-		ID:     "aws-deployment",
-		Type:   "AWS",
-		Status: "Initializing",
-	})
-
 	err = awsProvider.CreateDeployment(cmd.Context())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to create deployment: %s", err.Error())
 		log.Error(errString)
-		disp.UpdateStatus(&models.Status{
-			ID:     "aws-deployment",
-			Type:   "AWS",
-			Status: "Failed",
-		})
 		return fmt.Errorf(errString)
 	}
 
 	// TODO: Implement resource status updates when AWS provider supports it
-
-	disp.UpdateStatus(&models.Status{
-		ID:     "aws-deployment",
-		Type:   "AWS",
-		Status: "Completed",
-	})
-
 	log.Info("AWS deployment created successfully")
 	cmd.Println("AWS deployment created successfully")
 	return nil

@@ -147,8 +147,10 @@ func (d *Display) setupLayout() {
 }
 
 func (d *Display) UpdateStatus(newStatus *models.Status) {
+	l := logger.Get()
+
 	if d == nil || newStatus == nil {
-		d.Logger.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, newStatus)
+		l.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, newStatus)
 		return
 	}
 
@@ -158,10 +160,10 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	}
 
 	if _, exists := d.Statuses[newStatus.ID]; !exists {
-		d.Logger.Debugf("New status added: %s", newStatus.ID)
+		//d.Logger.Debugf("New status added: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
-		d.Logger.Debugf("Status updated: %s", newStatus.ID)
+		// d.Logger.Debugf("Status updated: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 	}
 	d.StatusesMu.Unlock()
@@ -170,9 +172,11 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 
 	select {
 	case d.updateChan <- struct{}{}:
-		d.Logger.Debugf("Update signal sent for status: %s", newStatus.ID)
+		//	d.Logger.Debugf("Update signal sent for status: %s", newStatus.ID)
+		_ = d.updateChan
 	default:
-		d.Logger.Debugf("Update channel full, skipped update for status: %s", newStatus.ID)
+		//	d.Logger.Debugf("Update channel full, skipped update for status: %s", newStatus.ID)
+		_ = d.updateChan
 	}
 }
 
@@ -299,13 +303,13 @@ func (d *Display) Start() {
 		for {
 			select {
 			case <-d.Ctx.Done():
-				d.Logger.Debug("Context cancelled, stopping display")
+				// d.Logger.Debug("Context cancelled, stopping display")
 				return
 			case <-d.StopChan:
-				d.Logger.Debug("Stop signal received, stopping display")
+				// d.Logger.Debug("Stop signal received, stopping display")
 				return
 			case <-d.updateChan:
-				d.Logger.Debug("Update signal received")
+				// d.Logger.Debug("Update signal received")
 				updateTimeout.Reset(30 * time.Second)
 				d.App.QueueUpdateDraw(func() {
 					d.renderTable()
@@ -339,12 +343,11 @@ func (d *Display) Stop() {
 	d.Cancel() // Cancel the context
 
 	d.Logger.Debug("Closing StopChan")
-	utils.CloseChannel(d.StopChan)
 
 	// Stop the application in a separate goroutine to avoid deadlock
-	stopDone := make(chan struct{})
+	stopDone := utils.CreateBoolChannel("stop_done", 1)
 	go func() {
-		defer close(stopDone)
+		defer utils.CloseChannel(stopDone)
 		d.Logger.Debug("Stopping tview application")
 		d.App.Stop()
 		d.Logger.Debug("tview application stopped")

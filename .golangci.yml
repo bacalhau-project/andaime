@@ -144,11 +144,13 @@ issues:
     # Naming of `error` variables as `err` is standard practise for Go
     - 'shadow: declaration of "err" shadows declaration at'
   exclude-dirs:
+    - /nix
     - experimental$
     - vendor$
     - viz$
     - ops$
     - testdata$
-    - .*nix/store/.*
     - .*go/src
     - .*go/pkg/mod # Exclude external modules
+  exclude-files:
+    - /nix/.*

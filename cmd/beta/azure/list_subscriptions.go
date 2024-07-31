@@ -30,7 +30,7 @@ type Subscription struct {
 // SubscriptionTable defines the structure for displaying subscription data
 type SubscriptionTable struct {
 	Title    string
-	Columns  []display.ColumnDef
+	Columns  []display.DisplayColumn
 	LogFile  string
 	DataType interface{}
 }
@@ -106,7 +106,12 @@ func ListSubscriptions(configFilePath string, setSubscription bool) error {
 			return fmt.Errorf("failed to write subscription to config: %v", err)
 		}
 
-		logger.DebugPrint(fmt.Sprintf("Subscription '%s' has been set in the config file.", *chosenSubscription.DisplayName))
+		logger.DebugPrint(
+			fmt.Sprintf(
+				"Subscription '%s' has been set in the config file.",
+				*chosenSubscription.DisplayName,
+			),
+		)
 	} else {
 		logger.DebugPrint("\nTo set a subscription, run this command with the --set flag:")
 		fmt.Println("andaime azure list-subscriptions --set")

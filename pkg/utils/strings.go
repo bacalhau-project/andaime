@@ -2,12 +2,29 @@ package utils
 
 import (
 	"crypto/rand"
+	"fmt"
 	"log"
 	"math/big"
+	"os/user"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
+
+// safeDeref safely dereferences a string pointer. If the pointer is nil, it returns a placeholder.
+func SafeDeref(s *string) string {
+	log := logger.Get()
+
+	// If s is a string pointer, dereference it
+	if s != nil {
+		return *s
+	} else {
+		log.Debug("State is nil")
+		return ""
+	}
+}
 
 func StringPtr(s string) *string {
 	return &s
@@ -22,9 +39,19 @@ func ParseStringToIntOrZero(row string) int {
 	return parsedInt
 }
 
+// GenerateUniqueID generates a unique ID of length 8
 func GenerateUniqueID() string {
+	return generateID(8) //nolint:gomnd
+}
+
+// CreateShortID generates a short ID of length 6
+func CreateShortID() string {
+	return generateID(6) //nolint:gomnd
+}
+
+func generateID(length int) string {
 	var lettersAndDigits = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
-	b := make([]rune, 8) //nolint:gomnd
+	b := make([]rune, length)
 	for i := range b {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(lettersAndDigits))))
 		if err != nil {
@@ -35,15 +62,36 @@ func GenerateUniqueID() string {
 	return string(b)
 }
 
-// safeDeref safely dereferences a string pointer. If the pointer is nil, it returns a placeholder.
-func SafeDeref(s *string) string {
-	log := logger.Get()
-
-	// If s is a string pointer, dereference it
-	if s != nil {
-		return *s
-	} else {
-		log.Debug("State is nil")
-		return ""
+func ExpandPath(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		usr, err := user.Current()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(usr.HomeDir, path[2:])
 	}
+	return path, nil
+}
+
+//nolint:gomnd
+func GenerateUniqueName(projectID, uniqueID string) string {
+	// Take the first 4 characters of projectID and uniqueID
+	shortProjectID := projectID
+	if len(shortProjectID) > 4 {
+		shortProjectID = shortProjectID[:4]
+	}
+	shortUniqueID := uniqueID
+	if len(shortUniqueID) > 4 {
+		shortUniqueID = shortUniqueID[:4]
+	}
+
+	// Combine the parts
+	vmName := fmt.Sprintf("vm-%s-%s-%s", shortProjectID, shortUniqueID, GenerateUniqueID()[:4])
+
+	// Ensure the total length is less than 20 characters
+	if len(vmName) > 19 {
+		vmName = vmName[:19]
+	}
+
+	return vmName
 }

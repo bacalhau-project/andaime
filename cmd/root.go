@@ -12,6 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -36,15 +37,52 @@ var (
 var (
 	NumberOfDefaultOrchestratorNodes = 1
 	NumberOfDefaultComputeNodes      = 2
-	GlobalEnableConsoleLogger        = false
-	GlobalEnableFileLogger           = true
-	GlobalLogPath                    = "/tmp/andaime.log"
-	GlobalLogLevel                   = "info"
 )
 
 type CloudProvider struct {
 	awsProvider   awsprovider.AWSProviderer
 	azureProvider azureprovider.AzureProviderer
+}
+
+// This comes from the /main.go file (in workspace root directory NOT in this directory)
+func Execute() error {
+	// Initialize the logger
+	logger.InitLoggerOutputs()
+	logger.InitProduction()
+	initConfig()
+
+	// Set up panic handling
+	defer func() {
+		if r := recover(); r != nil {
+			_ = logger.Get().Sync()
+
+			// Stop the display first
+			if disp := display.GetCurrentDisplay(); disp != nil {
+				disp.Stop()
+			}
+
+			// Log the panic to debug.log
+			debugLog, err := os.OpenFile(
+				"/tmp/andaime.log",
+				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+				0644,
+			)
+			if err == nil {
+				defer debugLog.Close()
+				fmt.Fprintf(debugLog, "Panic occurred: %v\n", r)
+				debug.PrintStack()
+				fmt.Fprintln(debugLog, string(debug.Stack()))
+
+				fmt.Fprintln(debugLog, "Open Channels: ", utils.GlobalChannels)
+			}
+
+			// Print the stack trace to stderr
+			fmt.Fprintf(os.Stderr, "Panic occurred: %v\n", r)
+			debug.PrintStack()
+		}
+	}()
+
+	return SetupRootCommand().Execute()
 }
 
 // rootCmd represents the base command when called without any subcommands
@@ -66,6 +104,12 @@ func initConfig() {
 		os.Exit(1)
 	}
 	defer debugLog.Close()
+
+	logger.GlobalEnableConsoleLogger = false
+	logger.GlobalEnableFileLogger = true
+	logger.GlobalEnableBufferLogger = true
+	logger.GlobalLogPath = "/tmp/andaime.log"
+	logger.GlobalLogLevel = "info"
 
 	tmpLogger := log.New(debugLog, "", log.LstdFlags)
 
@@ -115,7 +159,7 @@ func initConfig() {
 	}
 
 	// Initialize the logger after config is read
-	logger.InitProduction(false, true)
+	logger.InitProduction()
 	logger.SetOutputFormat(outputFormat)
 	logger.GlobalInstantSync = true
 	log := logger.Get()
@@ -170,42 +214,6 @@ func SetupRootCommand() *cobra.Command {
 	})
 
 	return rootCmd
-}
-
-func Execute() error {
-	logger.InitProduction(false, true)
-	initConfig()
-
-	// Set up panic handling
-	defer func() {
-		if r := recover(); r != nil {
-			_ = logger.Get().Sync()
-
-			// Stop the display first
-			if disp := display.GetCurrentDisplay(); disp != nil {
-				disp.Stop()
-			}
-
-			// Log the panic to debug.log
-			debugLog, err := os.OpenFile(
-				"/tmp/andaime.log",
-				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-				0644,
-			)
-			if err == nil {
-				defer debugLog.Close()
-				fmt.Fprintf(debugLog, "Panic occurred: %v\n", r)
-				debug.PrintStack()
-				fmt.Fprintln(debugLog, string(debug.Stack()))
-			}
-
-			// Print the stack trace to stderr
-			fmt.Fprintf(os.Stderr, "Panic occurred: %v\n", r)
-			debug.PrintStack()
-		}
-	}()
-
-	return SetupRootCommand().Execute()
 }
 
 func setupFlags() {

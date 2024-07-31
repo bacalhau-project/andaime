@@ -28,59 +28,12 @@ func getTestDisplayCmd() *cobra.Command {
 func runTestDisplay(cmd *cobra.Command, args []string) {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	runTestDisplayInternal()
 
-	totalTasks := 20
-	runTestDisplayInternal(totalTasks)
-
-	// sigChan := make(chan os.Signal, 1)
-	// signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// go func() {
-	// 	<-sigChan
-	// 	d.DebugLog.Debug("\nReceived interrupt, shutting down...")
-	// 	d.Stop()
-	// 	cancel()
-	// }()
-
-	// d.Start(sigChan)
-
-	// statusChan := make(chan *display.Status)
-	// logChan := make(chan string)
-
-	// var wg sync.WaitGroup
-	// wg.Add(1)
-	// go func() {
-	// 	defer wg.Done()
-	// 	generateEvents(ctx, statusChan, logChan)
-	// }()
-
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case status := <-statusChan:
-	// 			d.UpdateStatus(status)
-	// 		case logEntry := <-logChan:
-	// 			d.AddLogEntry(logEntry)
-	// 		case <-ctx.Done():
-	// 			return
-	// 		}
-	// 	}
-	// }()
-
-	// // Wait for the context to be canceled (which happens when we receive an interrupt)
-	// <-ctx.Done()
-
-	// // Wait for goroutines to finish
-	// wg.Wait()
-
-	// // Wait for the display to fully stop
-	// d.WaitForStop()
-
-	// d.DebugLog.Debug("Exiting")
 }
 
-func runTestDisplayInternal(totalTasks int) {
-	d := display.NewDisplay(totalTasks)
+func runTestDisplayInternal() {
+	d := display.NewDisplay()
 	d.Logger.Info("Display initialized")
 
 	// Create 10 initial statuses
@@ -111,9 +64,6 @@ func runTestDisplayInternal(totalTasks int) {
 				} else {
 					d.Logger.Info("Got nil status")
 				}
-			case <-d.StopChan:
-				d.Log("Stop signal received")
-				return
 			case <-d.Quit:
 				d.Log("Quit signal received")
 				return
@@ -131,7 +81,7 @@ func runTestDisplayInternal(totalTasks int) {
 	}
 }
 
-func generateEvents(ctx context.Context, statusChan chan<- *models.Status, logChan chan<- string) {
+func generateEvents(ctx context.Context, logChan chan<- string) {
 	log := logger.Get()
 
 	statuses := make(map[string]*models.Status)
@@ -141,7 +91,6 @@ func generateEvents(ctx context.Context, statusChan chan<- *models.Status, logCh
 	for i := 0; i < totalTasks; i++ {
 		newStatus := createRandomStatus()
 		statuses[newStatus.ID] = newStatus
-		statusChan <- newStatus
 	}
 
 	logTicker := time.NewTicker(2 * time.Second)
@@ -151,13 +100,7 @@ func generateEvents(ctx context.Context, statusChan chan<- *models.Status, logCh
 		select {
 		case <-ticker.C:
 			if status := getRandomStatus(statuses); status != nil {
-				if updateRandomStatus(status) {
-					select {
-					case statusChan <- status:
-					case <-ctx.Done():
-						return
-					}
-				}
+				updateRandomStatus(status)
 			}
 		case <-logTicker.C:
 			logEntry := generateRandomLogEntry()
@@ -220,7 +163,7 @@ func createRandomStatus() *models.Status {
 	return &models.Status{
 		ID:             id,
 		Type:           "EC2",
-		Location:       randomRegion(),
+		Location:       randomZone(),
 		Status:         "Initializing",
 		DetailedStatus: "Starting",
 		ElapsedTime:    0,

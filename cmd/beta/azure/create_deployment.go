@@ -31,10 +31,10 @@ type contextKey string
 const uniqueDeploymentIDKey contextKey = "UniqueDeploymentID"
 const MillisecondsBetweenUpdates = 100
 const DefaultDiskSizeGB = 30
-const StatusCreating = "creating"
 
 var (
 	DefaultAllowedPorts = []int{22, 80, 443}
+	deployment          *models.Deployment
 )
 
 var createAzureDeploymentCmd = &cobra.Command{
@@ -166,7 +166,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		for {
 			select {
 			case <-ticker.C:
+				allMachinesComplete := true
 				for _, machine := range deployment.Machines {
+					if machine.Status != models.MachineStatusComplete {
+						allMachinesComplete = false
+					}
 					if machine.Status == models.MachineStatusComplete {
 						continue
 					}
@@ -178,6 +182,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 								1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
 						),
 					})
+					if allMachinesComplete {
+						tickerDone <- struct{}{}
+					}
 				}
 			case <-tickerDone:
 				return
@@ -193,6 +200,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
+			// Send the error to the error channel
+			if errorChan != nil {
+				errorChan <- fmt.Errorf(errMsg)
+			}
 		} else {
 			l.Info("Azure deployment created successfully")
 			cmd.Println("Azure deployment created successfully")
@@ -553,160 +564,4 @@ func ProcessMachinesConfig(
 	}
 
 	return orchestratorNode, allMachines, uniqueLocations, nil
-}
-
-func updateMachineStatuses(deployment *models.Deployment, event string) {
-	l := logger.Get()
-	numberOfParts := 5
-	// Split the event into parts
-	// parts := strings.SplitN(" + azure-native:network:PublicIPAddress vm-ceob5r-0-ip created (3s)", " ", 5)
-	parts := strings.SplitN(event, " ", numberOfParts)
-	if len(parts) < numberOfParts {
-		return // Not enough information in the event
-	}
-
-	// Wait until after we know it's worth getting the display
-	disp := display.GetGlobalDisplay()
-
-	resourceType := parts[1] // Part 1 is the resource type
-	resourceName := parts[2] // Part 2 is the resource name
-	status := parts[3]       // Part 3 is the status
-	timeStr := strings.TrimSuffix(strings.TrimPrefix(parts[4], "("), ")")
-	_, err := time.ParseDuration(timeStr)
-	if err != nil {
-		l.Debugf("Failed to parse time taken: %v", err)
-	}
-
-	var machineID, location string
-	if strings.HasPrefix(resourceName, "vm-") {
-		vmNameParts := strings.Split(resourceName, "-")
-		machineID = strings.Join(vmNameParts[:1], "-")
-	} else {
-		locationParts := strings.Split(resourceName, "-")
-		location = locationParts[len(parts)-1]
-	}
-
-	// resourceList := []string{
-	// 	"pulumi:pulumi:Stack",
-	// 	"azure-native:resources:ResourceGroup",
-	// 	"azure-native:network:VirtualNetwork",
-	// 	"azure-native:network:NetworkSecurityGroup",
-	// 	"azure-native:network:PublicIPAddress",
-	// 	"azure-native:network:NetworkInterface",
-	// 	"azure-native:compute:VirtualMachine",
-	// }
-
-	// finalStatus := &models.Status{}
-
-	switch resourceType {
-	case "pulumi:pulumi:Stack":
-		// If the resource type is a Stack, we need to update the deployment status
-		l.Debugf("Deployment started, put it on all machines")
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating Stack %s deployment ...", resourceName)
-		} else {
-			msg = fmt.Sprint("Completed.", resourceName)
-		}
-
-		for _, machine := range deployment.Machines {
-			disp.UpdateStatus(&models.Status{
-				ID:     machine.ID,
-				Status: msg,
-			})
-		}
-	case "azure-native:resources:ResourceGroup":
-		l.Debugf("RG started, put it on all machines")
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating RG %s ...", resourceName)
-		} else {
-			msg = fmt.Sprintf("Creating RG %s ... Done ✅", resourceName)
-		}
-
-		for _, machine := range deployment.Machines {
-			disp.UpdateStatus(&models.Status{
-				ID:     machine.ID,
-				Status: msg,
-			})
-		}
-	case "azure-native:network:VirtualNetwork":
-		l.Debugf("VNet started, put it on all machines in a location: %s", location)
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating VNet %s ...", resourceName)
-		} else {
-			msg = fmt.Sprintf("Creating VNet %s ... Done ✅", resourceName)
-		}
-
-		for _, machine := range deployment.Machines {
-			if machine.Location == location {
-				disp.UpdateStatus(&models.Status{
-					ID:     machine.ID,
-					Status: msg,
-				})
-			}
-		}
-	case "azure-native:network:NetworkSecurityGroup":
-		l.Debugf("NSG started, put it on all machines in a location: %s", location)
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating NSG %s ...", resourceName)
-		} else {
-			msg = fmt.Sprintf("Creating NSG %s ... Done ✅", resourceName)
-		}
-
-		for _, machine := range deployment.Machines {
-			if machine.Location == location {
-				disp.UpdateStatus(&models.Status{
-					ID:     machine.ID,
-					Status: msg,
-				})
-			}
-		}
-	case "azure-native:network:PublicIPAddress":
-		l.Debugf("PublicIP started: %s", resourceName)
-
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating PublicIP %s ...", resourceName)
-		} else {
-			msg = fmt.Sprintf("Creating PublicIP %s ... Done ✅", resourceName)
-		}
-
-		disp.UpdateStatus(&models.Status{
-			ID:     machineID,
-			Status: msg,
-		})
-
-	case "azure-native:network:NetworkInterface":
-		l.Debugf("NIC started: %s", resourceName)
-
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating NIC %s ...", resourceName)
-		} else {
-			msg = fmt.Sprintf("Creating NIC %s ... Done ✅", resourceName)
-		}
-
-		disp.UpdateStatus(&models.Status{
-			ID:     machineID,
-			Status: msg,
-		})
-	case "azure-native:compute:VirtualMachine":
-		// If the resource type is a VirtualMachine, we need to update machine statuses
-		l.Debugf("VM started: %s", resourceName)
-
-		var msg string
-		if status == StatusCreating {
-			msg = fmt.Sprintf("Creating VM %s ...", resourceName)
-		} else {
-			msg = fmt.Sprintf("Creating VM %s ... Done ✅", resourceName)
-		}
-
-		disp.UpdateStatus(&models.Status{
-			ID:     machineID,
-			Status: msg,
-		})
-	}
 }

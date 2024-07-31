@@ -22,6 +22,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	basePriority = 1000
+)
+
 func IsValidVMSize(vmSize string) bool {
 	validSizes := viper.GetStringSlice("azure.valid_vm_sizes")
 	for _, size := range validSizes {

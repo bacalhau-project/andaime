@@ -12,26 +12,31 @@ type SSHWaiter interface {
 	WaitForSSH(publicIP, username string, privateKey []byte) error
 }
 
-var SSHWaiterFunc = waitForSSH
+var SSHWaiterFunc = WaitForSSHToBeLive
 
 type DefaultSSHWaiter struct {
 	Client SSHClienter
 }
 
-func (w *DefaultSSHWaiter) WaitForSSH(config *SSHConfig) error {
-	return waitForSSH(config)
+func NewSSHWaiter(client SSHClienter) *DefaultSSHWaiter {
+	return &DefaultSSHWaiter{Client: client}
 }
 
-// waitForSSH attempts to establish an SSH connection to the VM
-func waitForSSH(config *SSHConfig) error {
-	log := logger.Get()
+func (w *DefaultSSHWaiter) WaitForSSH(config *SSHConfig) error {
+	return WaitForSSHToBeLive(config, SSHRetryAttempts, SSHRetryDelay)
+}
+
+// WaitForSSHToBeLive attempts to establish an SSH connection to the VM
+func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) error {
+	l := logger.Get()
 	if config == nil {
 		err := fmt.Errorf("SSH config is nil")
-		log.Error(err.Error())
+		l.Error(err.Error())
 		return err
 	}
-	log.Debug("Entering waitForSSH")
-	log.Debugf(
+	l.Debugf("Starting SSH connection check to %s:%d", config.Host, config.Port)
+	l.Debug("Entering waitForSSH")
+	l.Debugf(
 		"publicIP: %s, username: %s, privateKey length: %d\n",
 		config.Host,
 		config.User,
@@ -41,10 +46,10 @@ func waitForSSH(config *SSHConfig) error {
 	signer, err := ssh.ParsePrivateKey([]byte(config.PrivateKeyMaterial))
 	if err != nil {
 		err = fmt.Errorf("failed to parse private key in waitForSSH: %v", err)
-		log.Error(err.Error())
+		l.Error(err.Error())
 		return err
 	}
-	log.Debug("Private key parsed successfully")
+	l.Debug("Private key parsed successfully")
 
 	sshClientConfig := &ssh.ClientConfig{
 		User: config.User,
@@ -54,17 +59,17 @@ func waitForSSH(config *SSHConfig) error {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
 		Timeout:         SSHTimeOut,
 	}
-	log.Debug("SSH client config created")
+	l.Debug("SSH client config created")
 
 	for i := 0; i < SSHRetryAttempts; i++ {
-		log.Debugf("Attempt %d to connect via SSH\n", i+1)
+		l.Debugf("Attempt %d to connect via SSH\n", i+1)
 		dialer := NewSSHDial(config.Host, config.Port, sshClientConfig)
 		client := NewSSHClientFunc(sshClientConfig, dialer)
 
 		session, err := client.NewSession()
 		if err != nil {
 			err = fmt.Errorf("failed to create SSH session: %v", err)
-			log.Error(err.Error())
+			l.Error(err.Error())
 			client.Close()
 			time.Sleep(SSHRetryDelay)
 			continue
@@ -81,16 +86,16 @@ func waitForSSH(config *SSHConfig) error {
 
 		if session == nil {
 			err = fmt.Errorf("SSH session is nil despite no error")
-			log.Error(err.Error())
+			l.Error(err.Error())
 			time.Sleep(SSHRetryDelay)
 			continue
 		}
 
-		log.Debug("SSH connection established")
+		l.Debug("SSH connection established")
 		return nil
 	}
 
 	err = fmt.Errorf("failed to establish SSH connection after multiple attempts")
-	log.Error(err.Error())
+	l.Error(err.Error())
 	return err
 }

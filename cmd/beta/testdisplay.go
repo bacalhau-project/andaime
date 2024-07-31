@@ -2,11 +2,11 @@ package beta
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +25,7 @@ func newTestDisplayCmd() *cobra.Command {
 func runTestDisplay() error {
 	totalTasks := 5
 	testDisplay := display.NewTestDisplay(totalTasks)
-	sigChan := make(chan os.Signal, 1)
+	sigChan := utils.CreateSignalChannel("sigChan", 1)
 
 	go testDisplay.Start(sigChan)
 

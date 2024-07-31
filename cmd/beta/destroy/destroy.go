@@ -16,7 +16,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/utils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
 type Deployment struct {

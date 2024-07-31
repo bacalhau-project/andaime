@@ -8,19 +8,27 @@ import (
 	"github.com/spf13/viper"
 )
 
+var (
+	MachineStatusInitializing = "Initializing"
+	MachineStatusComplete     = "Complete"
+	MachineStatusFailed       = "Failed"
+)
+
 type Machine struct {
 	ID                   string
 	Name                 string
 	Location             string
 	Status               string
-	Parameters           []Parameters
-	PublicIPAddress      *armnetwork.PublicIPAddress
-	PrivateIPAddress     *armnetwork.PrivateEndpointIPConfiguration
-	NetworkSecurityGroup *armnetwork.SecurityGroup
-	Interface            *armnetwork.Interface
+	Parameters           Parameters
+	PublicIP             string
+	PrivateIP            string
+	InstanceID           string
+	NetworkSecurityGroup string
+	NIC                  string
 	VMSize               string
 	DiskSizeGB           int32 `default:"30"`
 	ComputerName         string
+	StartTime            time.Time
 }
 
 type Parameters struct {
@@ -42,6 +50,7 @@ type Deployment struct {
 	UniqueID              string
 	Tags                  map[string]*string
 	AllowedPorts          []int
+	SSHPort               int
 	SSHPublicKeyPath      string
 	SSHPrivateKeyPath     string
 	SSHPublicKeyData      []byte
@@ -49,6 +58,7 @@ type Deployment struct {
 	DefaultDiskSizeGB     int32  `default:"30"`
 	DefaultLocation       string `default:"eastus"`
 	StartTime             time.Time
+	EndTime               time.Time
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {

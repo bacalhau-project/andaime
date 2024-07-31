@@ -3,9 +3,12 @@ package utils
 import (
 	"os"
 	"reflect"
+	"runtime/debug"
 	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/pulumi/pulumi-azure-native-sdk/compute"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 )
 
@@ -13,6 +16,8 @@ var GlobalChannels []interface {
 	Close()
 	IsClosed() bool
 	SetClosed()
+	GetName() string
+	GetChannel() interface{}
 }
 var GlobalChannelsMutex sync.Mutex
 
@@ -20,13 +25,15 @@ type SafeChannel struct {
 	Ch     interface{}
 	Closed bool
 	Mu     sync.Mutex
+	Name   string
 }
 
-func NewSafeChannel(ch interface{}) *SafeChannel {
+func NewSafeChannel(ch interface{}, name string) *SafeChannel {
 	return &SafeChannel{
 		Ch:     ch,
 		Closed: false,
 		Mu:     sync.Mutex{},
+		Name:   name,
 	}
 }
 
@@ -37,7 +44,7 @@ func (sc *SafeChannel) Close() {
 		defer func() {
 			if r := recover(); r != nil {
 				// Channel was already closed, just log it
-				logger.Get().Warnf("Attempted to close an already closed channel: %v", sc.Ch)
+				logger.Get().Warnf("Attempted to close an already closed channel: %s", sc.Name)
 			}
 		}()
 		reflect.ValueOf(sc.Ch).Close()
@@ -57,15 +64,23 @@ func (sc *SafeChannel) SetClosed() {
 	sc.Closed = true
 }
 
+func (sc *SafeChannel) GetName() string {
+	return sc.Name
+}
+
+func (sc *SafeChannel) GetChannel() interface{} {
+	return sc.Ch
+}
+
 // CreateAndRegisterChannel creates a new channel of the specified type and capacity, and registers it
-func CreateAndRegisterChannel(channelType reflect.Type, capacity int) interface{} {
+func CreateAndRegisterChannel(channelType reflect.Type, name string, capacity int) interface{} {
 	ch := reflect.MakeChan(channelType, capacity).Interface()
-	RegisterChannel(ch)
+	safeChannel := NewSafeChannel(ch, name)
+	RegisterChannel(safeChannel, name)
 	return ch
 }
 
-func RegisterChannel(ch interface{}) {
-	safeChannel := NewSafeChannel(ch)
+func RegisterChannel(safeChannel *SafeChannel, name string) {
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
 	GlobalChannels = append(GlobalChannels, safeChannel)
@@ -73,72 +88,103 @@ func RegisterChannel(ch interface{}) {
 
 func CloseAllChannels() {
 	l := logger.Get()
-	l.Debugf("Closing all channels")
+	l.Debugf("Closing all channels - via events.CloseAllChannels")
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for i, ch := range GlobalChannels {
+	for _, ch := range GlobalChannels {
 		if ch != nil {
 			if !ch.IsClosed() {
-				l.Debugf("Closing channel %v", ch)
+				l.Debugf("Closing channel %v", ch.GetName())
 				ch.Close()
 			} else {
-				l.Debugf("Channel %v is already closed", ch)
+				l.Debugf("Channel %v is already closed", ch.GetName())
 			}
 		}
-		GlobalChannels[i] = nil
+		ch.SetClosed()
 	}
-	GlobalChannels = nil
 }
 
 // Helper functions for common channel types
-func CreateSignalChannel(capacity int) chan os.Signal {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan os.Signal)(nil)).Elem(), capacity).(chan os.Signal)
+func CreateSignalChannel(name string, capacity int) chan os.Signal {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan os.Signal)(nil)).Elem(),
+		name, capacity).(chan os.Signal)
 }
 
-func CreateStructChannel(capacity int) chan struct{} {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan struct{})(nil)).Elem(), capacity).(chan struct{})
+func CreateStructChannel(name string, capacity int) chan struct{} {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan struct{})(nil)).Elem(),
+		name, capacity).(chan struct{})
 }
 
-func CreateErrorChannel(capacity int) chan error {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan error)(nil)).Elem(), capacity).(chan error)
+func CreateErrorChannel(name string, capacity int) chan error {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan error)(nil)).Elem(),
+		name, capacity).(chan error)
 }
 
-func CreateStringChannel(capacity int) chan string {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan string)(nil)).Elem(), capacity).(chan string)
+func CreateStringChannel(name string, capacity int) chan string {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan string)(nil)).Elem(),
+		name, capacity).(chan string)
 }
 
-func CreateEventChannel(capacity int) chan events.EngineEvent {
+func CreateEventChannel(name string, capacity int) chan events.EngineEvent {
 	return CreateAndRegisterChannel(reflect.TypeOf((*chan events.EngineEvent)(nil)).Elem(),
-		capacity).(chan events.EngineEvent)
+		name, capacity).(chan events.EngineEvent)
 }
 
-func CreateBoolChannel(capacity int) chan bool {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan bool)(nil)).Elem(), capacity).(chan bool)
+func CreateBoolChannel(name string, capacity int) chan bool {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan bool)(nil)).Elem(),
+		name, capacity).(chan bool)
+}
+
+func CreateVMChannel(name string, capacity int) chan *compute.VirtualMachine {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan *compute.VirtualMachine)(nil)).Elem(),
+		name, capacity).(chan *compute.VirtualMachine)
+}
+
+func CreateMachineChannel(name string, capacity int) chan *models.Machine {
+	return CreateAndRegisterChannel(reflect.TypeOf((*chan *models.Machine)(nil)).Elem(),
+		name, capacity).(chan *models.Machine)
 }
 
 // CloseChannel closes a specific channel
 func CloseChannel(ch interface{}) {
+	l := logger.Get()
+
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for _, safeChannel := range GlobalChannels {
-		if reflect.ValueOf(safeChannel).Pointer() == reflect.ValueOf(ch).Pointer() {
+
+	channelPtr := reflect.ValueOf(ch).Pointer()
+	l.Debugf("Attempting to close channel with pointer: %v", channelPtr)
+
+	for i, safeChannel := range GlobalChannels {
+		safeChannelPtr := reflect.ValueOf(safeChannel.GetChannel()).Pointer()
+		l.Debugf("Comparing with registered channel %d: %v", i, safeChannelPtr)
+
+		if safeChannelPtr == channelPtr {
 			if safeChannel.IsClosed() {
-				continue
+				l.Debugf("Channel %v is already closed", safeChannel.GetName())
+				return
 			}
-			safeChannel.Close()
+			l.Debugf("Closing channel %v", safeChannel.GetName())
+			// safeChannel.Close()
 			return
 		}
 	}
-	// If the channel wasn't found, it might not have been registered
-	l := logger.Get()
-	l.Warnf("Attempted to close an unregistered channel: %v", ch)
+
+	// If the channel wasn't found, log more details
+	stackTrace := debug.Stack()
+	l.Warnf(
+		"Attempted to close an unregistered channel: %v (type: %T)\nStack trace:\n%s",
+		ch,
+		ch,
+		stackTrace,
+	)
 }
 
-func IsChannelClosed(ch interface{}) bool {
+func IsChannelClosed(chName string) bool {
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
 	for _, safeChannel := range GlobalChannels {
-		if reflect.ValueOf(safeChannel).Pointer() == reflect.ValueOf(ch).Pointer() {
+		if safeChannel.GetName() == chName {
 			return safeChannel.IsClosed()
 		}
 	}

@@ -3,7 +3,6 @@ package azure
 import (
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
@@ -88,9 +87,4 @@ var AzureListResourcesCmd = &cobra.Command{
 
 func GetAzureListResourcesCmd() *cobra.Command {
 	return AzureListResourcesCmd
-}
-
-func isCreatedByAndaime(resource *armresources.GenericResourceExpanded) bool {
-	// If it has the "andaime" tag, it was created by Andaime
-	return resource.Tags != nil && resource.Tags["andaime"] != nil
 }

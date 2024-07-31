@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bacalhau-project/andaime/utils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
 

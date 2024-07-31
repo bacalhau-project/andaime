@@ -22,7 +22,9 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 			Long:  `Beta commands are experimental features that are not yet ready for production use.`,
 			Run: func(cmd *cobra.Command, args []string) {
 				fmt.Println("Use 'andaime beta [command]' to run a beta command.")
-				fmt.Println("Use 'andaime beta --help' for more information about available beta commands.")
+				fmt.Println(
+					"Use 'andaime beta --help' for more information about available beta commands.",
+				)
 			},
 		}
 		rootCmd.AddCommand(betaCmd)

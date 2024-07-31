@@ -29,9 +29,12 @@ var (
 
 	GlobalEnableConsoleLogger bool
 	GlobalEnableFileLogger    bool
+	GlobalEnableBufferLogger  bool
 	GlobalLogPath             string = "/tmp/andaime.log"
 	GlobalLogLevel            string
 	GlobalInstantSync         bool
+	GlobalLoggedBuffer        strings.Builder
+	GlobalLoggedBufferSize    int = 8192
 )
 
 var (
@@ -74,6 +77,31 @@ func (w *LogBoxWriter) Write(p []byte) (n int, err error) {
 	return len(p), err
 }
 
+func InitLoggerOutputs() {
+	GlobalEnableConsoleLogger = false
+	GlobalEnableFileLogger = true
+	GlobalEnableBufferLogger = true
+	GlobalLogPath = "/tmp/andaime.log"
+	GlobalLogLevel = "info"
+	GlobalInstantSync = false
+
+	if viper.IsSet("general.log_path") {
+		GlobalLogPath = viper.GetString("general.log_path")
+	}
+	if viper.IsSet("general.log_level") {
+		GlobalLogLevel = viper.GetString("general.log_level")
+	}
+	if viper.IsSet("general.enable_console_logger") {
+		GlobalEnableConsoleLogger = viper.GetBool("general.enable_console_logger")
+	}
+	if viper.IsSet("general.enable_file_logger") {
+		GlobalEnableFileLogger = viper.GetBool("general.enable_file_logger")
+	}
+	if viper.IsSet("general.enable_buffer_logger") {
+		GlobalEnableBufferLogger = viper.GetBool("general.enable_buffer_logger")
+	}
+}
+
 // getLogLevel reads the LOG_LEVEL environment variable and returns the corresponding zapcore.Level.
 func getLogLevel(logLevel string) zapcore.Level {
 	switch strings.ToUpper(logLevel) {
@@ -89,7 +117,7 @@ func getLogLevel(logLevel string) zapcore.Level {
 		return zapcore.InfoLevel // Default to info level if LOG_LEVEL is not set or recognized
 	}
 }
-func InitProduction(enableConsole bool, enableFile bool) {
+func InitProduction() {
 	once.Do(func() {
 		var cores []zapcore.Core
 
@@ -97,13 +125,18 @@ func InitProduction(enableConsole bool, enableFile bool) {
 		if logPath != "" {
 			GlobalLogPath = logPath
 		}
-		logLevelString := viper.GetString("general.log_level")
-		if logLevelString != "" {
-			GlobalLogLevel = logLevelString
+		if os.Getenv("LOG_LEVEL") != "" {
+			GlobalLogLevel = os.Getenv("LOG_LEVEL")
+		} else {
+			logLevelString := viper.GetString("general.log_level")
+			if logLevelString != "" {
+				GlobalLogLevel = logLevelString
+			}
 		}
+
 		logLevel := getLogLevel(GlobalLogLevel)
 
-		if enableConsole {
+		if GlobalEnableConsoleLogger {
 			consoleCore := zapcore.NewCore(
 				zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 				zapcore.Lock(os.Stdout),
@@ -112,7 +145,7 @@ func InitProduction(enableConsole bool, enableFile bool) {
 			cores = append(cores, consoleCore)
 		}
 
-		if enableFile {
+		if GlobalEnableFileLogger {
 			fileEncoderConfig := zap.NewProductionEncoderConfig()
 			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
@@ -125,6 +158,27 @@ func InitProduction(enableConsole bool, enableFile bool) {
 				)
 				cores = append(cores, fileCore)
 			}
+		}
+
+		if GlobalEnableBufferLogger {
+			bufferCore := zapcore.NewCore(
+				zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
+					TimeKey:        "time",
+					LevelKey:       "level",
+					NameKey:        "logger",
+					CallerKey:      "caller",
+					MessageKey:     "message",
+					StacktraceKey:  "stacktrace",
+					LineEnding:     zapcore.DefaultLineEnding,
+					EncodeLevel:    zapcore.LowercaseLevelEncoder,
+					EncodeTime:     zapcore.ISO8601TimeEncoder,
+					EncodeDuration: zapcore.SecondsDurationEncoder,
+					EncodeCaller:   zapcore.ShortCallerEncoder,
+				}),
+				zapcore.AddSync(&GlobalLoggedBuffer),
+				logLevel,
+			)
+			cores = append(cores, bufferCore)
 		}
 
 		core := zapcore.NewTee(cores...)
@@ -171,14 +225,13 @@ func InitTest(tb zaptest.TestingT) {
 // Get returns the global logger instance
 func Get() *Logger {
 	if globalLogger == nil {
-		InitProduction(GlobalEnableConsoleLogger, GlobalEnableFileLogger)
+		InitProduction()
 	}
 	l := &Logger{Logger: globalLogger}
 	if l.Logger == nil {
 		// If globalLogger is still nil after initialization, create a no-op logger
 		l = NewNopLogger()
 	}
-	l.Debugf("Logger accessed: %v", zap.Bool("level", l.Core().Enabled(zapcore.DebugLevel)))
 	return l
 }
 
@@ -261,7 +314,7 @@ func NewNopLogger() *Logger {
 // SetLevel sets the logging level for the global logger
 func SetLevel(level zapcore.Level) {
 	if globalLogger == nil {
-		InitProduction(GlobalEnableConsoleLogger, GlobalEnableFileLogger)
+		InitProduction()
 	}
 	if globalLogger != nil {
 		globalLogger = globalLogger.WithOptions(zap.IncreaseLevel(level))
@@ -276,7 +329,7 @@ func SetOutputFormat(format string) {
 	} else {
 		outputFormat = format
 	}
-	InitProduction(false, true)
+	InitProduction()
 }
 
 // LevelEnablerFunc is a wrapper to implement zapcore.LevelEnabler
@@ -307,7 +360,7 @@ func LogAzureAPIEnd(operation string, err error) {
 
 func DebugPrint(msg string) {
 	if globalLogger == nil {
-		InitProduction(false, true)
+		InitProduction()
 	}
 	globalLogger.Debug(msg)
 	if GlobalInstantSync {
@@ -317,7 +370,7 @@ func DebugPrint(msg string) {
 
 func LogInitialization(msg string) {
 	if globalLogger == nil {
-		InitProduction(false, true)
+		InitProduction()
 	}
 	globalLogger.Info(msg)
 	if GlobalInstantSync {

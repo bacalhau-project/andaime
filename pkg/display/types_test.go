@@ -1,17 +1,17 @@
 package display
 
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTestDisplayStart(t *testing.T) {
 	display := NewTestDisplay(1)
-	sigChan := make(chan os.Signal, 1)
+	sigChan := utils.CreateSignalChannel("sigChan", 1)
 
 	// Start the display in a goroutine
 	go display.Start(sigChan)
@@ -37,7 +37,7 @@ func TestTestDisplayStart(t *testing.T) {
 
 func TestTestDisplayUpdateStatus(t *testing.T) {
 	display := NewTestDisplay(1)
-	sigChan := make(chan os.Signal, 1)
+	sigChan := utils.CreateSignalChannel("sigChan", 1)
 
 	// Start the display
 	go display.Start(sigChan)
