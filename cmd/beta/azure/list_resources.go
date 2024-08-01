@@ -19,7 +19,9 @@ var AzureListResourcesCmd = &cobra.Command{
 	Short: "List Azure resources",
 	Long:  `List all resources in a subscription or specific resource group.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		verbose, _ := cmd.Flags().GetBool("verbose")
 		log := logger.Get()
+		log.SetVerbose(verbose)
 
 		projectID := viper.GetString("general.project_id")
 		uniqueID := viper.GetString("general.unique_id")
@@ -87,6 +89,7 @@ func init() {
 	AzureListResourcesCmd.Flags().Bool("all", false, "List resources from the entire subscription")
 	AzureListResourcesCmd.Flags().
 		String("resource-group", "", "List resources from a specific resource group")
+	AzureListResourcesCmd.Flags().Bool("verbose", false, "Enable verbose output")
 }
 
 func GetAzureListResourcesCmd() *cobra.Command {

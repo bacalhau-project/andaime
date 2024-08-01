@@ -65,6 +65,11 @@ func CmdLog(msg string, level zapcore.Level) {
 // Logger is a wrapper around zap.Logger
 type Logger struct {
 	*zap.Logger
+	verbose bool
+}
+
+func (l *Logger) SetVerbose(verbose bool) {
+	l.verbose = verbose
 }
 
 type LogBoxWriter struct {
@@ -260,7 +265,7 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 func (l *Logger) Debug(msg string) {
 	l.Logger.Debug(msg)
 	l.syncIfNeeded()
-	if isConsoleLogging {
+	if l.verbose && isConsoleLogging {
 		fmt.Println("DEBUG:", msg)
 	}
 }
@@ -268,7 +273,7 @@ func (l *Logger) Debug(msg string) {
 func (l *Logger) Info(msg string) {
 	l.Logger.Info(msg)
 	l.syncIfNeeded()
-	if isConsoleLogging {
+	if l.verbose && isConsoleLogging {
 		fmt.Println("INFO:", msg)
 	}
 }
@@ -276,7 +281,7 @@ func (l *Logger) Info(msg string) {
 func (l *Logger) Warn(msg string) {
 	l.Logger.Warn(msg)
 	l.syncIfNeeded()
-	if isConsoleLogging {
+	if l.verbose && isConsoleLogging {
 		fmt.Println("WARN:", msg)
 	}
 }
