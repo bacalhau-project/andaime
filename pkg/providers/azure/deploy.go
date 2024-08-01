@@ -74,32 +74,21 @@ func (p *AzureProvider) DeployARMTemplate(
 	tags := utils.EnsureAzureTags(deployment.Tags, deployment.ProjectID, deployment.UniqueID)
 
 	// Prepare deployment parameters
-	params := struct {
-		VMName                   string `json:"vmName"`
-		AdminUsername            string `json:"adminUsername"`
-		AuthenticationType       string `json:"authenticationType"`
-		AdminPasswordOrKey       string `json:"adminPasswordOrKey"`
-		DNSLabelPrefix           string `json:"dnsLabelPrefix"`
-		UbuntuOSVersion          string `json:"ubuntuOSVersion"`
-		VMSize                   string `json:"vmSize"`
-		VirtualNetworkName       string `json:"virtualNetworkName"`
-		SubnetName               string `json:"subnetName"`
-		NetworkSecurityGroupName string `json:"networkSecurityGroupName"`
-		Location                 string `json:"location"`
-		SecurityType             string `json:"securityType"`
-	}{
-		VMName:                   deployment.Machines[0].ID,
-		AdminUsername:            "azureuser",
-		AuthenticationType:       "sshPublicKey", // Always set to sshPublicKey
-		AdminPasswordOrKey:       deployment.SSHPublicKeyMaterial,
-		DNSLabelPrefix:           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
-		UbuntuOSVersion:          "Ubuntu-2004",
-		VMSize:                   deployment.Machines[0].VMSize,
-		VirtualNetworkName:       fmt.Sprintf("%s-vnet", deployment.ResourceGroupName),
-		SubnetName:               fmt.Sprintf("%s-subnet", deployment.ResourceGroupName),
-		NetworkSecurityGroupName: fmt.Sprintf("%s-nsg", deployment.ResourceGroupName),
-		Location:                 deployment.Machines[0].Location,
-		SecurityType:             "TrustedLaunch",
+	params := map[string]interface{}{
+		"vmName":                   deployment.Machines[0].ID,
+		"adminUsername":            "azureuser",
+		"authenticationType":       "sshPublicKey", // Always set to sshPublicKey
+		"adminPasswordOrKey": map[string]interface{}{
+			"value": deployment.SSHPublicKeyMaterial,
+		},
+		"dnsLabelPrefix":           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
+		"ubuntuOSVersion":          "Ubuntu-2004",
+		"vmSize":                   deployment.Machines[0].VMSize,
+		"virtualNetworkName":       fmt.Sprintf("%s-vnet", deployment.ResourceGroupName),
+		"subnetName":               fmt.Sprintf("%s-subnet", deployment.ResourceGroupName),
+		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", deployment.ResourceGroupName),
+		"location":                 deployment.Machines[0].Location,
+		"securityType":             "TrustedLaunch",
 	}
 
 	vmTemplate, err := internal.GetARMTemplate()
