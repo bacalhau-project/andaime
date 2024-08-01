@@ -77,6 +77,8 @@ Infof
 Interfacer
 IPID
 joho
+keyvault
+loadbalancer
 locabs
 logutils
 maxint
@@ -85,7 +87,9 @@ mockprivatekey
 nakedret
 nanosec
 nats
+networkinterface
 networkinterfaces
+networksecuritygroup
 noctx
 noinit
 nolint
@@ -99,6 +103,7 @@ panicnil
 practise
 predeclared
 Providerer
+publicipaddress
 publicipaddresses
 pulumi
 resliced
@@ -115,9 +120,11 @@ sigchanyzer
 sirupsen
 southcentralus
 southeastasia
+sqlserver
 sshutils
 staticcheck
 stdpm
+storageaccount
 stretchr
 stylecheck
 tablewriter
@@ -128,6 +135,7 @@ TESTRGNAME
 testuser
 testutil
 tmpl
+tostring
 tview
 typecheck
 uksouth
@@ -139,6 +147,8 @@ unpadded
 Upsert
 utod
 virtualenvs
+virtualmachine
+virtualnetwork
 virtualnetworks
 VMIP
 VMSS

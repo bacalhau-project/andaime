@@ -4,9 +4,11 @@ package models
 func GetProviderAbbreviation(provider string) string {
 	switch provider {
 	case "Azure":
-		return "AZ"
+		return "AZU"
 	case "AWS":
 		return "AWS"
+	case "GCP":
+		return "GCP"
 	default:
 		return "UNK"
 	}

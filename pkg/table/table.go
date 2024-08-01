@@ -47,11 +47,19 @@ func NewResourceTable(w io.Writer) *ResourceTable {
 	return &ResourceTable{table: table}
 }
 
-func (rt *ResourceTable) AddResource(resource armresources.GenericResource, provider string) {
+func (rt *ResourceTable) AddResource(
+	resource armresources.GenericResource,
+	provider models.ProviderAbbreviation,
+) {
 	provisioningState := models.StatusUnknown
 
 	log := logger.Get()
-	log.Debugf("Adding resource: Name=%s, Type=%s, Provider=%s", *resource.Name, *resource.Type, provider)
+	log.Debugf(
+		"Adding resource: Name=%s, Type=%s, Provider=%s",
+		*resource.Name,
+		*resource.Type,
+		provider,
+	)
 	log.Debugf("Resource Properties: %+v", resource.Properties)
 
 	if resource.Properties != nil {
@@ -72,17 +80,16 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 	}
 
 	resourceType := abbreviateResourceType(*resource.Type)
-	providerAbbr := models.GetProviderAbbreviation(provider)
 
-	log.Debugf("Final values: ProvisioningState=%s, ResourceType=%s, ProviderAbbr=%s", 
-		provisioningState, resourceType, providerAbbr)
+	log.Debugf("Final values: ProvisioningState=%s, ResourceType=%s, ProviderAbbr=%s",
+		provisioningState, resourceType, provider)
 
 	row := []string{
 		truncate(*resource.Name, NameWidth),
 		truncate(resourceType, TypeWidth),
 		truncate(string(provisioningState), ProvStateWidth),
 		truncate(*resource.Location, LocationWidth),
-		providerAbbr,
+		string(provider),
 	}
 	rt.table.Append(row)
 }

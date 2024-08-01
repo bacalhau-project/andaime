@@ -4,10 +4,14 @@ import (
 	"time"
 )
 
-type ResourceType string
+type ProviderAbbreviation string
 
 const (
-	ResourceTypeAzure ResourceType = "azure"
+	ProviderAbbreviationAzure   ProviderAbbreviation = "AZU"
+	ProviderAbbreviationAWS     ProviderAbbreviation = "AWS"
+	ProviderAbbreviationGCP     ProviderAbbreviation = "GCP"
+	ProviderAbbreviationVirtual ProviderAbbreviation = "VIR"
+	ProviderAbbreviationUnknown ProviderAbbreviation = "UNK"
 )
 
 type Status struct {

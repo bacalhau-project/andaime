@@ -18,8 +18,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var isConsoleLogging bool
-
 var (
 	globalLogger *zap.Logger
 	once         sync.Once
@@ -145,10 +143,9 @@ func InitProduction() {
 		consoleCore := zapcore.NewCore(
 			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 			zapcore.AddSync(os.Stdout),
-			zapcore.Level(getZapLevel(GlobalLogLevel)),
+			getZapLevel(GlobalLogLevel),
 		)
 		cores = append(cores, consoleCore)
-		isConsoleLogging = true
 
 		logLevel := getLogLevel(GlobalLogLevel)
 
@@ -259,13 +256,13 @@ func (l *Logger) syncIfNeeded() {
 
 // With creates a child logger and adds structured context to it
 func (l *Logger) With(fields ...zap.Field) *Logger {
-	return &Logger{l.Logger.With(fields...)}
+	return &Logger{l.Logger.With(fields...), l.verbose}
 }
 
 func (l *Logger) Debug(msg string) {
 	l.Logger.Debug(msg)
 	l.syncIfNeeded()
-	if l.verbose && isConsoleLogging {
+	if l.verbose {
 		fmt.Println("DEBUG:", msg)
 	}
 }
@@ -273,7 +270,7 @@ func (l *Logger) Debug(msg string) {
 func (l *Logger) Info(msg string) {
 	l.Logger.Info(msg)
 	l.syncIfNeeded()
-	if l.verbose && isConsoleLogging {
+	if l.verbose {
 		fmt.Println("INFO:", msg)
 	}
 }
@@ -281,7 +278,7 @@ func (l *Logger) Info(msg string) {
 func (l *Logger) Warn(msg string) {
 	l.Logger.Warn(msg)
 	l.syncIfNeeded()
-	if l.verbose && isConsoleLogging {
+	if l.verbose {
 		fmt.Println("WARN:", msg)
 	}
 }
@@ -289,7 +286,7 @@ func (l *Logger) Warn(msg string) {
 func (l *Logger) Error(msg string) {
 	l.Logger.Error(msg)
 	l.syncIfNeeded()
-	if isConsoleLogging {
+	if l.verbose {
 		fmt.Println("ERROR:", msg)
 	}
 }

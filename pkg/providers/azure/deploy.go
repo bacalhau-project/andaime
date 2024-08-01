@@ -65,7 +65,6 @@ func (p *AzureProvider) DeployResources(
 	return p.FinalizeDeployment(ctx, deployment, disp)
 }
 
-// DeployARMTemplate deploys the template for the deployment
 func (p *AzureProvider) DeployARMTemplate(
 	ctx context.Context,
 	deployment *models.Deployment,
@@ -82,11 +81,19 @@ func (p *AzureProvider) DeployARMTemplate(
 	// Run maximum 5 deployments at a time
 	sem := make(chan struct{}, 5)
 
+	// Start a goroutine to continuously probe the resource group
+	go p.probeResourceGroup(ctx, deployment)
+
 	for _, machine := range deployment.Machines {
 		sem <- struct{}{}
 		wg.Add(1)
 
-		go func() {
+		go func(machine *models.Machine) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+
 			// Prepare deployment parameters
 			params := map[string]interface{}{
 				"vmName":             machine.ID,
@@ -178,10 +185,99 @@ func (p *AzureProvider) DeployARMTemplate(
 					time.Sleep(pollInterval)
 				}
 			}
-		}()
+		}(&machine)
 	}
 
+	// Wait for all deployments to complete
+	wg.Wait()
+
 	return nil
+}
+
+func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *models.Deployment) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			resources, err := p.Client.ListResourcesInGroup(ctx, deployment.ResourceGroupName)
+			if err != nil {
+				logger.Get().Errorf("Failed to list resources in group: %v", err)
+				continue
+			}
+
+			p.updateDeploymentStatus(deployment, resources)
+		}
+	}
+}
+
+func (p *AzureProvider) updateDeploymentStatus(
+	deployment *models.Deployment,
+	resources []AzureResource,
+) {
+	for _, resource := range resources {
+		switch resource.Type {
+		case "Microsoft.Compute/virtualMachines":
+			p.updateVMStatus(deployment, resource)
+		case "Microsoft.Network/publicIPAddresses":
+			p.updatePublicIPStatus(deployment, resource)
+		case "Microsoft.Network/networkInterfaces":
+			p.updateNICStatus(deployment, resource)
+		case "Microsoft.Network/networkSecurityGroups":
+			p.updateNSGStatus(deployment, resource)
+			// Add more cases for other resource types as needed
+		}
+	}
+
+	// Update the Viper config after processing all resources
+	if err := deployment.UpdateViperConfig(); err != nil {
+		logger.Get().Errorf("Failed to update Viper config: %v", err)
+	}
+}
+
+func (p *AzureProvider) updateVMStatus(
+	deployment *models.Deployment,
+	resource AzureResource,
+) {
+	for i, machine := range deployment.Machines {
+		if machine.ID == resource.Name {
+			deployment.Machines[i].Status = resource.ProvisioningState
+			// Update other VM-specific properties
+			break
+		}
+	}
+}
+
+func (p *AzureProvider) updatePublicIPStatus(
+	deployment *models.Deployment,
+	resource AzureResource,
+) {
+	// Assuming the public IP resource name contains the VM name
+	for i, machine := range deployment.Machines {
+		if strings.Contains(resource.Name, machine.ID) {
+			deployment.Machines[i].PublicIP = resource.Properties["ipAddress"].(string)
+			break
+		}
+	}
+}
+
+func (p *AzureProvider) updateNICStatus(
+	deployment *models.Deployment,
+	resource AzureResource,
+) {
+	// Update NIC-related information for the corresponding machine
+	// This might include private IP address, etc.
+}
+
+func (p *AzureProvider) updateNSGStatus(
+	deployment *models.Deployment,
+	resource AzureResource,
+) {
+	// Update NSG-related information for the corresponding machine
+	// This might include security rules, etc.
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
