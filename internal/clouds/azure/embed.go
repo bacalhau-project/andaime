@@ -11,8 +11,8 @@ var machineTypes embed.FS
 //go:embed locations.yaml
 var locations embed.FS
 
-//go:embed bicep/vm.json
-var vmBicep embed.FS
+//go:embed arm/vm.json
+var vmARM embed.FS
 
 func GetMachineTypes() ([]string, error) {
 	data, err := machineTypes.ReadFile("machine_types.yaml")
@@ -36,8 +36,8 @@ func GetLocations() ([]string, error) {
 	return dataString, nil
 }
 
-func GetVMBicep() ([]byte, error) {
-	data, err := vmBicep.ReadFile("bicep/vm.json")
+func GetARMTemplate() ([]byte, error) {
+	data, err := vmARM.ReadFile("arm/vm.json")
 	if err != nil {
 		return nil, err
 	}

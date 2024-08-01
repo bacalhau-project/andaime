@@ -349,7 +349,6 @@ func PrepareDeployment(
 		}
 		deployment.ResourceGroupName = resourceGroupName
 	}
-	deployment.ResourceGroupName = fmt.Sprintf("%s-%s", deployment.ResourceGroupName, uniqueID)
 
 	// Ensure the deployment has a name
 	if deployment.Name == "" {
@@ -419,7 +418,7 @@ func ExtractSSHKeyPaths() (string, string, string, error) {
 		return "", "", "", fmt.Errorf("failed to read public key file: %w", err)
 	}
 
-	returnPublicKeyData := strings.Trim(string(publicKeyData), "\n")
+	returnPublicKeyData := strings.TrimSpace(string(publicKeyData))
 
 	return publicKeyPath, privateKeyPath, returnPublicKeyData, nil
 }

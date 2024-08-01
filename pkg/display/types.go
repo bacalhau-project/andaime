@@ -20,7 +20,8 @@ type Display struct {
 	UpdateMu   sync.Mutex
 	StopChan   chan struct{}
 
-	UpdatePending bool
+	UpdatePending  bool
+	DisplayRunning bool
 
 	App        *tview.Application
 	Table      *tview.Table

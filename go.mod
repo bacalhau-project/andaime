@@ -16,8 +16,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.171.0
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/pulumi/pulumi-azure-native-sdk/compute v1.104.0
-	github.com/pulumi/pulumi-azure-native-sdk/network v1.104.0
-	github.com/pulumi/pulumi-azure-native-sdk/resources v1.104.0
 	github.com/pulumi/pulumi/sdk/v3 v3.127.0
 	github.com/rivo/tview v0.0.0-20240625185742-b0a7293b8130
 	github.com/spf13/cobra v1.8.1
@@ -69,7 +67,6 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.15.2 // indirect
-	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/opentracing/basictracer-go v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pgavlin/fx v0.1.6 // indirect
@@ -101,7 +98,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240314234333-6e1732d8331c // indirect
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
-	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	lukechampine.com/frand v1.4.2 // indirect
 )

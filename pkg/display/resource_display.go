@@ -323,7 +323,9 @@ func (d *Display) Start() {
 	}()
 
 	d.Logger.Debug("Starting tview application")
+	d.DisplayRunning = true
 	if err := d.App.Run(); err != nil {
+		d.DisplayRunning = false
 		d.Logger.Errorf("Error running display: %v", err)
 	}
 	d.Logger.Debug("tview application stopped")
@@ -349,7 +351,9 @@ func (d *Display) Stop() {
 	go func() {
 		defer utils.CloseChannel(stopDone)
 		d.Logger.Debug("Stopping tview application")
-		d.App.Stop()
+		if d.DisplayRunning {
+			d.App.Stop()
+		}
 		d.Logger.Debug("tview application stopped")
 	}()
 

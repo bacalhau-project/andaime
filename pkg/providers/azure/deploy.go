@@ -2,9 +2,12 @@ package azure
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
@@ -73,72 +76,112 @@ func (p *AzureProvider) DeployARMTemplate(
 
 	tags := utils.EnsureAzureTags(deployment.Tags, deployment.ProjectID, deployment.UniqueID)
 
-	// Prepare deployment parameters
-	params := map[string]interface{}{
-		"vmName":                   deployment.Machines[0].ID,
-		"adminUsername":            "azureuser",
-		"authenticationType":       "sshPublicKey", // Always set to sshPublicKey
-		"adminPasswordOrKey": map[string]interface{}{
-			"value": deployment.SSHPublicKeyMaterial,
-		},
-		"dnsLabelPrefix":           fmt.Sprintf("vm-%s", strings.ToLower(deployment.Machines[0].ID)),
-		"ubuntuOSVersion":          "Ubuntu-2004",
-		"vmSize":                   deployment.Machines[0].VMSize,
-		"virtualNetworkName":       fmt.Sprintf("%s-vnet", deployment.ResourceGroupName),
-		"subnetName":               fmt.Sprintf("%s-subnet", deployment.ResourceGroupName),
-		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", deployment.ResourceGroupName),
-		"location":                 deployment.Machines[0].Location,
-		"securityType":             "TrustedLaunch",
-	}
+	// Create wait group
+	wg := sync.WaitGroup{}
 
-	vmTemplate, err := internal.GetARMTemplate()
-	if err != nil {
-		l.Errorf("Failed to get template: %v", err)
-		return fmt.Errorf("failed to get template: %w", err)
-	}
+	// Run maximum 5 deployments at a time
+	sem := make(chan struct{}, 5)
 
-	paramsMap, err := utils.StructToMap(params)
-	if err != nil {
-		l.Errorf("Failed to convert struct to map: %v", err)
-		return fmt.Errorf("failed to convert struct to map: %w", err)
-	}
+	for _, machine := range deployment.Machines {
+		sem <- struct{}{}
+		wg.Add(1)
 
-	// Start the deployment
-	future, err := p.Client.DeployTemplate(
-		ctx,
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupName,
-		string(vmTemplate),
-		paramsMap,
-		tags,
-	)
-	if err != nil {
-		l.Errorf("Failed to start template deployment: %v", err)
-		return fmt.Errorf("failed to start template deployment: %w", err)
-	}
-
-	// Poll the deployment status
-	pollInterval := 10 * time.Second
-	for {
-		select {
-		case <-ctx.Done():
-			l.Info("Deployment cancelled")
-			return ctx.Err()
-		default:
-			status, err := future.Poll(ctx)
-			if err != nil {
-				l.Errorf("Error checking deployment status: %v", err)
-				return fmt.Errorf("error checking deployment status: %w", err)
-			} else if status.Status == "Succeeded" {
-				l.Info("Deployment completed successfully")
-				return nil
+		go func() {
+			// Prepare deployment parameters
+			params := map[string]interface{}{
+				"vmName":             machine.ID,
+				"adminUsername":      "azureuser",
+				"authenticationType": "sshPublicKey", // Always set to sshPublicKey
+				"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
+				"dnsLabelPrefix": fmt.Sprintf(
+					"vm-%s",
+					strings.ToLower(deployment.Machines[0].ID),
+				),
+				"ubuntuOSVersion":          "Ubuntu-2004",
+				"vmSize":                   deployment.Machines[0].VMSize,
+				"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.Location),
+				"subnetName":               fmt.Sprintf("%s-subnet", machine.Location),
+				"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.Location),
+				"location":                 machine.Location,
+				"securityType":             "TrustedLaunch",
 			}
 
-			l.Debugf("Deployment status: %s", status.Status)
+			// Prepare the virtual machine template
+			wrappedParameters := map[string]interface{}{}
+			for k, v := range params {
+				wrappedParameters[k] = map[string]interface{}{
+					"Value": v,
+				}
+			}
 
-			time.Sleep(pollInterval)
-		}
+			vmTemplate, err := internal.GetARMTemplate()
+			if err != nil {
+				l.Errorf("Failed to get template: %v", err)
+				return
+			}
+
+			paramsMap, err := utils.StructToMap(wrappedParameters)
+			if err != nil {
+				l.Errorf("Failed to convert struct to map: %v", err)
+				return
+			}
+
+			// Convert the template to a map
+			var vmTemplateMap map[string]interface{}
+			err = json.Unmarshal(vmTemplate, &vmTemplateMap)
+			if err != nil {
+				l.Errorf("Failed to convert struct to map: %v", err)
+				return
+			}
+
+			// Start the deployment
+			future, err := p.Client.DeployTemplate(
+				ctx,
+				deployment.ResourceGroupName,
+				fmt.Sprintf("deployment-vm-%s", machine.ID),
+				vmTemplateMap,
+				paramsMap,
+				tags,
+			)
+			if err != nil {
+				l.Errorf("Failed to start template deployment: %v", err)
+				return
+			}
+
+			// Poll the deployment status
+			pollInterval := 1 * time.Second
+			for {
+				select {
+				case <-ctx.Done():
+					l.Info("Deployment cancelled")
+					return
+				default:
+					status, err := future.Poll(ctx)
+					if err != nil {
+						l.Errorf("Error polling deployment status: %v", err)
+						statusBytes, err := io.ReadAll(status.Body)
+						if err != nil {
+							l.Errorf("Error reading deployment status: %v", err)
+							var statusObject map[string]interface{}
+							err = json.Unmarshal(statusBytes, &statusObject)
+							if err != nil {
+								l.Errorf("Error unmarshalling deployment status: %v", err)
+							} else if status.Status == "Succeeded" {
+								l.Info("Deployment completed successfully")
+								break
+							}
+						}
+					}
+
+					l.Debugf("Deployment status: %s", status.Status)
+
+					time.Sleep(pollInterval)
+				}
+			}
+		}()
 	}
+
+	return nil
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps

@@ -1,13 +1,6 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
-  "metadata": {
-    "_generator": {
-      "name": "bicep",
-      "version": "0.25.53.49325",
-      "templateHash": "2386182166504519146"
-    }
-  },
   "parameters": {
     "vmName": {
       "type": "string",
@@ -34,7 +27,7 @@
       }
     },
     "adminPasswordOrKey": {
-      "type": "securestring",
+      "type": "string",
       "metadata": {
         "description": "SSH Key or password for the Virtual Machine. SSH key is recommended."
       }
@@ -125,8 +118,8 @@
         "version": "latest"
       }
     },
-    "publicIPAddressName": "[format('{0}PublicIP', parameters('vmName'))]",
-    "networkInterfaceName": "[format('{0}NetInt', parameters('vmName'))]",
+    "publicIPAddressName": "[format('{0}-ip', parameters('vmName'))]",
+    "networkInterfaceName": "[format('{0}-nic', parameters('vmName'))]",
     "osDiskType": "Standard_LRS",
     "subnetAddressPrefix": "10.1.0.0/24",
     "addressPrefix": "10.1.0.0/16",
