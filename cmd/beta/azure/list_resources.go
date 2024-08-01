@@ -12,14 +12,13 @@ import (
 var AzureListResourcesCmd = &cobra.Command{
 	Use:   "list-resources",
 	Short: "List Azure resources",
-	Long:  `List all resources in a subscription.`,
+	Long:  `List all resources in a subscription or specific resource group.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log := logger.Get()
 
 		projectID := viper.GetString("general.project_id")
 		uniqueID := viper.GetString("general.unique_id")
-		tags := make(map[string]*string)
-		azure.GenerateTags(projectID, uniqueID)
+		tags := azure.GenerateTags(projectID, uniqueID)
 
 		log.Info("Listing Azure resources...")
 
@@ -28,61 +27,50 @@ var AzureListResourcesCmd = &cobra.Command{
 			log.Fatalf("Failed to create Azure provider: %v", err)
 		}
 
-		// See if "deployed" is a string or a map
-		deployed := viper.Get("deployed")
-		if deployed == nil {
-			log.Fatal("No deployed configuration found in viper")
+		allFlag, _ := cmd.Flags().GetBool("all")
+		resourceGroup, _ := cmd.Flags().GetString("resource-group")
+
+		if !allFlag && resourceGroup == "" {
+			log.Fatal("Either --all or --resource-group must be specified")
 		}
 
-		// List all resource groups in viper config
-		log.Debugf(
-			"Listing resource groups in viper config: %v",
-			viper.GetStringMapString("deployed.azure"),
-		)
-
-		// Get the Azure Resource Group Name from "deployed.azure" in viper
-		rgName := viper.GetString("deployed.azure.resource_group")
-		if rgName == "" {
-			log.Fatal("No resource group name found in viper")
+		if allFlag && resourceGroup != "" {
+			log.Fatal("Cannot use both --all and --resource-group flags simultaneously")
 		}
 
 		log.Info("Contacting Azure API...")
 		startTime := time.Now()
 
-		resourceCount := 0
-		for {
-			result, err := azureProvider.GetClient().
-				SearchResources(cmd.Context(), rgName, getSubscriptionID(), tags)
-			if err != nil {
-				log.Fatalf("Failed to query resources: %v", err)
-			}
+		var searchScope string
+		if allFlag {
+			searchScope = getSubscriptionID()
+		} else {
+			searchScope = resourceGroup
+		}
 
-			// Type assertion for result.Data
-			resources, ok := result.Data.([]interface{})
-			if !ok {
-				log.Fatalf("Unexpected data type in result")
-			}
-
-			for _, resource := range resources {
-				resourceMap := resource.(map[string]interface{})
-				log.Infof("Found resource %s of type %s in location %s",
-					resourceMap["name"], resourceMap["type"], resourceMap["location"])
-				resourceCount++
-			}
-
-			if result.SkipToken == nil || *result.SkipToken == "" {
-				break
-			}
+		resources, err := azureProvider.GetClient().
+			SearchResources(cmd.Context(), searchScope, getSubscriptionID(), tags)
+		if err != nil {
+			log.Fatalf("Failed to query resources: %v", err)
 		}
 
 		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
 
-		if resourceCount == 0 {
+		if len(resources) == 0 {
 			log.Warn("No resources created by Andaime were found")
 		} else {
-			log.Infof("Found %d resources created by Andaime", resourceCount)
+			log.Infof("Found %d resources created by Andaime", len(resources))
 		}
+
+		// Print out a table of all the resources
+
 	},
+}
+
+func init() {
+	AzureListResourcesCmd.Flags().Bool("all", false, "List resources from the entire subscription")
+	AzureListResourcesCmd.Flags().
+		String("resource-group", "", "List resources from a specific resource group")
 }
 
 func GetAzureListResourcesCmd() *cobra.Command {
