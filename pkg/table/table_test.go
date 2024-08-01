@@ -80,33 +80,36 @@ func TestAddResource(t *testing.T) {
 		},
 	}
 
-	expectedRow := []string{
-		"TestResource",
-		"virtualMachines",
-		"Succeeded",
-		"eastus",
-		"2023-05-01",
-		"/subscriptions/sub-...",
-		"key1:value1, key2:v...",
-		"Azure",
-	}
-
-	mockTable.On("Append", expectedRow).Return()
-
 	rt.AddResource(resource, "Azure")
 
-	mockTable.AssertExpectations(t)
+	// We can't directly access the rows of the table
+	// Instead, we'll render the table to a string and check its contents
+	var buf bytes.Buffer
+	rt.table.SetOutput(&buf)
+	rt.Render()
+
+	output := buf.String()
+	assert.Contains(t, output, "TestResource")
+	assert.Contains(t, output, "virtualMachines")
+	assert.Contains(t, output, "Succeeded")
+	assert.Contains(t, output, "eastus")
+	assert.Contains(t, output, "2023-05-01")
+	assert.Contains(t, output, "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource")
+	assert.Contains(t, output, "key1:value1")
+	assert.Contains(t, output, "key2:value2")
+	assert.Contains(t, output, "Azure")
 }
 
 func TestRender(t *testing.T) {
-	mockTable := new(MockTable)
-	rt := &ResourceTable{table: mockTable}
+	rt := NewResourceTable()
 
-	mockTable.On("Render").Return()
+	var buf bytes.Buffer
+	rt.table.SetOutput(&buf)
 
 	rt.Render()
 
-	mockTable.AssertExpectations(t)
+	output := buf.String()
+	assert.NotEmpty(t, output)
 }
 
 func TestShortenResourceType(t *testing.T) {
