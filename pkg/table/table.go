@@ -49,22 +49,38 @@ func NewResourceTable(w io.Writer) *ResourceTable {
 func (rt *ResourceTable) AddResource(resource armresources.GenericResource, provider string) {
 	provisioningState := models.StatusUnknown
 
+	log := logger.Get()
+	log.Debugf("Adding resource: Name=%s, Type=%s, Provider=%s", *resource.Name, *resource.Type, provider)
+	log.Debugf("Resource Properties: %+v", resource.Properties)
+
 	if resource.Properties != nil {
 		if props, ok := resource.Properties.(map[string]interface{}); ok {
+			log.Debugf("Properties as map: %+v", props)
 			if ps, ok := props["provisioningState"].(string); ok {
 				provisioningState = models.GetStatusCode(models.StatusString(ps))
+				log.Debugf("Provisioning State found: %s", ps)
+			} else {
+				log.Debug("Provisioning State not found in properties")
 			}
+		} else {
+			log.Debug("Properties is not a map[string]interface{}")
 		}
+	} else {
+		log.Debug("Resource Properties is nil")
 	}
 
 	resourceType := abbreviateResourceType(*resource.Type)
+	providerAbbr := models.GetProviderAbbreviation(provider)
+
+	log.Debugf("Final values: ProvisioningState=%s, ResourceType=%s, ProviderAbbr=%s", 
+		provisioningState, resourceType, providerAbbr)
 
 	row := []string{
 		truncate(*resource.Name, NameWidth),
 		truncate(resourceType, TypeWidth),
 		truncate(string(provisioningState), ProvStateWidth),
 		truncate(*resource.Location, LocationWidth),
-		provider,
+		providerAbbr,
 	}
 	rt.table.Append(row)
 }

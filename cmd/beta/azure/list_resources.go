@@ -75,6 +75,7 @@ var AzureListResourcesCmd = &cobra.Command{
 
 			resourceTable := table.NewResourceTable(os.Stdout)
 			for _, resource := range resources {
+				log.Debugf("Processing resource: %s", *resource.Name)
 				resourceTable.AddResource(resource, "Azure")
 			}
 			resourceTable.Render()
