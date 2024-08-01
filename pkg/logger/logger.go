@@ -243,7 +243,7 @@ func Get() *Logger {
 	if globalLogger == nil {
 		InitProduction()
 	}
-	l := &Logger{Logger: globalLogger}
+	l := &Logger{Logger: globalLogger, verbose: false}
 	if l.Logger == nil {
 		// If globalLogger is still nil after initialization, create a no-op logger
 		l = NewNopLogger()
@@ -336,7 +336,7 @@ func (l *Logger) Sync() error {
 
 // NewNopLogger returns a no-op Logger
 func NewNopLogger() *Logger {
-	return &Logger{zap.NewNop()}
+	return &Logger{Logger: zap.NewNop(), verbose: false}
 }
 
 // SetLevel sets the logging level for the global logger
