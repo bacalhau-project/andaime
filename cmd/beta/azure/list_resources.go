@@ -60,10 +60,13 @@ var AzureListResourcesCmd = &cobra.Command{
 			log.Warn("No resources created by Andaime were found")
 		} else {
 			log.Infof("Found %d resources created by Andaime", len(resources))
+			
+			resourceTable := table.NewResourceTable()
+			for _, resource := range resources {
+				resourceTable.AddResource(resource, "Azure")
+			}
+			resourceTable.Render()
 		}
-
-		// Print out a table of all the resources
-
 	},
 }
 

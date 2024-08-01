@@ -18,6 +18,7 @@ const (
 	CreatedWidth        = 10
 	IDWidth             = 20
 	TagsWidth           = 30
+	ProviderWidth       = 10
 )
 
 type ResourceTable struct {
@@ -26,7 +27,7 @@ type ResourceTable struct {
 
 func NewResourceTable() *ResourceTable {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Name", "Type", "Prov State", "Location", "Created", "ID", "Tags"})
+	table.SetHeader([]string{"Name", "Type", "Prov State", "Location", "Created", "ID", "Tags", "Provider"})
 	table.SetAutoWrapText(false)
 	table.SetAutoFormatHeaders(true)
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
@@ -42,7 +43,7 @@ func NewResourceTable() *ResourceTable {
 	return &ResourceTable{table: table}
 }
 
-func (rt *ResourceTable) AddResource(resource armresources.GenericResource) {
+func (rt *ResourceTable) AddResource(resource armresources.GenericResource, provider string) {
 	provisioningState := "Unknown"
 	createdTime := "Unknown"
 
@@ -69,6 +70,7 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource) {
 		truncate(createdTime, CreatedWidth),
 		truncate(*resource.ID, IDWidth),
 		truncate(tags, TagsWidth),
+		truncate(provider, ProviderWidth),
 	}
 	rt.table.Append(row)
 }
