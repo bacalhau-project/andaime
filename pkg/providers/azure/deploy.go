@@ -2,7 +2,6 @@ package azure
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
