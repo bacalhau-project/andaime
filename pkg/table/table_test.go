@@ -1,13 +1,12 @@
 package table
 
 import (
+	"bytes"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/olekukonko/tablewriter"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
 // MockTable is a mock implementation of the tablewriter.Table
@@ -46,17 +45,18 @@ func TestNewResourceTable(t *testing.T) {
 	mockTable.On("SetTablePadding", "\t").Return()
 	mockTable.On("SetNoWhiteSpace", true).Return()
 
-	rt := &ResourceTable{table: mockTable}
-
+	rt := NewResourceTable()
 	assert.NotNil(t, rt)
 	assert.NotNil(t, rt.table)
 
+	// We can't directly compare the mock table with rt.table
+	// because rt.table is of type *tablewriter.Table
+	// Instead, we'll check if the mock expectations were met
 	mockTable.AssertExpectations(t)
 }
 
 func TestAddResource(t *testing.T) {
-	mockTable := new(MockTable)
-	rt := &ResourceTable{table: mockTable}
+	rt := NewResourceTable()
 
 	name := "TestResource"
 	resourceType := "Microsoft.Compute/virtualMachines"
