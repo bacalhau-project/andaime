@@ -18,6 +18,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var isConsoleLogging bool
+
 var (
 	globalLogger *zap.Logger
 	once         sync.Once
@@ -133,6 +135,15 @@ func InitProduction() {
 				GlobalLogLevel = logLevelString
 			}
 		}
+
+		// Add console logging
+		consoleCore := zapcore.NewCore(
+			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
+			zapcore.AddSync(os.Stdout),
+			zapcore.Level(getZapLevel(GlobalLogLevel)),
+		)
+		cores = append(cores, consoleCore)
+		isConsoleLogging = true
 
 		logLevel := getLogLevel(GlobalLogLevel)
 
