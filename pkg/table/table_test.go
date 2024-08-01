@@ -32,14 +32,14 @@ func TestAddResource(t *testing.T) {
 		ID:       &id,
 	}
 
-	rt.AddResource(resource, string(models.ProviderAbbreviationAzure))
+	rt.AddResource(resource, "Azure")
 	rt.Render()
 
 	output := buf.String()
 	assert.Contains(t, output, "TestResource")
-	assert.Contains(t, output, string(models.ProviderAbbreviationAzure))
+	assert.Contains(t, output, "AZ")  // Changed from models.ProviderAbbreviationAzure to "AZ"
 	assert.Contains(t, output, "eastus")
-	assert.Contains(t, output, "eastus")
+	assert.Contains(t, output, "VM")  // Check for abbreviated resource type
 }
 
 func TestRender(t *testing.T) {
