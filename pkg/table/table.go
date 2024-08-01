@@ -13,10 +13,8 @@ import (
 const (
 	NameWidth      = 60
 	TypeWidth      = 4
-	ProvStateWidth = 6  // 4 letters + 1 emoji + 1 space
+	ProvStateWidth = 7  // 3 letters + 1 space + 1 emoji + 1 space
 	LocationWidth  = 15
-	TagsWidth      = 40
-	ProviderWidth  = 4
 )
 
 type ResourceTable struct {
@@ -30,7 +28,7 @@ func NewResourceTable(w io.Writer) *ResourceTable {
 	}
 	table := tablewriter.NewWriter(w)
 	table.SetHeader(
-		[]string{"Name", "Type", "State", "Location", "Tags", "Prov"},
+		[]string{"Name", "Type", "State", "Location", "Prov"},
 	)
 	table.SetAutoWrapText(false)
 	table.SetAutoFormatHeaders(true)
@@ -60,15 +58,13 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 	}
 
 	resourceType := abbreviateResourceType(*resource.Type)
-	tags := formatTags(resource.Tags)
 
 	row := []string{
 		truncate(*resource.Name, NameWidth),
 		truncate(resourceType, TypeWidth),
 		truncate(provisioningState+" "+stateEmoji, ProvStateWidth),
 		truncate(*resource.Location, LocationWidth),
-		truncate(tags, TagsWidth),
-		truncate(provider, ProviderWidth),
+		provider,
 	}
 	rt.table.Append(row)
 }
@@ -122,28 +118,7 @@ func getStateEmoji(state string) string {
 	}
 }
 
-func abbreviateProvider(provider string) string {
-	switch strings.ToLower(provider) {
-	case "azure":
-		return "AZU"
-	case "aws":
-		return "AWS"
-	case "gcp":
-		return "GCP"
-	default:
-		return "UNK"
-	}
-}
-
-func formatTags(tags map[string]*string) string {
-	var tagStrings []string
-	for k, v := range tags {
-		if v != nil {
-			tagStrings = append(tagStrings, fmt.Sprintf("%s:%s", k, *v))
-		}
-	}
-	return strings.Join(tagStrings, ", ")
-}
+// Remove the abbreviateProvider and formatTags functions as they are no longer needed
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
