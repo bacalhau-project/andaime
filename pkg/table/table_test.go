@@ -1,6 +1,7 @@
 package table
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"testing"
@@ -8,6 +9,14 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/stretchr/testify/assert"
 )
+
+type testWriter struct {
+	bytes.Buffer
+}
+
+func (tw *testWriter) Close() error {
+	return nil
+}
 
 func TestNewResourceTable(t *testing.T) {
 	rt := NewResourceTable()
@@ -32,7 +41,7 @@ func TestAddResource(t *testing.T) {
 
 	rt.AddResource(resource, "Azure")
 
-	// Capture stdout
+	// Capture output
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -42,15 +51,18 @@ func TestAddResource(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 
-	output, _ := io.ReadAll(r)
-	assert.Contains(t, string(output), "TestResource")
-	assert.Contains(t, string(output), "Azure")
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	assert.Contains(t, output, "TestResource")
+	assert.Contains(t, output, "Azure")
 }
 
 func TestRender(t *testing.T) {
 	rt := NewResourceTable()
 
-	// Capture stdout
+	// Capture output
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -60,10 +72,13 @@ func TestRender(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 
-	output, _ := io.ReadAll(r)
-	assert.NotEmpty(t, string(output))
-	assert.Contains(t, string(output), "Name")
-	assert.Contains(t, string(output), "Provider")
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	assert.NotEmpty(t, output)
+	assert.Contains(t, output, "Name")
+	assert.Contains(t, output, "Provider")
 }
 
 func stringPtr(s string) *string {
