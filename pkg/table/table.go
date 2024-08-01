@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/olekukonko/tablewriter"
 	"golang.org/x/text/cases"
@@ -54,16 +55,17 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 	log.Debugf("Resource Properties: %+v", resource.Properties)
 
 	if resource.Properties != nil {
+		log.Debugf("Resource Properties type: %T", resource.Properties)
 		if props, ok := resource.Properties.(map[string]interface{}); ok {
 			log.Debugf("Properties as map: %+v", props)
 			if ps, ok := props["provisioningState"].(string); ok {
 				provisioningState = models.GetStatusCode(models.StatusString(ps))
-				log.Debugf("Provisioning State found: %s", ps)
+				log.Debugf("Provisioning State found: %s, StatusCode: %s", ps, provisioningState)
 			} else {
 				log.Debug("Provisioning State not found in properties")
 			}
 		} else {
-			log.Debug("Properties is not a map[string]interface{}")
+			log.Debugf("Properties is not a map[string]interface{}, it's a %T", resource.Properties)
 		}
 	} else {
 		log.Debug("Resource Properties is nil")
