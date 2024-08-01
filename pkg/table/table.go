@@ -57,13 +57,6 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 		}
 	}
 
-	// If provisioningState is still unknown, try to get it from the resource status
-	if provisioningState == models.StatusUnknown {
-		if status := resource.Status(); status != nil {
-			provisioningState = models.GetStatusCode(models.StatusString(*status))
-		}
-	}
-
 	resourceType := abbreviateResourceType(*resource.Type)
 
 	row := []string{
