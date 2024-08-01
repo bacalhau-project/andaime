@@ -1,7 +1,8 @@
 package table
 
 import (
-	"bytes"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -31,27 +32,38 @@ func TestAddResource(t *testing.T) {
 
 	rt.AddResource(resource, "Azure")
 
-	var buf bytes.Buffer
-	rt.table.SetOutput(&buf)
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
 	rt.Render()
 
-	output := buf.String()
-	assert.Contains(t, output, "TestResource")
-	assert.Contains(t, output, "Azure")
+	w.Close()
+	os.Stdout = oldStdout
+
+	output, _ := io.ReadAll(r)
+	assert.Contains(t, string(output), "TestResource")
+	assert.Contains(t, string(output), "Azure")
 }
 
 func TestRender(t *testing.T) {
 	rt := NewResourceTable()
 
-	var buf bytes.Buffer
-	rt.table.SetOutput(&buf)
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
 
 	rt.Render()
 
-	output := buf.String()
-	assert.NotEmpty(t, output)
-	assert.Contains(t, output, "Name")
-	assert.Contains(t, output, "Provider")
+	w.Close()
+	os.Stdout = oldStdout
+
+	output, _ := io.ReadAll(r)
+	assert.NotEmpty(t, string(output))
+	assert.Contains(t, string(output), "Name")
+	assert.Contains(t, string(output), "Provider")
 }
 
 func stringPtr(s string) *string {
