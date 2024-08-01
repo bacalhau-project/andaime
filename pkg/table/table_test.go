@@ -47,8 +47,8 @@ func TestRender(t *testing.T) {
 
 	output := buf.String()
 	assert.NotEmpty(t, output)
-	assert.Contains(t, output, "Name")
-	assert.Contains(t, output, "Provider")
+	assert.Contains(t, output, "NAME")
+	assert.Contains(t, output, "PROVIDER")
 }
 
 func stringPtr(s string) *string {
