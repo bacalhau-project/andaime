@@ -2,7 +2,6 @@ package table
 
 import (
 	"bytes"
-	"os"
 	"strings"
 	"testing"
 
@@ -41,23 +40,21 @@ func TestAddResource(t *testing.T) {
 		},
 	}
 
-	// Capture table output
-	buf := new(bytes.Buffer)
-	rt.table.SetOutput(buf)
-
 	rt.AddResource(resource, "Azure")
-	rt.Render()
 
-	output := buf.String()
+	// Check if the resource was added correctly
+	assert.Equal(t, 1, len(rt.table.GetRows()))
+	row := rt.table.GetRows()[0]
 
-	assert.Contains(t, output, "TestResource")
-	assert.Contains(t, output, "virtualMachines")
-	assert.Contains(t, output, "Succeeded")
-	assert.Contains(t, output, "eastus")
-	assert.Contains(t, output, "2023-05-01")
-	assert.Contains(t, output, "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource")
-	assert.Contains(t, output, "key1:value1, key2:value2")
-	assert.Contains(t, output, "Azure")
+	assert.Equal(t, "TestResource", row[0])
+	assert.Equal(t, "virtualMachines", row[1])
+	assert.Equal(t, "Succeeded", row[2])
+	assert.Equal(t, "eastus", row[3])
+	assert.Equal(t, "2023-05-01", row[4])
+	assert.Contains(t, row[5], "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource")
+	assert.Contains(t, row[6], "key1:value1")
+	assert.Contains(t, row[6], "key2:value2")
+	assert.Equal(t, "Azure", row[7])
 }
 
 func TestShortenResourceType(t *testing.T) {
