@@ -41,19 +41,13 @@ func TestAddResource(t *testing.T) {
 		},
 	}
 
-	// Redirect stdout to capture table output
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	// Capture table output
+	buf := new(bytes.Buffer)
+	rt.table.SetOutput(buf)
 
 	rt.AddResource(resource, "Azure")
 	rt.Render()
 
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	assert.Contains(t, output, "TestResource")
@@ -100,7 +94,7 @@ func TestTruncate(t *testing.T) {
 		expected string
 	}{
 		{"Short", 10, "Short"},
-		{"LongStringToTruncate", 10, "LongStri..."},
+		{"LongStringToTruncate", 10, "LongStr..."},
 		{"ExactlyTen", 10, "ExactlyTen"},
 	}
 
