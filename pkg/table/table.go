@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	NameWidth      = 40
-	TypeWidth      = 3
-	ProvStateWidth = 4  // 3 letters + 1 emoji
-	LocationWidth  = 10
-	TagsWidth      = 30
-	ProviderWidth  = 3
+	NameWidth      = 60
+	TypeWidth      = 4
+	ProvStateWidth = 6  // 4 letters + 1 emoji + 1 space
+	LocationWidth  = 15
+	TagsWidth      = 40
+	ProviderWidth  = 4
 )
 
 type ResourceTable struct {
@@ -65,10 +65,10 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 	row := []string{
 		truncate(*resource.Name, NameWidth),
 		truncate(resourceType, TypeWidth),
-		truncate(provisioningState+stateEmoji, ProvStateWidth),
+		truncate(provisioningState+" "+stateEmoji, ProvStateWidth),
 		truncate(*resource.Location, LocationWidth),
 		truncate(tags, TagsWidth),
-		truncate(abbreviateProvider(provider), ProviderWidth),
+		truncate(provider, ProviderWidth),
 	}
 	rt.table.Append(row)
 }
@@ -149,5 +149,8 @@ func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	if maxLen > 3 {
+		return s[:maxLen-3] + "..."
+	}
+	return s[:maxLen]
 }
