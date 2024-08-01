@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
-	"github.com/olekukonko/tablewriter"
 	"github.com/stretchr/testify/assert"
 )
 
