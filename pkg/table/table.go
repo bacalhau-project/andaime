@@ -2,6 +2,7 @@ package table
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -11,18 +12,18 @@ import (
 )
 
 const (
-	NameWidth           = 20
-	TypeWidth           = 15
-	ProvStateWidth      = 10
-	LocationWidth       = 10
-	CreatedWidth        = 10
-	IDWidth             = 20
-	TagsWidth           = 30
-	ProviderWidth       = 10
+	NameWidth      = 20
+	TypeWidth      = 15
+	ProvStateWidth = 10
+	LocationWidth  = 10
+	CreatedWidth   = 10
+	IDWidth        = 20
+	TagsWidth      = 30
+	ProviderWidth  = 10
 )
 
 type ResourceTable struct {
-	table *tablewriter.Table
+	table  *tablewriter.Table
 	writer io.Writer
 }
 
@@ -31,7 +32,9 @@ func NewResourceTable(w io.Writer) *ResourceTable {
 		w = os.Stdout
 	}
 	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"Name", "Type", "Prov State", "Location", "Created", "ID", "Tags", "Provider"})
+	table.SetHeader(
+		[]string{"Name", "Type", "Prov State", "Location", "Created", "ID", "Tags", "Provider"},
+	)
 	table.SetAutoWrapText(false)
 	table.SetAutoFormatHeaders(true)
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
