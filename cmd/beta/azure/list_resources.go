@@ -54,7 +54,7 @@ var AzureListResourcesCmd = &cobra.Command{
 		}
 
 		resources, err := azureProvider.GetClient().
-			SearchResources(cmd.Context(), searchScope, getSubscriptionID(), tags)
+			SearchResources(cmd.Context(), searchScope, getSubscriptionID(), tags, "$expand=properties")
 		if err != nil {
 			switch {
 			case isNetworkError(err):

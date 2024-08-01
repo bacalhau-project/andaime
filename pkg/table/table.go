@@ -50,9 +50,10 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 	provisioningState := models.StatusUnknown
 
 	if resource.Properties != nil {
-		props := resource.Properties.(map[string]interface{})
-		if ps, ok := props["provisioningState"].(string); ok {
-			provisioningState = models.GetStatusCode(models.StatusString(ps))
+		if props, ok := resource.Properties.(map[string]interface{}); ok {
+			if ps, ok := props["provisioningState"].(string); ok {
+				provisioningState = models.GetStatusCode(models.StatusString(ps))
+			}
 		}
 	}
 
