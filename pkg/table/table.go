@@ -1,7 +1,6 @@
 package table
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -13,7 +12,7 @@ import (
 const (
 	NameWidth      = 60
 	TypeWidth      = 4
-	ProvStateWidth = 7  // 3 letters + 1 space + 1 emoji + 1 space
+	ProvStateWidth = 7 // 3 letters + 1 space + 1 emoji + 1 space
 	LocationWidth  = 15
 )
 
