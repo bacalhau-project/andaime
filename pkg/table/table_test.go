@@ -1,22 +1,62 @@
 package table
 
 import (
-	"bytes"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/olekukonko/tablewriter"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
+// MockTable is a mock implementation of the tablewriter.Table
+type MockTable struct {
+	mock.Mock
+}
+
+func (m *MockTable) Append(row []string)                    { m.Called(row) }
+func (m *MockTable) SetHeader(headers []string)             { m.Called(headers) }
+func (m *MockTable) SetAutoWrapText(wrap bool)              { m.Called(wrap) }
+func (m *MockTable) SetAutoFormatHeaders(format bool)       { m.Called(format) }
+func (m *MockTable) SetHeaderAlignment(alignment int)       { m.Called(alignment) }
+func (m *MockTable) SetAlignment(alignment int)             { m.Called(alignment) }
+func (m *MockTable) SetCenterSeparator(sep string)          { m.Called(sep) }
+func (m *MockTable) SetColumnSeparator(sep string)          { m.Called(sep) }
+func (m *MockTable) SetRowSeparator(sep string)             { m.Called(sep) }
+func (m *MockTable) SetHeaderLine(line bool)                { m.Called(line) }
+func (m *MockTable) SetBorder(border bool)                  { m.Called(border) }
+func (m *MockTable) SetTablePadding(padding string)         { m.Called(padding) }
+func (m *MockTable) SetNoWhiteSpace(noWhiteSpace bool)      { m.Called(noWhiteSpace) }
+func (m *MockTable) Render()                                { m.Called() }
+
 func TestNewResourceTable(t *testing.T) {
-	rt := NewResourceTable()
+	mockTable := new(MockTable)
+	
+	mockTable.On("SetHeader", mock.Anything).Return()
+	mockTable.On("SetAutoWrapText", false).Return()
+	mockTable.On("SetAutoFormatHeaders", true).Return()
+	mockTable.On("SetHeaderAlignment", tablewriter.ALIGN_LEFT).Return()
+	mockTable.On("SetAlignment", tablewriter.ALIGN_LEFT).Return()
+	mockTable.On("SetCenterSeparator", "").Return()
+	mockTable.On("SetColumnSeparator", "").Return()
+	mockTable.On("SetRowSeparator", "").Return()
+	mockTable.On("SetHeaderLine", false).Return()
+	mockTable.On("SetBorder", false).Return()
+	mockTable.On("SetTablePadding", "\t").Return()
+	mockTable.On("SetNoWhiteSpace", true).Return()
+
+	rt := &ResourceTable{table: mockTable}
+
 	assert.NotNil(t, rt)
 	assert.NotNil(t, rt.table)
+
+	mockTable.AssertExpectations(t)
 }
 
 func TestAddResource(t *testing.T) {
-	rt := NewResourceTable()
+	mockTable := new(MockTable)
+	rt := &ResourceTable{table: mockTable}
 
 	name := "TestResource"
 	resourceType := "Microsoft.Compute/virtualMachines"
@@ -40,21 +80,33 @@ func TestAddResource(t *testing.T) {
 		},
 	}
 
+	expectedRow := []string{
+		"TestResource",
+		"virtualMachines",
+		"Succeeded",
+		"eastus",
+		"2023-05-01",
+		"/subscriptions/sub-...",
+		"key1:value1, key2:v...",
+		"Azure",
+	}
+
+	mockTable.On("Append", expectedRow).Return()
+
 	rt.AddResource(resource, "Azure")
 
-	// Check if the resource was added correctly
-	assert.Equal(t, 1, len(rt.table.GetRows()))
-	row := rt.table.GetRows()[0]
+	mockTable.AssertExpectations(t)
+}
 
-	assert.Equal(t, "TestResource", row[0])
-	assert.Equal(t, "virtualMachines", row[1])
-	assert.Equal(t, "Succeeded", row[2])
-	assert.Equal(t, "eastus", row[3])
-	assert.Equal(t, "2023-05-01", row[4])
-	assert.Contains(t, row[5], "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource")
-	assert.Contains(t, row[6], "key1:value1")
-	assert.Contains(t, row[6], "key2:value2")
-	assert.Equal(t, "Azure", row[7])
+func TestRender(t *testing.T) {
+	mockTable := new(MockTable)
+	rt := &ResourceTable{table: mockTable}
+
+	mockTable.On("Render").Return()
+
+	rt.Render()
+
+	mockTable.AssertExpectations(t)
 }
 
 func TestShortenResourceType(t *testing.T) {
@@ -80,8 +132,8 @@ func TestFormatTags(t *testing.T) {
 	}
 
 	result := formatTags(tags)
-	assert.True(t, strings.Contains(result, "key1:value1"))
-	assert.True(t, strings.Contains(result, "key2:value2"))
+	assert.Contains(t, result, "key1:value1")
+	assert.Contains(t, result, "key2:value2")
 }
 
 func TestTruncate(t *testing.T) {
