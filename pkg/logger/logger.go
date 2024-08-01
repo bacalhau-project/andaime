@@ -249,21 +249,33 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 func (l *Logger) Debug(msg string) {
 	l.Logger.Debug(msg)
 	l.syncIfNeeded()
+	if isConsoleLogging {
+		fmt.Println("DEBUG:", msg)
+	}
 }
 
 func (l *Logger) Info(msg string) {
 	l.Logger.Info(msg)
 	l.syncIfNeeded()
+	if isConsoleLogging {
+		fmt.Println("INFO:", msg)
+	}
 }
 
 func (l *Logger) Warn(msg string) {
 	l.Logger.Warn(msg)
 	l.syncIfNeeded()
+	if isConsoleLogging {
+		fmt.Println("WARN:", msg)
+	}
 }
 
 func (l *Logger) Error(msg string) {
 	l.Logger.Error(msg)
 	l.syncIfNeeded()
+	if isConsoleLogging {
+		fmt.Println("ERROR:", msg)
+	}
 }
 
 func (l *Logger) Fatal(msg string) {
@@ -450,4 +462,18 @@ func writeToDebugLog(message string) {
 
 func WriteToDebugLog(message string) {
 	writeToDebugLog(message)
+}
+func getZapLevel(level string) zapcore.Level {
+	switch level {
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
+	}
 }
