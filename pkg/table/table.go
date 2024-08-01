@@ -10,6 +10,16 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+const (
+	NameWidth           = 20
+	TypeWidth           = 15
+	ProvStateWidth      = 10
+	LocationWidth       = 10
+	CreatedWidth        = 10
+	IDWidth             = 20
+	TagsWidth           = 30
+)
+
 type ResourceTable struct {
 	table *tablewriter.Table
 }
@@ -52,13 +62,13 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource) {
 	tags := formatTags(resource.Tags)
 
 	row := []string{
-		truncate(*resource.Name, 20),
-		truncate(resourceType, 15),
-		truncate(provisioningState, 10),
-		truncate(*resource.Location, 10),
-		truncate(createdTime, 10),
-		truncate(*resource.ID, 20),
-		truncate(tags, 30),
+		truncate(*resource.Name, NameWidth),
+		truncate(resourceType, TypeWidth),
+		truncate(provisioningState, ProvStateWidth),
+		truncate(*resource.Location, LocationWidth),
+		truncate(createdTime, CreatedWidth),
+		truncate(*resource.ID, IDWidth),
+		truncate(tags, TagsWidth),
 	}
 	rt.table.Append(row)
 }
