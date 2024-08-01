@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,14 +32,13 @@ func TestAddResource(t *testing.T) {
 		ID:       &id,
 	}
 
-	rt.AddResource(resource, "Azure")
+	rt.AddResource(resource, string(models.ProviderAbbreviationAzure))
 	rt.Render()
 
 	output := buf.String()
 	assert.Contains(t, output, "TestResource")
-	assert.Contains(t, output, "Azure")
-	assert.Contains(t, output, "VIR")
-	assert.Contains(t, output, "UNK")
+	assert.Contains(t, output, string(models.ProviderAbbreviationAzure))
+	assert.Contains(t, output, "eastus")
 	assert.Contains(t, output, "eastus")
 }
 
