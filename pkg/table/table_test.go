@@ -37,6 +37,9 @@ func TestAddResource(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "TestResource")
 	assert.Contains(t, output, "Azure")
+	assert.Contains(t, output, "VIR")
+	assert.Contains(t, output, "UNK")
+	assert.Contains(t, output, "eastus")
 }
 
 func TestRender(t *testing.T) {
@@ -48,7 +51,7 @@ func TestRender(t *testing.T) {
 	output := buf.String()
 	assert.NotEmpty(t, output)
 	assert.Contains(t, output, "NAME")
-	assert.Contains(t, output, "PROVIDER")
+	assert.Contains(t, output, "PROV")
 }
 
 func stringPtr(s string) *string {
