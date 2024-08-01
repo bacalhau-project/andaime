@@ -23,10 +23,14 @@ const (
 
 type ResourceTable struct {
 	table *tablewriter.Table
+	writer io.Writer
 }
 
-func NewResourceTable() *ResourceTable {
-	table := tablewriter.NewWriter(os.Stdout)
+func NewResourceTable(w io.Writer) *ResourceTable {
+	if w == nil {
+		w = os.Stdout
+	}
+	table := tablewriter.NewWriter(w)
 	table.SetHeader([]string{"Name", "Type", "Prov State", "Location", "Created", "ID", "Tags", "Provider"})
 	table.SetAutoWrapText(false)
 	table.SetAutoFormatHeaders(true)
