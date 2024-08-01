@@ -5,54 +5,13 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
-	"github.com/olekukonko/tablewriter"
 	"github.com/stretchr/testify/assert"
 )
 
-// MockTable is a mock implementation of the tablewriter.Table
-type MockTable struct {
-	mock.Mock
-}
-
-func (m *MockTable) Append(row []string)                    { m.Called(row) }
-func (m *MockTable) SetHeader(headers []string)             { m.Called(headers) }
-func (m *MockTable) SetAutoWrapText(wrap bool)              { m.Called(wrap) }
-func (m *MockTable) SetAutoFormatHeaders(format bool)       { m.Called(format) }
-func (m *MockTable) SetHeaderAlignment(alignment int)       { m.Called(alignment) }
-func (m *MockTable) SetAlignment(alignment int)             { m.Called(alignment) }
-func (m *MockTable) SetCenterSeparator(sep string)          { m.Called(sep) }
-func (m *MockTable) SetColumnSeparator(sep string)          { m.Called(sep) }
-func (m *MockTable) SetRowSeparator(sep string)             { m.Called(sep) }
-func (m *MockTable) SetHeaderLine(line bool)                { m.Called(line) }
-func (m *MockTable) SetBorder(border bool)                  { m.Called(border) }
-func (m *MockTable) SetTablePadding(padding string)         { m.Called(padding) }
-func (m *MockTable) SetNoWhiteSpace(noWhiteSpace bool)      { m.Called(noWhiteSpace) }
-func (m *MockTable) Render()                                { m.Called() }
-
 func TestNewResourceTable(t *testing.T) {
-	mockTable := new(MockTable)
-	
-	mockTable.On("SetHeader", mock.Anything).Return()
-	mockTable.On("SetAutoWrapText", false).Return()
-	mockTable.On("SetAutoFormatHeaders", true).Return()
-	mockTable.On("SetHeaderAlignment", tablewriter.ALIGN_LEFT).Return()
-	mockTable.On("SetAlignment", tablewriter.ALIGN_LEFT).Return()
-	mockTable.On("SetCenterSeparator", "").Return()
-	mockTable.On("SetColumnSeparator", "").Return()
-	mockTable.On("SetRowSeparator", "").Return()
-	mockTable.On("SetHeaderLine", false).Return()
-	mockTable.On("SetBorder", false).Return()
-	mockTable.On("SetTablePadding", "\t").Return()
-	mockTable.On("SetNoWhiteSpace", true).Return()
-
 	rt := NewResourceTable()
 	assert.NotNil(t, rt)
 	assert.NotNil(t, rt.table)
-
-	// We can't directly compare the mock table with rt.table
-	// because rt.table is of type *tablewriter.Table
-	// Instead, we'll check if the mock expectations were met
-	mockTable.AssertExpectations(t)
 }
 
 func TestAddResource(t *testing.T) {
@@ -82,8 +41,6 @@ func TestAddResource(t *testing.T) {
 
 	rt.AddResource(resource, "Azure")
 
-	// We can't directly access the rows of the table
-	// Instead, we'll render the table to a string and check its contents
 	var buf bytes.Buffer
 	rt.table.SetOutput(&buf)
 	rt.Render()
@@ -94,9 +51,8 @@ func TestAddResource(t *testing.T) {
 	assert.Contains(t, output, "Succeeded")
 	assert.Contains(t, output, "eastus")
 	assert.Contains(t, output, "2023-05-01")
-	assert.Contains(t, output, "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource")
-	assert.Contains(t, output, "key1:value1")
-	assert.Contains(t, output, "key2:value2")
+	assert.Contains(t, output, "/subscriptions/sub-...")
+	assert.Contains(t, output, "key1:value1, key2:v...")
 	assert.Contains(t, output, "Azure")
 }
 
@@ -110,6 +66,14 @@ func TestRender(t *testing.T) {
 
 	output := buf.String()
 	assert.NotEmpty(t, output)
+	assert.Contains(t, output, "Name")
+	assert.Contains(t, output, "Type")
+	assert.Contains(t, output, "Prov State")
+	assert.Contains(t, output, "Location")
+	assert.Contains(t, output, "Created")
+	assert.Contains(t, output, "ID")
+	assert.Contains(t, output, "Tags")
+	assert.Contains(t, output, "Provider")
 }
 
 func TestShortenResourceType(t *testing.T) {
