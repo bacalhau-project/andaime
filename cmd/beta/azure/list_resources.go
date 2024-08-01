@@ -1,8 +1,12 @@
 package azure
 
 import (
+	"errors"
+	"net"
+	"os"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/table"
@@ -52,7 +56,14 @@ var AzureListResourcesCmd = &cobra.Command{
 		resources, err := azureProvider.GetClient().
 			SearchResources(cmd.Context(), searchScope, getSubscriptionID(), tags)
 		if err != nil {
-			log.Fatalf("Failed to query resources: %v", err)
+			switch {
+			case isNetworkError(err):
+				log.Fatal("Network is down. Please check your internet connection and try again.")
+			case isAzureServiceError(err):
+				log.Fatalf("Azure service error: %v", err)
+			default:
+				log.Fatalf("Failed to query resources: %v", err)
+			}
 		}
 
 		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
@@ -61,8 +72,8 @@ var AzureListResourcesCmd = &cobra.Command{
 			log.Warn("No resources created by Andaime were found")
 		} else {
 			log.Infof("Found %d resources created by Andaime", len(resources))
-			
-			resourceTable := table.NewResourceTable()
+
+			resourceTable := table.NewResourceTable(os.Stdout)
 			for _, resource := range resources {
 				resourceTable.AddResource(resource, "Azure")
 			}
@@ -79,4 +90,14 @@ func init() {
 
 func GetAzureListResourcesCmd() *cobra.Command {
 	return AzureListResourcesCmd
+}
+
+func isNetworkError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isAzureServiceError(err error) bool {
+	var azErr *azcore.ResponseError
+	return errors.As(err, &azErr)
 }

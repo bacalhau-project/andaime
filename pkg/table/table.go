@@ -6,19 +6,21 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/olekukonko/tablewriter"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const (
 	NameWidth      = 60
-	TypeWidth      = 4
+	TypeWidth      = 5
 	ProvStateWidth = 7 // 3 letters + 1 space + 1 emoji + 1 space
 	LocationWidth  = 15
 )
 
 type ResourceTable struct {
-	table  *tablewriter.Table
-	writer io.Writer
+	table *tablewriter.Table
 }
 
 func NewResourceTable(w io.Writer) *ResourceTable {
@@ -45,14 +47,12 @@ func NewResourceTable(w io.Writer) *ResourceTable {
 }
 
 func (rt *ResourceTable) AddResource(resource armresources.GenericResource, provider string) {
-	provisioningState := "UNK"
-	stateEmoji := "❓"
+	provisioningState := models.StatusUnknown
 
 	if resource.Properties != nil {
 		props := resource.Properties.(map[string]interface{})
 		if ps, ok := props["provisioningState"].(string); ok {
-			provisioningState = abbreviateProvisioningState(ps)
-			stateEmoji = getStateEmoji(ps)
+			provisioningState = models.GetStatusCode(models.StatusString(ps))
 		}
 	}
 
@@ -61,7 +61,7 @@ func (rt *ResourceTable) AddResource(resource armresources.GenericResource, prov
 	row := []string{
 		truncate(*resource.Name, NameWidth),
 		truncate(resourceType, TypeWidth),
-		truncate(provisioningState+" "+stateEmoji, ProvStateWidth),
+		truncate(string(provisioningState), ProvStateWidth),
 		truncate(*resource.Location, LocationWidth),
 		provider,
 	}
@@ -72,49 +72,52 @@ func (rt *ResourceTable) Render() {
 	rt.table.Render()
 }
 
-// Helper functions
 func abbreviateResourceType(resourceType string) string {
 	parts := strings.Split(resourceType, "/")
 	if len(parts) > 1 {
-		lastPart := parts[len(parts)-1]
-		if len(lastPart) >= 3 {
-			return strings.ToUpper(lastPart[:3])
+		lastPart := strings.ToLower(parts[len(parts)-1])
+		switch {
+		case strings.Contains(lastPart, "disk"):
+			return "Disk "
+		case strings.Contains(lastPart, "networkinterface"):
+			return " NIC "
+		case strings.Contains(lastPart, "virtualnetwork"):
+			return "VNet "
+		case strings.Contains(lastPart, "subnet"):
+			return "SNet "
+		case strings.Contains(lastPart, "virtualmachine"):
+			return " VM  "
+		case strings.Contains(lastPart, "publicipaddress"):
+			return " IP  "
+		case strings.Contains(lastPart, "loadbalancer"):
+			return " LB  "
+		case strings.Contains(lastPart, "storageaccount"):
+			return "Filer"
+		case strings.Contains(lastPart, "keyvault"):
+			return "Vault"
+		case strings.Contains(lastPart, "sqlserver"):
+			return " SQL "
+		case strings.Contains(lastPart, "webapp"):
+			return " App "
+		case strings.Contains(lastPart, "networksecuritygroup"):
+			return " NSG "
+		default:
+			if len(lastPart) >= TypeWidth {
+				return cases.Title(language.Und).String(lastPart[:TypeWidth])
+			}
+			return centerText(cases.Title(language.Und).String(lastPart), TypeWidth)
 		}
-		return strings.ToUpper(lastPart)
 	}
-	return "UNK"
+	return "Unk "
 }
 
-func abbreviateProvisioningState(state string) string {
-	switch strings.ToLower(state) {
-	case "succeeded":
-		return "SUC"
-	case "failed":
-		return "FAI"
-	case "creating":
-		return "CRE"
-	case "updating":
-		return "UPD"
-	case "deleting":
-		return "DEL"
-	default:
-		return "UNK"
+func centerText(s string, width int) string {
+	if len(s) >= width {
+		return s[:width]
 	}
-}
-
-func getStateEmoji(state string) string {
-	switch strings.ToLower(state) {
-	case "succeeded":
-		return "✅"
-	case "failed":
-		return "❌"
-	case "creating", "updating":
-		return "🔄"
-	case "deleting":
-		return "🗑️"
-	default:
-		return "❓"
-	}
+	leftPad := (width - len(s)) / 2 //nolint:gomnd
+	rightPad := width - len(s) - leftPad
+	return strings.Repeat(" ", leftPad) + s + strings.Repeat(" ", rightPad)
 }
 
 // Remove the abbreviateProvider and formatTags functions as they are no longer needed
@@ -123,6 +126,7 @@ func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
+	//nolint:gomnd
 	if maxLen > 3 {
 		return s[:maxLen-3] + "..."
 	}
