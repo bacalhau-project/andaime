@@ -83,13 +83,31 @@ func (p *AzureProvider) SearchResources(ctx context.Context, searchScope string,
 
 	logger.Get().Debugf("Azure Resource Graph query: %s", query)
 
-	resources, err := p.Client.SearchResources(ctx, searchScope, subscriptionID, query)
+	resourcesResponse, err := p.Client.Resources(ctx, query, nil)
 	if err != nil {
 		logger.Get().Errorf("Failed to query Azure resources: %v", err)
 		return nil, fmt.Errorf("failed to query resources: %v", err)
 	}
 
-	logger.Get().Debugf("Azure Resource Graph response: %+v", resources)
+	logger.Get().Debugf("Azure Resource Graph response: %+v", resourcesResponse)
+
+	var resources []*armresources.GenericResource
+	for _, data := range resourcesResponse.Data {
+		if resource, ok := data.(map[string]interface{}); ok {
+			genericResource := &armresources.GenericResource{
+				ID:       (*string)(resource["id"].(*string)),
+				Name:     (*string)(resource["name"].(*string)),
+				Type:     (*string)(resource["type"].(*string)),
+				Location: (*string)(resource["location"].(*string)),
+			}
+			if provisioningState, ok := resource["properties"].(map[string]interface{})["provisioningState"].(string); ok {
+				genericResource.Properties = map[string]interface{}{
+					"provisioningState": provisioningState,
+				}
+			}
+			resources = append(resources, genericResource)
+		}
+	}
 
 	return resources, nil
 }
