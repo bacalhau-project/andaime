@@ -69,4 +69,26 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
+func (p *AzureProvider) SearchResources(ctx context.Context, searchScope string, subscriptionID string, tags map[string]string) ([]*armresources.GenericResource, error) {
+	var tagFilters []string
+	for key, value := range tags {
+		tagFilters = append(tagFilters, fmt.Sprintf("tags['%s'] == '%s'", key, value))
+	}
+	tagFilterString := strings.Join(tagFilters, " and ")
+
+	query := fmt.Sprintf("Resources | where %s | project id, name, type, location, properties.provisioningState", tagFilterString)
+
+	logger.Get().Debugf("Azure Resource Graph query: %s", query)
+
+	resources, err := p.Client.SearchResources(ctx, searchScope, subscriptionID, query)
+	if err != nil {
+		logger.Get().Errorf("Failed to query Azure resources: %v", err)
+		return nil, fmt.Errorf("failed to query resources: %v", err)
+	}
+
+	logger.Get().Debugf("Azure Resource Graph response: %+v", resources)
+
+	return resources, nil
+}
+
 var _ AzureProviderer = &AzureProvider{}
