@@ -3,8 +3,11 @@ package azure
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 )
