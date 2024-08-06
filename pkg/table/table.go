@@ -48,7 +48,7 @@ func NewResourceTable(w io.Writer) *ResourceTable {
 }
 
 func (rt *ResourceTable) AddResource(
-	resource armresources.GenericResource,
+	resource *armresources.GenericResource,
 	provider models.ProviderAbbreviation,
 ) {
 	provisioningState := models.StatusUnknown
