@@ -47,6 +47,7 @@ type Deployment struct {
 	Subnets               map[string][]*armnetwork.Subnet
 	NetworkSecurityGroups map[string]*armnetwork.SecurityGroup
 	ProjectID             string
+	Disks                 map[string]*Disk
 	VMExtensionsStatus    map[string]StatusCode
 	UniqueID              string
 	Tags                  map[string]*string // This needs to be a pointer because that's what Azure requires
