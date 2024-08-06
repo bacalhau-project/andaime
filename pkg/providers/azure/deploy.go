@@ -286,7 +286,29 @@ func (p *AzureProvider) updateVMExtensionsStatus(
 ) {
 	l := logger.Get()
 	l.Debugf("Updating VM extensions status for resource: %s", *resource.Name)
-	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+
+	if resource.Properties == nil {
+		l.Warn("Resource properties are nil, cannot update VM extension status")
+		return
+	}
+
+	properties, ok := resource.Properties.(map[string]interface{})
+	if !ok {
+		l.Warn("Failed to cast resource properties to map[string]interface{}")
+		return
+	}
+
+	provisioningState, ok := properties["provisioningState"].(string)
+	if !ok {
+		l.Warn("Failed to get provisioningState from properties")
+		return
+	}
+
+	extensionName := strings.TrimPrefix(*resource.Name, deployment.VMName+"/")
+	status := models.GetStatusCode(models.StatusString(provisioningState))
+	deployment.VMExtensionsStatus[extensionName] = status
+
+	l.Debugf("Updated VM extension status: %s = %s", extensionName, status)
 }
 
 func (p *AzureProvider) updatePublicIPStatus(
