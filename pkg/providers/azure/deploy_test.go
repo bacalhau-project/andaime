@@ -91,3 +91,95 @@ func TestUpdateNICStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateNSGStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		deployment     *models.Deployment
+		resource       *armresources.GenericResource
+		expectedResult map[string]*armnetwork.SecurityGroup
+	}{
+		{
+			name: "Valid NSG update",
+			deployment: &models.Deployment{
+				Machines: []models.Machine{
+					{ID: "vm1"},
+				},
+				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("nsg-vm1"),
+				ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1"),
+				Type: utils.ToPtr("Microsoft.Network/networkSecurityGroups"),
+				Properties: map[string]interface{}{
+					"securityRules": []interface{}{
+						map[string]interface{}{
+							"name":                     "AllowSSH",
+							"protocol":                 "Tcp",
+							"sourcePortRange":          "*",
+							"destinationPortRange":     "22",
+							"sourceAddressPrefix":      "*",
+							"destinationAddressPrefix": "*",
+							"access":                   "Allow",
+							"priority":                 float64(100),
+							"direction":                "Inbound",
+						},
+					},
+				},
+			},
+			expectedResult: map[string]*armnetwork.SecurityGroup{
+				"vm1": {
+					Name: utils.ToPtr("nsg-vm1"),
+					ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1"),
+					Properties: &armnetwork.SecurityGroupPropertiesFormat{
+						SecurityRules: []*armnetwork.SecurityRule{
+							{
+								Name: utils.ToPtr("AllowSSH"),
+								Properties: &armnetwork.SecurityRulePropertiesFormat{
+									Protocol:                 utils.ToPtr("Tcp"),
+									SourcePortRange:          utils.ToPtr("*"),
+									DestinationPortRange:     utils.ToPtr("22"),
+									SourceAddressPrefix:      utils.ToPtr("*"),
+									DestinationAddressPrefix: utils.ToPtr("*"),
+									Access:                   utils.ToPtr("Allow"),
+									Priority:                 utils.ToPtr(int32(100)),
+									Direction:                utils.ToPtr("Inbound"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "No matching machine",
+			deployment: &models.Deployment{
+				Machines: []models.Machine{
+					{ID: "vm1"},
+				},
+				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("nsg-vm2"),
+				Type: utils.ToPtr("Microsoft.Network/networkSecurityGroups"),
+				Properties: map[string]interface{}{
+					"securityRules": []interface{}{
+						map[string]interface{}{
+							"name": "AllowHTTP",
+						},
+					},
+				},
+			},
+			expectedResult: map[string]*armnetwork.SecurityGroup{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &AzureProvider{}
+			provider.updateNSGStatus(tt.deployment, tt.resource)
+
+			assert.Equal(t, tt.expectedResult, tt.deployment.NetworkSecurityGroups)
+		})
+	}
+}

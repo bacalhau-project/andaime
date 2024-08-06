@@ -401,7 +401,71 @@ func (p *AzureProvider) updateNSGStatus(
 ) {
 	l := logger.Get()
 	l.Debugf("Updating NSG status for resource: %s", *resource.Name)
-	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+
+	if resource.Properties == nil {
+		l.Warnf("Resource properties are nil for NSG: %s", *resource.Name)
+		return
+	}
+
+	properties, ok := resource.Properties.(map[string]interface{})
+	if !ok {
+		l.Warnf("Failed to cast resource properties to map[string]interface{} for NSG: %s", *resource.Name)
+		return
+	}
+
+	securityRules, ok := properties["securityRules"].([]interface{})
+	if !ok {
+		l.Warnf("No security rules found in NSG properties for: %s", *resource.Name)
+		return
+	}
+
+	nsgUpdated := false
+	for _, machine := range deployment.Machines {
+		if strings.Contains(*resource.Name, machine.ID) {
+			deployment.NetworkSecurityGroups[machine.ID] = &armnetwork.SecurityGroup{
+				Name: resource.Name,
+				ID:   resource.ID,
+				Properties: &armnetwork.SecurityGroupPropertiesFormat{
+					SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)),
+				},
+			}
+
+			for _, rule := range securityRules {
+				ruleMap, ok := rule.(map[string]interface{})
+				if !ok {
+					l.Warnf("Failed to cast security rule to map[string]interface{} for NSG: %s", *resource.Name)
+					continue
+				}
+
+				securityRule := &armnetwork.SecurityRule{
+					Name: utils.ToPtr(ruleMap["name"].(string)),
+					Properties: &armnetwork.SecurityRulePropertiesFormat{
+						Protocol:                 utils.ToPtr(ruleMap["protocol"].(string)),
+						SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
+						DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
+						SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
+						DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
+						Access:                   utils.ToPtr(ruleMap["access"].(string)),
+						Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
+						Direction:                utils.ToPtr(ruleMap["direction"].(string)),
+					},
+				}
+
+				deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules = append(
+					deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules,
+					securityRule,
+				)
+			}
+
+			l.Infof("Updated NSG for machine %s: %s", machine.ID, *resource.Name)
+			nsgUpdated = true
+			break
+		}
+	}
+
+	if !nsgUpdated {
+		l.Warnf("No matching machine found for NSG: %s", *resource.Name)
+	}
 }
 
 func (p *AzureProvider) updateVNetStatus(
