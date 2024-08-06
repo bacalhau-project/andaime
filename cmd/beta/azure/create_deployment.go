@@ -76,11 +76,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Debugf("Channel created: azure_deployment_done")
 
 	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Initialize the display
-	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	if !noDisplay {
 		go disp.Start()
@@ -134,30 +132,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		syscall.SIGTERM,
 	)
 
-	l.Debug("Creating display")
-	disp := display.GetGlobalDisplay()
-	l.Debug("Starting display")
-
-	noDisplay := false
-	if os.Getenv("ANDAIME_NO_DISPLAY") != "" {
-		noDisplay = true
-	}
-	if !noDisplay {
-		// Start display in a goroutine
-		go func() {
-			l.Debug("Display Start() called")
-			disp.Start()
-			l.Debug("Display Start() returned")
-		}()
-
-		// Ensure display is stopped in all scenarios
-		defer func() {
-			l.Debug("Stopping display")
-			disp.Stop()
-			l.Debug("Display stopped")
-			utils.CloseAllChannels()
-		}()
-	}
+	// This section is no longer needed as we've moved the display initialization earlier in the function
 
 	// Create a new deployment object
 	deployment, err := InitializeDeployment(ctx, UniqueID)
