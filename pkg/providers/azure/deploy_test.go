@@ -237,7 +237,7 @@ func TestUpdateNSGStatus(t *testing.T) {
 					{ID: "vm1"},
 				},
 				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
-				AllowedPorts:          []int{22, 80, 443},
+				AllowedPorts:          []int{22, 80, 443, 8080},
 			},
 			resource: &armresources.GenericResource{
 				Name: utils.ToPtr("nsg-vm1"),
@@ -314,6 +314,19 @@ func TestUpdateNSGStatus(t *testing.T) {
 									DestinationAddressPrefix: utils.ToPtr("*"),
 									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
 									Priority:                 utils.ToPtr(int32(1002)),
+									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+								},
+							},
+							{
+								Name: utils.ToPtr("AllowPort8080"),
+								Properties: &armnetwork.SecurityRulePropertiesFormat{
+									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									SourcePortRange:          utils.ToPtr("*"),
+									DestinationPortRange:     utils.ToPtr("8080"),
+									SourceAddressPrefix:      utils.ToPtr("*"),
+									DestinationAddressPrefix: utils.ToPtr("*"),
+									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
+									Priority:                 utils.ToPtr(int32(1003)),
 									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
 								},
 							},
