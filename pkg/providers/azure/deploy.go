@@ -262,17 +262,7 @@ func (p *AzureProvider) updateDeploymentStatus(
 		case "microsoft.compute/virtualmachines/extensions":
 			p.updateVMExtensionsStatus(deployment, resource)
 		case "microsoft.network/publicipaddresses":
-			// Cast generic resource as PublicIPAddress
-			publicIPAddress, ok := resource.(armnetwork.PublicIPAddress)
-			if !ok {
-				l.Warnf(
-					"Failed to cast resource properties to armnetwork.PublicIPAddress for public IP address: %s",
-					*resource.Name,
-				)
-				continue
-			}
-
-			p.updatePublicIPStatus(deployment, publicIPAddress)
+			p.updatePublicIPStatus(deployment, resource)
 		case "microsoft.network/networkinterfaces":
 			p.updateNICStatus(deployment, resource)
 		case "microsoft.network/networksecuritygroups":
