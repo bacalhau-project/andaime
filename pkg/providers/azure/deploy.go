@@ -406,28 +406,31 @@ func (p *AzureProvider) updateNSGStatus(
 	resource *armresources.GenericResource,
 ) {
 	l := logger.Get()
-	l.Debugf("Updating NSG status for resource: %s", *resource.Name)
+	l.Debugf("Updating NSG status for resource: %s (File: deploy.go, Line: 441)", *resource.Name)
 
 	if resource.Properties == nil {
-		l.Warnf("Resource properties are nil for NSG: %s", *resource.Name)
+		l.Warnf("Resource properties are nil for NSG: %s (File: deploy.go, Line: 444)", *resource.Name)
 		return
 	}
 
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
-		l.Warnf("Failed to cast resource properties to map[string]interface{} for NSG: %s", *resource.Name)
+		l.Warnf("Failed to cast resource properties to map[string]interface{} for NSG: %s (File: deploy.go, Line: 449)", *resource.Name)
+		l.Debugf("Resource properties: %+v", resource.Properties)
 		return
 	}
 
 	securityRules, ok := properties["securityRules"].([]interface{})
 	if !ok {
-		l.Debugf("No security rules found in NSG properties for: %s. This is normal for a new NSG.", *resource.Name)
+		l.Debugf("No security rules found in NSG properties for: %s. This is normal for a new NSG. (File: deploy.go, Line: 455)", *resource.Name)
+		l.Debugf("Security rules property: %+v", properties["securityRules"])
 		securityRules = []interface{}{}
 	}
 
 	// Initialize the NetworkSecurityGroups map if it's nil
 	if deployment.NetworkSecurityGroups == nil {
 		deployment.NetworkSecurityGroups = make(map[string]*armnetwork.SecurityGroup)
+		l.Debugf("Initialized NetworkSecurityGroups map (File: deploy.go, Line: 463)")
 	}
 
 	// Create a new SecurityGroup for this NSG
@@ -438,12 +441,14 @@ func (p *AzureProvider) updateNSGStatus(
 			SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)+len(deployment.AllowedPorts)),
 		},
 	}
+	l.Debugf("Created new SecurityGroup for NSG: %s (File: deploy.go, Line: 473)", *resource.Name)
 
 	// Add existing security rules
-	for _, rule := range securityRules {
+	for i, rule := range securityRules {
 		ruleMap, ok := rule.(map[string]interface{})
 		if !ok {
-			l.Warnf("Failed to cast security rule to map[string]interface{} for NSG: %s", *resource.Name)
+			l.Warnf("Failed to cast security rule to map[string]interface{} for NSG: %s, rule index: %d (File: deploy.go, Line: 479)", *resource.Name, i)
+			l.Debugf("Security rule: %+v", rule)
 			continue
 		}
 
@@ -462,6 +467,7 @@ func (p *AzureProvider) updateNSGStatus(
 		}
 
 		nsg.Properties.SecurityRules = append(nsg.Properties.SecurityRules, securityRule)
+		l.Debugf("Added existing security rule: %s to NSG: %s (File: deploy.go, Line: 497)", *securityRule.Name, *resource.Name)
 	}
 
 	// Add rules for allowed ports
@@ -481,12 +487,14 @@ func (p *AzureProvider) updateNSGStatus(
 		}
 
 		nsg.Properties.SecurityRules = append(nsg.Properties.SecurityRules, securityRule)
+		l.Debugf("Added allowed port security rule: %s to NSG: %s (File: deploy.go, Line: 517)", *securityRule.Name, *resource.Name)
 	}
 
 	// Add the NSG to the deployment's NetworkSecurityGroups map
 	deployment.NetworkSecurityGroups[*resource.Name] = nsg
 
-	l.Infof("Updated NSG: %s", *resource.Name)
+	l.Infof("Updated NSG: %s (File: deploy.go, Line: 522)", *resource.Name)
+	l.Debugf("NSG details: %+v", nsg)
 }
 
 func (p *AzureProvider) updateVNetStatus(
