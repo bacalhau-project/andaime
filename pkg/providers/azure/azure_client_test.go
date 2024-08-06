@@ -30,9 +30,9 @@ func (m *MockAzureClient) DestroyResourceGroup(ctx context.Context, resourceGrou
 	return args.Error(0)
 }
 
-func (m *MockAzureClient) DeployTemplate(ctx context.Context, resourceGroupName string, deploymentName string, template map[string]interface{}, parameters map[string]interface{}) error {
-	args := m.Called(ctx, resourceGroupName, deploymentName, template, parameters)
-	return args.Error(0)
+func (m *MockAzureClient) DeployTemplate(ctx context.Context, resourceGroupName string, deploymentName string, template map[string]interface{}, parameters map[string]interface{}, tags map[string]*string) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
+	args := m.Called(ctx, resourceGroupName, deploymentName, template, parameters, tags)
+	return args.Get(0).(*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse]), args.Error(1)
 }
 
 func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
@@ -45,7 +45,7 @@ func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	tags := map[string]*string{"tag1": to.Ptr("value1")}
 
 	mockClient.On("Resources", mock.Anything, mock.Anything, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{
-		Resources: []*armresources.GenericResource{},
+		Data: []interface{}{},
 	}, nil)
 
 	resources, err := provider.SearchResources(ctx, searchScope, subscriptionID, tags)
