@@ -8,6 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -36,6 +37,48 @@ func (m *MockAzureClient) DeployTemplate(ctx context.Context, resourceGroupName 
 	return args.Get(0).(*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse]), args.Error(1)
 }
 
+func (m *MockAzureClient) DeleteDeployment(ctx context.Context, resourceGroupName string, deploymentName string) error {
+	args := m.Called(ctx, resourceGroupName, deploymentName)
+	return args.Error(0)
+}
+
+func (m *MockAzureClient) GetResourceGroup(ctx context.Context, resourceGroupName string) (*armresources.ResourceGroup, error) {
+	args := m.Called(ctx, resourceGroupName)
+	return args.Get(0).(*armresources.ResourceGroup), args.Error(1)
+}
+
+func (m *MockAzureClient) GetResource(ctx context.Context, resourceGroupName string, resourceType string, resourceName string) (*armresources.GenericResource, error) {
+	args := m.Called(ctx, resourceGroupName, resourceType, resourceName)
+	return args.Get(0).(*armresources.GenericResource), args.Error(1)
+}
+
+func (m *MockAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient {
+	args := m.Called()
+	return args.Get(0).(*armresources.DeploymentsClient)
+}
+
+func (m *MockAzureClient) ListResourcesInGroup(ctx context.Context, resourceGroupName string) ([]AzureResource, error) {
+	args := m.Called(ctx, resourceGroupName)
+	return args.Get(0).([]AzureResource), args.Error(1)
+}
+
+func (m *MockAzureClient) NewSubscriptionListPager(
+	ctx context.Context,
+	options *armsubscription.SubscriptionsClientListOptions,
+) *runtime.Pager[armsubscription.SubscriptionsClientListResponse] {
+	args := m.Called(ctx, options)
+	return args.Get(0).(*runtime.Pager[armsubscription.SubscriptionsClientListResponse])
+}
+
+func (m *MockAzureClient) SearchResources(
+	ctx context.Context,
+	searchScope string,
+	subscriptionID string,
+	tags map[string]*string) ([]armresources.GenericResource, error) {
+	args := m.Called(ctx, searchScope, subscriptionID, tags)
+	return args.Get(0).([]armresources.GenericResource), args.Error(1)
+}
+
 func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	ctx := context.Background()
 	mockClient := new(MockAzureClient)
@@ -45,8 +88,10 @@ func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	subscriptionID := "subscriptionID"
 	tags := map[string]*string{"tag1": to.Ptr("value1")}
 
-	mockClient.On("Resources", mock.Anything, mock.Anything, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{
-		Data: []interface{}{},
+	mockClient.On("SearchResources", mock.Anything, mock.Anything, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{
+		QueryResponse: armresourcegraph.QueryResponse{
+			Data: []AzureResource{},
+		},
 	}, nil)
 
 	resources, err := provider.SearchResources(ctx, searchScope, subscriptionID, tags)
