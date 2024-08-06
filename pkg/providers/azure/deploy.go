@@ -540,7 +540,43 @@ func (p *AzureProvider) updateDiskStatus(
 ) {
 	l := logger.Get()
 	l.Debugf("Updating Disk status for resource: %s", *resource.Name)
-	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+
+	if resource.Properties == nil {
+		l.Warnf("Resource properties are nil for Disk: %s", *resource.Name)
+		return
+	}
+
+	properties, ok := resource.Properties.(map[string]interface{})
+	if !ok {
+		l.Warnf("Failed to cast resource properties to map[string]interface{} for Disk: %s", *resource.Name)
+		return
+	}
+
+	diskSizeGB, ok := properties["diskSizeGB"].(float64)
+	if !ok {
+		l.Warnf("Failed to get diskSizeGB from properties for Disk: %s", *resource.Name)
+		return
+	}
+
+	diskState, ok := properties["diskState"].(string)
+	if !ok {
+		l.Warnf("Failed to get diskState from properties for Disk: %s", *resource.Name)
+		return
+	}
+
+	// Initialize Disks map if it's nil
+	if deployment.Disks == nil {
+		deployment.Disks = make(map[string]*models.Disk)
+	}
+
+	deployment.Disks[*resource.Name] = &models.Disk{
+		Name:  *resource.Name,
+		ID:    *resource.ID,
+		SizeGB: int(diskSizeGB),
+		State: diskState,
+	}
+
+	l.Infof("Updated Disk status for: %s", *resource.Name)
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
