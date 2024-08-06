@@ -422,20 +422,7 @@ func (p *AzureProvider) updateNSGStatus(
 	securityRules, ok := properties["securityRules"].([]interface{})
 	if !ok {
 		l.Warnf("No security rules found in NSG properties for: %s", *resource.Name)
-		// Instead of returning, let's create a default rule
-		securityRules = []interface{}{
-			map[string]interface{}{
-				"name":                     "AllowSSH",
-				"protocol":                 "Tcp",
-				"sourcePortRange":          "*",
-				"destinationPortRange":     "22",
-				"sourceAddressPrefix":      "*",
-				"destinationAddressPrefix": "*",
-				"access":                   "Allow",
-				"priority":                 1000,
-				"direction":                "Inbound",
-			},
-		}
+		securityRules = []interface{}{}
 	}
 
 	nsgUpdated := false
@@ -445,10 +432,11 @@ func (p *AzureProvider) updateNSGStatus(
 				Name: resource.Name,
 				ID:   resource.ID,
 				Properties: &armnetwork.SecurityGroupPropertiesFormat{
-					SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)),
+					SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)+len(deployment.AllowedPorts)),
 				},
 			}
 
+			// Add existing security rules
 			for _, rule := range securityRules {
 				ruleMap, ok := rule.(map[string]interface{})
 				if !ok {
@@ -467,6 +455,28 @@ func (p *AzureProvider) updateNSGStatus(
 						Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
 						Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
 						Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
+					},
+				}
+
+				deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules = append(
+					deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules,
+					securityRule,
+				)
+			}
+
+			// Add rules for allowed ports
+			for i, port := range deployment.AllowedPorts {
+				securityRule := &armnetwork.SecurityRule{
+					Name: utils.ToPtr(fmt.Sprintf("AllowPort%d", port)),
+					Properties: &armnetwork.SecurityRulePropertiesFormat{
+						Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+						SourcePortRange:          utils.ToPtr("*"),
+						DestinationPortRange:     utils.ToPtr(fmt.Sprintf("%d", port)),
+						SourceAddressPrefix:      utils.ToPtr("*"),
+						DestinationAddressPrefix: utils.ToPtr("*"),
+						Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
+						Priority:                 utils.ToPtr(int32(1000 + i)),
+						Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
 					},
 				}
 
