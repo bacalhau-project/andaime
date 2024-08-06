@@ -75,7 +75,18 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	deploymentDone := utils.CreateBoolChannel("azure_createDeployment_deploymentDone", 1)
 	l.Debugf("Channel created: azure_deployment_done")
 
-	// Catch panics and log them
+	// Set up signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Initialize the display
+	disp := display.GetGlobalDisplay()
+	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
+	if !noDisplay {
+		go disp.Start()
+	}
+
+	// Ensure proper cleanup in all scenarios
 	defer func() {
 		if r := recover(); r != nil {
 			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
@@ -84,6 +95,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			errorChan <- fmt.Errorf("panic occurred: %v", r)
 		}
 		cancel() // Cancel the context
+		if !noDisplay {
+			disp.Stop()
+			disp.WaitForStop() // Ensure display is fully stopped
+		}
 		l.Debugf("Closing channel: azure_cleanup_done")
 		utils.CloseChannel(cleanupDone)
 		l.Info("Cleanup completed")
@@ -216,22 +231,20 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Info("Interrupt signal received, initiating graceful shutdown")
 		l.Debugf("Closing channel: azure_signal_channel")
 		utils.CloseChannel(sigChan)
-		printFinalState(disp)
-		return nil
 	case err := <-errorChan:
-		l.Errorf("Error occurred during deployment: %v", err)
+		l.Error(fmt.Sprintf("Error occurred during deployment: %v", err))
 		l.Debugf("Closing channel: azure_error_channel")
 		utils.CloseChannel(errorChan)
-		printFinalState(disp)
-		return err
+		return fmt.Errorf("deployment failed: %w", err)
 	case <-deploymentDone:
 		l.Info("Deployment completed successfully")
-		printFinalState(disp)
 	case <-ctx.Done():
 		l.Info("Context cancelled, initiating graceful shutdown")
-		printFinalState(disp)
 		return ctx.Err()
 	}
+
+	// Print final state and log buffer
+	printFinalState(disp)
 
 	// Enable pprof profiling
 	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
@@ -240,8 +253,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Close all channels and finalize
 	utils.CloseAllChannels()
 	l.Debug("All channels closed - at the end of executeCreateDeployment")
-	disp.Stop()        // Ensure display is stopped
-	disp.WaitForStop() // Wait for the display to fully stop
 	return nil
 }
 
