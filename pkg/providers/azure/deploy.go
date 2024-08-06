@@ -442,7 +442,7 @@ func (p *AzureProvider) updateNSGStatus(
 	}
 
 	securityRules, ok := properties["securityRules"].([]interface{})
-	if !ok {
+	if !ok || securityRules == nil {
 		l.Debugf("No security rules found in NSG properties for: %s. This is normal for a new NSG. (File: deploy.go, Line: 455)", *resource.Name)
 		l.Debugf("Security rules property: %+v", properties["securityRules"])
 		securityRules = []interface{}{}
@@ -472,6 +472,7 @@ func (p *AzureProvider) updateNSGStatus(
 			l.Debugf("Security rule: %+v", rule)
 			continue
 		}
+		l.Debugf("Processing security rule %d for NSG: %s", i, *resource.Name)
 
 		securityRule := &armnetwork.SecurityRule{
 			Name: utils.ToPtr(ruleMap["name"].(string)),
