@@ -84,11 +84,19 @@ func (rt *ResourceTable) AddResource(
 	log.Debugf("Final values: ProvisioningState=%s, ResourceType=%s, ProviderAbbr=%s",
 		provisioningState, resourceType, provider)
 
+	location := *resource.Location
+	if resourceType == " VM  " {
+		// For VMs, use the actual location instead of the resource group location
+		if vmLocation, ok := resource.Properties.(map[string]interface{})["location"].(string); ok {
+			location = vmLocation
+		}
+	}
+
 	row := []string{
 		truncate(*resource.Name, NameWidth),
 		truncate(resourceType, TypeWidth),
 		truncate(string(provisioningState), ProvStateWidth),
-		truncate(*resource.Location, LocationWidth),
+		truncate(location, LocationWidth),
 		string(provider),
 	}
 	rt.table.Append(row)
