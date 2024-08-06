@@ -48,7 +48,7 @@ type Deployment struct {
 	NetworkSecurityGroups map[string]*armnetwork.SecurityGroup
 	ProjectID             string
 	UniqueID              string
-	Tags                  map[string]*string
+	Tags                  map[string]*string // This needs to be a pointer because that's what Azure requires
 	AllowedPorts          []int
 	SSHPort               int
 	SSHPublicKeyPath      string
@@ -59,6 +59,7 @@ type Deployment struct {
 	DefaultLocation       string `default:"eastus"`
 	StartTime             time.Time
 	EndTime               time.Time
+	SubscriptionID        string
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
