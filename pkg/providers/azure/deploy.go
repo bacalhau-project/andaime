@@ -643,13 +643,13 @@ func (p *AzureProvider) FinalizeDeployment(
 	}
 
 	for _, machine := range deployment.Machines {
-		publicIP := ""
-		privateIP := ""
-		if machine.PublicIP != "" {
-			publicIP = machine.PublicIP
+		publicIP := machine.PublicIP
+		privateIP := machine.PrivateIP
+		if publicIP == "" {
+			publicIP = "Pending"
 		}
-		if machine.PrivateIP != "" {
-			privateIP = machine.PrivateIP
+		if privateIP == "" {
+			privateIP = "Pending"
 		}
 		elapsedTime := time.Since(startTime).Seconds()
 		table.Append([]string{
