@@ -833,3 +833,35 @@ func printMachineIPTable(deployment *models.Deployment) {
 		fmt.Println("No machines have been deployed yet.")
 	}
 }
+func parseNSGProperties(properties map[string]interface{}) *armnetwork.SecurityGroupPropertiesFormat {
+	props := &armnetwork.SecurityGroupPropertiesFormat{}
+	if provisioningState, ok := properties["provisioningState"].(string); ok {
+		props.ProvisioningState = &provisioningState
+	}
+	if securityRules, ok := properties["securityRules"].([]interface{}); ok {
+		props.SecurityRules = parseSecurityRules(securityRules)
+	}
+	return props
+}
+
+func parseSecurityRules(rules []interface{}) *[]armnetwork.SecurityRule {
+	var securityRules []armnetwork.SecurityRule
+	for _, rule := range rules {
+		if ruleMap, ok := rule.(map[string]interface{}); ok {
+			securityRules = append(securityRules, armnetwork.SecurityRule{
+				Name: utils.ToPtr(ruleMap["name"].(string)),
+				Properties: &armnetwork.SecurityRulePropertiesFormat{
+					Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
+					SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
+					DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
+					SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
+					DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
+					Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
+					Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
+					Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
+				},
+			})
+		}
+	}
+	return &securityRules
+}
