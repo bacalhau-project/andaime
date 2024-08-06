@@ -72,13 +72,6 @@ type Disk struct {
 	State  string
 }
 
-type Disk struct {
-	Name   string
-	ID     string
-	SizeGB int
-	State  string
-}
-
 func (d *Deployment) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"ResourceGroupName":     d.ResourceGroupName,
