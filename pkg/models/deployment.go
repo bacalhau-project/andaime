@@ -62,7 +62,6 @@ type Deployment struct {
 	StartTime             time.Time
 	EndTime               time.Time
 	SubscriptionID        string
-	Disks                 map[string]*Disk
 }
 
 type Disk struct {
