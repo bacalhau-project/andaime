@@ -517,6 +517,8 @@ func (p *AzureProvider) updateNSGStatus(
 
 	l.Infof("Updated NSG: %s (File: deploy.go, Line: 522)", *resource.Name)
 	l.Debugf("NSG details: %+v", nsg)
+	l.Debugf("NSG Properties: %+v", nsg.Properties)
+	l.Debugf("NSG Security Rules: %+v", nsg.Properties.SecurityRules)
 }
 
 func (p *AzureProvider) updateVNetStatus(
