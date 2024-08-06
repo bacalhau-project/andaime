@@ -304,11 +304,27 @@ func (p *AzureProvider) updateVMExtensionsStatus(
 		return
 	}
 
-	extensionName := strings.TrimPrefix(*resource.Name, deployment.VMName+"/")
-	status := models.GetStatusCode(models.StatusString(provisioningState))
-	deployment.VMExtensionsStatus[extensionName] = status
+	// Extract VM name from the resource name
+	parts := strings.Split(*resource.Name, "/")
+	if len(parts) < 2 {
+		l.Warn("Invalid resource name format")
+		return
+	}
+	vmName := parts[0]
 
-	l.Debugf("Updated VM extension status: %s = %s", extensionName, status)
+	extensionName := strings.Join(parts[1:], "/")
+	status := models.GetStatusCode(models.StatusString(provisioningState))
+
+	// Initialize VMExtensionsStatus if it's nil
+	if deployment.VMExtensionsStatus == nil {
+		deployment.VMExtensionsStatus = make(map[string]models.StatusCode)
+	}
+
+	// Use the VM name and extension name as the key
+	key := fmt.Sprintf("%s/%s", vmName, extensionName)
+	deployment.VMExtensionsStatus[key] = status
+
+	l.Debugf("Updated VM extension status: %s = %s", key, status)
 }
 
 func (p *AzureProvider) updatePublicIPStatus(
