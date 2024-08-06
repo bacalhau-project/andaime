@@ -11,43 +11,53 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type MockResourceGraphClient struct {
+type MockAzureClient struct {
 	mock.Mock
 }
 
-func (m *MockResourceGraphClient) Resources(ctx context.Context, request armresourcegraph.QueryRequest, options *armresourcegraph.ClientOptions) (armresourcegraph.QueryResponse, error) {
-	args := m.Called(ctx, request, options)
-	return args.Get(0).(armresourcegraph.QueryResponse), args.Error(1)
+func (m *MockAzureClient) Resources(ctx context.Context, query string, opts *armresourcegraph.ClientResourcesOptions) (armresourcegraph.ClientResourcesResponse, error) {
+	args := m.Called(ctx, query, opts)
+	return args.Get(0).(armresourcegraph.ClientResourcesResponse), args.Error(1)
 }
 
-func TestSearchResources_ReturnsEmptySlice(t *testing.T) {
+func (m *MockAzureClient) GetOrCreateResourceGroup(ctx context.Context, location, name string, tags map[string]*string) (*armresources.ResourceGroup, error) {
+	args := m.Called(ctx, location, name, tags)
+	return args.Get(0).(*armresources.ResourceGroup), args.Error(1)
+}
+
+func (m *MockAzureClient) DestroyResourceGroup(ctx context.Context, resourceGroupName string) error {
+	args := m.Called(ctx, resourceGroupName)
+	return args.Error(0)
+}
+
+func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	ctx := context.Background()
-	mockClient := new(MockResourceGraphClient)
-	client := &LiveAzureClient{resourceGraphClient: mockClient}
+	mockClient := new(MockAzureClient)
+	provider := &AzureProvider{Client: mockClient}
 
 	searchScope := "subscriptionID"
 	subscriptionID := "subscriptionID"
-	tags := map[string]*string{"tag1": to.Ptr("value1")}
+	tags := map[string]string{"tag1": "value1"}
 
-	mockClient.On("Resources", mock.Anything, mock.Anything, mock.Anything).Return(armresourcegraph.QueryResponse{
+	mockClient.On("Resources", mock.Anything, mock.Anything, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{
 		Data: []interface{}{},
 	}, nil)
 
-	resources, err := client.SearchResources(ctx, searchScope, subscriptionID, tags)
+	resources, err := provider.SearchResources(ctx, searchScope, subscriptionID, tags)
 
 	assert.NoError(t, err)
 	assert.Empty(t, resources)
 	mockClient.AssertExpectations(t)
 }
 
-func TestLiveAzureClient_SearchResources_NonStringTagValues(t *testing.T) {
-	mockClient := new(MockResourceGraphClient)
-	client := &LiveAzureClient{resourceGraphClient: mockClient}
+func TestAzureProvider_SearchResources_NonStringTagValues(t *testing.T) {
+	mockClient := new(MockAzureClient)
+	provider := &AzureProvider{Client: mockClient}
 	ctx := context.Background()
 	subscriptionID := "test-subscription-id"
-	tags := map[string]*string{
-		"key1": to.Ptr("value1"),
-		"key2": nil,
+	tags := map[string]string{
+		"key1": "value1",
+		"key2": "",
 	}
 
 	expectedQuery := `Resources 
@@ -55,17 +65,10 @@ func TestLiveAzureClient_SearchResources_NonStringTagValues(t *testing.T) {
 		properties, sku, identity, zones, plan, kind, managedBy, 
 		provisioningState = tostring(properties.provisioningState)| where tags['key1'] == 'value1'`
 
-	expectedRequest := armresourcegraph.QueryRequest{
-		Query:         to.Ptr(expectedQuery),
-		Subscriptions: []*string{to.Ptr(subscriptionID)},
-	}
+	mockClient.On("Resources", ctx, expectedQuery, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{}, nil)
 
-	mockClient.On("Resources", ctx, expectedRequest, nil).Return(armresourcegraph.QueryResponse{}, nil)
-
-	_, err := client.SearchResources(ctx, subscriptionID, subscriptionID, tags)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	_, err := provider.SearchResources(ctx, subscriptionID, subscriptionID, tags)
+	assert.NoError(t, err)
 
 	mockClient.AssertExpectations(t)
 }
