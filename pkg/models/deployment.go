@@ -17,6 +17,7 @@ var (
 type Machine struct {
 	ID                   string
 	Name                 string
+	Type                 string
 	Location             string
 	Status               string
 	Parameters           Parameters
