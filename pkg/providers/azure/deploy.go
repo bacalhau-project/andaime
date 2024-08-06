@@ -10,17 +10,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/olekukonko/tablewriter"
+	"github.com/sanity-io/litter"
 )
 
 const WaitForIPAddressesTimeout = 20 * time.Second
 const WaitForResourcesTimeout = 2 * time.Minute
 const WaitForResourcesTicker = 5 * time.Second
+const maximumSimultaneousDeployments = 5
 
 const DefaultDiskSize = 30
 
@@ -79,16 +82,17 @@ func (p *AzureProvider) DeployARMTemplate(
 	wg := sync.WaitGroup{}
 
 	// Run maximum 5 deployments at a time
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, maximumSimultaneousDeployments)
 
 	// Start a goroutine to continuously probe the resource group
 	go p.probeResourceGroup(ctx, deployment)
 
 	for _, machine := range deployment.Machines {
+		internalMachine := machine
 		sem <- struct{}{}
 		wg.Add(1)
 
-		go func(machine *models.Machine) {
+		go func(goRoutineMachine *models.Machine) {
 			defer func() {
 				<-sem
 				wg.Done()
@@ -96,7 +100,7 @@ func (p *AzureProvider) DeployARMTemplate(
 
 			// Prepare deployment parameters
 			params := map[string]interface{}{
-				"vmName":             machine.ID,
+				"vmName":             goRoutineMachine.ID,
 				"adminUsername":      "azureuser",
 				"authenticationType": "sshPublicKey", // Always set to sshPublicKey
 				"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
@@ -106,10 +110,10 @@ func (p *AzureProvider) DeployARMTemplate(
 				),
 				"ubuntuOSVersion":          "Ubuntu-2004",
 				"vmSize":                   deployment.Machines[0].VMSize,
-				"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.Location),
-				"subnetName":               fmt.Sprintf("%s-subnet", machine.Location),
-				"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.Location),
-				"location":                 machine.Location,
+				"virtualNetworkName":       fmt.Sprintf("%s-vnet", goRoutineMachine.Location),
+				"subnetName":               fmt.Sprintf("%s-subnet", goRoutineMachine.Location),
+				"networkSecurityGroupName": fmt.Sprintf("%s-nsg", goRoutineMachine.Location),
+				"location":                 goRoutineMachine.Location,
 				"securityType":             "TrustedLaunch",
 			}
 
@@ -145,7 +149,7 @@ func (p *AzureProvider) DeployARMTemplate(
 			future, err := p.Client.DeployTemplate(
 				ctx,
 				deployment.ResourceGroupName,
-				fmt.Sprintf("deployment-vm-%s", machine.ID),
+				fmt.Sprintf("deployment-vm-%s", goRoutineMachine.ID),
 				vmTemplateMap,
 				paramsMap,
 				tags,
@@ -165,27 +169,39 @@ func (p *AzureProvider) DeployARMTemplate(
 				default:
 					status, err := future.Poll(ctx)
 					if err != nil {
-						l.Errorf("Error polling deployment status: %v", err)
-						statusBytes, err := io.ReadAll(status.Body)
-						if err != nil {
-							l.Errorf("Error reading deployment status: %v", err)
-							var statusObject map[string]interface{}
-							err = json.Unmarshal(statusBytes, &statusObject)
-							if err != nil {
-								l.Errorf("Error unmarshalling deployment status: %v", err)
-							} else if status.Status == "Succeeded" {
-								l.Info("Deployment completed successfully")
-								break
-							}
+						if isQuotaExceededError(err) {
+							l.Errorf(`Azure quota exceeded: %v. Please contact Azure support
+ to increase your quota for PublicIpAddress resources`, err)
+							break
 						}
+						l.Errorf("Error polling deployment status: %v", err)
+						continue
+					}
+					statusBytes, err := io.ReadAll(status.Body)
+					if err != nil {
+						l.Errorf("Error reading deployment status: %v", err)
+						break
 					}
 
+					var statusObject map[string]interface{}
+					err = json.Unmarshal(statusBytes, &statusObject)
+					if err != nil {
+						l.Errorf("Error unmarshalling deployment status: %v", err)
+					}
 					l.Debugf("Deployment status: %s", status.Status)
+
+					if status.Status == "Succeeded" {
+						l.Info("Deployment completed successfully")
+						break
+					}
+
+					str := litter.Sdump(statusObject)
+					l.Debugf("Deployment status: %s", str)
 
 					time.Sleep(pollInterval)
 				}
 			}
-		}(&machine)
+		}(&internalMachine)
 	}
 
 	// Wait for all deployments to complete
@@ -203,7 +219,10 @@ func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *mode
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			resources, err := p.Client.ListResourcesInGroup(ctx, deployment.ResourceGroupName)
+			resources, err := p.SearchResources(ctx,
+				deployment.ResourceGroupName,
+				deployment.SubscriptionID,
+				deployment.Tags)
 			if err != nil {
 				logger.Get().Errorf("Failed to list resources in group: %v", err)
 				continue
@@ -216,22 +235,30 @@ func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *mode
 
 func (p *AzureProvider) updateDeploymentStatus(
 	deployment *models.Deployment,
-	resources []AzureResource,
+	resources []*armresources.GenericResource,
 ) {
+	l := logger.Get()
 	for _, resource := range resources {
-		switch resource.Type {
-		case "Microsoft.Compute/virtualMachines":
+		switch strings.ToLower(*resource.Type) {
+		case "microsoft.compute/virtualmachines":
 			p.updateVMStatus(deployment, resource)
-		case "Microsoft.Network/publicIPAddresses":
+		case "microsoft.compute/virtualmachines/extensions":
+			p.updateVMExtensionsStatus(deployment, resource)
+		case "microsoft.network/publicipaddresses":
 			p.updatePublicIPStatus(deployment, resource)
-		case "Microsoft.Network/networkInterfaces":
+		case "microsoft.network/networkinterfaces":
 			p.updateNICStatus(deployment, resource)
-		case "Microsoft.Network/networkSecurityGroups":
+		case "microsoft.network/networksecuritygroups":
 			p.updateNSGStatus(deployment, resource)
-			// Add more cases for other resource types as needed
+		case "microsoft.network/virtualnetworks":
+			p.updateVNetStatus(deployment, resource)
+		case "microsoft.compute/disks":
+			p.updateDiskStatus(deployment, resource)
+		default:
+			l.Debugf("Unhandled resource type: %v (reason: resource type not recognized)", *resource.Type)
 		}
-	}
 
+	}
 	// Update the Viper config after processing all resources
 	if err := deployment.UpdateViperConfig(); err != nil {
 		logger.Get().Errorf("Failed to update Viper config: %v", err)
@@ -240,25 +267,38 @@ func (p *AzureProvider) updateDeploymentStatus(
 
 func (p *AzureProvider) updateVMStatus(
 	deployment *models.Deployment,
-	resource AzureResource,
+	resource *armresources.GenericResource,
 ) {
 	for i, machine := range deployment.Machines {
-		if machine.ID == resource.Name {
-			deployment.Machines[i].Status = resource.ProvisioningState
-			// Update other VM-specific properties
+		if machine.ID == *resource.Name {
+			// Test to see if resource.Properties is a slice
+			if resourceProperties, ok := resource.Properties.(map[string]interface{}); ok {
+				deployment.Machines[i].Status = resourceProperties["provisioningState"].(string)
+			}
 			break
 		}
 	}
 }
 
+func (p *AzureProvider) updateVMExtensionsStatus(
+	deployment *models.Deployment,
+	resource *armresources.GenericResource,
+) {
+	l := logger.Get()
+	l.Debugf("Updating VM extensions status for resource: %s", *resource.Name)
+	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+}
+
 func (p *AzureProvider) updatePublicIPStatus(
 	deployment *models.Deployment,
-	resource AzureResource,
+	resource *armresources.GenericResource,
 ) {
 	// Assuming the public IP resource name contains the VM name
 	for i, machine := range deployment.Machines {
-		if strings.Contains(resource.Name, machine.ID) {
-			deployment.Machines[i].PublicIP = resource.Properties["ipAddress"].(string)
+		if strings.Contains(*resource.Name, machine.ID) {
+			if resourceProperties, ok := resource.Properties.(map[string]interface{}); ok {
+				deployment.Machines[i].PublicIP = resourceProperties["ipAddress"].(string)
+			}
 			break
 		}
 	}
@@ -266,18 +306,38 @@ func (p *AzureProvider) updatePublicIPStatus(
 
 func (p *AzureProvider) updateNICStatus(
 	deployment *models.Deployment,
-	resource AzureResource,
+	resource *armresources.GenericResource,
 ) {
-	// Update NIC-related information for the corresponding machine
-	// This might include private IP address, etc.
+	l := logger.Get()
+	l.Debugf("Updating NIC status for resource: %s", *resource.Name)
+	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
 }
 
 func (p *AzureProvider) updateNSGStatus(
 	deployment *models.Deployment,
-	resource AzureResource,
+	resource *armresources.GenericResource,
 ) {
-	// Update NSG-related information for the corresponding machine
-	// This might include security rules, etc.
+	l := logger.Get()
+	l.Debugf("Updating NSG status for resource: %s", *resource.Name)
+	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+}
+
+func (p *AzureProvider) updateVNetStatus(
+	deployment *models.Deployment,
+	resource *armresources.GenericResource,
+) {
+	l := logger.Get()
+	l.Debugf("Updating VNet status for resource: %s", *resource.Name)
+	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+}
+
+func (p *AzureProvider) updateDiskStatus(
+	deployment *models.Deployment,
+	resource *armresources.GenericResource,
+) {
+	l := logger.Get()
+	l.Debugf("Updating Disk status for resource: %s", *resource.Name)
+	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
