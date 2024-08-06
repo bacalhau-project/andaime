@@ -450,14 +450,14 @@ func (p *AzureProvider) updateNSGStatus(
 		securityRule := &armnetwork.SecurityRule{
 			Name: utils.ToPtr(ruleMap["name"].(string)),
 			Properties: &armnetwork.SecurityRulePropertiesFormat{
-				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
-				SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
-				DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
-				SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
-				DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
-				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
+				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(fmt.Sprintf("%v", ruleMap["protocol"]))),
+				SourcePortRange:          utils.ToPtr(fmt.Sprintf("%v", ruleMap["sourcePortRange"])),
+				DestinationPortRange:     utils.ToPtr(fmt.Sprintf("%v", ruleMap["destinationPortRange"])),
+				SourceAddressPrefix:      utils.ToPtr(fmt.Sprintf("%v", ruleMap["sourceAddressPrefix"])),
+				DestinationAddressPrefix: utils.ToPtr(fmt.Sprintf("%v", ruleMap["destinationAddressPrefix"])),
+				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(fmt.Sprintf("%v", ruleMap["access"]))),
 				Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
-				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
+				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(fmt.Sprintf("%v", ruleMap["direction"]))),
 			},
 		}
 
