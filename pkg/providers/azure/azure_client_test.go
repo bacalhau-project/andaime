@@ -74,9 +74,9 @@ func (m *MockAzureClient) SearchResources(
 	ctx context.Context,
 	searchScope string,
 	subscriptionID string,
-	tags map[string]*string) ([]armresources.GenericResource, error) {
+	tags map[string]*string) ([]AzureResource, error) {
 	args := m.Called(ctx, searchScope, subscriptionID, tags)
-	return args.Get(0).([]armresources.GenericResource), args.Error(1)
+	return args.Get(0).([]AzureResource), args.Error(1)
 }
 
 func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
