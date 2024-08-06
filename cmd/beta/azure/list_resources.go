@@ -55,8 +55,10 @@ var AzureListResourcesCmd = &cobra.Command{
 			searchScope = resourceGroup
 		}
 
-		resources, err := azureProvider.GetClient().
-			SearchResources(cmd.Context(), searchScope, getSubscriptionID(), tags)
+		resources, err := azureProvider.SearchResources(cmd.Context(),
+			getSubscriptionID(),
+			searchScope,
+			tags)
 		if err != nil {
 			switch {
 			case isNetworkError(err):

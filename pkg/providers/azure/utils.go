@@ -1,8 +1,11 @@
 package azure
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 )
 
@@ -33,4 +36,14 @@ func GenerateTags(projectID, uniqueID string) map[string]*string {
 		"deployed-by":               to.Ptr("andaime"),
 		"andaime-resource-tracking": to.Ptr("true"),
 	}
+}
+
+func isQuotaExceededError(err error) bool {
+	var azErr *azcore.ResponseError
+	if errors.As(err, &azErr) {
+		return azErr.ErrorCode == "InvalidTemplateDeployment" &&
+			strings.Contains(azErr.Error(), "ResourceCountExceedsLimitDueToTemplate") &&
+			strings.Contains(azErr.Error(), "PublicIpAddress")
+	}
+	return false
 }

@@ -34,7 +34,6 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	// Check if the resource group already exists
 	existing, err := c.GetResourceGroup(ctx, rgLocation, rgName)
 	if err == nil {
-		logger.LogAzureAPIEnd("CreateResourceGroup", nil)
 		return existing, nil
 	}
 
@@ -50,7 +49,6 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 
 	result, err := c.resourceGroupsClient.CreateOrUpdate(ctx, rgName, parameters, nil)
 	if err != nil {
-		logger.LogAzureAPIEnd("CreateResourceGroup", err)
 		return nil, fmt.Errorf("failed to create resource group: %v", err)
 	}
 

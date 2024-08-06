@@ -308,6 +308,7 @@ func PrepareDeployment(
 	deployment.DefaultVMSize = viper.GetString("azure.default_vm_size")
 	deployment.DefaultDiskSizeGB = int32(viper.GetInt("azure.default_disk_size_gb"))
 	deployment.DefaultLocation = viper.GetString("azure.default_location")
+	deployment.SubscriptionID = getSubscriptionID()
 
 	// Extract SSH keys
 	sshPublicKeyPath, sshPrivateKeyPath, sshPublicKeyData, err := ExtractSSHKeyPaths()

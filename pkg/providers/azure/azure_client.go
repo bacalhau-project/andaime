@@ -40,8 +40,8 @@ type AzureClient interface {
 	// ResourceGraphClientAPI
 	SearchResources(
 		ctx context.Context,
-		resourceGroup string,
 		subscriptionID string,
+		searchScope string,
 		tags map[string]*string,
 	) ([]armresources.GenericResource, error)
 
@@ -192,7 +192,6 @@ func (c *LiveAzureClient) SearchResources(
 	searchScope string,
 	subscriptionID string,
 	tags map[string]*string) ([]armresources.GenericResource, error) {
-	logger.LogAzureAPIStart("SearchResources")
 	query := `Resources 
     | project id, name, type, location, resourceGroup, subscriptionId, tenantId, tags, 
         properties, sku, identity, zones, plan, kind, managedBy, 
@@ -214,13 +213,11 @@ func (c *LiveAzureClient) SearchResources(
 	}
 
 	res, err := c.resourceGraphClient.Resources(ctx, request, nil)
-	logger.LogAzureAPIEnd("SearchResources", err)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query resources: %v", err)
 	}
 
 	if res.Data == nil || len(res.Data.([]interface{})) == 0 {
-		fmt.Println("No resources found")
 		return nil, nil
 	}
 
@@ -259,9 +256,7 @@ func (c *LiveAzureClient) DestroyResourceGroup(
 	ctx context.Context,
 	resourceGroupName string,
 ) error {
-	logger.LogAzureAPIStart("DestroyResourceGroup")
 	_, err := c.resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
-	logger.LogAzureAPIEnd("DestroyResourceGroup", err)
 	if err != nil {
 		return err
 	}

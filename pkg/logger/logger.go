@@ -37,29 +37,6 @@ var (
 	GlobalLoggedBufferSize    int = 8192
 )
 
-var (
-	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
-)
-
-func CmdLog(msg string, level zapcore.Level) {
-	timestamp := time.Now().Format("15:04:05")
-	var colorCode string
-	switch level {
-	case zapcore.InfoLevel:
-		colorCode = colorGreen
-	case zapcore.WarnLevel:
-		colorCode = colorYellow
-	case zapcore.DebugLevel:
-		colorCode = colorBlue
-	default:
-		colorCode = colorReset
-	}
-	fmt.Printf("%s[%s]%s %s\n", colorCode, timestamp, colorReset, msg)
-}
-
 // Logger is a wrapper around zap.Logger
 type Logger struct {
 	*zap.Logger
@@ -139,20 +116,13 @@ func InitProduction() {
 			}
 		}
 
-		// Add console logging
-		consoleCore := zapcore.NewCore(
-			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
-			zapcore.AddSync(os.Stdout),
-			getZapLevel(GlobalLogLevel),
-		)
-		cores = append(cores, consoleCore)
-
 		logLevel := getLogLevel(GlobalLogLevel)
 
 		if GlobalEnableConsoleLogger {
+			// Add console logging
 			consoleCore := zapcore.NewCore(
 				zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
-				zapcore.Lock(os.Stdout),
+				zapcore.AddSync(os.Stdout),
 				logLevel,
 			)
 			cores = append(cores, consoleCore)
@@ -370,16 +340,6 @@ func LogAzureAPIStart(operation string) {
 	log := Get()
 	if globalLogger != nil {
 		log.Infof("Starting Azure API operation: %s", operation)
-	}
-}
-
-// LogAzureAPIEnd logs the end of an Azure API operation
-func LogAzureAPIEnd(operation string, err error) {
-	log := Get()
-	if err != nil {
-		log.Infof("Azure API operation failed: %s. Error: %v", operation, err)
-	} else {
-		log.Infof("Azure API operation completed successfully: %s", operation)
 	}
 }
 

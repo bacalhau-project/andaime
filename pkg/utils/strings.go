@@ -95,3 +95,21 @@ func GenerateUniqueName(projectID, uniqueID string) string {
 
 	return vmName
 }
+
+func ConvertStringPtrMapToStringMap(m map[string]*string) map[string]string {
+	result := make(map[string]string)
+	for k, v := range m {
+		if v != nil {
+			result[k] = *v
+		}
+	}
+	return result
+}
+
+func ConvertStringMapToStringPtrMap(m map[string]string) map[string]*string {
+	result := make(map[string]*string)
+	for k, v := range m {
+		result[k] = &v
+	}
+	return result
+}
