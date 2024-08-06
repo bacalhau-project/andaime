@@ -475,7 +475,63 @@ func (p *AzureProvider) updateVNetStatus(
 ) {
 	l := logger.Get()
 	l.Debugf("Updating VNet status for resource: %s", *resource.Name)
-	l.Debugf("NOT IMPLEMENTED: %s", litter.Sdump(resource))
+
+	if resource.Properties == nil {
+		l.Warnf("Resource properties are nil for VNet: %s", *resource.Name)
+		return
+	}
+
+	properties, ok := resource.Properties.(map[string]interface{})
+	if !ok {
+		l.Warnf("Failed to cast resource properties to map[string]interface{} for VNet: %s", *resource.Name)
+		return
+	}
+
+	subnets, ok := properties["subnets"].([]interface{})
+	if !ok {
+		l.Warnf("No subnets found in VNet properties for: %s", *resource.Name)
+		return
+	}
+
+	for _, subnet := range subnets {
+		subnetMap, ok := subnet.(map[string]interface{})
+		if !ok {
+			l.Warnf("Failed to cast subnet to map[string]interface{} for VNet: %s", *resource.Name)
+			continue
+		}
+
+		subnetName, ok := subnetMap["name"].(string)
+		if !ok {
+			l.Warnf("Failed to get subnet name for VNet: %s", *resource.Name)
+			continue
+		}
+
+		subnetID, ok := subnetMap["id"].(string)
+		if !ok {
+			l.Warnf("Failed to get subnet ID for VNet: %s", *resource.Name)
+			continue
+		}
+
+		addressPrefix, ok := subnetMap["addressPrefix"].(string)
+		if !ok {
+			l.Warnf("Failed to get address prefix for subnet: %s in VNet: %s", subnetName, *resource.Name)
+			continue
+		}
+
+		if deployment.Subnets == nil {
+			deployment.Subnets = make(map[string][]*armnetwork.Subnet)
+		}
+
+		deployment.Subnets[*resource.Name] = append(deployment.Subnets[*resource.Name], &armnetwork.Subnet{
+			Name: utils.ToPtr(subnetName),
+			ID:   utils.ToPtr(subnetID),
+			Properties: &armnetwork.SubnetPropertiesFormat{
+				AddressPrefix: utils.ToPtr(addressPrefix),
+			},
+		})
+	}
+
+	l.Infof("Updated VNet status for: %s", *resource.Name)
 }
 
 func (p *AzureProvider) updateDiskStatus(

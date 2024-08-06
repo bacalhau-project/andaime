@@ -26,6 +26,81 @@ func TestGenerateTags(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateVNetStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		deployment     *models.Deployment
+		resource       *armresources.GenericResource
+		expectedResult map[string][]*armnetwork.Subnet
+	}{
+		{
+			name: "Valid VNet update",
+			deployment: &models.Deployment{
+				Subnets: make(map[string][]*armnetwork.Subnet),
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("vnet1"),
+				Type: utils.ToPtr("Microsoft.Network/virtualNetworks"),
+				Properties: map[string]interface{}{
+					"subnets": []interface{}{
+						map[string]interface{}{
+							"name":          "subnet1",
+							"id":            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1",
+							"addressPrefix": "10.0.1.0/24",
+						},
+						map[string]interface{}{
+							"name":          "subnet2",
+							"id":            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet2",
+							"addressPrefix": "10.0.2.0/24",
+						},
+					},
+				},
+			},
+			expectedResult: map[string][]*armnetwork.Subnet{
+				"vnet1": {
+					{
+						Name: utils.ToPtr("subnet1"),
+						ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1"),
+						Properties: &armnetwork.SubnetPropertiesFormat{
+							AddressPrefix: utils.ToPtr("10.0.1.0/24"),
+						},
+					},
+					{
+						Name: utils.ToPtr("subnet2"),
+						ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet2"),
+						Properties: &armnetwork.SubnetPropertiesFormat{
+							AddressPrefix: utils.ToPtr("10.0.2.0/24"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "No subnets in VNet",
+			deployment: &models.Deployment{
+				Subnets: make(map[string][]*armnetwork.Subnet),
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("vnet2"),
+				Type: utils.ToPtr("Microsoft.Network/virtualNetworks"),
+				Properties: map[string]interface{}{
+					"subnets": []interface{}{},
+				},
+			},
+			expectedResult: map[string][]*armnetwork.Subnet{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &AzureProvider{}
+			provider.updateVNetStatus(tt.deployment, tt.resource)
+
+			assert.Equal(t, tt.expectedResult, tt.deployment.Subnets)
+		})
+	}
+}
 func TestUpdateNICStatus(t *testing.T) {
 	tests := []struct {
 		name           string
