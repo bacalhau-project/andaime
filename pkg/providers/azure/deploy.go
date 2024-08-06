@@ -277,9 +277,19 @@ func (p *AzureProvider) updateVMStatus(
 ) {
 	for i, machine := range deployment.Machines {
 		if machine.ID == *resource.Name {
-			// Test to see if resource.Properties is a slice
+			// Set the type to "VM"
+			deployment.Machines[i].Type = "VM"
+			
+			// Set the location
+			if resource.Location != nil {
+				deployment.Machines[i].Location = *resource.Location
+			}
+
+			// Update the status
 			if resourceProperties, ok := resource.Properties.(map[string]interface{}); ok {
-				deployment.Machines[i].Status = resourceProperties["provisioningState"].(string)
+				if provisioningState, ok := resourceProperties["provisioningState"].(string); ok {
+					deployment.Machines[i].Status = provisioningState
+				}
 			}
 			break
 		}
@@ -634,7 +644,7 @@ func (p *AzureProvider) FinalizeDeployment(
 
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader(
-		[]string{"ID", "Type", "Location", "Status", "Public IP", "Private IP", "Elapsed Time (s)"},
+		[]string{"ID", "Type", "Location", "Status", "Public IP", "Private IP", "Instance ID", "Elapsed Time (s)"},
 	)
 
 	startTime := deployment.StartTime
@@ -654,11 +664,12 @@ func (p *AzureProvider) FinalizeDeployment(
 		elapsedTime := time.Since(startTime).Seconds()
 		table.Append([]string{
 			machine.ID,
-			"VM",
+			machine.Type,
 			machine.Location,
 			machine.Status,
 			publicIP,
 			privateIP,
+			machine.InstanceID,
 			fmt.Sprintf("%.2f", elapsedTime),
 		})
 	}
