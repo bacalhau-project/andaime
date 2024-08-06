@@ -9,6 +9,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -77,6 +78,48 @@ func (m *MockAzureClient) SearchResources(
 	tags map[string]*string) ([]armresources.GenericResource, error) {
 	args := m.Called(ctx, searchScope, subscriptionID, tags)
 	return args.Get(0).([]armresources.GenericResource), args.Error(1)
+}
+
+func (m *MockAzureClient) GetVMExtensions(ctx context.Context, resourceGroupName, vmName string) ([]*armcompute.VirtualMachineExtension, error) {
+	args := m.Called(ctx, resourceGroupName, vmName)
+	return args.Get(0).([]*armcompute.VirtualMachineExtension), args.Error(1)
+}
+
+func TestAzureProvider_updateVMExtensionsStatus(t *testing.T) {
+	mockClient := new(MockAzureClient)
+	provider := &AzureProvider{Client: mockClient}
+	ctx := context.Background()
+
+	deployment := &models.Deployment{
+		ResourceGroup:      "test-rg",
+		VMName:             "test-vm",
+		VMExtensionsStatus: make(map[string]models.StatusCode),
+	}
+
+	mockExtensions := []*armcompute.VirtualMachineExtension{
+		{
+			Name: to.Ptr("ext1"),
+			Properties: &armcompute.VirtualMachineExtensionProperties{
+				ProvisioningState: to.Ptr("Succeeded"),
+			},
+		},
+		{
+			Name: to.Ptr("ext2"),
+			Properties: &armcompute.VirtualMachineExtensionProperties{
+				ProvisioningState: to.Ptr("Failed"),
+			},
+		},
+	}
+
+	mockClient.On("GetVMExtensions", ctx, deployment.ResourceGroup, deployment.VMName).Return(mockExtensions, nil)
+
+	err := provider.updateVMExtensionsStatus(ctx, deployment)
+
+	assert.NoError(t, err)
+	assert.Equal(t, models.StatusSucceeded, deployment.VMExtensionsStatus["ext1"])
+	assert.Equal(t, models.StatusFailed, deployment.VMExtensionsStatus["ext2"])
+
+	mockClient.AssertExpectations(t)
 }
 func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	ctx := context.Background()
