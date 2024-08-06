@@ -125,14 +125,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Azure provider initialized successfully")
 
 	l.Debug("Setting up signal channel")
-	sigChan := utils.CreateSignalChannel("azure_createDeployment_signalChan", 1)
 	l.Debugf("Channel created: azure_signal_channel")
 
-	signal.Notify(
-		sigChan,
-		os.Interrupt,
-		syscall.SIGTERM,
-	)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// This section is no longer needed as we've moved the display initialization earlier in the function
 
