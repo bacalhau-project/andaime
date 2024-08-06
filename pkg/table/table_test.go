@@ -30,6 +30,10 @@ func TestAddResource(t *testing.T) {
 		Type:     &resourceType,
 		Location: &location,
 		ID:       &id,
+		Properties: map[string]interface{}{
+			"provisioningState": "Succeeded",
+			"location":          "westus2",
+		},
 	}
 
 	rt.AddResource(&resource, models.ProviderAbbreviationAzure)

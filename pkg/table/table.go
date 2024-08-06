@@ -85,10 +85,11 @@ func (rt *ResourceTable) AddResource(
 		provisioningState, resourceType, provider)
 
 	location := *resource.Location
-	if resourceType == " VM  " {
-		// For VMs, use the actual location instead of the resource group location
-		if vmLocation, ok := resource.Properties.(map[string]interface{})["location"].(string); ok {
-			location = vmLocation
+	if resourceType == " VM  " && resource.Properties != nil {
+		if props, ok := resource.Properties.(map[string]interface{}); ok {
+			if vmLocation, ok := props["location"].(string); ok {
+				location = vmLocation
+			}
 		}
 	}
 
