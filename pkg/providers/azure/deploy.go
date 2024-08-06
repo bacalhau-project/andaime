@@ -35,6 +35,7 @@ func (p *AzureProvider) DeployResources(
 	deployment *models.Deployment,
 	disp *display.Display,
 ) error {
+	l := logger.Get()
 	// Set the start time for the deployment
 	deployment.StartTime = time.Now()
 
@@ -45,6 +46,7 @@ func (p *AzureProvider) DeployResources(
 		disp,
 	)
 	if err != nil {
+		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
 
@@ -53,20 +55,29 @@ func (p *AzureProvider) DeployResources(
 
 	err = deployment.UpdateViperConfig()
 	if err != nil {
+		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
 	err = p.DeployARMTemplate(ctx, deployment, disp)
 	if err != nil {
+		l.Error(fmt.Sprintf("Failed to deploy ARM template: %v", err))
 		return err
 	}
 
 	err = deployment.UpdateViperConfig()
 	if err != nil {
+		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	return p.FinalizeDeployment(ctx, deployment, disp)
+	err = p.FinalizeDeployment(ctx, deployment, disp)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
+		return err
+	}
+
+	return nil
 }
 
 func (p *AzureProvider) DeployARMTemplate(
