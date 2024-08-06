@@ -1,6 +1,6 @@
 package utils
 
-// ToPtr returns a pointer to the given string
-func ToPtr(s string) *string {
-	return &s
+// ToPtr returns a pointer to the given value
+func ToPtr[T any](v T) *T {
+	return &v
 }

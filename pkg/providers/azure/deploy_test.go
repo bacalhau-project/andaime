@@ -137,14 +137,14 @@ func TestUpdateNSGStatus(t *testing.T) {
 							{
 								Name: utils.ToPtr("AllowSSH"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 utils.ToPtr("Tcp"),
+									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("22"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   utils.ToPtr("Allow"),
+									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
 									Priority:                 utils.ToPtr(int32(100)),
-									Direction:                utils.ToPtr("Inbound"),
+									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
 								},
 							},
 						},
