@@ -441,14 +441,14 @@ func (p *AzureProvider) updateNSGStatus(
 				securityRule := &armnetwork.SecurityRule{
 					Name: utils.ToPtr(ruleMap["name"].(string)),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 utils.ToPtr(ruleMap["protocol"].(string)),
+						Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
 						SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
 						DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
 						SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
 						DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
-						Access:                   utils.ToPtr(ruleMap["access"].(string)),
+						Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
 						Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
-						Direction:                utils.ToPtr(ruleMap["direction"].(string)),
+						Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
 					},
 				}
 
