@@ -3,7 +3,10 @@ package azure
 import (
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGenerateTags(t *testing.T) {
@@ -22,16 +25,6 @@ func TestGenerateTags(t *testing.T) {
 		}
 	}
 }
-package azure
-
-import (
-	"testing"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/stretchr/testify/assert"
-)
-
 func TestUpdateNICStatus(t *testing.T) {
 	// Create a mock AzureProvider
 	provider := &AzureProvider{}
