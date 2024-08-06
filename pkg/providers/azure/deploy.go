@@ -356,36 +356,41 @@ func (p *AzureProvider) updateNICStatus(
 
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
-		l.Warn("Failed to cast resource properties to map[string]interface{}")
+		l.Warnf("Failed to cast resource properties to map[string]interface{} for resource: %s", *resource.Name)
 		return
 	}
 
 	ipConfigurations, ok := properties["ipConfigurations"].([]interface{})
 	if !ok || len(ipConfigurations) == 0 {
-		l.Warn("No IP configurations found in NIC properties")
+		l.Warnf("No IP configurations found in NIC properties for resource: %s", *resource.Name)
 		return
 	}
 
 	for _, ipConfig := range ipConfigurations {
 		ipConfigMap, ok := ipConfig.(map[string]interface{})
 		if !ok {
-			l.Warn("Failed to cast IP configuration to map[string]interface{}")
+			l.Warnf("Failed to cast IP configuration to map[string]interface{} for resource: %s", *resource.Name)
 			continue
 		}
 
 		privateIPAddress, ok := ipConfigMap["privateIPAddress"].(string)
 		if !ok {
-			l.Warn("Failed to get privateIPAddress from IP configuration")
+			l.Warnf("Failed to get privateIPAddress from IP configuration for resource: %s", *resource.Name)
 			continue
 		}
 
-		// Find the corresponding machine and update its private IP
+		machineUpdated := false
 		for i, machine := range deployment.Machines {
 			if strings.Contains(*resource.Name, machine.ID) {
 				deployment.Machines[i].PrivateIP = privateIPAddress
 				l.Infof("Updated private IP for machine %s: %s", machine.ID, privateIPAddress)
+				machineUpdated = true
 				break
 			}
+		}
+
+		if !machineUpdated {
+			l.Warnf("No matching machine found for NIC resource: %s", *resource.Name)
 		}
 	}
 }

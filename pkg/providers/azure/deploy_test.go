@@ -26,36 +26,68 @@ func TestGenerateTags(t *testing.T) {
 	}
 }
 func TestUpdateNICStatus(t *testing.T) {
-	// Create a mock AzureProvider
-	provider := &AzureProvider{}
-
-	// Create a mock deployment
-	deployment := &models.Deployment{
-		Machines: []models.Machine{
-			{ID: "vm1", PrivateIP: ""},
-			{ID: "vm2", PrivateIP: ""},
-		},
-	}
-
-	// Create a mock resource
-	resourceName := "nic-vm1"
-	resourceType := "Microsoft.Network/networkInterfaces"
-	resource := &armresources.GenericResource{
-		Name: &resourceName,
-		Type: &resourceType,
-		Properties: map[string]interface{}{
-			"ipConfigurations": []interface{}{
-				map[string]interface{}{
-					"privateIPAddress": "10.0.0.4",
+	tests := []struct {
+		name           string
+		deployment     *models.Deployment
+		resource       *armresources.GenericResource
+		expectedResult []models.Machine
+	}{
+		{
+			name: "Valid NIC update",
+			deployment: &models.Deployment{
+				Machines: []models.Machine{
+					{ID: "vm1", PrivateIP: ""},
+					{ID: "vm2", PrivateIP: ""},
 				},
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("nic-vm1"),
+				Type: utils.ToPtr("Microsoft.Network/networkInterfaces"),
+				Properties: map[string]interface{}{
+					"ipConfigurations": []interface{}{
+						map[string]interface{}{
+							"privateIPAddress": "10.0.0.4",
+						},
+					},
+				},
+			},
+			expectedResult: []models.Machine{
+				{ID: "vm1", PrivateIP: "10.0.0.4"},
+				{ID: "vm2", PrivateIP: ""},
+			},
+		},
+		{
+			name: "No matching machine",
+			deployment: &models.Deployment{
+				Machines: []models.Machine{
+					{ID: "vm1", PrivateIP: ""},
+					{ID: "vm2", PrivateIP: ""},
+				},
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("nic-vm3"),
+				Type: utils.ToPtr("Microsoft.Network/networkInterfaces"),
+				Properties: map[string]interface{}{
+					"ipConfigurations": []interface{}{
+						map[string]interface{}{
+							"privateIPAddress": "10.0.0.5",
+						},
+					},
+				},
+			},
+			expectedResult: []models.Machine{
+				{ID: "vm1", PrivateIP: ""},
+				{ID: "vm2", PrivateIP: ""},
 			},
 		},
 	}
 
-	// Call the updateNICStatus function
-	provider.updateNICStatus(deployment, resource)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &AzureProvider{}
+			provider.updateNICStatus(tt.deployment, tt.resource)
 
-	// Assert that the private IP was updated for the correct machine
-	assert.Equal(t, "10.0.0.4", deployment.Machines[0].PrivateIP)
-	assert.Equal(t, "", deployment.Machines[1].PrivateIP)
+			assert.Equal(t, tt.expectedResult, tt.deployment.Machines)
+		})
+	}
 }
