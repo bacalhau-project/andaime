@@ -32,7 +32,7 @@ func TestAddResource(t *testing.T) {
 		ID:       &id,
 	}
 
-	rt.AddResource(resource, models.ProviderAbbreviationAzure)
+	rt.AddResource(&resource, models.ProviderAbbreviationAzure)
 	rt.Render()
 
 	output := buf.String()
