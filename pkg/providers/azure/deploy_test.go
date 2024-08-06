@@ -27,6 +27,61 @@ func TestGenerateTags(t *testing.T) {
 	}
 }
 
+func TestUpdateDiskStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		deployment     *models.Deployment
+		resource       *armresources.GenericResource
+		expectedResult map[string]*models.Disk
+	}{
+		{
+			name: "Valid Disk update",
+			deployment: &models.Deployment{
+				Disks: make(map[string]*models.Disk),
+			},
+			resource: &armresources.GenericResource{
+				Name: utils.ToPtr("disk1"),
+				ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk1"),
+				Type: utils.ToPtr("Microsoft.Compute/disks"),
+				Properties: map[string]interface{}{
+					"diskSizeGB": float64(128),
+					"diskState":  "Attached",
+				},
+			},
+			expectedResult: map[string]*models.Disk{
+				"disk1": {
+					Name:   "disk1",
+					ID:     "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk1",
+					SizeGB: 128,
+					State:  "Attached",
+				},
+			},
+		},
+		{
+			name: "Invalid Disk properties",
+			deployment: &models.Deployment{
+				Disks: make(map[string]*models.Disk),
+			},
+			resource: &armresources.GenericResource{
+				Name:       utils.ToPtr("disk2"),
+				ID:         utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk2"),
+				Type:       utils.ToPtr("Microsoft.Compute/disks"),
+				Properties: map[string]interface{}{},
+			},
+			expectedResult: map[string]*models.Disk{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &AzureProvider{}
+			provider.updateDiskStatus(tt.deployment, tt.resource)
+
+			assert.Equal(t, tt.expectedResult, tt.deployment.Disks)
+		})
+	}
+}
+
 func TestUpdateVNetStatus(t *testing.T) {
 	tests := []struct {
 		name           string
