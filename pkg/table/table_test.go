@@ -22,8 +22,8 @@ func TestAddResource(t *testing.T) {
 
 	name := "TestResource"
 	resourceType := "Microsoft.Compute/virtualMachines"
-	resourceGroupLocation := "eastus"
-	vmLocation := "westus2"
+	resourceGroupLocation := "westus2"
+	vmLocation := "eastus"
 	id := "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource"
 
 	resource := armresources.GenericResource{
