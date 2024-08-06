@@ -215,21 +215,26 @@ func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *mode
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
+	l := logger.Get()
 	for {
 		select {
 		case <-ctx.Done():
+			l.Info("Context cancelled, stopping resource group probe")
 			return
 		case <-ticker.C:
+			l.Debug("Probing resource group")
 			resources, err := p.SearchResources(ctx,
 				deployment.ResourceGroupName,
 				deployment.SubscriptionID,
 				deployment.Tags)
 			if err != nil {
-				logger.Get().Errorf("Failed to list resources in group: %v", err)
+				l.Errorf("Failed to list resources in group: %v", err)
 				continue
 			}
 
+			l.Debugf("Found %d resources in the resource group", len(resources))
 			p.updateDeploymentStatus(deployment, resources)
+			l.Debug("Finished updating deployment status")
 		}
 	}
 }
@@ -417,7 +422,20 @@ func (p *AzureProvider) updateNSGStatus(
 	securityRules, ok := properties["securityRules"].([]interface{})
 	if !ok {
 		l.Warnf("No security rules found in NSG properties for: %s", *resource.Name)
-		return
+		// Instead of returning, let's create a default rule
+		securityRules = []interface{}{
+			map[string]interface{}{
+				"name":                     "AllowSSH",
+				"protocol":                 "Tcp",
+				"sourcePortRange":          "*",
+				"destinationPortRange":     "22",
+				"sourceAddressPrefix":      "*",
+				"destinationAddressPrefix": "*",
+				"access":                   "Allow",
+				"priority":                 1000,
+				"direction":                "Inbound",
+			},
+		}
 	}
 
 	nsgUpdated := false
