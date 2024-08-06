@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -19,8 +18,28 @@ type AzureProviderer interface {
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 
-	DeployResources(ctx context.Context, deployment *models.Deployment, disp *display.Display) error
-	DestroyResources(ctx context.Context, resourceGroupName string) error
+	// SearchResources queries Azure resources based on the provided criteria.
+	//
+	// It searches for resources within the specified scope and subscription, filtered by tags.
+	// The function then converts the raw response into a slice of GenericResource objects.
+	//
+	// Parameters:
+	//   - ctx: The context for the operation, which can be used for cancellation.
+	//   - subscriptionID: The ID of the Azure subscription to search within.
+	//   - searchScope: The scope within which to search for resources.
+	//   - tags: A map of tag keys to pointers of tag values to filter the resources.
+	//
+	// Returns:
+	//   - A slice of pointers to armresources.GenericResource objects representing the found resources.
+	//   - An error if the search operation fails or if there's an issue processing the response.
+	SearchResources(ctx context.Context,
+		subscriptionID, searchScope string,
+		tags map[string]*string) ([]*armresources.GenericResource, error)
+	DeployResources(ctx context.Context,
+		deployment *models.Deployment,
+		disp *display.Display) error
+	DestroyResources(ctx context.Context,
+		resourceGroupName string) error
 }
 
 type AzureProvider struct {
@@ -72,18 +91,15 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
-func (p *AzureProvider) SearchResources(ctx context.Context, searchScope string, subscriptionID string, tags map[string]string) ([]*armresources.GenericResource, error) {
-	var tagFilters []string
-	for key, value := range tags {
-		tagFilters = append(tagFilters, fmt.Sprintf("tags['%s'] == '%s'", key, value))
-	}
-	tagFilterString := strings.Join(tagFilters, " and ")
+func (p *AzureProvider) SearchResources(ctx context.Context,
+	subscriptionID string,
+	searchScope string,
+	tags map[string]*string) ([]*armresources.GenericResource, error) {
 
-	query := fmt.Sprintf("Resources | where %s | project id, name, type, location, properties.provisioningState", tagFilterString)
-
-	logger.Get().Debugf("Azure Resource Graph query: %s", query)
-
-	resourcesResponse, err := p.Client.Resources(ctx, query, nil)
+	resourcesResponse, err := p.Client.SearchResources(ctx,
+		subscriptionID,
+		searchScope,
+		tags)
 	if err != nil {
 		logger.Get().Errorf("Failed to query Azure resources: %v", err)
 		return nil, fmt.Errorf("failed to query resources: %v", err)
@@ -92,21 +108,21 @@ func (p *AzureProvider) SearchResources(ctx context.Context, searchScope string,
 	logger.Get().Debugf("Azure Resource Graph response: %+v", resourcesResponse)
 
 	var resources []*armresources.GenericResource
-	for _, data := range resourcesResponse.Data {
-		if resource, ok := data.(map[string]interface{}); ok {
-			genericResource := &armresources.GenericResource{
-				ID:       (*string)(resource["id"].(*string)),
-				Name:     (*string)(resource["name"].(*string)),
-				Type:     (*string)(resource["type"].(*string)),
-				Location: (*string)(resource["location"].(*string)),
-			}
-			if provisioningState, ok := resource["properties"].(map[string]interface{})["provisioningState"].(string); ok {
+	for _, data := range resourcesResponse {
+		genericResource := &armresources.GenericResource{
+			ID:       data.ID,
+			Name:     data.Name,
+			Type:     data.Type,
+			Location: data.Location,
+		}
+		if properties, ok := data.Properties.(map[string]interface{}); ok {
+			if provisioningState, ok := properties["provisioningState"].(string); ok {
 				genericResource.Properties = map[string]interface{}{
 					"provisioningState": provisioningState,
 				}
 			}
-			resources = append(resources, genericResource)
 		}
+		resources = append(resources, genericResource)
 	}
 
 	return resources, nil
