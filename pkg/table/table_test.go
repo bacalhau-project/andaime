@@ -22,17 +22,18 @@ func TestAddResource(t *testing.T) {
 
 	name := "TestResource"
 	resourceType := "Microsoft.Compute/virtualMachines"
-	location := "eastus"
+	resourceGroupLocation := "eastus"
+	vmLocation := "westus2"
 	id := "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/TestResource"
 
 	resource := armresources.GenericResource{
 		Name:     &name,
 		Type:     &resourceType,
-		Location: &location,
+		Location: &resourceGroupLocation,
 		ID:       &id,
 		Properties: map[string]interface{}{
 			"provisioningState": "Succeeded",
-			"location":          "westus2",
+			"location":          vmLocation,
 		},
 	}
 
@@ -42,7 +43,8 @@ func TestAddResource(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "TestResource")
 	assert.Contains(t, output, models.ProviderAbbreviationAzure)
-	assert.Contains(t, output, "eastus")
+	assert.Contains(t, output, vmLocation)
+	assert.NotContains(t, output, resourceGroupLocation)
 	assert.Contains(t, output, "VM") // Check for abbreviated resource type
 }
 
