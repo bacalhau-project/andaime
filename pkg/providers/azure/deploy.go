@@ -421,80 +421,72 @@ func (p *AzureProvider) updateNSGStatus(
 
 	securityRules, ok := properties["securityRules"].([]interface{})
 	if !ok {
-		l.Warnf("No security rules found in NSG properties for: %s", *resource.Name)
+		l.Debugf("No security rules found in NSG properties for: %s. This is normal for a new NSG.", *resource.Name)
 		securityRules = []interface{}{}
 	}
 
-	nsgUpdated := false
-	for _, machine := range deployment.Machines {
-		if strings.Contains(*resource.Name, machine.ID) {
-			deployment.NetworkSecurityGroups[machine.ID] = &armnetwork.SecurityGroup{
-				Name: resource.Name,
-				ID:   resource.ID,
-				Properties: &armnetwork.SecurityGroupPropertiesFormat{
-					SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)+len(deployment.AllowedPorts)),
-				},
-			}
+	// Initialize the NetworkSecurityGroups map if it's nil
+	if deployment.NetworkSecurityGroups == nil {
+		deployment.NetworkSecurityGroups = make(map[string]*armnetwork.SecurityGroup)
+	}
 
-			// Add existing security rules
-			for _, rule := range securityRules {
-				ruleMap, ok := rule.(map[string]interface{})
-				if !ok {
-					l.Warnf("Failed to cast security rule to map[string]interface{} for NSG: %s", *resource.Name)
-					continue
-				}
+	// Create a new SecurityGroup for this NSG
+	nsg := &armnetwork.SecurityGroup{
+		Name: resource.Name,
+		ID:   resource.ID,
+		Properties: &armnetwork.SecurityGroupPropertiesFormat{
+			SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)+len(deployment.AllowedPorts)),
+		},
+	}
 
-				securityRule := &armnetwork.SecurityRule{
-					Name: utils.ToPtr(ruleMap["name"].(string)),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
-						SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
-						DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
-						SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
-						DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
-						Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
-						Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
-						Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
-					},
-				}
-
-				deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules = append(
-					deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules,
-					securityRule,
-				)
-			}
-
-			// Add rules for allowed ports
-			for i, port := range deployment.AllowedPorts {
-				securityRule := &armnetwork.SecurityRule{
-					Name: utils.ToPtr(fmt.Sprintf("AllowPort%d", port)),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
-						SourcePortRange:          utils.ToPtr("*"),
-						DestinationPortRange:     utils.ToPtr(fmt.Sprintf("%d", port)),
-						SourceAddressPrefix:      utils.ToPtr("*"),
-						DestinationAddressPrefix: utils.ToPtr("*"),
-						Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-						Priority:                 utils.ToPtr(int32(1000 + i)),
-						Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
-					},
-				}
-
-				deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules = append(
-					deployment.NetworkSecurityGroups[machine.ID].Properties.SecurityRules,
-					securityRule,
-				)
-			}
-
-			l.Infof("Updated NSG for machine %s: %s", machine.ID, *resource.Name)
-			nsgUpdated = true
-			break
+	// Add existing security rules
+	for _, rule := range securityRules {
+		ruleMap, ok := rule.(map[string]interface{})
+		if !ok {
+			l.Warnf("Failed to cast security rule to map[string]interface{} for NSG: %s", *resource.Name)
+			continue
 		}
+
+		securityRule := &armnetwork.SecurityRule{
+			Name: utils.ToPtr(ruleMap["name"].(string)),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
+				SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
+				DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
+				SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
+				DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
+				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
+				Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
+				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
+			},
+		}
+
+		nsg.Properties.SecurityRules = append(nsg.Properties.SecurityRules, securityRule)
 	}
 
-	if !nsgUpdated {
-		l.Warnf("No matching machine found for NSG: %s", *resource.Name)
+	// Add rules for allowed ports
+	for i, port := range deployment.AllowedPorts {
+		securityRule := &armnetwork.SecurityRule{
+			Name: utils.ToPtr(fmt.Sprintf("AllowPort%d", port)),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+				SourcePortRange:          utils.ToPtr("*"),
+				DestinationPortRange:     utils.ToPtr(fmt.Sprintf("%d", port)),
+				SourceAddressPrefix:      utils.ToPtr("*"),
+				DestinationAddressPrefix: utils.ToPtr("*"),
+				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
+				Priority:                 utils.ToPtr(int32(1000 + i)),
+				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+			},
+		}
+
+		nsg.Properties.SecurityRules = append(nsg.Properties.SecurityRules, securityRule)
 	}
+
+	// Add the NSG to the deployment's NetworkSecurityGroups map
+	deployment.NetworkSecurityGroups[*resource.Name] = nsg
+
+	l.Infof("Updated NSG: %s", *resource.Name)
 }
 
 func (p *AzureProvider) updateVNetStatus(
