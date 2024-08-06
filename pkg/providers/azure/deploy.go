@@ -262,7 +262,17 @@ func (p *AzureProvider) updateDeploymentStatus(
 		case "microsoft.compute/virtualmachines/extensions":
 			p.updateVMExtensionsStatus(deployment, resource)
 		case "microsoft.network/publicipaddresses":
-			p.updatePublicIPStatus(deployment, resource)
+			// Cast generic resource as PublicIPAddress
+			publicIPAddress, ok := resource.(armnetwork.PublicIPAddress)
+			if !ok {
+				l.Warnf(
+					"Failed to cast resource properties to armnetwork.PublicIPAddress for public IP address: %s",
+					*resource.Name,
+				)
+				continue
+			}
+
+			p.updatePublicIPStatus(deployment, publicIPAddress)
 		case "microsoft.network/networkinterfaces":
 			p.updateNICStatus(deployment, resource)
 		case "microsoft.network/networksecuritygroups":
@@ -272,7 +282,10 @@ func (p *AzureProvider) updateDeploymentStatus(
 		case "microsoft.compute/disks":
 			p.updateDiskStatus(deployment, resource)
 		default:
-			l.Debugf("Unhandled resource type: %v (reason: resource type not recognized)", *resource.Type)
+			l.Debugf(
+				"Unhandled resource type: %v (reason: resource type not recognized)",
+				*resource.Type,
+			)
 		}
 
 	}
@@ -290,7 +303,7 @@ func (p *AzureProvider) updateVMStatus(
 		if machine.ID == *resource.Name {
 			// Set the type to "VM"
 			deployment.Machines[i].Type = "VM"
-			
+
 			// Set the location
 			if resource.Location != nil {
 				deployment.Machines[i].Location = *resource.Location
@@ -356,13 +369,15 @@ func (p *AzureProvider) updateVMExtensionsStatus(
 
 func (p *AzureProvider) updatePublicIPStatus(
 	deployment *models.Deployment,
-	resource *armresources.GenericResource,
+	publicIPAddress armnetwork.PublicIPAddress,
 ) {
 	// Assuming the public IP resource name contains the VM name
 	for i, machine := range deployment.Machines {
-		if strings.Contains(*resource.Name, machine.ID) {
-			if resourceProperties, ok := resource.Properties.(map[string]interface{}); ok {
-				deployment.Machines[i].PublicIP = resourceProperties["ipAddress"].(string)
+		if strings.Contains(*publicIPAddress.Name, machine.ID) {
+			if publicIPAddress.Properties != nil && publicIPAddress.Properties.IPAddress != nil {
+				deployment.Machines[i].PublicIP = *publicIPAddress.Properties.IPAddress
+			} else {
+				deployment.Machines[i].PublicIP = "SUCCEEDED - Getting..."
 			}
 			break
 		}
@@ -383,7 +398,10 @@ func (p *AzureProvider) updateNICStatus(
 
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
-		l.Warnf("Failed to cast resource properties to map[string]interface{} for resource: %s", *resource.Name)
+		l.Warnf(
+			"Failed to cast resource properties to map[string]interface{} for resource: %s",
+			*resource.Name,
+		)
 		return
 	}
 
@@ -396,13 +414,19 @@ func (p *AzureProvider) updateNICStatus(
 	for _, ipConfig := range ipConfigurations {
 		ipConfigMap, ok := ipConfig.(map[string]interface{})
 		if !ok {
-			l.Warnf("Failed to cast IP configuration to map[string]interface{} for resource: %s", *resource.Name)
+			l.Warnf(
+				"Failed to cast IP configuration to map[string]interface{} for resource: %s",
+				*resource.Name,
+			)
 			continue
 		}
 
 		privateIPAddress, ok := ipConfigMap["privateIPAddress"].(string)
 		if !ok {
-			l.Warnf("Failed to get privateIPAddress from IP configuration for resource: %s", *resource.Name)
+			l.Warnf(
+				"Failed to get privateIPAddress from IP configuration for resource: %s",
+				*resource.Name,
+			)
 			continue
 		}
 
@@ -430,20 +454,29 @@ func (p *AzureProvider) updateNSGStatus(
 	l.Debugf("Updating NSG status for resource: %s (File: deploy.go, Line: 441)", *resource.Name)
 
 	if resource.Properties == nil {
-		l.Warnf("Resource properties are nil for NSG: %s (File: deploy.go, Line: 444)", *resource.Name)
+		l.Warnf(
+			"Resource properties are nil for NSG: %s (File: deploy.go, Line: 444)",
+			*resource.Name,
+		)
 		return
 	}
 
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
-		l.Warnf("Failed to cast resource properties to map[string]interface{} for NSG: %s (File: deploy.go, Line: 449)", *resource.Name)
+		l.Warnf(
+			"Failed to cast resource properties to map[string]interface{} for NSG: %s (File: deploy.go, Line: 449)",
+			*resource.Name,
+		)
 		l.Debugf("Resource properties: %+v", resource.Properties)
 		return
 	}
 
 	securityRules, ok := properties["securityRules"].([]interface{})
 	if !ok || securityRules == nil {
-		l.Debugf("No security rules found in NSG properties for: %s. This is normal for a new NSG. (File: deploy.go, Line: 455)", *resource.Name)
+		l.Debugf(
+			"No security rules found in NSG properties for: %s. This is normal for a new NSG. (File: deploy.go, Line: 455)",
+			*resource.Name,
+		)
 		l.Debugf("Security rules property: %+v", properties["securityRules"])
 		securityRules = []interface{}{}
 	}
@@ -459,7 +492,11 @@ func (p *AzureProvider) updateNSGStatus(
 		Name: resource.Name,
 		ID:   resource.ID,
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
-			SecurityRules: make([]*armnetwork.SecurityRule, 0, len(securityRules)+len(deployment.AllowedPorts)),
+			SecurityRules: make(
+				[]*armnetwork.SecurityRule,
+				0,
+				len(securityRules)+len(deployment.AllowedPorts),
+			),
 		},
 	}
 	l.Debugf("Created new SecurityGroup for NSG: %s (File: deploy.go, Line: 473)", *resource.Name)
@@ -468,7 +505,11 @@ func (p *AzureProvider) updateNSGStatus(
 	for i, rule := range securityRules {
 		ruleMap, ok := rule.(map[string]interface{})
 		if !ok {
-			l.Warnf("Failed to cast security rule to map[string]interface{} for NSG: %s, rule index: %d (File: deploy.go, Line: 479)", *resource.Name, i)
+			l.Warnf(
+				"Failed to cast security rule to map[string]interface{} for NSG: %s, rule index: %d (File: deploy.go, Line: 479)",
+				*resource.Name,
+				i,
+			)
 			l.Debugf("Security rule: %+v", rule)
 			continue
 		}
@@ -477,19 +518,37 @@ func (p *AzureProvider) updateNSGStatus(
 		securityRule := &armnetwork.SecurityRule{
 			Name: utils.ToPtr(ruleMap["name"].(string)),
 			Properties: &armnetwork.SecurityRulePropertiesFormat{
-				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(fmt.Sprintf("%v", ruleMap["protocol"]))),
-				SourcePortRange:          utils.ToPtr(fmt.Sprintf("%v", ruleMap["sourcePortRange"])),
-				DestinationPortRange:     utils.ToPtr(fmt.Sprintf("%v", ruleMap["destinationPortRange"])),
-				SourceAddressPrefix:      utils.ToPtr(fmt.Sprintf("%v", ruleMap["sourceAddressPrefix"])),
-				DestinationAddressPrefix: utils.ToPtr(fmt.Sprintf("%v", ruleMap["destinationAddressPrefix"])),
-				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(fmt.Sprintf("%v", ruleMap["access"]))),
-				Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
-				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(fmt.Sprintf("%v", ruleMap["direction"]))),
+				Protocol: (*armnetwork.SecurityRuleProtocol)(
+					utils.ToPtr(fmt.Sprintf("%v", ruleMap["protocol"])),
+				),
+				SourcePortRange: utils.ToPtr(
+					fmt.Sprintf("%v", ruleMap["sourcePortRange"]),
+				),
+				DestinationPortRange: utils.ToPtr(
+					fmt.Sprintf("%v", ruleMap["destinationPortRange"]),
+				),
+				SourceAddressPrefix: utils.ToPtr(
+					fmt.Sprintf("%v", ruleMap["sourceAddressPrefix"]),
+				),
+				DestinationAddressPrefix: utils.ToPtr(
+					fmt.Sprintf("%v", ruleMap["destinationAddressPrefix"]),
+				),
+				Access: (*armnetwork.SecurityRuleAccess)(
+					utils.ToPtr(fmt.Sprintf("%v", ruleMap["access"])),
+				),
+				Priority: utils.ToPtr(int32(ruleMap["priority"].(float64))),
+				Direction: (*armnetwork.SecurityRuleDirection)(
+					utils.ToPtr(fmt.Sprintf("%v", ruleMap["direction"])),
+				),
 			},
 		}
 
 		nsg.Properties.SecurityRules = append(nsg.Properties.SecurityRules, securityRule)
-		l.Debugf("Added existing security rule: %s to NSG: %s (File: deploy.go, Line: 497)", *securityRule.Name, *resource.Name)
+		l.Debugf(
+			"Added existing security rule: %s to NSG: %s (File: deploy.go, Line: 497)",
+			*securityRule.Name,
+			*resource.Name,
+		)
 	}
 
 	// Add rules for allowed ports
@@ -504,12 +563,18 @@ func (p *AzureProvider) updateNSGStatus(
 				DestinationAddressPrefix: utils.ToPtr("*"),
 				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
 				Priority:                 utils.ToPtr(int32(1000 + i)),
-				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+				Direction: (*armnetwork.SecurityRuleDirection)(
+					utils.ToPtr("Inbound"),
+				),
 			},
 		}
 
 		nsg.Properties.SecurityRules = append(nsg.Properties.SecurityRules, securityRule)
-		l.Debugf("Added allowed port security rule: %s to NSG: %s (File: deploy.go, Line: 517)", *securityRule.Name, *resource.Name)
+		l.Debugf(
+			"Added allowed port security rule: %s to NSG: %s (File: deploy.go, Line: 517)",
+			*securityRule.Name,
+			*resource.Name,
+		)
 	}
 
 	// Add the NSG to the deployment's NetworkSecurityGroups map
@@ -535,7 +600,10 @@ func (p *AzureProvider) updateVNetStatus(
 
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
-		l.Warnf("Failed to cast resource properties to map[string]interface{} for VNet: %s", *resource.Name)
+		l.Warnf(
+			"Failed to cast resource properties to map[string]interface{} for VNet: %s",
+			*resource.Name,
+		)
 		return
 	}
 
@@ -566,7 +634,11 @@ func (p *AzureProvider) updateVNetStatus(
 
 		addressPrefix, ok := subnetMap["addressPrefix"].(string)
 		if !ok {
-			l.Warnf("Failed to get address prefix for subnet: %s in VNet: %s", subnetName, *resource.Name)
+			l.Warnf(
+				"Failed to get address prefix for subnet: %s in VNet: %s",
+				subnetName,
+				*resource.Name,
+			)
 			continue
 		}
 
@@ -574,13 +646,16 @@ func (p *AzureProvider) updateVNetStatus(
 			deployment.Subnets = make(map[string][]*armnetwork.Subnet)
 		}
 
-		deployment.Subnets[*resource.Name] = append(deployment.Subnets[*resource.Name], &armnetwork.Subnet{
-			Name: utils.ToPtr(subnetName),
-			ID:   utils.ToPtr(subnetID),
-			Properties: &armnetwork.SubnetPropertiesFormat{
-				AddressPrefix: utils.ToPtr(addressPrefix),
+		deployment.Subnets[*resource.Name] = append(
+			deployment.Subnets[*resource.Name],
+			&armnetwork.Subnet{
+				Name: utils.ToPtr(subnetName),
+				ID:   utils.ToPtr(subnetID),
+				Properties: &armnetwork.SubnetPropertiesFormat{
+					AddressPrefix: utils.ToPtr(addressPrefix),
+				},
 			},
-		})
+		)
 	}
 
 	l.Infof("Updated VNet status for: %s", *resource.Name)
@@ -600,7 +675,10 @@ func (p *AzureProvider) updateDiskStatus(
 
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
-		l.Warnf("Failed to cast resource properties to map[string]interface{} for Disk: %s", *resource.Name)
+		l.Warnf(
+			"Failed to cast resource properties to map[string]interface{} for Disk: %s",
+			*resource.Name,
+		)
 		return
 	}
 
@@ -622,10 +700,10 @@ func (p *AzureProvider) updateDiskStatus(
 	}
 
 	deployment.Disks[*resource.Name] = &models.Disk{
-		Name:  *resource.Name,
-		ID:    *resource.ID,
+		Name:   *resource.Name,
+		ID:     *resource.ID,
 		SizeGB: int(diskSizeGB),
-		State: diskState,
+		State:  diskState,
 	}
 
 	l.Infof("Updated Disk status for: %s", *resource.Name)
@@ -658,7 +736,16 @@ func (p *AzureProvider) FinalizeDeployment(
 
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader(
-		[]string{"ID", "Type", "Location", "Status", "Public IP", "Private IP", "Instance ID", "Elapsed Time (s)"},
+		[]string{
+			"ID",
+			"Type",
+			"Location",
+			"Status",
+			"Public IP",
+			"Private IP",
+			"Instance ID",
+			"Elapsed Time (s)",
+		},
 	)
 
 	startTime := deployment.StartTime
