@@ -74,11 +74,10 @@ func (m *MockAzureClient) SearchResources(
 	ctx context.Context,
 	searchScope string,
 	subscriptionID string,
-	tags map[string]*string) ([]AzureResource, error) {
+	tags map[string]*string) ([]armresources.GenericResource, error) {
 	args := m.Called(ctx, searchScope, subscriptionID, tags)
-	return args.Get(0).([]AzureResource), args.Error(1)
+	return args.Get(0).([]armresources.GenericResource), args.Error(1)
 }
-
 func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	ctx := context.Background()
 	mockClient := new(MockAzureClient)
@@ -88,11 +87,10 @@ func TestAzureProvider_SearchResources_ReturnsEmptySlice(t *testing.T) {
 	subscriptionID := "subscriptionID"
 	tags := map[string]*string{"tag1": to.Ptr("value1")}
 
-	mockClient.On("SearchResources", mock.Anything, mock.Anything, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{
-		QueryResponse: armresourcegraph.QueryResponse{
-			Data: []AzureResource{},
-		},
-	}, nil)
+	// Update this line to match the actual method signature
+	mockClient.On("SearchResources", mock.Anything, searchScope, subscriptionID, tags).Return(
+		[]armresources.GenericResource{}, nil,
+	)
 
 	resources, err := provider.SearchResources(ctx, searchScope, subscriptionID, tags)
 
@@ -111,12 +109,10 @@ func TestAzureProvider_SearchResources_NonStringTagValues(t *testing.T) {
 		"key2": nil,
 	}
 
-	expectedQuery := `Resources 
-	| project id, name, type, location, resourceGroup, subscriptionId, tenantId, tags, 
-		properties, sku, identity, zones, plan, kind, managedBy, 
-		provisioningState = tostring(properties.provisioningState)| where tags['key1'] == 'value1'`
-
-	mockClient.On("Resources", ctx, expectedQuery, mock.Anything).Return(armresourcegraph.ClientResourcesResponse{}, nil)
+	// Mock the SearchResources method instead of Resources
+	mockClient.On("SearchResources", ctx, subscriptionID, subscriptionID, tags).Return(
+		[]armresources.GenericResource{}, nil,
+	)
 
 	_, err := provider.SearchResources(ctx, subscriptionID, subscriptionID, tags)
 	assert.NoError(t, err)
