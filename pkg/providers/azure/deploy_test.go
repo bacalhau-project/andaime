@@ -22,3 +22,47 @@ func TestGenerateTags(t *testing.T) {
 		}
 	}
 }
+package azure
+
+import (
+	"testing"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestUpdateNICStatus(t *testing.T) {
+	// Create a mock AzureProvider
+	provider := &AzureProvider{}
+
+	// Create a mock deployment
+	deployment := &models.Deployment{
+		Machines: []models.Machine{
+			{ID: "vm1", PrivateIP: ""},
+			{ID: "vm2", PrivateIP: ""},
+		},
+	}
+
+	// Create a mock resource
+	resourceName := "nic-vm1"
+	resourceType := "Microsoft.Network/networkInterfaces"
+	resource := &armresources.GenericResource{
+		Name: &resourceName,
+		Type: &resourceType,
+		Properties: map[string]interface{}{
+			"ipConfigurations": []interface{}{
+				map[string]interface{}{
+					"privateIPAddress": "10.0.0.4",
+				},
+			},
+		},
+	}
+
+	// Call the updateNICStatus function
+	provider.updateNICStatus(deployment, resource)
+
+	// Assert that the private IP was updated for the correct machine
+	assert.Equal(t, "10.0.0.4", deployment.Machines[0].PrivateIP)
+	assert.Equal(t, "", deployment.Machines[1].PrivateIP)
+}
