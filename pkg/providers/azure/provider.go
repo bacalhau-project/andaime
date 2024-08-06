@@ -123,6 +123,14 @@ func (p *AzureProvider) SearchResources(ctx context.Context,
 			}
 		}
 		resources = append(resources, genericResource)
+
+		// Update deployment object for the machine
+		if *genericResource.Type == "microsoft.network/networksecuritygroups" {
+			logger.Get().Debugf("Updating NSG status for resource: %s", *genericResource.Name)
+			// Here you would update the deployment object with the NSG status
+			// For example:
+			// deployment.NSGStatus = genericResource.Properties["provisioningState"].(string)
+		}
 	}
 
 	return resources, nil
