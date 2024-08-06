@@ -76,9 +76,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Debugf("Channel created: azure_deployment_done")
 
 	// Set up signal handling
+	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Initialize the display
+	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	if !noDisplay {
 		go disp.Start()
