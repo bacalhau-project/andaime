@@ -17,6 +17,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/mitchellh/mapstructure"
 	"github.com/olekukonko/tablewriter"
 	"github.com/sanity-io/litter"
 )
@@ -359,22 +360,30 @@ func (p *AzureProvider) updateVMExtensionsStatus(
 
 func (p *AzureProvider) updatePublicIPStatus(
 	deployment *models.Deployment,
-	publicIPAddress *armresources.GenericResource,
+	genericResource *armresources.GenericResource,
 ) {
 	l := logger.Get()
 	// Assuming the public IP resource name contains the VM name
 	for i, machine := range deployment.Machines {
-		if strings.Contains(*publicIPAddress.Name, machine.ID) {
-			props, ok := publicIPAddress.Properties.(map[string]interface{})
-			if !ok {
-				l.Warnf(
-					"Failed to cast resource properties to map[string]interface{} for public IP address: %s",
-					*publicIPAddress.Name,
-				)
+		if strings.Contains(*genericResource.Name, machine.ID) {
+			if genericResource == nil {
+				l.Warn("Resource is nil, cannot update public IP status")
 				return
 			}
-			if props["ipAddress"] != nil {
-				deployment.Machines[i].PublicIP = props["ipAddress"].(string)
+
+			publicIP := &armnetwork.PublicIPAddress{}
+
+			if genericResource.Properties != nil {
+				props := &armnetwork.PublicIPAddressPropertiesFormat{}
+				if err := mapstructure.Decode(genericResource.Properties, props); err != nil {
+					l.Warnf("Failed to decode properties: %v", err)
+					return
+				}
+				publicIP.Properties = props
+			}
+
+			if publicIP.Properties.IPAddress != nil {
+				deployment.Machines[i].PublicIP = *publicIP.Properties.IPAddress
 			} else {
 				deployment.Machines[i].PublicIP = "SUCCEEDED - Getting..."
 			}
@@ -398,7 +407,7 @@ func (p *AzureProvider) updateNICStatus(
 	properties, ok := resource.Properties.(map[string]interface{})
 	if !ok {
 		l.Warnf(
-			"Failed to cast resource properties to map[string]interface{} for resource: %s",
+			"Failed to cast resource properties to map[string]interface{} for NIC: %s",
 			*resource.Name,
 		)
 		return
