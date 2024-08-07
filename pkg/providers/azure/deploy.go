@@ -359,13 +359,22 @@ func (p *AzureProvider) updateVMExtensionsStatus(
 
 func (p *AzureProvider) updatePublicIPStatus(
 	deployment *models.Deployment,
-	publicIPAddress armnetwork.PublicIPAddress,
+	publicIPAddress *armresources.GenericResource,
 ) {
+	l := logger.Get()
 	// Assuming the public IP resource name contains the VM name
 	for i, machine := range deployment.Machines {
 		if strings.Contains(*publicIPAddress.Name, machine.ID) {
-			if publicIPAddress.Properties != nil && publicIPAddress.Properties.IPAddress != nil {
-				deployment.Machines[i].PublicIP = *publicIPAddress.Properties.IPAddress
+			props, ok := publicIPAddress.Properties.(map[string]interface{})
+			if !ok {
+				l.Warnf(
+					"Failed to cast resource properties to map[string]interface{} for public IP address: %s",
+					*publicIPAddress.Name,
+				)
+				return
+			}
+			if props["ipAddress"] != nil {
+				deployment.Machines[i].PublicIP = props["ipAddress"].(string)
 			} else {
 				deployment.Machines[i].PublicIP = "SUCCEEDED - Getting..."
 			}
@@ -832,68 +841,4 @@ func printMachineIPTable(deployment *models.Deployment) {
 	} else {
 		fmt.Println("No machines have been deployed yet.")
 	}
-}
-func parseNSGProperties(properties map[string]interface{}) *armnetwork.SecurityGroupPropertiesFormat {
-	props := &armnetwork.SecurityGroupPropertiesFormat{}
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props.ProvisioningState = &provisioningState
-	}
-	if securityRules, ok := properties["securityRules"].([]interface{}); ok {
-		props.SecurityRules = parseSecurityRules(securityRules)
-	}
-	return props
-}
-
-func parseSecurityRules(rules []interface{}) *[]armnetwork.SecurityRule {
-	var securityRules []armnetwork.SecurityRule
-	for _, rule := range rules {
-		if ruleMap, ok := rule.(map[string]interface{}); ok {
-			securityRules = append(securityRules, armnetwork.SecurityRule{
-				Name: utils.ToPtr(ruleMap["name"].(string)),
-				Properties: &armnetwork.SecurityRulePropertiesFormat{
-					Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
-					SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
-					DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
-					SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
-					DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
-					Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
-					Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
-					Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
-				},
-			})
-		}
-	}
-	return &securityRules
-}
-func parseNSGProperties(properties map[string]interface{}) *armnetwork.SecurityGroupPropertiesFormat {
-	props := &armnetwork.SecurityGroupPropertiesFormat{}
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props.ProvisioningState = &provisioningState
-	}
-	if securityRules, ok := properties["securityRules"].([]interface{}); ok {
-		props.SecurityRules = parseSecurityRules(securityRules)
-	}
-	return props
-}
-
-func parseSecurityRules(rules []interface{}) *[]armnetwork.SecurityRule {
-	var securityRules []armnetwork.SecurityRule
-	for _, rule := range rules {
-		if ruleMap, ok := rule.(map[string]interface{}); ok {
-			securityRules = append(securityRules, armnetwork.SecurityRule{
-				Name: utils.ToPtr(ruleMap["name"].(string)),
-				Properties: &armnetwork.SecurityRulePropertiesFormat{
-					Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleMap["protocol"].(string))),
-					SourcePortRange:          utils.ToPtr(ruleMap["sourcePortRange"].(string)),
-					DestinationPortRange:     utils.ToPtr(ruleMap["destinationPortRange"].(string)),
-					SourceAddressPrefix:      utils.ToPtr(ruleMap["sourceAddressPrefix"].(string)),
-					DestinationAddressPrefix: utils.ToPtr(ruleMap["destinationAddressPrefix"].(string)),
-					Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleMap["access"].(string))),
-					Priority:                 utils.ToPtr(int32(ruleMap["priority"].(float64))),
-					Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleMap["direction"].(string))),
-				},
-			})
-		}
-	}
-	return &securityRules
 }
