@@ -160,11 +160,11 @@ func (p *AzureProvider) DeployARMTemplate(
 			}
 
 			// Start the deployment with retry logic
-			var future *armresources.DeploymentsClientCreateOrUpdateResponse
+			var poller *runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse]
 			maxRetries := 3
 			var deployErr error
 			for retry := 0; retry < maxRetries; retry++ {
-				future, deployErr = p.Client.DeployTemplate(
+				poller, deployErr = p.Client.DeployTemplate(
 					ctx,
 					deployment.ResourceGroupName,
 					fmt.Sprintf("deployment-vm-%s", goRoutineMachine.ID),
@@ -202,37 +202,24 @@ func (p *AzureProvider) DeployARMTemplate(
 					l.Info("Deployment cancelled")
 					return
 				default:
-					status, err := future.Poll(ctx)
+					resp, err := poller.Poll(ctx)
 					if err != nil {
 						if isQuotaExceededError(err) {
 							l.Errorf(`Azure quota exceeded: %v. Please contact Azure support
  to increase your quota for PublicIpAddress resources`, err)
-							break
+							return
 						}
 						l.Errorf("Error polling deployment status: %v", err)
+						time.Sleep(pollInterval)
 						continue
 					}
-					statusBytes, err := io.ReadAll(status.Body)
-					if err != nil {
-						l.Errorf("Error reading deployment status: %v", err)
-						break
-					}
 
-					var statusObject map[string]interface{}
-					err = json.Unmarshal(statusBytes, &statusObject)
-					if err != nil {
-						l.Errorf("Error unmarshalling deployment status: %v", err)
-					}
-					l.Debugf("Deployment status: %s", status.Status)
-
-					if status.Status == "Succeeded" {
+					if poller.Done() {
 						l.Info("Deployment completed successfully")
-						break
+						return
 					}
 
-					str := litter.Sdump(statusObject)
-					l.Debugf("Deployment status: %s", str)
-
+					l.Debugf("Deployment status: %s", resp.Properties.ProvisioningState)
 					time.Sleep(pollInterval)
 				}
 			}
