@@ -437,7 +437,9 @@ func (p *AzureProvider) updateNSGStatus(
 		l.Debugf("Initialized NetworkSecurityGroups map")
 	}
 
-	deployment.NetworkSecurityGroups[*resource.Name] = resource
+	// Create a deep copy of the resource
+	copiedResource := *resource
+	deployment.NetworkSecurityGroups[*resource.Name] = &copiedResource
 
 	for _, machine := range deployment.Machines {
 		if machine.Location == *resource.Location {
@@ -450,6 +452,8 @@ func (p *AzureProvider) updateNSGStatus(
 			)
 		}
 	}
+
+	l.Debugf("Updated NetworkSecurityGroups map. Current size: %d", len(deployment.NetworkSecurityGroups))
 }
 
 func (p *AzureProvider) updateVNetStatus(
