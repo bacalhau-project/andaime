@@ -55,7 +55,7 @@ func TestUpdateDiskStatus(t *testing.T) {
 					Name:   "disk1",
 					ID:     "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk1",
 					SizeGB: 128,
-					State:  string(armcompute.DiskStateAttached),
+					State:  armcompute.DiskStateAttached,
 				},
 			},
 		},
