@@ -425,6 +425,10 @@ func (p *AzureProvider) updateNSGStatus(
 ) {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
+	if resource == nil || resource.Name == nil || resource.Location == nil {
+		l.Warn("Resource, resource name, or resource location is nil, cannot update NSG status")
+		return
+	}
 	l.Debugf("Updating NSG status for resource: %s", *resource.Name)
 
 	// Initialize the NetworkSecurityGroups map if it's nil
