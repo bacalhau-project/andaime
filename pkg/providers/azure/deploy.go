@@ -117,8 +117,9 @@ func (p *AzureProvider) DeployARMTemplate(
 				"authenticationType": "sshPublicKey", // Always set to sshPublicKey
 				"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
 				"dnsLabelPrefix": fmt.Sprintf(
-					"vm-%s",
+					"vm-%s-%s",
 					strings.ToLower(deployment.Machines[0].ID),
+					utils.GenerateUniqueID()[:6],
 				),
 				"ubuntuOSVersion":          "Ubuntu-2004",
 				"vmSize":                   deployment.Machines[0].VMSize,
@@ -157,17 +158,38 @@ func (p *AzureProvider) DeployARMTemplate(
 				return
 			}
 
-			// Start the deployment
-			future, err := p.Client.DeployTemplate(
-				ctx,
-				deployment.ResourceGroupName,
-				fmt.Sprintf("deployment-vm-%s", goRoutineMachine.ID),
-				vmTemplateMap,
-				paramsMap,
-				tags,
-			)
+			// Start the deployment with retry logic
+			var future *armresources.DeploymentsClientBeginCreateOrUpdateResponse
+			var err error
+			maxRetries := 3
+			for retry := 0; retry < maxRetries; retry++ {
+				future, err = p.Client.DeployTemplate(
+					ctx,
+					deployment.ResourceGroupName,
+					fmt.Sprintf("deployment-vm-%s", goRoutineMachine.ID),
+					vmTemplateMap,
+					paramsMap,
+					tags,
+				)
+				if err == nil {
+					break
+				}
+				if strings.Contains(err.Error(), "DnsRecordCreateConflict") {
+					l.Warnf("DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)", retry+1, maxRetries)
+					paramsMap["dnsLabelPrefix"] = map[string]interface{}{
+						"Value": fmt.Sprintf(
+							"vm-%s-%s",
+							strings.ToLower(goRoutineMachine.ID),
+							utils.GenerateUniqueID()[:6],
+						),
+					}
+				} else {
+					l.Errorf("Failed to start template deployment: %v", err)
+					return
+				}
+			}
 			if err != nil {
-				l.Errorf("Failed to start template deployment: %v", err)
+				l.Errorf("Failed to start template deployment after %d retries: %v", maxRetries, err)
 				return
 			}
 
