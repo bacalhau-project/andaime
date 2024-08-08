@@ -160,7 +160,7 @@ func (p *AzureProvider) DeployARMTemplate(
 			}
 
 			// Start the deployment with retry logic
-			var future *armresources.DeploymentsClientBeginCreateOrUpdateResponse
+			var future *armresources.DeploymentsClientCreateOrUpdateResponse
 			maxRetries := 3
 			var deployErr error
 			for retry := 0; retry < maxRetries; retry++ {
