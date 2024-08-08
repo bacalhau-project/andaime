@@ -260,13 +260,14 @@ func TestUpdateNSGStatus(t *testing.T) {
 			name: "Valid NSG update with allowed ports",
 			deployment: &models.Deployment{
 				Machines: []models.Machine{
-					{ID: "vm1"},
+					{ID: "vm1", Location: "eastus"},
 				},
 				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
 				AllowedPorts:          []int{22, 80, 443, 8080},
 			},
 			resource: &armnetwork.SecurityGroup{
-				Name: utils.ToPtr("nsg-vm1"),
+				Name:     utils.ToPtr("nsg-vm1"),
+				Location: utils.ToPtr("eastus"),
 				ID: utils.ToPtr(
 					"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1",
 				),
@@ -291,10 +292,12 @@ func TestUpdateNSGStatus(t *testing.T) {
 			},
 			expectedResult: map[string]*armnetwork.SecurityGroup{
 				"nsg-vm1": {
-					Name: utils.ToPtr("nsg-vm1"),
+					Name:     utils.ToPtr("nsg-vm1"),
+					Location: utils.ToPtr("eastus"),
 					ID: utils.ToPtr(
 						"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1",
 					),
+					Type: utils.ToPtr("Microsoft.Network/networkSecurityGroups"),
 					Properties: &armnetwork.SecurityGroupPropertiesFormat{
 						SecurityRules: []*armnetwork.SecurityRule{
 							{
@@ -318,11 +321,15 @@ func TestUpdateNSGStatus(t *testing.T) {
 		{
 			name: "No security rules",
 			deployment: &models.Deployment{
+				Machines: []models.Machine{
+					{ID: "vm2", Location: "westus"},
+				},
 				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
 				AllowedPorts:          []int{22, 80, 443},
 			},
 			resource: &armnetwork.SecurityGroup{
-				Name: utils.ToPtr("nsg-vm2"),
+				Name:     utils.ToPtr("nsg-vm2"),
+				Location: utils.ToPtr("westus"),
 				ID: utils.ToPtr(
 					"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2",
 				),
@@ -333,10 +340,12 @@ func TestUpdateNSGStatus(t *testing.T) {
 			},
 			expectedResult: map[string]*armnetwork.SecurityGroup{
 				"nsg-vm2": {
-					Name: utils.ToPtr("nsg-vm2"),
+					Name:     utils.ToPtr("nsg-vm2"),
+					Location: utils.ToPtr("westus"),
 					ID: utils.ToPtr(
 						"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2",
 					),
+					Type: utils.ToPtr("Microsoft.Network/networkSecurityGroups"),
 					Properties: &armnetwork.SecurityGroupPropertiesFormat{
 						SecurityRules: []*armnetwork.SecurityRule{},
 					},
