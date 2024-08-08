@@ -405,9 +405,10 @@ func TestUpdateNSGStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			mockClient := &MockAzureClient{}
 			provider := &AzureProvider{
-				Client: &MockAzureClient{},
-				Config: &viper.Viper{},
+				Client: mockClient,
+				Config: viper.New(),
 			}
 			provider.updateNSGStatus(tt.deployment, tt.resource)
 
@@ -415,10 +416,3 @@ func TestUpdateNSGStatus(t *testing.T) {
 		})
 	}
 }
-type MockAzureClient struct{}
-
-func (m *MockAzureClient) CreateOrUpdateNSG(resourceGroupName string, nsgName string, parameters armnetwork.SecurityGroup) error {
-	return nil
-}
-
-// Implement other methods of the AzureClient interface with mock implementations
