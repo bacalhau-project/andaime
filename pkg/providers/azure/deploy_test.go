@@ -3,8 +3,8 @@ package azure
 import (
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/stretchr/testify/assert"
@@ -31,7 +31,7 @@ func TestUpdateDiskStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		deployment     *models.Deployment
-		resource       *armresources.GenericResource
+		resource       *armcompute.Disk
 		expectedResult map[string]*models.Disk
 	}{
 		{
@@ -39,13 +39,15 @@ func TestUpdateDiskStatus(t *testing.T) {
 			deployment: &models.Deployment{
 				Disks: make(map[string]*models.Disk),
 			},
-			resource: &armresources.GenericResource{
+			resource: &armcompute.Disk{
 				Name: utils.ToPtr("disk1"),
-				ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk1"),
+				ID: utils.ToPtr(
+					"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk1",
+				),
 				Type: utils.ToPtr("Microsoft.Compute/disks"),
-				Properties: map[string]interface{}{
-					"diskSizeGB": float64(128),
-					"diskState":  "Attached",
+				Properties: &armcompute.DiskProperties{
+					DiskSizeGB: utils.ToPtr(int32(128)),
+					DiskState:  (*armcompute.DiskState)(utils.ToPtr("Attached")),
 				},
 			},
 			expectedResult: map[string]*models.Disk{
@@ -62,11 +64,13 @@ func TestUpdateDiskStatus(t *testing.T) {
 			deployment: &models.Deployment{
 				Disks: make(map[string]*models.Disk),
 			},
-			resource: &armresources.GenericResource{
-				Name:       utils.ToPtr("disk2"),
-				ID:         utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk2"),
+			resource: &armcompute.Disk{
+				Name: utils.ToPtr("disk2"),
+				ID: utils.ToPtr(
+					"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk2",
+				),
 				Type:       utils.ToPtr("Microsoft.Compute/disks"),
-				Properties: map[string]interface{}{},
+				Properties: &armcompute.DiskProperties{},
 			},
 			expectedResult: map[string]*models.Disk{},
 		},
@@ -86,7 +90,7 @@ func TestUpdateVNetStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		deployment     *models.Deployment
-		resource       *armresources.GenericResource
+		resource       *armnetwork.VirtualNetwork
 		expectedResult map[string][]*armnetwork.Subnet
 	}{
 		{
@@ -94,20 +98,28 @@ func TestUpdateVNetStatus(t *testing.T) {
 			deployment: &models.Deployment{
 				Subnets: make(map[string][]*armnetwork.Subnet),
 			},
-			resource: &armresources.GenericResource{
+			resource: &armnetwork.VirtualNetwork{
 				Name: utils.ToPtr("vnet1"),
 				Type: utils.ToPtr("Microsoft.Network/virtualNetworks"),
-				Properties: map[string]interface{}{
-					"subnets": []interface{}{
-						map[string]interface{}{
-							"name":          "subnet1",
-							"id":            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1",
-							"addressPrefix": "10.0.1.0/24",
+				Properties: &armnetwork.VirtualNetworkPropertiesFormat{
+					Subnets: []*armnetwork.Subnet{
+						{
+							Name: utils.ToPtr("subnet1"),
+							ID: utils.ToPtr(
+								"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1",
+							),
+							Properties: &armnetwork.SubnetPropertiesFormat{
+								AddressPrefix: utils.ToPtr("10.0.1.0/24"),
+							},
 						},
-						map[string]interface{}{
-							"name":          "subnet2",
-							"id":            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet2",
-							"addressPrefix": "10.0.2.0/24",
+						{
+							Name: utils.ToPtr("subnet2"),
+							ID: utils.ToPtr(
+								"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet2",
+							),
+							Properties: &armnetwork.SubnetPropertiesFormat{
+								AddressPrefix: utils.ToPtr("10.0.2.0/24"),
+							},
 						},
 					},
 				},
@@ -116,14 +128,18 @@ func TestUpdateVNetStatus(t *testing.T) {
 				"vnet1": {
 					{
 						Name: utils.ToPtr("subnet1"),
-						ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1"),
+						ID: utils.ToPtr(
+							"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1",
+						),
 						Properties: &armnetwork.SubnetPropertiesFormat{
 							AddressPrefix: utils.ToPtr("10.0.1.0/24"),
 						},
 					},
 					{
 						Name: utils.ToPtr("subnet2"),
-						ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet2"),
+						ID: utils.ToPtr(
+							"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet2",
+						),
 						Properties: &armnetwork.SubnetPropertiesFormat{
 							AddressPrefix: utils.ToPtr("10.0.2.0/24"),
 						},
@@ -136,11 +152,11 @@ func TestUpdateVNetStatus(t *testing.T) {
 			deployment: &models.Deployment{
 				Subnets: make(map[string][]*armnetwork.Subnet),
 			},
-			resource: &armresources.GenericResource{
+			resource: &armnetwork.VirtualNetwork{
 				Name: utils.ToPtr("vnet2"),
 				Type: utils.ToPtr("Microsoft.Network/virtualNetworks"),
-				Properties: map[string]interface{}{
-					"subnets": []interface{}{},
+				Properties: &armnetwork.VirtualNetworkPropertiesFormat{
+					Subnets: []*armnetwork.Subnet{},
 				},
 			},
 			expectedResult: map[string][]*armnetwork.Subnet{},
@@ -160,7 +176,7 @@ func TestUpdateNICStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		deployment     *models.Deployment
-		resource       *armresources.GenericResource
+		resource       *armnetwork.Interface
 		expectedResult []models.Machine
 	}{
 		{
@@ -171,13 +187,15 @@ func TestUpdateNICStatus(t *testing.T) {
 					{ID: "vm2", PrivateIP: ""},
 				},
 			},
-			resource: &armresources.GenericResource{
+			resource: &armnetwork.Interface{
 				Name: utils.ToPtr("nic-vm1"),
 				Type: utils.ToPtr("Microsoft.Network/networkInterfaces"),
-				Properties: map[string]interface{}{
-					"ipConfigurations": []interface{}{
-						map[string]interface{}{
-							"privateIPAddress": "10.0.0.4",
+				Properties: &armnetwork.InterfacePropertiesFormat{
+					IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
+						{
+							Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
+								PrivateIPAddress: utils.ToPtr("10.0.0.4"),
+							},
 						},
 					},
 				},
@@ -195,13 +213,15 @@ func TestUpdateNICStatus(t *testing.T) {
 					{ID: "vm2", PrivateIP: ""},
 				},
 			},
-			resource: &armresources.GenericResource{
+			resource: &armnetwork.Interface{
 				Name: utils.ToPtr("nic-vm3"),
 				Type: utils.ToPtr("Microsoft.Network/networkInterfaces"),
-				Properties: map[string]interface{}{
-					"ipConfigurations": []interface{}{
-						map[string]interface{}{
-							"privateIPAddress": "10.0.0.5",
+				Properties: &armnetwork.InterfacePropertiesFormat{
+					IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
+						{
+							Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
+								PrivateIPAddress: utils.ToPtr("10.0.0.5"),
+							},
 						},
 					},
 				},
@@ -227,7 +247,7 @@ func TestUpdateNSGStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		deployment     *models.Deployment
-		resource       *armresources.GenericResource
+		resource       *armnetwork.SecurityGroup
 		expectedResult map[string]*armnetwork.SecurityGroup
 	}{
 		{
@@ -239,22 +259,32 @@ func TestUpdateNSGStatus(t *testing.T) {
 				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
 				AllowedPorts:          []int{22, 80, 443, 8080},
 			},
-			resource: &armresources.GenericResource{
+			resource: &armnetwork.SecurityGroup{
 				Name: utils.ToPtr("nsg-vm1"),
-				ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1"),
+				ID: utils.ToPtr(
+					"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1",
+				),
 				Type: utils.ToPtr("Microsoft.Network/networkSecurityGroups"),
-				Properties: map[string]interface{}{
-					"securityRules": []interface{}{
-						map[string]interface{}{
-							"name":                     "ExistingRule",
-							"protocol":                 "Tcp",
-							"sourcePortRange":          "*",
-							"destinationPortRange":     "8080",
-							"sourceAddressPrefix":      "*",
-							"destinationAddressPrefix": "*",
-							"access":                   "Allow",
-							"priority":                 float64(100),
-							"direction":                "Inbound",
+				Properties: &armnetwork.SecurityGroupPropertiesFormat{
+					SecurityRules: []*armnetwork.SecurityRule{
+						{
+							Name: utils.ToPtr("ExistingRule"),
+							Properties: &armnetwork.SecurityRulePropertiesFormat{
+								Protocol: (*armnetwork.SecurityRuleProtocol)(
+									utils.ToPtr("Tcp"),
+								),
+								SourcePortRange:          utils.ToPtr("*"),
+								DestinationPortRange:     utils.ToPtr("8080"),
+								SourceAddressPrefix:      utils.ToPtr("*"),
+								DestinationAddressPrefix: utils.ToPtr("*"),
+								Access: (*armnetwork.SecurityRuleAccess)(
+									utils.ToPtr("Allow"),
+								),
+								Priority: utils.ToPtr(int32(100)),
+								Direction: (*armnetwork.SecurityRuleDirection)(
+									utils.ToPtr("Inbound"),
+								),
+							},
 						},
 					},
 				},
@@ -262,72 +292,104 @@ func TestUpdateNSGStatus(t *testing.T) {
 			expectedResult: map[string]*armnetwork.SecurityGroup{
 				"nsg-vm1": {
 					Name: utils.ToPtr("nsg-vm1"),
-					ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1"),
+					ID: utils.ToPtr(
+						"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm1",
+					),
 					Properties: &armnetwork.SecurityGroupPropertiesFormat{
 						SecurityRules: []*armnetwork.SecurityRule{
 							{
 								Name: utils.ToPtr("ExistingRule"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("8080"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(100)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(100)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 							{
 								Name: utils.ToPtr("AllowPort22"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("22"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1000)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1000)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 							{
 								Name: utils.ToPtr("AllowPort80"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("80"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1001)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1001)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 							{
 								Name: utils.ToPtr("AllowPort443"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("443"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1002)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1002)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 							{
 								Name: utils.ToPtr("AllowPort8080"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("8080"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1003)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1003)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 						},
@@ -341,57 +403,79 @@ func TestUpdateNSGStatus(t *testing.T) {
 				NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
 				AllowedPorts:          []int{22, 80, 443},
 			},
-			resource: &armresources.GenericResource{
+			resource: &armnetwork.SecurityGroup{
 				Name: utils.ToPtr("nsg-vm2"),
-				ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2"),
+				ID: utils.ToPtr(
+					"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2",
+				),
 				Type: utils.ToPtr("Microsoft.Network/networkSecurityGroups"),
-				Properties: map[string]interface{}{
-					"securityRules": []interface{}{},
+				Properties: &armnetwork.SecurityGroupPropertiesFormat{
+					SecurityRules: []*armnetwork.SecurityRule{},
 				},
 			},
 			expectedResult: map[string]*armnetwork.SecurityGroup{
 				"nsg-vm2": {
 					Name: utils.ToPtr("nsg-vm2"),
-					ID:   utils.ToPtr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2"),
+					ID: utils.ToPtr(
+						"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2",
+					),
 					Properties: &armnetwork.SecurityGroupPropertiesFormat{
 						SecurityRules: []*armnetwork.SecurityRule{
 							{
 								Name: utils.ToPtr("AllowPort22"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("22"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1000)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1000)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 							{
 								Name: utils.ToPtr("AllowPort80"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("80"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1001)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1001)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 							{
 								Name: utils.ToPtr("AllowPort443"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("Tcp")),
+									Protocol: (*armnetwork.SecurityRuleProtocol)(
+										utils.ToPtr("Tcp"),
+									),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("443"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-									Priority:                 utils.ToPtr(int32(1002)),
-									Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+									Access: (*armnetwork.SecurityRuleAccess)(
+										utils.ToPtr("Allow"),
+									),
+									Priority: utils.ToPtr(int32(1002)),
+									Direction: (*armnetwork.SecurityRuleDirection)(
+										utils.ToPtr("Inbound"),
+									),
 								},
 							},
 						},
