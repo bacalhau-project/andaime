@@ -338,65 +338,7 @@ func TestUpdateNSGStatus(t *testing.T) {
 						"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkSecurityGroups/nsg-vm2",
 					),
 					Properties: &armnetwork.SecurityGroupPropertiesFormat{
-						SecurityRules: []*armnetwork.SecurityRule{
-							{
-								Name: utils.ToPtr("AllowPort22"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("22"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1000)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-							{
-								Name: utils.ToPtr("AllowPort80"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("80"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1001)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-							{
-								Name: utils.ToPtr("AllowPort443"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("443"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1002)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-						},
+						SecurityRules: []*armnetwork.SecurityRule{},
 					},
 				},
 			},
