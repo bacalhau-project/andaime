@@ -3,10 +3,40 @@ package azure
 import (
 	"context"
 	"encoding/json"
-	"time"
+	"fmt"
+	"reflect"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 )
+
+// ResourceTypeMap maps resource types to their Go struct types and slice fields in AzureResources.
+var ResourceTypeMap = map[string]struct {
+	resourceType reflect.Type
+	sliceField   string
+}{
+	"Microsoft.Compute/virtualMachines": {
+		reflect.TypeOf((*armcompute.VirtualMachine)(nil)).Elem(),
+		"VirtualMachines",
+	},
+	"Microsoft.Network/networkInterfaces": {
+		reflect.TypeOf((*armnetwork.Interface)(nil)).Elem(),
+		"NetworkInterfaces",
+	},
+	"Microsoft.Network/networkSecurityGroups": {
+		reflect.TypeOf((*armnetwork.SecurityGroup)(nil)).Elem(),
+		"NetworkSecurityGroups",
+	},
+	"Microsoft.Network/virtualNetworks": {
+		reflect.TypeOf((*armnetwork.VirtualNetwork)(nil)).Elem(),
+		"VirtualNetworks",
+	},
+	"Microsoft.Network/publicIPAddresses": {
+		reflect.TypeOf((*armnetwork.PublicIPAddress)(nil)).Elem(),
+		"PublicIPAddresses",
+	},
+}
 
 type ResourceGraphClientAPI interface {
 	Resources(
@@ -23,71 +53,112 @@ type AzureProviderInterface interface {
 // QueryResponse represents the response from an Azure Resource Graph query
 type QueryResponse struct {
 	Count           *int64                                 `json:"count"`
-	Data            []AzureResource                        `json:"data"`
+	Data            []AzureResources                       `json:"data"`
 	Facets          []armresourcegraph.FacetClassification `json:"facets"`
 	ResultTruncated *armresourcegraph.ResultTruncated      `json:"resultTruncated"`
 	TotalRecords    *int64                                 `json:"totalRecords"`
 }
 
-// AzureResource represents a generic Azure resource
-type AzureResource struct {
-	ID                string
-	Name              string
-	Type              string
-	Location          string
-	Tags              map[string]string
-	ProvisioningState string
-	Properties        map[string]interface{}
-	CreatedTime       time.Time
-	ChangedTime       time.Time
+type AzureResources struct {
+	VirtualMachines       []armcompute.VirtualMachine
+	NetworkInterfaces     []armnetwork.Interface
+	NetworkSecurityGroups []armnetwork.SecurityGroup
+	VirtualNetworks       []armnetwork.VirtualNetwork
+	PublicIPAddresses     []armnetwork.PublicIPAddress
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for AzureResource
-func (r *AzureResource) UnmarshalJSON(data []byte) error {
-	// Define a temporary struct to handle the basic structure
-	type TempResource struct {
-		ID         string            `json:"id"`
-		Name       string            `json:"name"`
-		Type       string            `json:"type"`
-		Location   string            `json:"location"`
-		Tags       map[string]string `json:"tags"`
-		Properties json.RawMessage   `json:"properties"`
+func GetTypedResource[T any](resource map[string]interface{}) (T, error) {
+	var t T
+
+	// Marshal the resource to JSON
+	jsonData, err := json.Marshal(resource)
+	if err != nil {
+		return t, fmt.Errorf("failed to marshal resource to JSON: %w", err)
 	}
 
-	var temp TempResource
-	if err := json.Unmarshal(data, &temp); err != nil {
-		return err
+	// Unmarshal JSON to the correct type
+	err = json.Unmarshal(jsonData, &t)
+	if err != nil {
+		return t, fmt.Errorf("failed to unmarshal JSON to type %T: %w", t, err)
 	}
 
-	// Copy the basic fields
-	r.ID = temp.ID
-	r.Name = temp.Name
-	r.Type = temp.Type
-	r.Location = temp.Location
-	r.Tags = temp.Tags
-
-	// Unmarshal the properties into a map
-	var props map[string]interface{}
-	if err := json.Unmarshal(temp.Properties, &props); err != nil {
-		return err
+	return t, nil
+}
+func SetTypedResource(resources *AzureResources, resource interface{}) error {
+	resourceType := reflect.TypeOf(resource)
+	resourceInfo, ok := ResourceTypeMap[resourceType.String()]
+	if !ok {
+		return fmt.Errorf("unsupported resource type: %v", resourceType)
 	}
 
-	// Extract common fields from properties
-	if state, ok := props["provisioningState"].(string); ok {
-		r.ProvisioningState = state
-		delete(props, "provisioningState")
-	}
-	if created, ok := props["createdTime"].(string); ok {
-		r.CreatedTime, _ = time.Parse(time.RFC3339, created)
-		delete(props, "createdTime")
-	}
-	if changed, ok := props["changedTime"].(string); ok {
-		r.ChangedTime, _ = time.Parse(time.RFC3339, changed)
-		delete(props, "changedTime")
-	}
+	// Get the slice field in AzureResources
+	sliceField := reflect.ValueOf(resources).Elem().FieldByName(resourceInfo.sliceField)
 
-	// Store the remaining properties
-	r.Properties = props
-
+	// Append the resource to the slice
+	sliceField.Set(reflect.Append(sliceField, reflect.ValueOf(resource)))
 	return nil
+}
+
+func SetTypedResourceFromInterface(
+	resources *AzureResources,
+	resource map[string]interface{},
+) error {
+	typeString, ok := resource["type"].(string)
+	if !ok {
+		return fmt.Errorf("resource 'type' not found or invalid")
+	}
+	resourceInfo, ok := ResourceTypeMap[typeString]
+	if !ok {
+		return fmt.Errorf("unsupported resource type: %s", typeString)
+	}
+
+	typedResource := reflect.New(resourceInfo.resourceType).Interface()
+	if err := json.Unmarshal([]byte(resource["properties"].(string)), typedResource); err != nil {
+		return err
+	}
+	return SetTypedResource(resources, typedResource)
+}
+
+func (ar *AzureResources) GetTotalResourcesCount() int {
+	total := 0
+	v := reflect.ValueOf(*ar)
+	for i := 0; i < v.NumField(); i++ {
+		if field := v.Field(i); field.Kind() == reflect.Slice {
+			total += field.Len()
+		}
+	}
+	return total
+}
+
+func (ar *AzureResources) GetAllResources() <-chan struct {
+	Type     string
+	Resource interface{}
+} {
+	resourceChannel := make(chan struct {
+		Type     string
+		Resource interface{}
+	})
+
+	go func() {
+		defer close(resourceChannel)
+
+		v := reflect.ValueOf(*ar)
+		t := reflect.TypeOf(*ar)
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			if field.Kind() == reflect.Slice {
+				for j := 0; j < field.Len(); j++ {
+					resourceChannel <- struct {
+						Type     string
+						Resource interface{}
+					}{
+						Type:     t.Field(i).Type.Elem().Name(), // Get the name of the resource type
+						Resource: field.Index(j).Interface(),
+					}
+				}
+			}
+		}
+	}()
+
+	return resourceChannel
 }

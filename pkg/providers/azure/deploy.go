@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -19,7 +20,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/olekukonko/tablewriter"
-	"github.com/sanity-io/litter"
 )
 
 const WaitForIPAddressesTimeout = 20 * time.Second
@@ -113,7 +113,7 @@ func (p *AzureProvider) DeployARMTemplate(
 
 			// Prepare deployment parameters
 			params := map[string]interface{}{
-				"vmName":             goRoutineMachine.ID,
+				"vmName":             fmt.Sprintf("%s-vm", goRoutineMachine.ID),
 				"adminUsername":      "azureuser",
 				"authenticationType": "sshPublicKey", // Always set to sshPublicKey
 				"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
@@ -139,6 +139,15 @@ func (p *AzureProvider) DeployARMTemplate(
 				}
 			}
 
+			disp.UpdateStatus(
+				&models.Status{
+					ID:       fmt.Sprintf("vm-%s", goRoutineMachine.ID),
+					Location: goRoutineMachine.Location,
+					Type:     "VM",
+					Status:   "Provisioning template...",
+				},
+			)
+
 			vmTemplate, err := internal.GetARMTemplate()
 			if err != nil {
 				l.Errorf("Failed to get template: %v", err)
@@ -159,6 +168,16 @@ func (p *AzureProvider) DeployARMTemplate(
 				return
 			}
 
+			disp.UpdateStatus(
+				&models.Status{
+					ID:     fmt.Sprintf("vm-%s", goRoutineMachine.ID),
+					Type:   "VM",
+					Status: "Starting template deployment...",
+				},
+			)
+
+			// Start the deployment with retry logic
+
 			// Start the deployment with retry logic
 			var poller *runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse]
 			maxRetries := 3
@@ -176,7 +195,11 @@ func (p *AzureProvider) DeployARMTemplate(
 					break
 				}
 				if strings.Contains(deployErr.Error(), "DnsRecordCreateConflict") {
-					l.Warnf("DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)", retry+1, maxRetries)
+					l.Warnf(
+						"DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)",
+						retry+1,
+						maxRetries,
+					)
 					paramsMap["dnsLabelPrefix"] = map[string]interface{}{
 						"Value": fmt.Sprintf(
 							"vm-%s-%s",
@@ -190,7 +213,11 @@ func (p *AzureProvider) DeployARMTemplate(
 				}
 			}
 			if deployErr != nil {
-				l.Errorf("Failed to start template deployment after %d retries: %v", maxRetries, deployErr)
+				l.Errorf(
+					"Failed to start template deployment after %d retries: %v",
+					maxRetries,
+					deployErr,
+				)
 				return
 			}
 
@@ -205,8 +232,7 @@ func (p *AzureProvider) DeployARMTemplate(
 					resp, err := poller.Poll(ctx)
 					if err != nil {
 						if isQuotaExceededError(err) {
-							l.Errorf(`Azure quota exceeded: %v. Please contact Azure support
- to increase your quota for PublicIpAddress resources`, err)
+							l.Errorf(`Azure quota exceeded: %v.`, err)
 							return
 						}
 						l.Errorf("Error polling deployment status: %v", err)
@@ -218,8 +244,13 @@ func (p *AzureProvider) DeployARMTemplate(
 						l.Info("Deployment completed successfully")
 						return
 					}
+					bodyBytes, err := io.ReadAll(resp.Body)
+					if err != nil {
+						l.Errorf("Failed to read response body: %v", err)
+						return
+					}
 
-					l.Debugf("Deployment status: %s", resp.Properties.ProvisioningState)
+					l.Debugf("Deployment status: %s", string(bodyBytes))
 					time.Sleep(pollInterval)
 				}
 			}
@@ -257,6 +288,40 @@ func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *mode
 			l.Debug("Finished updating deployment status")
 		}
 	}
+}
+
+func (p *AzureProvider) PollAndUpdateResources(
+	ctx context.Context,
+	deployment *models.Deployment,
+	stateMachine *DeploymentStateMachine,
+) error {
+	resources, err := p.ListAllResourcesInSubscription(
+		ctx,
+		deployment.SubscriptionID,
+		deployment.Tags,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to list resources: %w", err)
+	}
+
+	for resource := range resources.GetAllResources() {
+		switch r := resource.Resource.(type) {
+		case armcompute.VirtualMachine:
+			stateMachine.UpdateStatus("VM", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+		case armcompute.VirtualMachineExtension:
+			stateMachine.UpdateStatus("VMExtension", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+		case armnetwork.PublicIPAddress:
+			stateMachine.UpdateStatus("PublicIP", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+		case armnetwork.Interface:
+			stateMachine.UpdateStatus("NIC", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+		case armnetwork.SecurityGroup:
+			stateMachine.UpdateStatus("NSG", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+		case armnetwork.VirtualNetwork:
+			stateMachine.UpdateStatus("VNet", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+		}
+	}
+
+	return nil
 }
 
 func (p *AzureProvider) updateDeploymentStatus(
@@ -327,7 +392,7 @@ func (p *AzureProvider) updateVMStatus(
 
 			// Update the status
 			if resource.Properties != nil {
-				deployment.Machines[i].Status = string(*resource.Properties.ProvisioningState)
+				deployment.Machines[i].Status = *resource.Properties.ProvisioningState
 			}
 			break
 		}
@@ -463,7 +528,10 @@ func (p *AzureProvider) updateNSGStatus(
 		}
 	}
 
-	l.Debugf("Updated NetworkSecurityGroups map. Current size: %d", len(deployment.NetworkSecurityGroups))
+	l.Debugf(
+		"Updated NetworkSecurityGroups map. Current size: %d",
+		len(deployment.NetworkSecurityGroups),
+	)
 }
 
 func (p *AzureProvider) updateVNetStatus(

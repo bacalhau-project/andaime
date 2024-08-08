@@ -3,7 +3,6 @@ package azure
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -37,24 +36,24 @@ type AzureClient interface {
 	) (*armresources.ResourceGroup, error)
 	DestroyResourceGroup(ctx context.Context, resourceGroupName string) error
 
-	// ResourceGraphClientAPI
-	SearchResources(
-		ctx context.Context,
-		subscriptionID string,
-		searchScope string,
-		tags map[string]*string,
-	) ([]armresources.GenericResource, error)
-
 	// Subscriptions API
 	NewSubscriptionListPager(
 		ctx context.Context,
 		options *armsubscription.SubscriptionsClientListOptions,
 	) *runtime.Pager[armsubscription.SubscriptionsClientListResponse]
 
-	ListResourcesInGroup(
+	ListAllResourcesInSubscription(
 		ctx context.Context,
+		subscriptionID string,
+		tags map[string]*string,
+	) (AzureResources, error)
+
+	ListTypedResources(
+		ctx context.Context,
+		subscriptionID string,
 		resourceGroupName string,
-	) ([]AzureResource, error)
+		tags map[string]*string,
+	) (AzureResources, error)
 
 	// New methods for ARM template deployment
 	DeployTemplate(
@@ -120,7 +119,7 @@ func getVnetName(location string) string {
 }
 
 func getNetworkSecurityGroupName(location string) string {
-	return location + "-" + "-nsg"
+	return location + "-nsg"
 }
 
 func getSubnetName(location string) string {
@@ -132,10 +131,10 @@ func getNetworkInterfaceName(machineID string) string {
 }
 
 func getPublicIPName(machineID string) string {
-	return fmt.Sprintf("%s-ip", machineID)
+	return machineID + "-ip"
 }
 func getVMName(machineID string) string {
-	return "vm-" + machineID
+	return machineID + "-vm"
 }
 
 func (c *LiveAzureClient) DeployTemplate(
@@ -187,62 +186,36 @@ func IsValidLocation(location string) bool {
 	return false
 }
 
-func (c *LiveAzureClient) SearchResources(
-	ctx context.Context,
-	searchScope string,
+func (p *AzureProvider) ListTypedResources(ctx context.Context,
 	subscriptionID string,
-	tags map[string]*string) ([]armresources.GenericResource, error) {
-	query := `Resources 
-    | project id, name, type, location, resourceGroup, subscriptionId, tenantId, tags, 
-        properties, sku, identity, zones, plan, kind, managedBy, 
-        provisioningState = tostring(properties.provisioningState)`
+	resourceGroupName string,
+	tags map[string]*string) (AzureResources, error) {
+	if p.Client == nil {
+		return AzureResources{}, fmt.Errorf("AzureProvider.Client is nil")
+	}
 
-	// If searchScope is not the subscriptionID, it's a resource group name
-	if searchScope != subscriptionID {
-		query += fmt.Sprintf(" | where resourceGroup == '%s'", searchScope)
-	} else {
-		for key, value := range tags {
-			if value != nil {
-				query += fmt.Sprintf(" | where tags['%s'] == '%s'", key, *value)
+	searchScope := fmt.Sprintf("resourceGroup eq '%s'", resourceGroupName)
+	if len(tags) > 0 {
+		tagFilters := make([]string, 0, len(tags))
+		for k, v := range tags {
+			if v == nil {
+				return AzureResources{}, fmt.Errorf("nil value for tag key '%s'", k)
 			}
+			tagFilters = append(tagFilters, fmt.Sprintf("tags['%s'] eq '%s'", k, *v))
 		}
-	}
-	request := armresourcegraph.QueryRequest{
-		Query:         to.Ptr(query),
-		Subscriptions: []*string{to.Ptr(subscriptionID)},
+		searchScope += " and " + strings.Join(tagFilters, " and ")
 	}
 
-	res, err := c.resourceGraphClient.Resources(ctx, request, nil)
+	resourcesResponse, err := p.Client.ListTypedResources(ctx,
+		subscriptionID,
+		searchScope,
+		tags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query resources: %v", err)
+		logger.Get().Errorf("Failed to query Azure resources: %v", err)
+		return AzureResources{}, fmt.Errorf("failed to query resources: %w", err)
 	}
 
-	if res.Data == nil || len(res.Data.([]interface{})) == 0 {
-		return nil, nil
-	}
-
-	resources := res.Data.([]interface{})
-	typedResources := make([]armresources.GenericResource, 0, len(resources))
-
-	for _, resource := range resources {
-		resourceMap := resource.(map[string]interface{})
-
-		// Convert the map to JSON
-		jsonData, err := json.Marshal(resourceMap)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal resource: %v", err)
-		}
-
-		// Unmarshal JSON into GenericResource
-		var typedResource armresources.GenericResource
-		if err := json.Unmarshal(jsonData, &typedResource); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal resource: %v", err)
-		}
-
-		typedResources = append(typedResources, typedResource)
-	}
-
-	return typedResources, nil
+	return resourcesResponse, nil
 }
 
 func (c *LiveAzureClient) NewSubscriptionListPager(
@@ -264,29 +237,56 @@ func (c *LiveAzureClient) DestroyResourceGroup(
 	return nil
 }
 
-func (c *LiveAzureClient) ListResourcesInGroup(
+func (c *LiveAzureClient) ListAllResourcesInSubscription(
 	ctx context.Context,
+	subscriptionID string,
+	tags map[string]*string) (AzureResources, error) {
+	return c.ListTypedResources(ctx, subscriptionID, "", tags)
+}
+
+func (c *LiveAzureClient) ListTypedResources(
+	ctx context.Context,
+	subscriptionID string,
 	resourceGroupName string,
-) ([]AzureResource, error) {
-	clientResourcesResponse, err := c.resourceGraphClient.Resources(
-		ctx,
-		armresourcegraph.QueryRequest{
-			Query: to.Ptr("Resources | where resourceGroup = '" + resourceGroupName + "'"),
-		},
-		nil,
-	)
-	if err != nil {
-		return nil, err
+	tags map[string]*string) (AzureResources, error) {
+
+	// --- START OF MERGED SearchResources functionality ---
+
+	query := `Resources 
+    | project id, name, type, location, resourceGroup, subscriptionId, tenantId, tags, 
+        properties, sku, identity, zones, plan, kind, managedBy, 
+        provisioningState = tostring(properties.provisioningState)`
+
+	// If searchScope is not the subscriptionID, it's a resource group name
+	if resourceGroupName != "" {
+		query += fmt.Sprintf(" | where resourceGroup == '%s'", resourceGroupName)
 	}
 
-	var resources []AzureResource
-	for _, item := range clientResourcesResponse.Data.([]interface{}) {
-		var resource AzureResource
-		data, _ := json.Marshal(item)
-		if err := json.Unmarshal(data, &resource); err != nil {
-			return nil, err
+	for key, value := range tags {
+		if value != nil {
+			query += fmt.Sprintf(" | where tags['%s'] == '%s'", key, *value)
 		}
-		resources = append(resources, resource)
+	}
+	request := armresourcegraph.QueryRequest{
+		Query:         to.Ptr(query),
+		Subscriptions: []*string{to.Ptr(subscriptionID)},
+	}
+
+	res, err := c.resourceGraphClient.Resources(ctx, request, nil)
+	if err != nil {
+		return AzureResources{}, fmt.Errorf("failed to query resources: %v", err)
+	}
+
+	if res.Data == nil || len(res.Data.([]interface{})) == 0 {
+		return AzureResources{}, nil
+	}
+
+	// --- END OF MERGED SearchResources functionality ---
+
+	// Process results into typed resources
+	var resources AzureResources
+	for _, item := range res.Data.([]interface{}) {
+		SetTypedResourceFromInterface(&resources, item.(map[string]interface{}))
 	}
 
 	return resources, nil

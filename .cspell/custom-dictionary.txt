@@ -81,6 +81,7 @@ keyvault
 loadbalancer
 locabs
 logutils
+mapstructure
 maxint
 mgmt
 mockprivatekey

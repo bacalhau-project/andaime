@@ -2,14 +2,15 @@ package azure
 
 import (
 	"errors"
+	"fmt"
 	"net"
-	"os"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/pkg/table"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -55,7 +56,7 @@ var AzureListResourcesCmd = &cobra.Command{
 			searchScope = resourceGroup
 		}
 
-		resources, err := azureProvider.SearchResources(cmd.Context(),
+		resources, err := azureProvider.ListTypedResources(cmd.Context(),
 			getSubscriptionID(),
 			searchScope,
 			tags)
@@ -72,17 +73,24 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
 
-		if len(resources) == 0 {
+		if resources.GetTotalResourcesCount() == 0 {
 			log.Warn("No resources created by Andaime were found")
 		} else {
-			log.Infof("Found %d resources created by Andaime", len(resources))
-
-			resourceTable := table.NewResourceTable(os.Stdout)
-			for _, resource := range resources {
-				log.Debugf("Processing resource: %s", *resource.Name)
-				resourceTable.AddResource(resource, "Azure")
+			for res := range resources.GetAllResources() {
+				fmt.Println("Resource Type:", res.Type) // prints eg: VirtualMachine
+				switch r := res.Resource.(type) {
+				case armcompute.VirtualMachine:
+					fmt.Println("Found virtual machine:", *r.Name)
+				case armnetwork.Interface:
+					fmt.Println("Found network interface:", *r.Name)
+				case armnetwork.VirtualNetwork:
+					fmt.Println("Found virtual network:", *r.Name)
+				case armnetwork.PublicIPAddress:
+					fmt.Println("Found public IP address:", *r.Name)
+				case armnetwork.SecurityGroup:
+					fmt.Println("Found network security group:", *r.Name)
+				}
 			}
-			resourceTable.Render()
 		}
 	},
 }

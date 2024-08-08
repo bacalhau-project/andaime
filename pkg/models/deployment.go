@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/spf13/viper"
 )
@@ -68,8 +69,8 @@ type Deployment struct {
 type Disk struct {
 	Name   string
 	ID     string
-	SizeGB int
-	State  string
+	SizeGB int32
+	State  armcompute.DiskState
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {

@@ -18,7 +18,6 @@ require (
 	github.com/pulumi/pulumi-azure-native-sdk/compute v1.104.0
 	github.com/pulumi/pulumi/sdk/v3 v3.127.0
 	github.com/rivo/tview v0.0.0-20240625185742-b0a7293b8130
-	github.com/sanity-io/litter v1.5.5
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
