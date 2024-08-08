@@ -7,6 +7,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -404,10 +405,20 @@ func TestUpdateNSGStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider := &AzureProvider{}
+			provider := &AzureProvider{
+				Client: &MockAzureClient{},
+				Config: &viper.Viper{},
+			}
 			provider.updateNSGStatus(tt.deployment, tt.resource)
 
 			assert.Equal(t, tt.expectedResult, tt.deployment.NetworkSecurityGroups)
 		})
 	}
 }
+type MockAzureClient struct{}
+
+func (m *MockAzureClient) CreateOrUpdateNSG(resourceGroupName string, nsgName string, parameters armnetwork.SecurityGroup) error {
+	return nil
+}
+
+// Implement other methods of the AzureClient interface with mock implementations
