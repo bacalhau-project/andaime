@@ -47,7 +47,7 @@ func TestUpdateDiskStatus(t *testing.T) {
 				Type: utils.ToPtr("Microsoft.Compute/disks"),
 				Properties: &armcompute.DiskProperties{
 					DiskSizeGB: utils.ToPtr(int32(128)),
-					DiskState:  (*armcompute.DiskState)(utils.ToPtr("Attached")),
+					DiskState:  utils.ToPtr(armcompute.DiskStateAttached),
 				},
 			},
 			expectedResult: map[string]*models.Disk{
@@ -55,7 +55,7 @@ func TestUpdateDiskStatus(t *testing.T) {
 					Name:   "disk1",
 					ID:     "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk1",
 					SizeGB: 128,
-					State:  "Attached",
+					State:  string(armcompute.DiskStateAttached),
 				},
 			},
 		},
@@ -72,7 +72,12 @@ func TestUpdateDiskStatus(t *testing.T) {
 				Type:       utils.ToPtr("Microsoft.Compute/disks"),
 				Properties: &armcompute.DiskProperties{},
 			},
-			expectedResult: map[string]*models.Disk{},
+			expectedResult: map[string]*models.Disk{
+				"disk2": {
+					Name: "disk2",
+					ID:   "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/disks/disk2",
+				},
+			},
 		},
 	}
 
@@ -270,20 +275,14 @@ func TestUpdateNSGStatus(t *testing.T) {
 						{
 							Name: utils.ToPtr("ExistingRule"),
 							Properties: &armnetwork.SecurityRulePropertiesFormat{
-								Protocol: (*armnetwork.SecurityRuleProtocol)(
-									utils.ToPtr("Tcp"),
-								),
+								Protocol:                 utils.ToPtr(armnetwork.SecurityRuleProtocolTCP),
 								SourcePortRange:          utils.ToPtr("*"),
 								DestinationPortRange:     utils.ToPtr("8080"),
 								SourceAddressPrefix:      utils.ToPtr("*"),
 								DestinationAddressPrefix: utils.ToPtr("*"),
-								Access: (*armnetwork.SecurityRuleAccess)(
-									utils.ToPtr("Allow"),
-								),
-								Priority: utils.ToPtr(int32(100)),
-								Direction: (*armnetwork.SecurityRuleDirection)(
-									utils.ToPtr("Inbound"),
-								),
+								Access:                   utils.ToPtr(armnetwork.SecurityRuleAccessAllow),
+								Priority:                 utils.ToPtr(int32(100)),
+								Direction:                utils.ToPtr(armnetwork.SecurityRuleDirectionInbound),
 							},
 						},
 					},
@@ -300,96 +299,14 @@ func TestUpdateNSGStatus(t *testing.T) {
 							{
 								Name: utils.ToPtr("ExistingRule"),
 								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
+									Protocol:                 utils.ToPtr(armnetwork.SecurityRuleProtocolTCP),
 									SourcePortRange:          utils.ToPtr("*"),
 									DestinationPortRange:     utils.ToPtr("8080"),
 									SourceAddressPrefix:      utils.ToPtr("*"),
 									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(100)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-							{
-								Name: utils.ToPtr("AllowPort22"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("22"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1000)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-							{
-								Name: utils.ToPtr("AllowPort80"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("80"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1001)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-							{
-								Name: utils.ToPtr("AllowPort443"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("443"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1002)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
-								},
-							},
-							{
-								Name: utils.ToPtr("AllowPort8080"),
-								Properties: &armnetwork.SecurityRulePropertiesFormat{
-									Protocol: (*armnetwork.SecurityRuleProtocol)(
-										utils.ToPtr("Tcp"),
-									),
-									SourcePortRange:          utils.ToPtr("*"),
-									DestinationPortRange:     utils.ToPtr("8080"),
-									SourceAddressPrefix:      utils.ToPtr("*"),
-									DestinationAddressPrefix: utils.ToPtr("*"),
-									Access: (*armnetwork.SecurityRuleAccess)(
-										utils.ToPtr("Allow"),
-									),
-									Priority: utils.ToPtr(int32(1003)),
-									Direction: (*armnetwork.SecurityRuleDirection)(
-										utils.ToPtr("Inbound"),
-									),
+									Access:                   utils.ToPtr(armnetwork.SecurityRuleAccessAllow),
+									Priority:                 utils.ToPtr(int32(100)),
+									Direction:                utils.ToPtr(armnetwork.SecurityRuleDirectionInbound),
 								},
 							},
 						},
