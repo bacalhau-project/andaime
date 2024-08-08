@@ -12,6 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -160,10 +161,10 @@ func (p *AzureProvider) DeployARMTemplate(
 
 			// Start the deployment with retry logic
 			var future *armresources.DeploymentsClientBeginCreateOrUpdateResponse
-			var err error
 			maxRetries := 3
+			var deployErr error
 			for retry := 0; retry < maxRetries; retry++ {
-				future, err = p.Client.DeployTemplate(
+				future, deployErr = p.Client.DeployTemplate(
 					ctx,
 					deployment.ResourceGroupName,
 					fmt.Sprintf("deployment-vm-%s", goRoutineMachine.ID),
@@ -171,10 +172,10 @@ func (p *AzureProvider) DeployARMTemplate(
 					paramsMap,
 					tags,
 				)
-				if err == nil {
+				if deployErr == nil {
 					break
 				}
-				if strings.Contains(err.Error(), "DnsRecordCreateConflict") {
+				if strings.Contains(deployErr.Error(), "DnsRecordCreateConflict") {
 					l.Warnf("DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)", retry+1, maxRetries)
 					paramsMap["dnsLabelPrefix"] = map[string]interface{}{
 						"Value": fmt.Sprintf(
@@ -184,12 +185,12 @@ func (p *AzureProvider) DeployARMTemplate(
 						),
 					}
 				} else {
-					l.Errorf("Failed to start template deployment: %v", err)
+					l.Errorf("Failed to start template deployment: %v", deployErr)
 					return
 				}
 			}
-			if err != nil {
-				l.Errorf("Failed to start template deployment after %d retries: %v", maxRetries, err)
+			if deployErr != nil {
+				l.Errorf("Failed to start template deployment after %d retries: %v", maxRetries, deployErr)
 				return
 			}
 
