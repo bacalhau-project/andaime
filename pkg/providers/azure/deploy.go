@@ -44,6 +44,12 @@ func UpdateGlobalDeployment(updateFunc func(*models.Deployment)) {
 	updateFunc(globalDeployment)
 }
 
+func UpdateGlobalDeploymentKeyValue(key string, value interface{}) {
+	deploymentMutex.Lock()
+	defer deploymentMutex.Unlock()
+	reflect.ValueOf(globalDeployment).Elem().FieldByName(key).Set(reflect.ValueOf(value))
+}
+
 const WaitForIPAddressesTimeout = 20 * time.Second
 const WaitForResourcesTimeout = 2 * time.Minute
 const WaitForResourcesTicker = 5 * time.Second
