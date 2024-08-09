@@ -51,8 +51,7 @@ type AzureProviderer interface {
 	ListTypedResources(ctx context.Context,
 		subscriptionID, resourceGroupName string,
 		tags map[string]*string) (AzureResources, error)
-	DeployResources(ctx context.Context,
-		deployment *models.Deployment) error
+	DeployResources(ctx context.Context) error
 	DestroyResources(ctx context.Context,
 		resourceGroupName string) error
 }
