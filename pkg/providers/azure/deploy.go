@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"sync"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,6 +24,29 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+var (
+	globalDeployment *models.Deployment
+	deploymentMutex  sync.RWMutex
+)
+
+func GetGlobalDeployment() *models.Deployment {
+	deploymentMutex.RLock()
+	defer deploymentMutex.RUnlock()
+	return globalDeployment
+}
+
+func SetGlobalDeployment(deployment *models.Deployment) {
+	deploymentMutex.Lock()
+	globalDeployment = deployment
+	deploymentMutex.Unlock()
+}
+
+func UpdateGlobalDeployment(updateFunc func(*models.Deployment)) {
+	deploymentMutex.Lock()
+	defer deploymentMutex.Unlock()
+	updateFunc(globalDeployment)
+}
+
 const WaitForIPAddressesTimeout = 20 * time.Second
 const WaitForResourcesTimeout = 2 * time.Minute
 const WaitForResourcesTicker = 5 * time.Second
@@ -38,59 +62,54 @@ func (p *AzureProvider) DeployResources(
 	disp *display.Display,
 ) error {
 	l := logger.Get()
+	SetGlobalDeployment(deployment)
+	
 	// Set the start time for the deployment
-	deployment.StartTime = time.Now()
+	UpdateGlobalDeployment(func(d *models.Deployment) {
+		d.StartTime = time.Now()
+	})
 
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(
-		ctx,
-		deployment,
-		disp,
-	)
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, disp)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
 
-	deployment.ResourceGroupName = resourceGroupName
-	deployment.ResourceGroupLocation = resourceGroupLocation
+	UpdateGlobalDeployment(func(d *models.Deployment) {
+		d.ResourceGroupName = resourceGroupName
+		d.ResourceGroupLocation = resourceGroupLocation
+	})
 
-	err = deployment.UpdateViperConfig()
-	if err != nil {
+	if err := GetGlobalDeployment().UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	err = p.DeployARMTemplate(ctx, deployment)
-	if err != nil {
+	if err := p.DeployARMTemplate(ctx); err != nil {
 		l.Error(fmt.Sprintf("Failed to deploy ARM template: %v", err))
 		return err
 	}
 
-	err = deployment.UpdateViperConfig()
-	if err != nil {
+	if err := GetGlobalDeployment().UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	err = p.FinalizeDeployment(ctx, deployment, disp)
-	if err != nil {
+	if err := p.FinalizeDeployment(ctx, disp); err != nil {
 		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
 		return err
 	}
 
 	return nil
 }
-func (p *AzureProvider) DeployARMTemplate(
-	ctx context.Context,
-	deployment *models.Deployment,
-) error {
+func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
 	disp := display.GetCurrentDisplay()
-	sm := GetGlobalStateMachine(deployment)
-	l.Debugf("Deploying template for deployment: %v", deployment)
+	sm := GetGlobalStateMachine(GetGlobalDeployment())
+	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
-	tags := utils.EnsureAzureTags(deployment.Tags, deployment.ProjectID, deployment.UniqueID)
+	tags := utils.EnsureAzureTags(GetGlobalDeployment().Tags, GetGlobalDeployment().ProjectID, GetGlobalDeployment().UniqueID)
 
 	// Create wait group
 	wg := sync.WaitGroup{}
@@ -98,7 +117,7 @@ func (p *AzureProvider) DeployARMTemplate(
 	// Run maximum 5 deployments at a time
 	sem := make(chan struct{}, maximumSimultaneousDeployments)
 
-	for _, machine := range deployment.Machines {
+	for _, machine := range GetGlobalDeployment().Machines {
 		internalMachine := machine
 		sem <- struct{}{}
 		wg.Add(1)
@@ -109,7 +128,7 @@ func (p *AzureProvider) DeployARMTemplate(
 				wg.Done()
 			}()
 
-			err := p.deployMachine(ctx, deployment, goRoutineMachine, tags, disp, sm)
+			err := p.deployMachine(ctx, goRoutineMachine, tags, disp, sm)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
 				sm.UpdateStatus("VM", goRoutineMachine.ID, StateFailed)
@@ -125,7 +144,6 @@ func (p *AzureProvider) DeployARMTemplate(
 
 func (p *AzureProvider) deployMachine(
 	ctx context.Context,
-	deployment *models.Deployment,
 	machine *models.Machine,
 	tags map[string]*string,
 	disp *display.Display,
@@ -133,7 +151,7 @@ func (p *AzureProvider) deployMachine(
 ) error {
 	stateMachine.UpdateStatus("VM", machine.ID, StateProvisioning)
 
-	params := p.prepareDeploymentParams(deployment, machine)
+	params := p.prepareDeploymentParams(machine)
 	vmTemplate, err := p.getAndPrepareTemplate()
 	if err != nil {
 		return err
@@ -141,7 +159,6 @@ func (p *AzureProvider) deployMachine(
 
 	err = p.deployTemplateWithRetry(
 		ctx,
-		deployment,
 		machine,
 		vmTemplate,
 		params,
@@ -172,9 +189,9 @@ func (p *AzureProvider) getAndPrepareTemplate() (map[string]interface{}, error) 
 }
 
 func (p *AzureProvider) prepareDeploymentParams(
-	deployment *models.Deployment,
 	machine *models.Machine,
 ) map[string]interface{} {
+	deployment := GetGlobalDeployment()
 	return map[string]interface{}{
 		"vmName":             fmt.Sprintf("%s-vm", machine.ID),
 		"adminUsername":      "azureuser",
@@ -197,7 +214,6 @@ func (p *AzureProvider) prepareDeploymentParams(
 
 func (p *AzureProvider) deployTemplateWithRetry(
 	ctx context.Context,
-	deployment *models.Deployment,
 	machine *models.Machine,
 	vmTemplate map[string]interface{},
 	params map[string]interface{},
@@ -207,6 +223,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 ) error {
 	l := logger.Get()
 	maxRetries := 3
+	deployment := GetGlobalDeployment()
 
 	for retry := 0; retry < maxRetries; retry++ {
 		poller, err := p.Client.DeployTemplate(
@@ -624,10 +641,10 @@ func (p *AzureProvider) updateDiskStatus(
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,
-	deployment *models.Deployment,
 	disp *display.Display,
 ) error {
 	l := logger.Get()
+	deployment := GetGlobalDeployment()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
