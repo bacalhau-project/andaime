@@ -256,8 +256,18 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		}
 
 		resp, err := poller.PollUntilDone(ctx, nil)
-		if *resp.Properties.ProvisioningState == "Failed" {
-			return fmt.Errorf("deployment failed: %s", *resp.Properties.Error.Message)
+		if err != nil {
+			return fmt.Errorf("deployment failed: %w", err)
+		}
+		if resp.Properties != nil && resp.Properties.ProvisioningState != nil {
+			if *resp.Properties.ProvisioningState == "Failed" {
+				if resp.Properties.Error != nil && resp.Properties.Error.Message != nil {
+					return fmt.Errorf("deployment failed: %s", *resp.Properties.Error.Message)
+				}
+				return fmt.Errorf("deployment failed with unknown error")
+			}
+		} else {
+			return fmt.Errorf("deployment response or provisioning state is nil")
 		}
 
 		if err != nil && strings.Contains(err.Error(), "DnsRecordCreateConflict") {
