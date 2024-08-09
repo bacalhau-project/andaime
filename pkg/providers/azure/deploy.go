@@ -42,12 +42,18 @@ func SetGlobalDeployment(deployment *models.Deployment) {
 func UpdateGlobalDeployment(updateFunc func(*models.Deployment)) {
 	deploymentMutex.Lock()
 	defer deploymentMutex.Unlock()
+	if globalDeployment == nil {
+		globalDeployment = &models.Deployment{}
+	}
 	updateFunc(globalDeployment)
 }
 
 func UpdateGlobalDeploymentKeyValue(key string, value interface{}) {
 	deploymentMutex.Lock()
 	defer deploymentMutex.Unlock()
+	if globalDeployment == nil {
+		globalDeployment = &models.Deployment{}
+	}
 	reflect.ValueOf(globalDeployment).Elem().FieldByName(key).Set(reflect.ValueOf(value))
 }
 
