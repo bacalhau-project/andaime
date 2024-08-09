@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync"
@@ -14,11 +13,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
-	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
+
+	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -60,7 +61,7 @@ func (p *AzureProvider) DeployResources(
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	err = p.DeployARMTemplate(ctx, deployment, disp)
+	err = p.DeployARMTemplate(ctx, deployment)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to deploy ARM template: %v", err))
 		return err
@@ -80,13 +81,13 @@ func (p *AzureProvider) DeployResources(
 
 	return nil
 }
-
 func (p *AzureProvider) DeployARMTemplate(
 	ctx context.Context,
 	deployment *models.Deployment,
-	disp *display.Display,
 ) error {
 	l := logger.Get()
+	disp := display.GetCurrentDisplay()
+	sm := GetGlobalStateMachine(deployment)
 	l.Debugf("Deploying template for deployment: %v", deployment)
 
 	tags := utils.EnsureAzureTags(deployment.Tags, deployment.ProjectID, deployment.UniqueID)
@@ -96,9 +97,6 @@ func (p *AzureProvider) DeployARMTemplate(
 
 	// Run maximum 5 deployments at a time
 	sem := make(chan struct{}, maximumSimultaneousDeployments)
-
-	// Start a goroutine to continuously probe the resource group
-	go p.probeResourceGroup(ctx, deployment)
 
 	for _, machine := range deployment.Machines {
 		internalMachine := machine
@@ -111,148 +109,10 @@ func (p *AzureProvider) DeployARMTemplate(
 				wg.Done()
 			}()
 
-			// Prepare deployment parameters
-			params := map[string]interface{}{
-				"vmName":             fmt.Sprintf("%s-vm", goRoutineMachine.ID),
-				"adminUsername":      "azureuser",
-				"authenticationType": "sshPublicKey", // Always set to sshPublicKey
-				"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
-				"dnsLabelPrefix": fmt.Sprintf(
-					"vm-%s-%s",
-					strings.ToLower(deployment.Machines[0].ID),
-					utils.GenerateUniqueID()[:6],
-				),
-				"ubuntuOSVersion":          "Ubuntu-2004",
-				"vmSize":                   deployment.Machines[0].VMSize,
-				"virtualNetworkName":       fmt.Sprintf("%s-vnet", goRoutineMachine.Location),
-				"subnetName":               fmt.Sprintf("%s-subnet", goRoutineMachine.Location),
-				"networkSecurityGroupName": fmt.Sprintf("%s-nsg", goRoutineMachine.Location),
-				"location":                 goRoutineMachine.Location,
-				"securityType":             "TrustedLaunch",
-			}
-
-			// Prepare the virtual machine template
-			wrappedParameters := map[string]interface{}{}
-			for k, v := range params {
-				wrappedParameters[k] = map[string]interface{}{
-					"Value": v,
-				}
-			}
-
-			disp.UpdateStatus(
-				&models.Status{
-					ID:       fmt.Sprintf("vm-%s", goRoutineMachine.ID),
-					Location: goRoutineMachine.Location,
-					Type:     "VM",
-					Status:   "Provisioning template...",
-				},
-			)
-
-			vmTemplate, err := internal.GetARMTemplate()
+			err := p.deployMachine(ctx, deployment, goRoutineMachine, tags, disp, sm)
 			if err != nil {
-				l.Errorf("Failed to get template: %v", err)
-				return
-			}
-
-			paramsMap, err := utils.StructToMap(wrappedParameters)
-			if err != nil {
-				l.Errorf("Failed to convert struct to map: %v", err)
-				return
-			}
-
-			// Convert the template to a map
-			var vmTemplateMap map[string]interface{}
-			err = json.Unmarshal(vmTemplate, &vmTemplateMap)
-			if err != nil {
-				l.Errorf("Failed to convert struct to map: %v", err)
-				return
-			}
-
-			disp.UpdateStatus(
-				&models.Status{
-					ID:     fmt.Sprintf("vm-%s", goRoutineMachine.ID),
-					Type:   "VM",
-					Status: "Starting template deployment...",
-				},
-			)
-
-			// Start the deployment with retry logic
-
-			// Start the deployment with retry logic
-			var poller *runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse]
-			maxRetries := 3
-			var deployErr error
-			for retry := 0; retry < maxRetries; retry++ {
-				poller, deployErr = p.Client.DeployTemplate(
-					ctx,
-					deployment.ResourceGroupName,
-					fmt.Sprintf("deployment-vm-%s", goRoutineMachine.ID),
-					vmTemplateMap,
-					paramsMap,
-					tags,
-				)
-				if deployErr == nil {
-					break
-				}
-				if strings.Contains(deployErr.Error(), "DnsRecordCreateConflict") {
-					l.Warnf(
-						"DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)",
-						retry+1,
-						maxRetries,
-					)
-					paramsMap["dnsLabelPrefix"] = map[string]interface{}{
-						"Value": fmt.Sprintf(
-							"vm-%s-%s",
-							strings.ToLower(goRoutineMachine.ID),
-							utils.GenerateUniqueID()[:6],
-						),
-					}
-				} else {
-					l.Errorf("Failed to start template deployment: %v", deployErr)
-					return
-				}
-			}
-			if deployErr != nil {
-				l.Errorf(
-					"Failed to start template deployment after %d retries: %v",
-					maxRetries,
-					deployErr,
-				)
-				return
-			}
-
-			// Poll the deployment status
-			pollInterval := 1 * time.Second
-			for {
-				select {
-				case <-ctx.Done():
-					l.Info("Deployment cancelled")
-					return
-				default:
-					resp, err := poller.Poll(ctx)
-					if err != nil {
-						if isQuotaExceededError(err) {
-							l.Errorf(`Azure quota exceeded: %v.`, err)
-							return
-						}
-						l.Errorf("Error polling deployment status: %v", err)
-						time.Sleep(pollInterval)
-						continue
-					}
-
-					if poller.Done() {
-						l.Info("Deployment completed successfully")
-						return
-					}
-					bodyBytes, err := io.ReadAll(resp.Body)
-					if err != nil {
-						l.Errorf("Failed to read response body: %v", err)
-						return
-					}
-
-					l.Debugf("Deployment status: %s", string(bodyBytes))
-					time.Sleep(pollInterval)
-				}
+				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
+				sm.UpdateStatus("VM", goRoutineMachine.ID, StateFailed)
 			}
 		}(&internalMachine)
 	}
@@ -263,29 +123,170 @@ func (p *AzureProvider) DeployARMTemplate(
 	return nil
 }
 
-func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *models.Deployment) {
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
+func (p *AzureProvider) deployMachine(
+	ctx context.Context,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	tags map[string]*string,
+	disp *display.Display,
+	stateMachine *AzureStateMachine,
+) error {
+	stateMachine.UpdateStatus("VM", machine.ID, StateProvisioning)
 
+	params := p.prepareDeploymentParams(deployment, machine)
+	vmTemplate, err := p.getAndPrepareTemplate()
+	if err != nil {
+		return err
+	}
+
+	err = p.deployTemplateWithRetry(
+		ctx,
+		deployment,
+		machine,
+		vmTemplate,
+		params,
+		tags,
+		disp,
+		stateMachine,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *AzureProvider) getAndPrepareTemplate() (map[string]interface{}, error) {
+	vmTemplate, err := internal_azure.GetARMTemplate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template: %w", err)
+	}
+
+	var vmTemplateMap map[string]interface{}
+	err = json.Unmarshal(vmTemplate, &vmTemplateMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert struct to map: %w", err)
+	}
+
+	return vmTemplateMap, nil
+}
+
+func (p *AzureProvider) prepareDeploymentParams(
+	deployment *models.Deployment,
+	machine *models.Machine,
+) map[string]interface{} {
+	return map[string]interface{}{
+		"vmName":             fmt.Sprintf("%s-vm", machine.ID),
+		"adminUsername":      "azureuser",
+		"authenticationType": "sshPublicKey",
+		"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
+		"dnsLabelPrefix": fmt.Sprintf(
+			"vm-%s-%s",
+			strings.ToLower(machine.ID),
+			utils.GenerateUniqueID()[:6],
+		),
+		"ubuntuOSVersion":          "Ubuntu-2004",
+		"vmSize":                   machine.VMSize,
+		"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.Location),
+		"subnetName":               fmt.Sprintf("%s-subnet", machine.Location),
+		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.Location),
+		"location":                 machine.Location,
+		"securityType":             "TrustedLaunch",
+	}
+}
+
+func (p *AzureProvider) deployTemplateWithRetry(
+	ctx context.Context,
+	deployment *models.Deployment,
+	machine *models.Machine,
+	vmTemplate map[string]interface{},
+	params map[string]interface{},
+	tags map[string]*string,
+	disp *display.Display,
+	sm *AzureStateMachine,
+) error {
 	l := logger.Get()
+	maxRetries := 3
+
+	for retry := 0; retry < maxRetries; retry++ {
+		poller, err := p.Client.DeployTemplate(
+			ctx,
+			deployment.ResourceGroupName,
+			fmt.Sprintf("deployment-vm-%s", machine.ID),
+			vmTemplate,
+			params,
+			tags,
+		)
+		if err == nil {
+			return p.pollDeploymentStatus(ctx, poller, machine, disp, sm)
+		}
+
+		if strings.Contains(err.Error(), "DnsRecordCreateConflict") {
+			l.Warnf(
+				"DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)",
+				retry+1,
+				maxRetries,
+			)
+			params["dnsLabelPrefix"] = map[string]interface{}{
+				"Value": fmt.Sprintf(
+					"vm-%s-%s",
+					strings.ToLower(machine.ID),
+					utils.GenerateUniqueID()[:6],
+				),
+			}
+		} else {
+			sm.UpdateStatus("VM", machine.ID, StateFailed)
+			return fmt.Errorf("failed to start template deployment: %w", err)
+		}
+	}
+
+	sm.UpdateStatus("VM", machine.ID, StateFailed)
+	return fmt.Errorf("failed to start template deployment after %d retries", maxRetries)
+}
+
+func (p *AzureProvider) pollDeploymentStatus(
+	ctx context.Context,
+	poller *runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse],
+	machine *models.Machine,
+	disp *display.Display,
+	sm *AzureStateMachine,
+) error {
+	l := logger.Get()
+	pollInterval := 1 * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
-			l.Info("Context cancelled, stopping resource group probe")
-			return
-		case <-ticker.C:
-			l.Debug("Probing resource group")
-			resources, err := p.ListAllResourcesInSubscription(ctx,
-				deployment.SubscriptionID,
-				deployment.Tags)
+			sm.UpdateStatus("VM", machine.ID, StateFailed)
+			return fmt.Errorf("deployment cancelled")
+		default:
+			_, err := poller.Poll(ctx)
 			if err != nil {
-				l.Errorf("Failed to list resources in group: %v", err)
+				if isQuotaExceededError(err) {
+					sm.UpdateStatus("VM", machine.ID, StateFailed)
+					return fmt.Errorf("azure quota exceeded: %w", err)
+				}
+				l.Errorf("Error polling deployment status: %v", err)
+				time.Sleep(pollInterval)
 				continue
 			}
 
-			l.Debugf("Found %d resources in the resource group", resources.GetTotalResourcesCount())
-			p.updateDeploymentStatus(deployment, resources)
-			l.Debug("Finished updating deployment status")
+			if poller.Done() {
+				l.Info("Deployment completed successfully")
+				sm.UpdateStatus("VM", machine.ID, StateSucceeded)
+				return nil
+			}
+
+			// bodyBytes, err := io.ReadAll(resp.Body)
+			// if err != nil {
+			// 	l.Errorf("Failed to read response body: %v", err)
+			// 	sm.UpdateStatus("VM", machine.ID, StateFailed)
+			// 	return fmt.Errorf("failed to read response body: %w", err)
+			// }
+
+			// l.Debugf("Deployment status: %s", string(bodyBytes))
+			sm.UpdateStatus("VM", machine.ID, StateProvisioning)
+			time.Sleep(pollInterval)
 		}
 	}
 }
@@ -293,7 +294,7 @@ func (p *AzureProvider) probeResourceGroup(ctx context.Context, deployment *mode
 func (p *AzureProvider) PollAndUpdateResources(
 	ctx context.Context,
 	deployment *models.Deployment,
-	stateMachine *DeploymentStateMachine,
+	stateMachine *AzureStateMachine,
 ) error {
 	resources, err := p.ListAllResourcesInSubscription(
 		ctx,
@@ -305,6 +306,8 @@ func (p *AzureProvider) PollAndUpdateResources(
 	}
 
 	for resource := range resources.GetAllResources() {
+		// Get unique resource key
+
 		switch r := resource.Resource.(type) {
 		case armcompute.VirtualMachine:
 			stateMachine.UpdateStatus("VM", *r.Name, ResourceState(*r.Properties.ProvisioningState))
