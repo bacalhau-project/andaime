@@ -66,14 +66,14 @@ const DefaultDiskSize = 30
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources(ctx context.Context) error {
+func (p *AzureProvider) DeployResources(ctx context.Context, deployment *models.Deployment) error {
 	l := logger.Get()
+	SetGlobalDeployment(deployment)
 
 	// Set the start time for the deployment
 	UpdateGlobalDeploymentKeyValue("StartTime", time.Now())
 
 	// Ensure we have a deployment object
-	deployment := GetGlobalDeployment()
 	if deployment == nil {
 		return fmt.Errorf("global deployment object is not initialized")
 	}
@@ -121,7 +121,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
-	disp := display.GetCurrentDisplay()
+	disp := display.GetGlobalDisplay()
 	sm := GetGlobalStateMachine()
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
@@ -243,7 +243,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	deployment := GetGlobalDeployment()
 
 	for retry := 0; retry < maxRetries; retry++ {
-		_, err := p.Client.DeployTemplate(
+		poller, err := p.Client.DeployTemplate(
 			ctx,
 			deployment.ResourceGroupName,
 			fmt.Sprintf("deployment-vm-%s", machine.ID),
@@ -251,8 +251,16 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			params,
 			tags,
 		)
+		if err != nil {
+			return err
+		}
 
-		if strings.Contains(err.Error(), "DnsRecordCreateConflict") {
+		resp, err := poller.PollUntilDone(ctx, nil)
+		if *resp.Properties.ProvisioningState == "Failed" {
+			return fmt.Errorf("deployment failed: %s", *resp.Properties.Error.Message)
+		}
+
+		if err != nil && strings.Contains(err.Error(), "DnsRecordCreateConflict") {
 			l.Warnf(
 				"DNS conflict occurred, retrying with a new DNS label prefix (attempt %d of %d)",
 				retry+1,
@@ -611,7 +619,7 @@ func (p *AzureProvider) FinalizeDeployment(
 ) error {
 	l := logger.Get()
 	deployment := GetGlobalDeployment()
-	disp := display.GetCurrentDisplay()
+	disp := display.GetGlobalDisplay()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
@@ -713,11 +721,17 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) (string, strin
 			resourceGroupLocation = deployment.Machines[0].Location
 		}
 		if resourceGroupLocation == "" {
-			return "", "", fmt.Errorf("resource group location is not set and couldn't be inferred from machines")
+			return "", "", fmt.Errorf(
+				"resource group location is not set and couldn't be inferred from machines",
+			)
 		}
 	}
 
-	l.Debugf("Creating Resource Group - %s in location %s", resourceGroupName, resourceGroupLocation)
+	l.Debugf(
+		"Creating Resource Group - %s in location %s",
+		resourceGroupName,
+		resourceGroupLocation,
+	)
 
 	_, err := p.Client.GetOrCreateResourceGroup(
 		ctx,
