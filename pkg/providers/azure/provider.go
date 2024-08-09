@@ -53,8 +53,7 @@ type AzureProviderer interface {
 		subscriptionID, resourceGroupName string,
 		tags map[string]*string) (AzureResources, error)
 	DeployResources(ctx context.Context,
-		deployment *models.Deployment,
-		disp *display.Display) error
+		deployment *models.Deployment) error
 	DestroyResources(ctx context.Context,
 		resourceGroupName string) error
 }
