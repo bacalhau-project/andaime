@@ -16,15 +16,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-var (
-	currentDisplay *Display
-)
-
-// GetCurrentDisplay returns the current display instance
-func GetCurrentDisplay() *Display {
-	return currentDisplay
-}
-
 const NumberOfCyclesToHighlight = 8
 const HighlightTimer = 250 * time.Millisecond
 const HighlightColor = tcell.ColorDarkGreen

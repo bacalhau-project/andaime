@@ -57,7 +57,7 @@ func Execute() error {
 			_ = logger.Get().Sync()
 
 			// Stop the display first
-			if disp := display.GetCurrentDisplay(); disp != nil {
+			if disp := display.GetGlobalDisplay(); disp != nil {
 				disp.Stop()
 			}
 

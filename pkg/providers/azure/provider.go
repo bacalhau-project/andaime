@@ -6,6 +6,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
@@ -50,7 +51,7 @@ type AzureProviderer interface {
 	ListTypedResources(ctx context.Context,
 		subscriptionID, resourceGroupName string,
 		tags map[string]*string) (AzureResources, error)
-	DeployResources(ctx context.Context) error
+	DeployResources(ctx context.Context, deployment *models.Deployment) error
 	DestroyResources(ctx context.Context,
 		resourceGroupName string) error
 }

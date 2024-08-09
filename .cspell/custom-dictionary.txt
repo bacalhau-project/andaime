@@ -10,6 +10,7 @@ armresourcegraph
 armresources
 armsubscription
 armsubscriptions
+asiawest
 autorest
 awsconfig
 awserr
@@ -41,6 +42,7 @@ eastus
 errcheck
 Errf
 Errorf
+euwest
 eventstream
 exportloopref
 Fatalf

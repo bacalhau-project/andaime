@@ -121,7 +121,6 @@ func (p *AzureProvider) DeployResources(ctx context.Context, deployment *models.
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
-	disp := display.GetGlobalDisplay()
 	sm := GetGlobalStateMachine()
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
@@ -148,7 +147,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				wg.Done()
 			}()
 
-			err := p.deployMachine(ctx, goRoutineMachine, tags, disp, sm)
+			err := p.deployMachine(ctx, goRoutineMachine, tags)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
 				sm.UpdateStatus("VM", goRoutineMachine.ID, StateFailed)
@@ -166,10 +165,9 @@ func (p *AzureProvider) deployMachine(
 	ctx context.Context,
 	machine *models.Machine,
 	tags map[string]*string,
-	disp *display.Display,
-	stateMachine *AzureStateMachine,
 ) error {
-	stateMachine.UpdateStatus("VM", machine.ID, StateProvisioning)
+	sm := GetGlobalStateMachine()
+	sm.UpdateStatus("VM", machine.ID, StateProvisioning)
 
 	params := p.prepareDeploymentParams(machine)
 	vmTemplate, err := p.getAndPrepareTemplate()

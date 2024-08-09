@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -33,7 +32,6 @@ const DefaultDiskSizeGB = 30
 
 var (
 	DefaultAllowedPorts = []int{22, 80, 443}
-	deployment          *models.Deployment
 )
 
 var createAzureDeploymentCmd = &cobra.Command{
@@ -182,7 +180,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	// Start resource deployment in a goroutine
 	go func() {
-		err := azureProvider.DeployResources(ctx, deployment, disp)
+		err := azureProvider.DeployResources(ctx, deployment)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
@@ -233,30 +231,28 @@ func InitializeDeployment(
 	ctx context.Context,
 	uniqueID string,
 ) (*models.Deployment, error) {
-	v := viper.GetViper()
-
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("deployment cancelled before starting: %w", err)
 	}
 
 	// Set default values for all configuration items
-	v.SetDefault("general.project_id", "default-project")
-	v.SetDefault("general.log_path", "/var/log/andaime")
-	v.SetDefault("general.log_level", "info")
-	v.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
-	v.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
-	v.SetDefault("azure.resource_group_name", "andaime-rg")
-	v.SetDefault("azure.resource_group_location", "eastus")
-	v.SetDefault("azure.allowed_ports", DefaultAllowedPorts)
-	v.SetDefault("azure.default_vm_size", "Standard_B2s")
-	v.SetDefault("azure.default_disk_size_gb", DefaultDiskSizeGB)
-	v.SetDefault("azure.default_location", "eastus")
-	v.SetDefault("azure.machines", []models.Machine{
+	viper.SetDefault("general.project_id", "default-project")
+	viper.SetDefault("general.log_path", "/var/log/andaime")
+	viper.SetDefault("general.log_level", "info")
+	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
+	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
+	viper.SetDefault("azure.resource_group_name", "andaime-rg")
+	viper.SetDefault("azure.resource_group_location", "eastus")
+	viper.SetDefault("azure.allowed_ports", DefaultAllowedPorts)
+	viper.SetDefault("azure.default_vm_size", "Standard_B2s")
+	viper.SetDefault("azure.default_disk_size_gb", DefaultDiskSizeGB)
+	viper.SetDefault("azure.default_location", "eastus")
+	viper.SetDefault("azure.machines", []models.Machine{
 		{
 			Name:     "default-vm",
-			VMSize:   v.GetString("azure.default_vm_size"),
-			Location: v.GetString("azure.default_location"),
+			VMSize:   viper.GetString("azure.default_vm_size"),
+			Location: viper.GetString("azure.default_location"),
 			Parameters: models.Parameters{
 				Orchestrator: true,
 			},
@@ -264,10 +260,10 @@ func InitializeDeployment(
 	})
 
 	// Extract Azure-specific configuration
-	projectID := v.GetString("general.project_id")
+	projectID := viper.GetString("general.project_id")
 
 	// Create deployment object
-	deployment, err := PrepareDeployment(ctx, v, projectID, uniqueID)
+	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
@@ -278,7 +274,6 @@ func InitializeDeployment(
 // prepareDeployment sets up the initial deployment configuration
 func PrepareDeployment(
 	ctx context.Context,
-	viper *viper.Viper,
 	projectID, uniqueID string,
 ) (*models.Deployment, error) {
 	l := logger.Get()
@@ -305,12 +300,6 @@ func PrepareDeployment(
 	// Validate SSH keys
 	if err := sshutils.ValidateSSHKeysFromPath(sshPublicKeyPath, sshPrivateKeyPath); err != nil {
 		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
-	}
-
-	// Unmarshal machines configuration
-	var rawMachines []models.Machine
-	if err := viper.UnmarshalKey("azure.machines", &rawMachines); err != nil {
-		return nil, fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
 	// Get resource group location
@@ -353,8 +342,6 @@ func PrepareDeployment(
 
 	// Process machines
 	orchestratorNode, allMachines, locations, err := ProcessMachinesConfig(
-		rawMachines,
-		disp,
 		deployment,
 	)
 	if err != nil {
@@ -457,73 +444,61 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 
 // processMachinesConfig processes the machine configurations
 func ProcessMachinesConfig(
-	rawMachines []models.Machine,
-	disp *display.Display,
 	deployment *models.Deployment,
 ) (*models.Machine, []models.Machine, []string, error) {
 	var orchestratorNode *models.Machine
 	var allMachines []models.Machine
 	locations := make(map[string]bool)
 
-	machines := make([]models.Machine, 0)
+	type MachineConfig struct {
+		Location   string `yaml:"location"`
+		Parameters struct {
+			Count        int    `yaml:"count,omitempty"`
+			Type         string `yaml:"type,omitempty"`
+			Orchestrator bool   `yaml:"orchestrator,omitempty"`
+		} `yaml:"parameters"`
+	}
+	var rawMachines []MachineConfig
+	if err := viper.UnmarshalKey("azure.machines", &rawMachines); err != nil {
+		return nil, nil, nil, fmt.Errorf("error unmarshaling machines: %w", err)
+	}
+
+	defaultCount := viper.GetInt("azure.default_count_per_zone")
+	defaultType := viper.GetString("azure.default_machine_type")
+	defaultDiskSize := viper.GetInt("azure.disk_size_gb")
+
 	for _, rawMachine := range rawMachines {
 		var thisMachine models.Machine
-		thisMachine.DiskSizeGB = deployment.DefaultDiskSizeGB
-		thisMachine.VMSize = deployment.DefaultVMSize
+		thisMachine.DiskSizeGB = int32(defaultDiskSize)
+		thisMachine.VMSize = defaultType
+		thisMachine.Location = rawMachine.Location
+		thisMachine.Parameters.Orchestrator = false
 
 		// Upsert machine parameters from rawMachine
-		if (rawMachine.Parameters != models.Parameters{}) {
-			if rawMachine.Parameters.Type != "" {
-				thisMachine.VMSize = rawMachine.Parameters.Type
-			}
+		if rawMachine.Parameters.Type != "" {
+			thisMachine.VMSize = rawMachine.Parameters.Type
 		}
 
 		if rawMachine.Parameters.Orchestrator {
-			thisMachine.Parameters.Orchestrator = rawMachine.Parameters.Orchestrator
-		}
-
-		// If rawMachine.Parameters.Count is an int, and > 1, then replicate this machine
-		if rawMachine.Parameters.Count > 1 {
-			for i := 0; i < rawMachine.Parameters.Count; i++ {
-				machines = append(machines, thisMachine)
-			}
-		} else {
-			machines = append(machines, thisMachine)
-		}
-	}
-
-	for _, machine := range machines {
-		internalMachine := machine
-
-		if internalMachine.Location == "" {
-			internalMachine.Location = deployment.DefaultLocation
-		}
-
-		if !internal.IsValidLocation(internalMachine.Location) {
-			return nil, nil, nil, fmt.Errorf("invalid location: %s", internalMachine.Location)
-		}
-		locations[internalMachine.Location] = true
-
-		if internalMachine.VMSize == "" {
-			internalMachine.VMSize = deployment.DefaultVMSize
-		}
-
-		if internalMachine.DiskSizeGB == 0 {
-			internalMachine.DiskSizeGB = deployment.DefaultDiskSizeGB
-		}
-
-		internalMachine.ID = utils.CreateShortID()
-		internalMachine.Name = fmt.Sprintf("vm-%s", internalMachine.ID)
-		internalMachine.ComputerName = fmt.Sprintf("vm-%s", internalMachine.ID)
-		internalMachine.StartTime = time.Now()
-
-		if (machine.Parameters != models.Parameters{}) && (machine.Parameters.Orchestrator) {
-			if orchestratorNode != nil {
+			if orchestratorNode != nil || rawMachine.Parameters.Count > 1 {
 				return nil, nil, nil, fmt.Errorf("multiple orchestrator nodes found")
 			}
-			orchestratorNode = &internalMachine
+			thisMachine.Parameters.Orchestrator = rawMachine.Parameters.Orchestrator
+			orchestratorNode = &thisMachine
 		}
-		allMachines = append(allMachines, internalMachine)
+
+		countOfMachines := rawMachine.Parameters.Count
+		if countOfMachines == 0 {
+			countOfMachines = defaultCount
+		}
+		for i := 0; i < countOfMachines; i++ {
+			thisMachine.ID = utils.CreateShortID()
+			thisMachine.Name = fmt.Sprintf("%s-vm", thisMachine.ID)
+			thisMachine.ComputerName = fmt.Sprintf("%s-vm", thisMachine.ID)
+			thisMachine.StartTime = time.Now()
+
+			allMachines = append(allMachines, thisMachine)
+		}
 	}
 
 	uniqueLocations := make([]string, 0, len(locations))

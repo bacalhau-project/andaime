@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
 
@@ -142,16 +143,26 @@ func (c *LiveAzureClient) DeployTemplate(
 	resourceGroupName string,
 	deploymentName string,
 	template map[string]interface{},
-	parameters map[string]interface{},
+	params map[string]interface{},
 	tags map[string]*string,
 ) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
 	l := logger.Get()
 	l.Debugf("DeployTemplate: Beginning - %s", deploymentName)
 
+	wrappedParams := make(map[string]interface{})
+	for k, v := range params {
+		wrappedParams[k] = map[string]interface{}{"Value": v}
+	}
+
+	paramsMap, err := utils.StructToMap(wrappedParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert struct to map: %w", err)
+	}
+
 	deploymentParams := armresources.Deployment{
 		Properties: &armresources.DeploymentProperties{
 			Template:   template,
-			Parameters: &parameters,
+			Parameters: &paramsMap,
 			Mode:       to.Ptr(armresources.DeploymentModeIncremental),
 		},
 		Tags: tags,
