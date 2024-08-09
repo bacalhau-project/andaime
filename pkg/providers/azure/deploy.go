@@ -70,9 +70,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
 
 	// Set the start time for the deployment
-	UpdateGlobalDeployment(func(d *models.Deployment) {
-		d.StartTime = time.Now()
-	})
+	UpdateGlobalDeploymentKeyValue("StartTime", time.Now())
 
 	// Prepare resource group
 	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(
@@ -84,10 +82,8 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
 
-	UpdateGlobalDeployment(func(d *models.Deployment) {
-		d.ResourceGroupName = resourceGroupName
-		d.ResourceGroupLocation = resourceGroupLocation
-	})
+	UpdateGlobalDeploymentKeyValue("ResourceGroupName", resourceGroupName)
+	UpdateGlobalDeploymentKeyValue("ResourceGroupLocation", resourceGroupLocation)
 
 	if err := GetGlobalDeployment().UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
