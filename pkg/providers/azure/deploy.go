@@ -58,8 +58,8 @@ const DefaultDiskSize = 30
 func (p *AzureProvider) DeployResources(
 	ctx context.Context,
 	deployment *models.Deployment,
-	disp *display.Display,
 ) error {
+	disp := display.GetCurrentDisplay()
 	l := logger.Get()
 	SetGlobalDeployment(deployment)
 	
@@ -69,7 +69,7 @@ func (p *AzureProvider) DeployResources(
 	})
 
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, GetGlobalDeployment(), disp)
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, GetGlobalDeployment())
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
@@ -95,7 +95,7 @@ func (p *AzureProvider) DeployResources(
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
-	if err := p.FinalizeDeployment(ctx, disp); err != nil {
+	if err := p.FinalizeDeployment(ctx); err != nil {
 		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
 		return err
 	}
@@ -640,8 +640,8 @@ func (p *AzureProvider) updateDiskStatus(
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,
-	disp *display.Display,
 ) error {
+	disp := display.GetCurrentDisplay()
 	l := logger.Get()
 	deployment := GetGlobalDeployment()
 
@@ -727,8 +727,8 @@ func (p *AzureProvider) FinalizeDeployment(
 func (p *AzureProvider) PrepareResourceGroup(
 	ctx context.Context,
 	deployment *models.Deployment,
-	disp *display.Display,
 ) (string, string, error) {
+	disp := display.GetCurrentDisplay()
 	l := logger.Get()
 
 	// Check if the resource group name already contains a timestamp
