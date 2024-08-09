@@ -55,12 +55,9 @@ const DefaultDiskSize = 30
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources(
-	ctx context.Context,
-	deployment *models.Deployment,
-) error {
+func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
-	SetGlobalDeployment(deployment)
+	deployment := GetGlobalDeployment()
 
 	// Set the start time for the deployment
 	UpdateGlobalDeployment(func(d *models.Deployment) {
