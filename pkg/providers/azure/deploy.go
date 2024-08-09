@@ -59,17 +59,19 @@ func (p *AzureProvider) DeployResources(
 	ctx context.Context,
 	deployment *models.Deployment,
 ) error {
-	disp := display.GetCurrentDisplay()
 	l := logger.Get()
 	SetGlobalDeployment(deployment)
-	
+
 	// Set the start time for the deployment
 	UpdateGlobalDeployment(func(d *models.Deployment) {
 		d.StartTime = time.Now()
 	})
 
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, GetGlobalDeployment())
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(
+		ctx,
+		GetGlobalDeployment(),
+	)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
@@ -108,7 +110,11 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	sm := GetGlobalStateMachine(GetGlobalDeployment())
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
-	tags := utils.EnsureAzureTags(GetGlobalDeployment().Tags, GetGlobalDeployment().ProjectID, GetGlobalDeployment().UniqueID)
+	tags := utils.EnsureAzureTags(
+		GetGlobalDeployment().Tags,
+		GetGlobalDeployment().ProjectID,
+		GetGlobalDeployment().UniqueID,
+	)
 
 	// Create wait group
 	wg := sync.WaitGroup{}
@@ -641,9 +647,9 @@ func (p *AzureProvider) updateDiskStatus(
 func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,
 ) error {
-	disp := display.GetCurrentDisplay()
 	l := logger.Get()
 	deployment := GetGlobalDeployment()
+	disp := display.GetCurrentDisplay()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
@@ -728,7 +734,6 @@ func (p *AzureProvider) PrepareResourceGroup(
 	ctx context.Context,
 	deployment *models.Deployment,
 ) (string, string, error) {
-	disp := display.GetCurrentDisplay()
 	l := logger.Get()
 
 	// Check if the resource group name already contains a timestamp
