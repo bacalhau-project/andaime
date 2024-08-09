@@ -9,10 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -103,7 +101,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
 	disp := display.GetCurrentDisplay()
-	sm := GetGlobalStateMachine(GetGlobalDeployment())
+	sm := GetGlobalStateMachine()
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
 	tags := utils.EnsureAzureTags(
@@ -164,8 +162,6 @@ func (p *AzureProvider) deployMachine(
 		vmTemplate,
 		params,
 		tags,
-		disp,
-		stateMachine,
 	)
 	if err != nil {
 		return err
@@ -219,15 +215,14 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	vmTemplate map[string]interface{},
 	params map[string]interface{},
 	tags map[string]*string,
-	disp *display.Display,
-	sm *AzureStateMachine,
 ) error {
 	l := logger.Get()
+	sm := GetGlobalStateMachine()
 	maxRetries := 3
 	deployment := GetGlobalDeployment()
 
 	for retry := 0; retry < maxRetries; retry++ {
-		poller, err := p.Client.DeployTemplate(
+		_, err := p.Client.DeployTemplate(
 			ctx,
 			deployment.ResourceGroupName,
 			fmt.Sprintf("deployment-vm-%s", machine.ID),
@@ -235,9 +230,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			params,
 			tags,
 		)
-		if err == nil {
-			return p.pollDeploymentStatus(ctx, poller, machine, disp, sm)
-		}
 
 		if strings.Contains(err.Error(), "DnsRecordCreateConflict") {
 			l.Warnf(
@@ -260,53 +252,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	sm.UpdateStatus("VM", machine.ID, StateFailed)
 	return fmt.Errorf("failed to start template deployment after %d retries", maxRetries)
-}
-
-func (p *AzureProvider) pollDeploymentStatus(
-	ctx context.Context,
-	poller *runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse],
-	machine *models.Machine,
-	disp *display.Display,
-	sm *AzureStateMachine,
-) error {
-	l := logger.Get()
-	pollInterval := 1 * time.Second
-
-	for {
-		select {
-		case <-ctx.Done():
-			sm.UpdateStatus("VM", machine.ID, StateFailed)
-			return fmt.Errorf("deployment cancelled")
-		default:
-			_, err := poller.Poll(ctx)
-			if err != nil {
-				if isQuotaExceededError(err) {
-					sm.UpdateStatus("VM", machine.ID, StateFailed)
-					return fmt.Errorf("azure quota exceeded: %w", err)
-				}
-				l.Errorf("Error polling deployment status: %v", err)
-				time.Sleep(pollInterval)
-				continue
-			}
-
-			if poller.Done() {
-				l.Info("Deployment completed successfully")
-				sm.UpdateStatus("VM", machine.ID, StateSucceeded)
-				return nil
-			}
-
-			// bodyBytes, err := io.ReadAll(resp.Body)
-			// if err != nil {
-			// 	l.Errorf("Failed to read response body: %v", err)
-			// 	sm.UpdateStatus("VM", machine.ID, StateFailed)
-			// 	return fmt.Errorf("failed to read response body: %w", err)
-			// }
-
-			// l.Debugf("Deployment status: %s", string(bodyBytes))
-			sm.UpdateStatus("VM", machine.ID, StateProvisioning)
-			time.Sleep(pollInterval)
-		}
-	}
 }
 
 func (p *AzureProvider) PollAndUpdateResources(
