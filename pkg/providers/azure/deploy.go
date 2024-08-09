@@ -72,11 +72,18 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	// Set the start time for the deployment
 	UpdateGlobalDeploymentKeyValue("StartTime", time.Now())
 
+	// Ensure we have a location set
+	deployment := GetGlobalDeployment()
+	if deployment.ResourceGroupLocation == "" {
+		if len(deployment.Machines) > 0 {
+			deployment.ResourceGroupLocation = deployment.Machines[0].Location
+		} else {
+			return fmt.Errorf("no resource group location specified and no machines to infer from")
+		}
+	}
+
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(
-		ctx,
-		GetGlobalDeployment(),
-	)
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, deployment)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
@@ -85,7 +92,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	UpdateGlobalDeploymentKeyValue("ResourceGroupName", resourceGroupName)
 	UpdateGlobalDeploymentKeyValue("ResourceGroupLocation", resourceGroupLocation)
 
-	if err := GetGlobalDeployment().UpdateViperConfig(); err != nil {
+	if err := deployment.UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
@@ -690,7 +697,17 @@ func (p *AzureProvider) PrepareResourceGroup(
 	resourceGroupName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
 	resourceGroupLocation := deployment.ResourceGroupLocation
 
-	l.Debugf("Creating Resource Group - %s", resourceGroupName)
+	// If ResourceGroupLocation is not set, use the first location from the Machines
+	if resourceGroupLocation == "" {
+		if len(deployment.Machines) > 0 {
+			resourceGroupLocation = deployment.Machines[0].Location
+		}
+		if resourceGroupLocation == "" {
+			return "", "", fmt.Errorf("resource group location is not set and couldn't be inferred from machines")
+		}
+	}
+
+	l.Debugf("Creating Resource Group - %s in location %s", resourceGroupName, resourceGroupLocation)
 
 	_, err := p.Client.GetOrCreateResourceGroup(
 		ctx,
@@ -703,7 +720,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 		return "", "", fmt.Errorf("failed to create resource group: %w", err)
 	}
 
-	l.Debugf("Created Resource Group - %s", resourceGroupName)
+	l.Debugf("Created Resource Group - %s in location %s", resourceGroupName, resourceGroupLocation)
 
 	return resourceGroupName, resourceGroupLocation, nil
 }
