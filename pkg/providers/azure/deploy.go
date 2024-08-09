@@ -83,7 +83,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	}
 
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, deployment)
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
@@ -687,11 +687,9 @@ func (p *AzureProvider) FinalizeDeployment(
 }
 
 // prepareResourceGroup prepares or creates a resource group for the deployment
-func (p *AzureProvider) PrepareResourceGroup(
-	ctx context.Context,
-	deployment *models.Deployment,
-) (string, string, error) {
+func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) (string, string, error) {
 	l := logger.Get()
+	deployment := GetGlobalDeployment()
 
 	// Check if the resource group name already contains a timestamp
 	resourceGroupName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
