@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"sync"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -70,7 +69,7 @@ func (p *AzureProvider) DeployResources(
 	})
 
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, disp)
+	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx, GetGlobalDeployment(), disp)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
