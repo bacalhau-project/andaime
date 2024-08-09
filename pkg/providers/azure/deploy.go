@@ -72,8 +72,13 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	// Set the start time for the deployment
 	UpdateGlobalDeploymentKeyValue("StartTime", time.Now())
 
-	// Ensure we have a location set
+	// Ensure we have a deployment object
 	deployment := GetGlobalDeployment()
+	if deployment == nil {
+		return fmt.Errorf("global deployment object is not initialized")
+	}
+
+	// Ensure we have a location set
 	if deployment.ResourceGroupLocation == "" {
 		if len(deployment.Machines) > 0 {
 			deployment.ResourceGroupLocation = deployment.Machines[0].Location
@@ -691,7 +696,14 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) (string, strin
 	l := logger.Get()
 	deployment := GetGlobalDeployment()
 
+	if deployment == nil {
+		return "", "", fmt.Errorf("global deployment object is not initialized")
+	}
+
 	// Check if the resource group name already contains a timestamp
+	if deployment.ResourceGroupName == "" {
+		deployment.ResourceGroupName = "andaime-rg"
+	}
 	resourceGroupName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
 	resourceGroupLocation := deployment.ResourceGroupLocation
 
