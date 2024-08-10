@@ -2,7 +2,6 @@ package azure
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -96,9 +95,9 @@ func (m *MockAzureClient) ListAllResourcesInSubscription(
 	ctx context.Context,
 	subscriptionID string,
 	tags map[string]*string,
-) (AzureResources, error) {
+) error {
 	args := m.Called(ctx, subscriptionID, tags)
-	return args.Get(0).(AzureResources), args.Error(1)
+	return args.Error(0)
 }
 
 func (m *MockAzureClient) ListTypedResources(
@@ -106,9 +105,9 @@ func (m *MockAzureClient) ListTypedResources(
 	subscriptionID string,
 	filter string,
 	tags map[string]*string,
-) (AzureResources, error) {
+) error {
 	args := m.Called(ctx, subscriptionID, filter, tags)
-	return args.Get(0).(AzureResources), args.Error(1)
+	return args.Error(0)
 }
 
 func (m *MockAzureClient) NewSubscriptionListPager(
@@ -159,13 +158,12 @@ func TestAzureProvider_ListAllResourcesInSubscription_ReturnsEmptySlice(t *testi
 
 	// Update this line to match the actual method signature
 	mockClient.On("ListAllResourcesInSubscription", mock.Anything, subscriptionID, tags).Return(
-		AzureResources{}, nil,
+		nil,
 	)
 
-	resources, err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
+	err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 
 	assert.NoError(t, err)
-	assert.Empty(t, resources)
 	mockClient.AssertExpectations(t)
 }
 
@@ -180,51 +178,11 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 	}
 
 	mockClient.On("ListAllResourcesInSubscription", ctx, subscriptionID, tags).Return(
-		AzureResources{}, nil,
+		nil,
 	)
 
-	_, err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
+	err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.NoError(t, err)
-
-	mockClient.AssertExpectations(t)
-}
-
-func TestAzureProvider_ListTypedResources_ReturnsEmptySlice(t *testing.T) {
-	mockClient := new(MockAzureClient)
-	provider := &AzureProvider{Client: mockClient}
-	ctx := context.Background()
-	subscriptionID := "test-subscription-id"
-	resourceGroupName := "test-resource-group-name"
-	tags := map[string]*string{"tag1": to.Ptr("value1")}
-
-	// Update this line to match the actual method implementation
-	expectedFilter := fmt.Sprintf(
-		"resourceGroup eq '%s' and tags['tag1'] eq 'value1'",
-		resourceGroupName,
-	)
-
-	mockClient.On("ListTypedResources", ctx, subscriptionID, expectedFilter, tags).Return(
-		AzureResources{}, nil,
-	)
-
-	_, err := provider.ListTypedResources(ctx, subscriptionID, resourceGroupName, tags)
-	assert.NoError(t, err)
-	mockClient.AssertExpectations(t)
-}
-
-func TestAzureProvider_ListTypedResources_NonStringTagValues(t *testing.T) {
-	mockClient := new(MockAzureClient)
-	provider := &AzureProvider{Client: mockClient}
-	ctx := context.Background()
-	subscriptionID := "test-subscription-id"
-	resourceGroupName := "test-resource-group-name"
-	tags := map[string]*string{
-		"key1": to.Ptr("value1"),
-		"key2": nil,
-	}
-
-	_, err := provider.ListTypedResources(ctx, subscriptionID, resourceGroupName, tags)
-	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
 }

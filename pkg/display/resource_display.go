@@ -65,7 +65,7 @@ type DisplayColumn struct {
 var DisplayColumns = []DisplayColumn{
 	{
 		Text:     "ID",
-		Width:    10,
+		Width:    13,
 		Color:    TextColor,
 		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.ID },
@@ -86,11 +86,12 @@ var DisplayColumns = []DisplayColumn{
 	},
 	{
 		Text:     "Status",
-		Width:    36,
+		Width:    44,
+		Align:    tview.AlignLeft,
 		Color:    TextColor,
-		DataFunc: func(status models.Status) string { return status.Status }},
+		DataFunc: func(status models.Status) string { return " " + status.Status }},
 	{
-		Text:  "Elapsed",
+		Text:  "Time",
 		Width: 10,
 		Color: TextColor,
 		Align: tview.AlignCenter,
@@ -112,17 +113,13 @@ var DisplayColumns = []DisplayColumn{
 		},
 	},
 	{
-		Text:     "Instance ID",
-		Width:    20,
-		Color:    TextColor,
-		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return status.InstanceID }},
-	{Text: "Public IP",
+		Text:     "Public IP",
 		Width:    15,
 		Color:    TextColor,
 		Align:    tview.AlignCenter,
 		DataFunc: func(status models.Status) string { return status.PublicIP }},
-	{Text: "Private IP",
+	{
+		Text:     "Private IP",
 		Width:    15,
 		Color:    TextColor,
 		Align:    tview.AlignCenter,

@@ -1,14 +1,18 @@
 package azure
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestGenerateTags(t *testing.T) {
@@ -366,4 +370,44 @@ func TestUpdateNSGStatus(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, tt.deployment.NetworkSecurityGroups)
 		})
 	}
+}
+
+func TestPrepareResourceGroup_NoMachines(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	UpdateGlobalDeployment(func(d *models.Deployment) { d.Machines = []models.Machine{} })
+
+	provider := &AzureProvider{
+		Client: &MockAzureClient{},
+	}
+
+	// Act
+	err := provider.PrepareResourceGroup(ctx)
+
+	// Assert
+	assert.EqualError(t, err, "resource group location is not set and couldn't be inferred from machines")
+}
+
+func TestPrepareResourceGroup_GetOrCreateResourceGroupError(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	UpdateGlobalDeployment(func(d *models.Deployment) {
+		d.Machines = []models.Machine{
+			{Location: "westus2"},
+		}
+		d.ResourceGroupName = "test-rg"
+	})
+
+	mockClient := &MockAzureClient{}
+	mockClient.On("GetOrCreateResourceGroup", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&armresources.ResourceGroup{}, fmt.Errorf("failed to create resource group"))
+	provider := &AzureProvider{
+		Client: mockClient,
+	}
+
+	// Act
+	err := provider.PrepareResourceGroup(ctx)
+
+	// Assert
+	assert.EqualError(t, err, "failed to create resource group: failed to create resource group")
+	mockClient.AssertExpectations(t)
 }

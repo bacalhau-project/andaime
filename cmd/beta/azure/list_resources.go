@@ -49,17 +49,17 @@ var AzureListResourcesCmd = &cobra.Command{
 		log.Info("Contacting Azure API...")
 		startTime := time.Now()
 
-		var searchScope string
 		if allFlag {
-			searchScope = getSubscriptionID()
+			err = azureProvider.GetClient().ListAllResourcesInSubscription(cmd.Context(),
+				getSubscriptionID(),
+				tags)
 		} else {
-			searchScope = resourceGroup
+			err = azureProvider.GetClient().ListTypedResources(cmd.Context(),
+				getSubscriptionID(),
+				resourceGroup,
+				tags)
 		}
 
-		resources, err := azureProvider.ListTypedResources(cmd.Context(),
-			getSubscriptionID(),
-			searchScope,
-			tags)
 		if err != nil {
 			switch {
 			case isNetworkError(err):
@@ -73,11 +73,12 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
 
-		if resources.GetTotalResourcesCount() == 0 {
+		sm := azure.GetGlobalStateMachine()
+		if sm.GetTotalResourcesCount() == 0 {
 			log.Warn("No resources created by Andaime were found")
 		} else {
-			for res := range resources.GetAllResources() {
-				fmt.Println("Resource Type:", res.Type) // prints eg: VirtualMachine
+			for _, res := range sm.GetAllResources() {
+				fmt.Println("Resource Type:", res.Type)
 				switch r := res.Resource.(type) {
 				case armcompute.VirtualMachine:
 					fmt.Println("Found virtual machine:", *r.Name)

@@ -15,6 +15,7 @@ import (
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
@@ -30,6 +31,9 @@ var (
 func GetGlobalDeployment() *models.Deployment {
 	deploymentMutex.RLock()
 	defer deploymentMutex.RUnlock()
+	if globalDeployment == nil {
+		globalDeployment = &models.Deployment{}
+	}
 	return globalDeployment
 }
 
@@ -57,13 +61,6 @@ func UpdateGlobalDeploymentKeyValue(key string, value interface{}) {
 	reflect.ValueOf(globalDeployment).Elem().FieldByName(key).Set(reflect.ValueOf(value))
 }
 
-const WaitForIPAddressesTimeout = 20 * time.Second
-const WaitForResourcesTimeout = 2 * time.Minute
-const WaitForResourcesTicker = 5 * time.Second
-const maximumSimultaneousDeployments = 5
-
-const DefaultDiskSize = 30
-
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
@@ -84,14 +81,11 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	}
 
 	// Prepare resource group
-	resourceGroupName, resourceGroupLocation, err := p.PrepareResourceGroup(ctx)
+	err := p.PrepareResourceGroup(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
-
-	UpdateGlobalDeploymentKeyValue("ResourceGroupName", resourceGroupName)
-	UpdateGlobalDeploymentKeyValue("ResourceGroupLocation", resourceGroupLocation)
 
 	if err := deployment.UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
@@ -132,7 +126,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	wg := sync.WaitGroup{}
 
 	// Run maximum 5 deployments at a time
-	sem := make(chan struct{}, maximumSimultaneousDeployments)
+	sem := make(chan struct{}, globals.MaximumSimultaneousDeployments)
 
 	for _, machine := range GetGlobalDeployment().Machines {
 		internalMachine := machine
@@ -154,7 +148,11 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 			err := p.deployMachine(ctx, goRoutineMachine, tags)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
-				sm.UpdateStatus("VM", goRoutineMachine.ID, StateFailed)
+				sm.UpdateStatus(
+					goRoutineMachine.ID,
+					goRoutineMachine,
+					StateFailed,
+				)
 			}
 		}(&internalMachine)
 	}
@@ -171,7 +169,11 @@ func (p *AzureProvider) deployMachine(
 	tags map[string]*string,
 ) error {
 	sm := GetGlobalStateMachine()
-	sm.UpdateStatus("VM", machine.Name, StateProvisioning)
+	sm.UpdateStatus(
+		machine.Name,
+		machine,
+		StateProvisioning,
+	)
 
 	params := p.prepareDeploymentParams(machine)
 	vmTemplate, err := p.getAndPrepareTemplate()
@@ -258,9 +260,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		}
 
 		resp, err := poller.PollUntilDone(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("deployment failed: %w", err)
-		}
 		if resp.Properties != nil && resp.Properties.ProvisioningState != nil {
 			if *resp.Properties.ProvisioningState == "Failed" {
 				if resp.Properties.Error != nil && resp.Properties.Error.Message != nil {
@@ -286,12 +285,20 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				),
 			}
 		} else {
-			sm.UpdateStatus("VM", machine.ID, StateFailed)
+			sm.UpdateStatus(
+				machine.ID,
+				machine,
+				StateFailed,
+			)
 			return fmt.Errorf("failed to start template deployment: %w", err)
 		}
 	}
 
-	sm.UpdateStatus("VM", machine.ID, StateFailed)
+	sm.UpdateStatus(
+		machine.ID,
+		machine,
+		StateFailed,
+	)
 	return fmt.Errorf("failed to start template deployment after %d retries", maxRetries)
 }
 
@@ -300,29 +307,54 @@ func (p *AzureProvider) PollAndUpdateResources(
 ) error {
 	sm := GetGlobalStateMachine()
 	deployment := GetGlobalDeployment()
-	resources, err := p.ListAllResourcesInSubscription(
+	err := p.Client.ListTypedResources(
 		ctx,
 		deployment.SubscriptionID,
+		deployment.ResourceGroupName,
 		deployment.Tags,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to list resources: %w", err)
 	}
 
-	for resource := range resources.GetAllResources() {
-		switch r := resource.Resource.(type) {
+	for _, res := range sm.GetAllResources() {
+		switch r := res.Resource.(type) {
 		case armcompute.VirtualMachine:
-			sm.UpdateStatus("VM", *r.Name, convertToResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus(
+				*r.Name,
+				r,
+				convertToResourceState(*r.Properties.ProvisioningState),
+			)
 		case armcompute.VirtualMachineExtension:
-			sm.UpdateStatus("VMExtension", *r.Name, convertToResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus(
+				*r.Name,
+				r,
+				convertToResourceState(*r.Properties.ProvisioningState),
+			)
 		case armnetwork.PublicIPAddress:
-			sm.UpdateStatus("PublicIP", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
+			sm.UpdateStatus(
+				*r.Name,
+				r,
+				convertToResourceState(string(*r.Properties.ProvisioningState)),
+			)
 		case armnetwork.Interface:
-			sm.UpdateStatus("NIC", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
+			sm.UpdateStatus(
+				*r.Name,
+				r,
+				convertToResourceState(string(*r.Properties.ProvisioningState)),
+			)
 		case armnetwork.SecurityGroup:
-			sm.UpdateStatus("NSG", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
+			sm.UpdateStatus(
+				*r.Name,
+				r,
+				convertToResourceState(string(*r.Properties.ProvisioningState)),
+			)
 		case armnetwork.VirtualNetwork:
-			sm.UpdateStatus("VNet", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
+			sm.UpdateStatus(
+				*r.Name,
+				r,
+				convertToResourceState(string(*r.Properties.ProvisioningState)),
+			)
 		}
 	}
 
@@ -331,39 +363,40 @@ func (p *AzureProvider) PollAndUpdateResources(
 
 func (p *AzureProvider) updateDeploymentStatus(
 	deployment *models.Deployment,
-	resources AzureResources,
 ) {
 	l := logger.Get()
-	for res := range resources.GetAllResources() {
-		switch strings.ToLower(res.Type) {
-		case "microsoft.compute/virtualmachines":
+	sm := GetGlobalStateMachine()
+
+	for _, res := range sm.GetAllResources() {
+		switch res.Type {
+		case reflect.TypeOf(armcompute.VirtualMachine{}):
 			if vm, ok := res.Resource.(armcompute.VirtualMachine); ok {
 				p.updateVMStatus(deployment, &vm)
 			}
-		case "microsoft.compute/virtualmachines/extensions":
+		case reflect.TypeOf(armcompute.VirtualMachineExtension{}):
 			if vmExt, ok := res.Resource.(armcompute.VirtualMachineExtension); ok {
 				p.updateVMExtensionsStatus(
 					deployment,
 					&vmExt,
 				)
 			}
-		case "microsoft.network/publicipaddresses":
+		case reflect.TypeOf(armnetwork.PublicIPAddress{}):
 			if publicIP, ok := res.Resource.(armnetwork.PublicIPAddress); ok {
 				p.updatePublicIPStatus(deployment, &publicIP)
 			}
-		case "microsoft.network/networkinterfaces":
+		case reflect.TypeOf(armnetwork.Interface{}):
 			if nic, ok := res.Resource.(armnetwork.Interface); ok {
 				p.updateNICStatus(deployment, &nic)
 			}
-		case "microsoft.network/networksecuritygroups":
+		case reflect.TypeOf(armnetwork.SecurityGroup{}):
 			if nsg, ok := res.Resource.(armnetwork.SecurityGroup); ok {
 				p.updateNSGStatus(deployment, &nsg)
 			}
-		case "microsoft.network/virtualnetworks":
+		case reflect.TypeOf(armnetwork.VirtualNetwork{}):
 			if vnet, ok := res.Resource.(armnetwork.VirtualNetwork); ok {
 				p.updateVNetStatus(deployment, &vnet)
 			}
-		case "microsoft.compute/disks":
+		case reflect.TypeOf(armcompute.Disk{}):
 			if disk, ok := res.Resource.(armcompute.Disk); ok {
 				p.updateDiskStatus(deployment, &disk)
 			}
@@ -709,54 +742,74 @@ func (p *AzureProvider) FinalizeDeployment(
 	return nil
 }
 
-// prepareResourceGroup prepares or creates a resource group for the deployment
-func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) (string, string, error) {
+// PrepareResourceGroup prepares or creates a resource group for the Azure deployment.
+// It ensures that a valid resource group name and location are set, creating them if necessary.
+//
+// Parameters:
+//   - ctx: The context.Context for the operation, used for cancellation and timeout.
+//
+// Returns:
+//   - error: An error if the resource group preparation fails, nil otherwise.
+//
+// The function performs the following steps:
+// 1. Retrieves the global deployment object.
+// 2. Ensures a resource group name is set, appending a timestamp if necessary.
+// 3. Determines the resource group location, using the first machine's location if not explicitly set.
+// 4. Creates or retrieves the resource group using the Azure client.
+// 5. Updates the global deployment object with the finalized resource group information.
+func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	l := logger.Get()
 	deployment := GetGlobalDeployment()
 
 	if deployment == nil {
-		return "", "", fmt.Errorf("global deployment object is not initialized")
+		return fmt.Errorf("global deployment object is not initialized")
 	}
 
 	// Check if the resource group name already contains a timestamp
 	if deployment.ResourceGroupName == "" {
 		deployment.ResourceGroupName = "andaime-rg"
 	}
-	resourceGroupName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	resourceGroupLocation := deployment.ResourceGroupLocation
+	newRGName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
+	UpdateGlobalDeploymentKeyValue("ResourceGroupName", newRGName)
 
+	var resourceGroupLocation string
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
 		if len(deployment.Machines) > 0 {
 			resourceGroupLocation = deployment.Machines[0].Location
 		}
 		if resourceGroupLocation == "" {
-			return "", "", fmt.Errorf(
+			return fmt.Errorf(
 				"resource group location is not set and couldn't be inferred from machines",
 			)
 		}
 	}
+	UpdateGlobalDeploymentKeyValue("ResourceGroupLocation", resourceGroupLocation)
 
 	l.Debugf(
 		"Creating Resource Group - %s in location %s",
-		resourceGroupName,
-		resourceGroupLocation,
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation,
 	)
 
 	_, err := p.Client.GetOrCreateResourceGroup(
 		ctx,
-		resourceGroupName,
-		resourceGroupLocation,
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation,
 		deployment.Tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to create Resource Group - %s: %v", resourceGroupName, err)
-		return "", "", fmt.Errorf("failed to create resource group: %w", err)
+		l.Errorf("Failed to create Resource Group - %s: %v", deployment.ResourceGroupName, err)
+		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
-	l.Debugf("Created Resource Group - %s in location %s", resourceGroupName, resourceGroupLocation)
+	l.Debugf(
+		"Created Resource Group - %s in location %s",
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation,
+	)
 
-	return resourceGroupName, resourceGroupLocation, nil
+	return nil
 }
 func printMachineIPTable(deployment *models.Deployment) {
 	table := tablewriter.NewWriter(os.Stdout)

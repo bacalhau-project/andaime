@@ -118,19 +118,17 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting resource deployment")
 	azure.SetGlobalDeployment(deployment)
 
-	// Start resource deployment and polling in goroutines
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		l.Debug("Starting resource deployment goroutine")
-		
-		// Start the resource polling
-		l.Debug("Calling StartResourcePolling")
-		azureProvider.StartResourcePolling(ctx)
-		l.Debug("StartResourcePolling called")
+	l.Info("Starting resource deployment")
+	azure.SetGlobalDeployment(deployment)
 
-		l.Debug("Calling DeployResources")
-		err := azureProvider.DeployResources(ctx)
+	// Start resource polling in the main thread
+	l.Debug("Starting resource polling")
+	go azureProvider.StartResourcePolling(ctx)
+
+	go func() {
+		// Start resource deployment
+		l.Debug("Starting resource deployment")
+		err = azureProvider.DeployResources(ctx)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
@@ -139,7 +137,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			l.Info("Azure deployment created successfully")
 			cmd.Println("Azure deployment created successfully")
 		}
-		l.Debug("Resource deployment goroutine completed")
 	}()
 
 	// Wait for signal, error, or deployment completion
@@ -319,6 +316,7 @@ func PrepareDeployment(
 	for _, machine := range deployment.Machines {
 		disp.UpdateStatus(&models.Status{
 			ID:        machine.Name,
+			Type:      "VM",
 			Status:    "Initializing machine...",
 			Location:  machine.Location,
 			StartTime: time.Now(),

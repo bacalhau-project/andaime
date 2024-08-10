@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,25 @@ var (
 	globalStateMachineMu sync.Mutex
 )
 
+const (
+	StateNotStarted ResourceState = iota
+	StateProvisioning
+	StateSucceeded
+	StateFailed
+)
+
+type StateMachineResource struct {
+	Type        reflect.Type
+	Resource    interface{}
+	State       ResourceState
+	LastUpdated time.Time
+}
+
+type AzureStateMachine struct {
+	mu        sync.Mutex
+	Resources map[string]StateMachineResource
+}
+
 func GetGlobalStateMachine() *AzureStateMachine {
 	globalStateMachineMu.Lock()
 	defer globalStateMachineMu.Unlock()
@@ -28,58 +48,48 @@ func GetGlobalStateMachine() *AzureStateMachine {
 	return globalStateMachine
 }
 
-const (
-	StateNotStarted ResourceState = iota
-	StateProvisioning
-	StateSucceeded
-	StateFailed
-)
-
-// String method to convert ResourceState to string for display purposes
 func (rs ResourceState) String() string {
 	return [...]string{"Not Started", "Provisioning", "Succeeded", "Failed"}[rs]
 }
 
-type ResourceStatus struct {
-	State       ResourceState
-	LastUpdated time.Time
-}
-
-type AzureStateMachine struct {
-	mu         sync.Mutex
-	statuses   map[string]ResourceStatus
-	deployment *models.Deployment
-}
-
 func NewDeploymentStateMachine(deployment *models.Deployment) *AzureStateMachine {
 	return &AzureStateMachine{
-		statuses:   make(map[string]ResourceStatus),
-		deployment: deployment,
+		Resources: make(map[string]StateMachineResource),
 	}
 }
 
 func (dsm *AzureStateMachine) UpdateStatus(
-	resourceType, resourceName string,
+	resourceName string,
+	resource interface{},
 	state ResourceState,
 ) {
 	dsm.mu.Lock()
 	defer dsm.mu.Unlock()
 	disp := display.GetGlobalDisplay()
 
-	if dsm.statuses[resourceName].State > state {
+	if _, ok := dsm.Resources[resourceName]; !ok {
+		dsm.Resources[resourceName] = StateMachineResource{
+			Type:        reflect.TypeOf(resource),
+			Resource:    resource,
+			State:       state,
+			LastUpdated: time.Now(),
+		}
+	}
+
+	if dsm.Resources[resourceName].State > state {
 		return
 	}
 
-	dsm.statuses[resourceName] = ResourceStatus{State: state, LastUpdated: time.Now()}
+	thisResource := dsm.Resources[resourceName]
+	thisResource.State = state
+	thisResource.LastUpdated = time.Now()
+	dsm.Resources[resourceName] = thisResource
 
-	// The only thing we care about is the portion of the string before
-	// the first "-"
 	stub := strings.Split(resourceName, "-")[0]
 
-	// We'll identify it's a location by looking through all the locations and matching
-	// to the key.
 	isLocation := false
-	for _, machine := range dsm.deployment.Machines {
+	deployment := GetGlobalDeployment()
+	for _, machine := range deployment.Machines {
 		if machine.Location == stub {
 			isLocation = true
 			disp.UpdateStatus(&models.Status{
@@ -88,12 +98,13 @@ func (dsm *AzureStateMachine) UpdateStatus(
 			})
 		}
 	}
-	if !isLocation {
+
+	// It was a location, so we've already applied it to all machines. Return.
+	if isLocation {
 		return
 	}
 
-	// Otherwise, it's not a location, so we'll just update the status for the specific machine
-	for _, machine := range dsm.deployment.Machines {
+	for _, machine := range deployment.Machines {
 		if machine.ID == stub {
 			disp.UpdateStatus(&models.Status{
 				ID:     machine.Name,
@@ -103,8 +114,18 @@ func (dsm *AzureStateMachine) UpdateStatus(
 	}
 }
 
-// Write a GetStatus method that returns the status of the deployment
 func (dsm *AzureStateMachine) GetStatus(key string) (ResourceState, bool) {
-	status, ok := dsm.statuses[key]
-	return status.State, ok
+	state, ok := dsm.Resources[key]
+	if !ok {
+		return StateNotStarted, false
+	}
+	return state.State, true
+}
+
+func (dsm *AzureStateMachine) GetTotalResourcesCount() int {
+	return len(dsm.Resources)
+}
+
+func (dsm *AzureStateMachine) GetAllResources() map[string]StateMachineResource {
+	return dsm.Resources
 }

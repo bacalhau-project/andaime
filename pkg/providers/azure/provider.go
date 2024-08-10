@@ -22,40 +22,6 @@ type AzureProviderer interface {
 	SetConfig(config *viper.Viper)
 
 	StartResourcePolling(ctx context.Context)
-
-	// ListAllResourcesInSubscription queries all resources in a subscription.
-	//
-	// It searches for resources within the specified scope and subscription, filtered by tags.
-	//
-	// Parameters:
-	//   - ctx: The context for the operation, which can be used for cancellation.
-	//   - subscriptionID: The ID of the Azure subscription to search within.
-	//   - tags: A map of tag keys to pointers of tag values to filter the resources.
-	//
-	// Returns:
-	//   - A slice of pointers to armresources.GenericResource objects representing the found resources.
-	//   - An error if the search operation fails or if there's an issue processing the response.
-	ListAllResourcesInSubscription(ctx context.Context,
-		subscriptionID string,
-		tags map[string]*string) (AzureResources, error)
-
-	// ListTypedResources queries Azure resources based on the provided criteria.
-	//
-	// It searches for resources within the specified scope and subscription, filtered by tags.
-	// The function then converts the raw response into a slice of GenericResource objects.
-	//
-	// Parameters:
-	//   - ctx: The context for the operation, which can be used for cancellation.
-	//   - subscriptionID: The ID of the Azure subscription to search within.
-	//   - resourceGroupName: The name of the resource group to search within.
-	//   - tags: A map of tag keys to pointers of tag values to filter the resources.
-	//
-	// Returns:
-	//   - A slice of pointers to armresources.GenericResource objects representing the found resources.
-	//   - An error if the search operation fails or if there's an issue processing the response.
-	ListTypedResources(ctx context.Context,
-		subscriptionID, resourceGroupName string,
-		tags map[string]*string) (AzureResources, error)
 	DeployResources(ctx context.Context) error
 	DestroyResources(ctx context.Context,
 		resourceGroupName string) error
@@ -111,22 +77,23 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
+// Updates the state machine with the latest resource state
 func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	subscriptionID string,
-	tags map[string]*string) (AzureResources, error) {
+	tags map[string]*string) error {
 	l := logger.Get()
 
-	resourcesResponse, err := p.Client.ListAllResourcesInSubscription(ctx,
+	err := p.Client.ListAllResourcesInSubscription(ctx,
 		subscriptionID,
 		tags)
 	if err != nil {
 		l.Errorf("Failed to query Azure resources: %v", err)
-		return AzureResources{}, fmt.Errorf("failed to query resources: %v", err)
+		return fmt.Errorf("failed to query resources: %v", err)
 	}
 
-	l.Debugf("Azure Resource Graph response: %+v", resourcesResponse)
+	l.Debugf("Azure Resource Graph response - done listing resources.")
 
-	return resourcesResponse, nil
+	return nil
 }
 
 func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
@@ -146,53 +113,49 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	tickerDone := utils.CreateStructChannel("azure_createDeployment_tickerDone", 1)
 	defer utils.CloseChannel(tickerDone)
 
-	go func() {
-		l.Debug("Ticker goroutine started")
-		defer l.Debug("Ticker goroutine exited")
-		for {
-			select {
-			case <-statusTicker.C:
-				l.Debug("Status ticker triggered")
-				allMachinesComplete := true
-				dep := GetGlobalDeployment()
-				for _, machine := range dep.Machines {
-					if machine.Status != models.MachineStatusComplete {
-						allMachinesComplete = false
-					}
-					if machine.Status == models.MachineStatusComplete {
-						continue
-					}
-					l.Debugf("Updating status for machine: %s", machine.Name)
-					disp.UpdateStatus(&models.Status{
-						ID: machine.Name,
-						ElapsedTime: time.Duration(
-							time.Since(machine.StartTime).
-								Milliseconds() /
-								1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
-						),
-					})
+	l.Debug("Ticker goroutine started")
+	defer l.Debug("Ticker goroutine exited")
+	for {
+		select {
+		case <-statusTicker.C:
+			// l.Debug("Status ticker triggered")
+			allMachinesComplete := true
+			dep := GetGlobalDeployment()
+			for _, machine := range dep.Machines {
+				if machine.Status != models.MachineStatusComplete {
+					allMachinesComplete = false
 				}
-				if allMachinesComplete {
-					l.Debug("All machines complete, sending tickerDone signal")
-					tickerDone <- struct{}{}
+				if machine.Status == models.MachineStatusComplete {
+					continue
 				}
-			case <-resourceTicker.C:
-				l.Debug("Resource ticker triggered")
-				err := p.PollAndUpdateResources(ctx)
-				if err != nil {
-					l.Errorf("Failed to poll and update resources: %v", err)
-				}
-			case <-tickerDone:
-				l.Debug("Received tickerDone signal, exiting goroutine")
-				return
-			case <-ctx.Done():
-				l.Debug("Context done, exiting goroutine")
-				return
+				// l.Debugf("Updating status for machine: %s", machine.Name)
+				disp.UpdateStatus(&models.Status{
+					ID: machine.Name,
+					ElapsedTime: time.Duration(
+						time.Since(machine.StartTime).
+							Milliseconds() /
+							1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
+					),
+				})
 			}
+			if allMachinesComplete {
+				l.Debug("All machines complete, sending tickerDone signal")
+				tickerDone <- struct{}{}
+			}
+		case <-resourceTicker.C:
+			l.Debug("Resource ticker triggered")
+			err := p.PollAndUpdateResources(ctx)
+			if err != nil {
+				l.Errorf("Failed to poll and update resources: %v", err)
+			}
+		case <-tickerDone:
+			l.Debug("Received tickerDone signal, exiting goroutine")
+			return
+		case <-ctx.Done():
+			l.Debug("Context done, exiting goroutine")
+			return
 		}
-	}()
-
-	l.Debug("StartResourcePolling completed")
+	}
 }
 
 func parseNSGProperties(

@@ -151,6 +151,7 @@ Upsert
 utod
 virtualenvs
 virtualmachine
+virtualmachines
 virtualnetwork
 virtualnetworks
 VMIP

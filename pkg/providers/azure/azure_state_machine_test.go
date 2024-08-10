@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -25,37 +26,49 @@ func TestUpdateStatus(t *testing.T) {
 	dsm := GetGlobalStateMachine()
 	defer func() {
 		dsm.mu.Lock()
-		dsm.statuses = make(map[string]ResourceStatus)
+		dsm.Resources = make(map[string]StateMachineResource, 0)
 		dsm.mu.Unlock()
 	}()
 
 	// Test updating the status of a resource
-	dsm.UpdateStatus("vm", "eastus-nsg", StateSucceeded)
-	if dsm.statuses["eastus-nsg"].State != StateSucceeded {
+	dsm.UpdateStatus(
+		"eastus-nsg",
+		models.Machine{ID: "eastus-nsg"},
+		StateSucceeded,
+	)
+	if dsm.Resources["eastus-nsg"].State != StateSucceeded {
 		t.Errorf(
 			"Expected state to be %s, but got %s",
 			StateSucceeded,
-			dsm.statuses["eastus-nsg"].State,
+			dsm.Resources["eastus-nsg"].State,
 		)
 	}
 
 	// Test updating the status of a resource to a lower state
-	dsm.UpdateStatus("vm", "eastus-nsg", StateFailed)
-	if dsm.statuses["eastus-nsg"].State != StateFailed {
+	dsm.UpdateStatus(
+		"eastus-nsg",
+		models.Machine{ID: "eastus-nsg"},
+		StateFailed,
+	)
+	if dsm.Resources["eastus-nsg"].State != StateFailed {
 		t.Errorf(
 			"Expected state to be %s, but got %s",
 			StateFailed,
-			dsm.statuses["eastus-nsg"].State,
+			dsm.Resources["eastus-nsg"].State,
 		)
 	}
 
 	// Test updating the status of a resource to a higher state
-	dsm.UpdateStatus("vm", "eastus-vm", StateSucceeded)
-	if dsm.statuses["eastus-vm"].State != StateSucceeded {
+	dsm.UpdateStatus(
+		"eastus-vm",
+		models.Machine{ID: "eastus-vm"},
+		StateSucceeded,
+	)
+	if dsm.Resources["eastus-vm"].State != StateSucceeded {
 		t.Errorf(
 			"Expected state to be %s, but got %s",
 			StateSucceeded,
-			dsm.statuses["eastus-vm"].State,
+			dsm.Resources["eastus-vm"].State,
 		)
 	}
 
@@ -65,26 +78,78 @@ func TestGetStatus(t *testing.T) {
 	dsm := GetGlobalStateMachine()
 	defer func() {
 		dsm.mu.Lock()
-		dsm.statuses = make(map[string]ResourceStatus)
+		dsm.Resources = make(map[string]StateMachineResource, 0)
 		dsm.mu.Unlock()
 	}()
 
+	state := StateSucceeded
 	// Test getting the status of a resource
-	dsm.statuses["123456-vm"] = ResourceStatus{State: StateSucceeded}
+	dsm.Resources["123456-vm"] = StateMachineResource{
+		Type: reflect.TypeOf(models.Machine{}),
+		Resource: models.Machine{
+			ID: "123456-vm",
+		},
+		State: state,
+	}
 	status, ok := dsm.GetStatus("123456-vm")
 	if !ok {
 		t.Errorf("Expected the resource to exist, but it doesn't")
 	}
-	if status != StateSucceeded {
+	if status != state {
 		t.Errorf(
 			"Expected state to be %s, but got %s",
 			StateSucceeded,
 			status,
 		)
 	}
+}
 
-	// Test getting the status of a resource that doesn't exist
-	if _, ok := dsm.GetStatus("non-existent-vm"); ok {
-		t.Errorf("Expected the resource to not exist, but it does")
+func TestStateProgression(t *testing.T) {
+	dsm := GetGlobalStateMachine()
+	defer func() {
+		dsm.mu.Lock()
+		dsm.Resources = make(map[string]StateMachineResource, 0)
+		dsm.mu.Unlock()
+	}()
+
+	resourceName := "test-resource"
+	resource := models.Machine{ID: resourceName}
+
+	states := []ResourceState{
+		StateNotStarted,
+		StateProvisioning,
+		StateSucceeded,
+		StateFailed,
+	}
+
+	// Test forward progression
+	for i, currentState := range states {
+		dsm.UpdateStatus(resourceName, resource, currentState)
+		status, ok := dsm.GetStatus(resourceName)
+		if !ok {
+			t.Errorf("Expected resource %s to exist, but it doesn't", resourceName)
+		}
+		if status != currentState {
+			t.Errorf("Expected state to be %s, but got %s", currentState, status)
+		}
+
+		// Try to update with all previous states
+		for j := 0; j < i; j++ {
+			previousState := states[j]
+			dsm.UpdateStatus(resourceName, resource, previousState)
+			status, _ = dsm.GetStatus(resourceName)
+			if status != currentState {
+				t.Errorf("State incorrectly changed from %s to %s", currentState, status)
+			}
+		}
+	}
+
+	// Test that final state (StateFailed) cannot be changed
+	for _, state := range states {
+		dsm.UpdateStatus(resourceName, resource, state)
+		status, _ := dsm.GetStatus(resourceName)
+		if status != StateFailed {
+			t.Errorf("Final state (StateFailed) was incorrectly changed to %s", status)
+		}
 	}
 }
