@@ -21,6 +21,8 @@ type AzureProviderer interface {
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 
+	StartResourcePolling(ctx context.Context)
+
 	// ListAllResourcesInSubscription queries all resources in a subscription.
 	//
 	// It searches for resources within the specified scope and subscription, filtered by tags.
