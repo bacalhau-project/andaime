@@ -133,6 +133,8 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
 
+	l.Debug("Starting StartResourcePolling")
+
 	// Create ticker channel for status updates
 	statusTicker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
 	defer statusTicker.Stop()
@@ -145,10 +147,12 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	defer utils.CloseChannel(tickerDone)
 
 	go func() {
+		l.Debug("Ticker goroutine started")
 		defer l.Debug("Ticker goroutine exited")
 		for {
 			select {
 			case <-statusTicker.C:
+				l.Debug("Status ticker triggered")
 				allMachinesComplete := true
 				dep := GetGlobalDeployment()
 				for _, machine := range dep.Machines {
@@ -158,6 +162,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 					if machine.Status == models.MachineStatusComplete {
 						continue
 					}
+					l.Debugf("Updating status for machine: %s", machine.Name)
 					disp.UpdateStatus(&models.Status{
 						ID: machine.Name,
 						ElapsedTime: time.Duration(
@@ -168,20 +173,26 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 					})
 				}
 				if allMachinesComplete {
+					l.Debug("All machines complete, sending tickerDone signal")
 					tickerDone <- struct{}{}
 				}
 			case <-resourceTicker.C:
+				l.Debug("Resource ticker triggered")
 				err := p.PollAndUpdateResources(ctx)
 				if err != nil {
 					l.Errorf("Failed to poll and update resources: %v", err)
 				}
 			case <-tickerDone:
+				l.Debug("Received tickerDone signal, exiting goroutine")
 				return
 			case <-ctx.Done():
+				l.Debug("Context done, exiting goroutine")
 				return
 			}
 		}
 	}()
+
+	l.Debug("StartResourcePolling completed")
 }
 
 func parseNSGProperties(

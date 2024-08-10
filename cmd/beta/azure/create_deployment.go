@@ -130,22 +130,30 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	// Start resource deployment and polling in goroutines
 	go func() {
+		l.Debug("Starting resource deployment goroutine")
+		
 		// Start the resource polling
+		l.Debug("Calling StartResourcePolling")
 		azureProvider.StartResourcePolling(ctx)
+		l.Debug("StartResourcePolling called")
 
+		l.Debug("Calling DeployResources")
 		err := azureProvider.DeployResources(ctx)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
 			// Send the error to the error channel
 			if errorChan != nil {
+				l.Debug("Sending error to errorChan")
 				errorChan <- fmt.Errorf(errMsg)
 			}
 		} else {
 			l.Info("Azure deployment created successfully")
 			cmd.Println("Azure deployment created successfully")
+			l.Debug("Closing deploymentDone channel")
 			utils.CloseChannel(deploymentDone)
 		}
+		l.Debug("Resource deployment goroutine completed")
 	}()
 
 	// Wait for signal, error, or deployment completion
