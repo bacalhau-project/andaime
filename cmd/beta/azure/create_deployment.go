@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,20 +53,14 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	// Create a channel to signal when cleanup is done
-	cleanupDone := utils.CreateBoolChannel("azure_createDeployment_cleanupDone", 1)
-	l.Debugf("Channel created: azure_cleanup_done")
+	// Create a WaitGroup to wait for all goroutines to finish
+	var wg sync.WaitGroup
 
 	// Create a channel for error communication
-	errorChan := utils.CreateErrorChannel("azure_createDeployment_errorChan", 1)
-	l.Debugf("Channel created: azure_error_channel")
-
-	// Create a channel to signal deployment completion
-	deploymentDone := utils.CreateBoolChannel("azure_createDeployment_deploymentDone", 1)
-	l.Debugf("Channel created: azure_deployment_done")
+	errorChan := make(chan error, 1)
 
 	// Set up signal handling
-	sigChan := utils.CreateSignalChannel("azure_createDeployment_sigChan", 1)
+	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Initialize the display
@@ -80,7 +75,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		if r := recover(); r != nil {
 			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
 			l.Error(string(debug.Stack()))
-			l.Debugf("Closing channel: azure_error_channel")
 			errorChan <- fmt.Errorf("panic occurred: %v", r)
 		}
 		cancel() // Cancel the context
@@ -88,8 +82,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			disp.Stop()
 			disp.WaitForStop() // Ensure display is fully stopped
 		}
-		l.Debugf("Closing channel: azure_cleanup_done")
-		utils.CloseChannel(cleanupDone)
 		l.Info("Cleanup completed")
 
 		// Debug information about open channels
@@ -113,11 +105,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Azure provider initialized successfully")
 
-	l.Debug("Setting up signal channel")
-	l.Debugf("Channel created: azure_signal_channel")
-
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	// Create a new deployment object
 	deployment, err := InitializeDeployment(ctx, UniqueID)
 	if err != nil {
@@ -129,7 +116,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	azure.SetGlobalDeployment(deployment)
 
 	// Start resource deployment and polling in goroutines
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		l.Debug("Starting resource deployment goroutine")
 		
 		// Start the resource polling
@@ -142,16 +131,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
-			// Send the error to the error channel
-			if errorChan != nil {
-				l.Debug("Sending error to errorChan")
-				errorChan <- fmt.Errorf(errMsg)
-			}
+			errorChan <- fmt.Errorf(errMsg)
 		} else {
 			l.Info("Azure deployment created successfully")
 			cmd.Println("Azure deployment created successfully")
-			l.Debug("Closing deploymentDone channel")
-			utils.CloseChannel(deploymentDone)
 		}
 		l.Debug("Resource deployment goroutine completed")
 	}()
@@ -160,19 +143,16 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	select {
 	case <-sigChan:
 		l.Info("Interrupt signal received, initiating graceful shutdown")
-		l.Debugf("Closing channel: azure_signal_channel")
-		utils.CloseChannel(sigChan)
 	case err := <-errorChan:
 		l.Error(fmt.Sprintf("Error occurred during deployment: %v", err))
-		l.Debugf("Closing channel: azure_error_channel")
-		utils.CloseChannel(errorChan)
 		return fmt.Errorf("deployment failed: %w", err)
-	case <-deploymentDone:
-		l.Info("Deployment completed successfully")
 	case <-ctx.Done():
 		l.Info("Context cancelled, initiating graceful shutdown")
 		return ctx.Err()
 	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
 
 	// Print final state and log buffer
 	printFinalState(disp)
@@ -181,9 +161,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
 	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
 
-	// Close all channels and finalize
-	utils.CloseAllChannels()
-	l.Debug("All channels closed - at the end of executeCreateDeployment")
+	l.Debug("executeCreateDeployment completed")
 	return nil
 }
 
