@@ -133,11 +133,17 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 
 	// Create ticker channel
 	ticker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
-	defer ticker.Stop()
+	defer func() {
+		l.Debug("Stopping ticker")
+		ticker.Stop()
+	}()
 
 	// Create ticker for PollAndUpdateResources
 	resourceTicker := time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second)
-	defer resourceTicker.Stop()
+	defer func() {
+		l.Debug("Stopping resource ticker")
+		resourceTicker.Stop()
+	}()
 
 	tickerDone := utils.CreateStructChannel("azure_createDeployment_tickerDone", 1)
 	defer utils.CloseChannel(tickerDone)
