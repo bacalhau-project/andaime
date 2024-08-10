@@ -30,7 +30,7 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		log.Info("Listing Azure resources...")
 
-		azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
+		azureProvider, err := azure.AzureProviderFunc()
 		if err != nil {
 			log.Fatalf("Failed to create Azure provider: %v", err)
 		}

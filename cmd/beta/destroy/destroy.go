@@ -172,7 +172,7 @@ func destroyDeployment(dep Deployment) {
 	started := false
 
 	if dep.Type == "Azure" {
-		azureProvider, err := azure.NewAzureProvider(viper.GetViper())
+		azureProvider, err := azure.NewAzureProvider()
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			log.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)

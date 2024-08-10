@@ -145,6 +145,10 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		return
 	}
 
+	if newStatus.Status != "" {
+		l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
+	}
+
 	d.StatusesMu.Lock()
 	if d.Statuses == nil {
 		d.Statuses = make(map[string]*models.Status)

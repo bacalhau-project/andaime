@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -10,7 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
-type ResourceState string
+type ResourceState int
 
 var (
 	globalStateMachine   *AzureStateMachine
@@ -30,11 +29,16 @@ func GetGlobalStateMachine() *AzureStateMachine {
 }
 
 const (
-	StateNotStarted   ResourceState = "Not Started"
-	StateProvisioning ResourceState = "Provisioning"
-	StateSucceeded    ResourceState = "Succeeded"
-	StateFailed       ResourceState = "Failed"
+	StateNotStarted ResourceState = iota
+	StateProvisioning
+	StateSucceeded
+	StateFailed
 )
+
+// String method to convert ResourceState to string for display purposes
+func (rs ResourceState) String() string {
+	return [...]string{"Not Started", "Provisioning", "Succeeded", "Failed"}[rs]
+}
 
 type ResourceStatus struct {
 	State       ResourceState
@@ -53,78 +57,54 @@ func NewDeploymentStateMachine(deployment *models.Deployment) *AzureStateMachine
 		deployment: deployment,
 	}
 }
+
 func (dsm *AzureStateMachine) UpdateStatus(
-	resourceType, resourceKey string,
+	resourceType, resourceName string,
 	state ResourceState,
 ) {
 	dsm.mu.Lock()
 	defer dsm.mu.Unlock()
+	disp := display.GetGlobalDisplay()
 
-	key := dsm.getDisplayKey(resourceKey, dsm.deployment)
-	if key == nil {
-		// Handle the case where the key is not found
+	if dsm.statuses[resourceName].State > state {
 		return
 	}
 
-	currentStatus, exists := dsm.statuses[key.DisplayKey]
+	dsm.statuses[resourceName] = ResourceStatus{State: state, LastUpdated: time.Now()}
 
-	if !exists || currentStatus.State != state {
-		dsm.statuses[key.DisplayKey] = ResourceStatus{State: state, LastUpdated: time.Now()}
-		disp := display.GetGlobalDisplay()
-		disp.UpdateStatus(&models.Status{
-			ID:     resourceKey,
-			Type:   resourceType,
-			Status: string(state),
-		})
-	}
-}
+	// The only thing we care about is the portion of the string before
+	// the first "-"
+	stub := strings.Split(resourceName, "-")[0]
 
-func (dsm *AzureStateMachine) GetStatus(
-	resourceType, resourceName string,
-) ResourceStatus {
-	dsm.mu.Lock()
-	defer dsm.mu.Unlock()
-
-	key := dsm.getDisplayKey(resourceName, dsm.deployment)
-	if key == nil {
-		// Handle the case where the key is not found
-		return ResourceStatus{}
-	}
-
-	return dsm.statuses[key.DisplayKey]
-}
-
-type DisplayKeyResponse struct {
-	DisplayKey string
-	IsLocation bool
-	Err        error
-}
-
-func (dsm *AzureStateMachine) getDisplayKey(
-	name string,
-	deployment *models.Deployment,
-) *DisplayKeyResponse {
-	var response DisplayKeyResponse
-
-	// Check if it's a location
-	for _, location := range deployment.Locations {
-		if strings.HasPrefix(name, location) {
-			response.DisplayKey = location
-			response.IsLocation = true
-			return &response
+	// We'll identify it's a location by looking through all the locations and matching
+	// to the key.
+	isLocation := false
+	for _, machine := range dsm.deployment.Machines {
+		if machine.Location == stub {
+			isLocation = true
+			disp.UpdateStatus(&models.Status{
+				ID:     machine.Name,
+				Status: state.String(),
+			})
 		}
 	}
-
-	// Check if it's a unique machine ID
-	for _, machine := range deployment.Machines {
-		if strings.HasPrefix(name, machine.ID) {
-			response.DisplayKey = machine.ID
-			response.IsLocation = false
-			return &response
-		}
+	if !isLocation {
+		return
 	}
 
-	// If not found, return an error
-	response.Err = errors.New("display key not found")
-	return &response
+	// Otherwise, it's not a location, so we'll just update the status for the specific machine
+	for _, machine := range dsm.deployment.Machines {
+		if machine.ID == stub {
+			disp.UpdateStatus(&models.Status{
+				ID:     machine.Name,
+				Status: state.String(),
+			})
+		}
+	}
+}
+
+// Write a GetStatus method that returns the status of the deployment
+func (dsm *AzureStateMachine) GetStatus(key string) (ResourceState, bool) {
+	status, ok := dsm.statuses[key]
+	return status.State, ok
 }

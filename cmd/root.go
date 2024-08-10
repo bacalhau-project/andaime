@@ -280,7 +280,7 @@ func shouldInitAWS() bool {
 }
 
 func initAzureProvider(c *CloudProvider) error {
-	azureProvider, err := azureprovider.NewAzureProvider(viper.GetViper())
+	azureProvider, err := azureprovider.NewAzureProvider()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}

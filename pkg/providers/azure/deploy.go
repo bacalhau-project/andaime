@@ -66,9 +66,9 @@ const DefaultDiskSize = 30
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources(ctx context.Context, deployment *models.Deployment) error {
+func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
-	SetGlobalDeployment(deployment)
+	deployment := GetGlobalDeployment()
 
 	// Set the start time for the deployment
 	UpdateGlobalDeploymentKeyValue("StartTime", time.Now())
@@ -80,11 +80,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context, deployment *models.
 
 	// Ensure we have a location set
 	if deployment.ResourceGroupLocation == "" {
-		if len(deployment.Machines) > 0 {
-			deployment.ResourceGroupLocation = deployment.Machines[0].Location
-		} else {
-			return fmt.Errorf("no resource group location specified and no machines to infer from")
-		}
+		return fmt.Errorf("no resource group location specified")
 	}
 
 	// Prepare resource group
@@ -122,6 +118,8 @@ func (p *AzureProvider) DeployResources(ctx context.Context, deployment *models.
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
 	sm := GetGlobalStateMachine()
+	disp := display.GetGlobalDisplay()
+
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
 	tags := utils.EnsureAzureTags(
@@ -138,6 +136,12 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 
 	for _, machine := range GetGlobalDeployment().Machines {
 		internalMachine := machine
+		disp.UpdateStatus(&models.Status{
+			ID:     internalMachine.Name,
+			Type:   "VM",
+			Status: "Preparing deployment ...",
+		})
+
 		sem <- struct{}{}
 		wg.Add(1)
 
@@ -167,7 +171,7 @@ func (p *AzureProvider) deployMachine(
 	tags map[string]*string,
 ) error {
 	sm := GetGlobalStateMachine()
-	sm.UpdateStatus("VM", machine.ID, StateProvisioning)
+	sm.UpdateStatus("VM", machine.Name, StateProvisioning)
 
 	params := p.prepareDeploymentParams(machine)
 	vmTemplate, err := p.getAndPrepareTemplate()
@@ -244,7 +248,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		poller, err := p.Client.DeployTemplate(
 			ctx,
 			deployment.ResourceGroupName,
-			fmt.Sprintf("deployment-vm-%s", machine.ID),
+			fmt.Sprintf("deployment-%s", machine.Name),
 			vmTemplate,
 			params,
 			tags,
@@ -293,9 +297,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 func (p *AzureProvider) PollAndUpdateResources(
 	ctx context.Context,
-	deployment *models.Deployment,
-	stateMachine *AzureStateMachine,
 ) error {
+	sm := GetGlobalStateMachine()
+	deployment := GetGlobalDeployment()
 	resources, err := p.ListAllResourcesInSubscription(
 		ctx,
 		deployment.SubscriptionID,
@@ -306,21 +310,19 @@ func (p *AzureProvider) PollAndUpdateResources(
 	}
 
 	for resource := range resources.GetAllResources() {
-		// Get unique resource key
-
 		switch r := resource.Resource.(type) {
 		case armcompute.VirtualMachine:
-			stateMachine.UpdateStatus("VM", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus("VM", *r.Name, convertToResourceState(*r.Properties.ProvisioningState))
 		case armcompute.VirtualMachineExtension:
-			stateMachine.UpdateStatus("VMExtension", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus("VMExtension", *r.Name, convertToResourceState(*r.Properties.ProvisioningState))
 		case armnetwork.PublicIPAddress:
-			stateMachine.UpdateStatus("PublicIP", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus("PublicIP", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
 		case armnetwork.Interface:
-			stateMachine.UpdateStatus("NIC", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus("NIC", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
 		case armnetwork.SecurityGroup:
-			stateMachine.UpdateStatus("NSG", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus("NSG", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
 		case armnetwork.VirtualNetwork:
-			stateMachine.UpdateStatus("VNet", *r.Name, ResourceState(*r.Properties.ProvisioningState))
+			sm.UpdateStatus("VNet", *r.Name, convertToResourceState(string(*r.Properties.ProvisioningState)))
 		}
 	}
 
@@ -773,5 +775,18 @@ func printMachineIPTable(deployment *models.Deployment) {
 		table.Render()
 	} else {
 		fmt.Println("No machines have been deployed yet.")
+	}
+}
+
+func convertToResourceState(provisioningState string) ResourceState {
+	switch strings.ToLower(provisioningState) {
+	case "succeeded":
+		return StateSucceeded
+	case "failed":
+		return StateFailed
+	case "creating", "updating", "deleting":
+		return StateProvisioning
+	default:
+		return StateNotStarted
 	}
 }

@@ -3,8 +3,11 @@ package azure
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
@@ -51,7 +54,7 @@ type AzureProviderer interface {
 	ListTypedResources(ctx context.Context,
 		subscriptionID, resourceGroupName string,
 		tags map[string]*string) (AzureResources, error)
-	DeployResources(ctx context.Context, deployment *models.Deployment) error
+	DeployResources(ctx context.Context) error
 	DestroyResources(ctx context.Context,
 		resourceGroupName string) error
 }
@@ -64,7 +67,8 @@ type AzureProvider struct {
 var AzureProviderFunc = NewAzureProvider
 
 // NewAzureProvider creates a new AzureProvider instance
-func NewAzureProvider(config *viper.Viper) (AzureProviderer, error) {
+func NewAzureProvider() (AzureProviderer, error) {
+	config := viper.GetViper()
 	if !config.IsSet("azure") {
 		return nil, fmt.Errorf("azure configuration is required")
 	}
@@ -121,6 +125,61 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	l.Debugf("Azure Resource Graph response: %+v", resourcesResponse)
 
 	return resourcesResponse, nil
+}
+
+func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
+	l := logger.Get()
+	disp := display.GetGlobalDisplay()
+
+	// Create ticker channel
+	ticker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
+	defer ticker.Stop()
+
+	// Create ticker for PollAndUpdateResources
+	resourceTicker := time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second)
+	defer resourceTicker.Stop()
+
+	tickerDone := utils.CreateStructChannel("azure_createDeployment_tickerDone", 1)
+	defer utils.CloseChannel(tickerDone)
+
+	go func() {
+		defer l.Debug("Ticker goroutine exited")
+		for {
+			select {
+			case <-ticker.C:
+				allMachinesComplete := true
+				dep := GetGlobalDeployment()
+				for _, machine := range dep.Machines {
+					if machine.Status != models.MachineStatusComplete {
+						allMachinesComplete = false
+					}
+					if machine.Status == models.MachineStatusComplete {
+						continue
+					}
+					disp.UpdateStatus(&models.Status{
+						ID: machine.Name,
+						ElapsedTime: time.Duration(
+							time.Since(machine.StartTime).
+								Milliseconds() /
+								1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
+						),
+					})
+					if allMachinesComplete {
+						tickerDone <- struct{}{}
+					}
+				}
+			case <-resourceTicker.C:
+				err := p.PollAndUpdateResources(ctx)
+				if err != nil {
+					l.Errorf("Failed to poll and update resources: %v", err)
+				}
+			case <-tickerDone:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func parseNSGProperties(

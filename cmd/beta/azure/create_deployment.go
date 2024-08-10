@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -22,16 +23,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-)
-
-type contextKey string
-
-const uniqueDeploymentIDKey contextKey = "UniqueDeploymentID"
-const MillisecondsBetweenUpdates = 100
-const DefaultDiskSizeGB = 30
-
-var (
-	DefaultAllowedPorts = []int{22, 80, 443}
 )
 
 var createAzureDeploymentCmd = &cobra.Command{
@@ -74,7 +65,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Debugf("Channel created: azure_deployment_done")
 
 	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
+	sigChan := utils.CreateSignalChannel("azure_createDeployment_sigChan", 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Initialize the display
@@ -111,10 +102,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Infof("Generated UniqueID: %s", UniqueID)
 
 	// Set the UniqueID on the context
-	ctx = context.WithValue(ctx, uniqueDeploymentIDKey, UniqueID)
+	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, UniqueID)
 
 	l.Debug("Initializing Azure provider")
-	azureProvider, err := azure.AzureProviderFunc(viper.GetViper())
+	azureProvider, err := azure.AzureProviderFunc()
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
 		l.Error(errMsg)
@@ -127,8 +118,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// This section is no longer needed as we've moved the display initialization earlier in the function
-
 	// Create a new deployment object
 	deployment, err := InitializeDeployment(ctx, UniqueID)
 	if err != nil {
@@ -137,63 +126,13 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errMsg)
 	}
 	l.Info("Starting resource deployment")
+	azure.SetGlobalDeployment(deployment)
 
-	// Create ticker channel
-	ticker := time.NewTicker(MillisecondsBetweenUpdates * time.Millisecond)
-	defer ticker.Stop()
-
-	tickerDone := make(chan struct{})
-	defer close(tickerDone)
-
-	go func() {
-		defer l.Debug("Ticker goroutine exited")
-		for {
-			select {
-			case <-ticker.C:
-				allMachinesComplete := true
-				for _, machine := range deployment.Machines {
-					if machine.Status != models.MachineStatusComplete {
-						allMachinesComplete = false
-					}
-					if machine.Status == models.MachineStatusComplete {
-						continue
-					}
-					disp.UpdateStatus(&models.Status{
-						ID: machine.ID,
-						ElapsedTime: time.Duration(
-							time.Since(machine.StartTime).
-								Milliseconds() /
-								1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
-						),
-					})
-					if allMachinesComplete {
-						tickerDone <- struct{}{}
-					}
-				}
-			case <-tickerDone:
-				return
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	// Start resource deployment in a goroutine
-	go func() {
-		err := azureProvider.DeployResources(ctx, deployment)
-		if err != nil {
-			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
-			l.Error(errMsg)
-			// Send the error to the error channel
-			if errorChan != nil {
-				errorChan <- fmt.Errorf(errMsg)
-			}
-		} else {
-			l.Info("Azure deployment created successfully")
-			cmd.Println("Azure deployment created successfully")
-			utils.CloseChannel(deploymentDone)
-		}
-	}()
+	err = azureProvider.DeployResources(ctx)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
+		l.Error(errMsg)
+	}
 
 	// Wait for signal, error, or deployment completion
 	select {
@@ -244,9 +183,9 @@ func InitializeDeployment(
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
 	viper.SetDefault("azure.resource_group_name", "andaime-rg")
 	viper.SetDefault("azure.resource_group_location", "eastus")
-	viper.SetDefault("azure.allowed_ports", DefaultAllowedPorts)
+	viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
 	viper.SetDefault("azure.default_vm_size", "Standard_B2s")
-	viper.SetDefault("azure.default_disk_size_gb", DefaultDiskSizeGB)
+	viper.SetDefault("azure.default_disk_size_gb", globals.DefaultDiskSizeGB)
 	viper.SetDefault("azure.default_location", "eastus")
 	viper.SetDefault("azure.machines", []models.Machine{
 		{
@@ -354,7 +293,7 @@ func PrepareDeployment(
 
 	for _, machine := range deployment.Machines {
 		disp.UpdateStatus(&models.Status{
-			ID:        machine.ID,
+			ID:        machine.Name,
 			Status:    "Initializing machine...",
 			Location:  machine.Location,
 			StartTime: time.Now(),
