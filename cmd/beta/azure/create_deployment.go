@@ -51,7 +51,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	// Create a context that can be cancelled
 	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
 
 	// Create a WaitGroup to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -67,7 +66,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	if !noDisplay {
-		go disp.Start()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			disp.Start()
+		}()
 	}
 
 	// Ensure proper cleanup in all scenarios
@@ -80,8 +83,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		cancel() // Cancel the context
 		if !noDisplay {
 			disp.Stop()
-			disp.WaitForStop() // Ensure display is fully stopped
 		}
+		wg.Wait() // Wait for all goroutines to finish
 		l.Info("Cleanup completed")
 
 		// Debug information about open channels
@@ -143,8 +146,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	select {
 	case <-sigChan:
 		l.Info("Interrupt signal received, initiating graceful shutdown")
+		cancel() // Cancel the context to stop all goroutines
 	case err := <-errorChan:
 		l.Error(fmt.Sprintf("Error occurred during deployment: %v", err))
+		cancel() // Cancel the context to stop all goroutines
 		return fmt.Errorf("deployment failed: %w", err)
 	case <-ctx.Done():
 		l.Info("Context cancelled, initiating graceful shutdown")
