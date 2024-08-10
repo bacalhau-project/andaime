@@ -128,8 +128,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting resource deployment")
 	azure.SetGlobalDeployment(deployment)
 
-	// Start resource deployment in a goroutine
+	// Start resource deployment and polling in goroutines
 	go func() {
+		// Start the resource polling
+		azureProvider.StartResourcePolling(ctx)
+
 		err := azureProvider.DeployResources(ctx)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
