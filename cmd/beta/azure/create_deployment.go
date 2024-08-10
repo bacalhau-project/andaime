@@ -156,8 +156,28 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return ctx.Err()
 	}
 
-	// Wait for all goroutines to finish
-	wg.Wait()
+	// Set up a channel to detect a second interrupt
+	secondInterrupt := make(chan os.Signal, 1)
+	signal.Notify(secondInterrupt, os.Interrupt, syscall.SIGTERM)
+
+	// Notify user that we're waiting for goroutines to finish
+	l.Info("Waiting for all operations to complete. Press Ctrl+C again to force exit.")
+
+	// Use a channel to signal when WaitGroup is done
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	// Wait for either WaitGroup to finish or a second interrupt
+	select {
+	case <-done:
+		l.Info("All operations completed successfully.")
+	case <-secondInterrupt:
+		l.Warn("Second interrupt received. Forcing exit...")
+		os.Exit(1)
+	}
 
 	// Print final state and log buffer
 	printFinalState(disp)
