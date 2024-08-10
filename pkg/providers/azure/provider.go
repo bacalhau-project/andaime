@@ -131,19 +131,13 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
 
-	// Create ticker channel
-	ticker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
-	defer func() {
-		l.Debug("Stopping ticker")
-		ticker.Stop()
-	}()
+	// Create ticker channel for status updates
+	statusTicker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
+	defer statusTicker.Stop()
 
 	// Create ticker for PollAndUpdateResources
 	resourceTicker := time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second)
-	defer func() {
-		l.Debug("Stopping resource ticker")
-		resourceTicker.Stop()
-	}()
+	defer resourceTicker.Stop()
 
 	tickerDone := utils.CreateStructChannel("azure_createDeployment_tickerDone", 1)
 	defer utils.CloseChannel(tickerDone)
@@ -152,7 +146,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 		defer l.Debug("Ticker goroutine exited")
 		for {
 			select {
-			case <-ticker.C:
+			case <-statusTicker.C:
 				allMachinesComplete := true
 				dep := GetGlobalDeployment()
 				for _, machine := range dep.Machines {
@@ -170,9 +164,9 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 								1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
 						),
 					})
-					if allMachinesComplete {
-						tickerDone <- struct{}{}
-					}
+				}
+				if allMachinesComplete {
+					tickerDone <- struct{}{}
 				}
 			case <-resourceTicker.C:
 				err := p.PollAndUpdateResources(ctx)
