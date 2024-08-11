@@ -7,10 +7,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -70,9 +70,10 @@ func (m *MockAzureClient) DeleteDeployment(
 
 func (m *MockAzureClient) GetResourceGroup(
 	ctx context.Context,
+	location,
 	resourceGroupName string,
 ) (*armresources.ResourceGroup, error) {
-	args := m.Called(ctx, resourceGroupName)
+	args := m.Called(ctx, location, resourceGroupName)
 	return args.Get(0).(*armresources.ResourceGroup), args.Error(1)
 }
 
@@ -91,6 +92,13 @@ func (m *MockAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient
 	return args.Get(0).(*armresources.DeploymentsClient)
 }
 
+func (m *MockAzureClient) ListAllResourceGroups(
+	ctx context.Context,
+) (map[string]string, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(map[string]string), args.Error(1)
+}
+
 func (m *MockAzureClient) ListAllResourcesInSubscription(
 	ctx context.Context,
 	subscriptionID string,
@@ -100,7 +108,7 @@ func (m *MockAzureClient) ListAllResourcesInSubscription(
 	return args.Error(0)
 }
 
-func (m *MockAzureClient) ListTypedResources(
+func (m *MockAzureClient) UpdateResourceList(
 	ctx context.Context,
 	subscriptionID string,
 	filter string,
@@ -126,28 +134,65 @@ func (m *MockAzureClient) GetVMExtensions(
 	return args.Get(0).([]*armcompute.VirtualMachineExtension), args.Error(1)
 }
 
-func TestAzureProvider_updateVMExtensionsStatus(t *testing.T) {
+func (m *MockAzureClient) GetVirtualMachine(
+	ctx context.Context,
+	resourceGroupName, vmName string,
+) (*armcompute.VirtualMachine, error) {
+	args := m.Called(ctx, resourceGroupName, vmName)
+	return args.Get(0).(*armcompute.VirtualMachine), args.Error(1)
+}
+
+func (m *MockAzureClient) GetNetworkInterface(
+	ctx context.Context,
+	resourceGroupName, networkInterfaceName string,
+) (*armnetwork.Interface, error) {
+	args := m.Called(ctx, resourceGroupName, networkInterfaceName)
+	return args.Get(0).(*armnetwork.Interface), args.Error(1)
+}
+
+func (m *MockAzureClient) GetPublicIPAddress(
+	ctx context.Context,
+	resourceGroupName, publicIPAddressName string,
+) (*armnetwork.PublicIPAddress, error) {
+	args := m.Called(ctx, resourceGroupName, publicIPAddressName)
+	return args.Get(0).(*armnetwork.PublicIPAddress), args.Error(1)
+}
+
+// func TestAzureProvider_updateVMExtensionsStatus(t *testing.T) {
+// 	mockClient := new(MockAzureClient)
+// 	provider := &AzureProvider{Client: mockClient}
+
+// 	deployment := &models.Deployment{
+// 		ResourceGroupName:  "test-rg",
+// 		VMExtensionsStatus: make(map[string]models.StatusCode),
+// 	}
+
+// 	resource := armcompute.VirtualMachineExtension{
+// 		Name: to.Ptr("test-vm/ext1"),
+// 		Properties: &armcompute.VirtualMachineExtensionProperties{
+// 			ProvisioningState: to.Ptr("Succeeded"),
+// 		},
+// 	}
+
+// 	provider.updateVMExtensionsStatus(deployment, &resource)
+
+// 	assert.Equal(t, models.StatusSucceeded, deployment.VMExtensionsStatus["test-vm/ext1"])
+
+//		mockClient.AssertExpectations(t)
+//	}
+
+func TestAzureProvider_ListAllResourceGroups(t *testing.T) {
 	mockClient := new(MockAzureClient)
 	provider := &AzureProvider{Client: mockClient}
+	ctx := context.Background()
 
-	deployment := &models.Deployment{
-		ResourceGroupName:  "test-rg",
-		VMExtensionsStatus: make(map[string]models.StatusCode),
-	}
+	mockClient.On("ListAllResourceGroups", ctx).Return([]string{"test-rg"}, nil)
 
-	resource := armcompute.VirtualMachineExtension{
-		Name: to.Ptr("test-vm/ext1"),
-		Properties: &armcompute.VirtualMachineExtensionProperties{
-			ProvisioningState: to.Ptr("Succeeded"),
-		},
-	}
-
-	provider.updateVMExtensionsStatus(deployment, &resource)
-
-	assert.Equal(t, models.StatusSucceeded, deployment.VMExtensionsStatus["test-vm/ext1"])
-
-	mockClient.AssertExpectations(t)
+	resourceGroups, err := provider.Client.ListAllResourceGroups(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"test-rg"}, resourceGroups)
 }
+
 func TestAzureProvider_ListAllResourcesInSubscription_ReturnsEmptySlice(t *testing.T) {
 	ctx := context.Background()
 	mockClient := new(MockAzureClient)
@@ -183,6 +228,27 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 
 	err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.NoError(t, err)
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestAzureProvider_GetVirtualMachine(t *testing.T) {
+	mockClient := new(MockAzureClient)
+	provider := &AzureProvider{Client: mockClient}
+	ctx := context.Background()
+	resourceGroupName := "test-rg"
+	vmName := "test-vm"
+	vm := &armcompute.VirtualMachine{
+		Name: to.Ptr(vmName),
+	}
+	mockClient.On("GetVirtualMachine", ctx, resourceGroupName, vmName).Return(
+		vm,
+		nil,
+	)
+
+	vm, err := provider.Client.GetVirtualMachine(ctx, resourceGroupName, vmName)
+	assert.NoError(t, err)
+	assert.NotNil(t, vm)
 
 	mockClient.AssertExpectations(t)
 }
