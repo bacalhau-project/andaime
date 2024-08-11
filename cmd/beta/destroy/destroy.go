@@ -131,7 +131,7 @@ func runDestroy(cmd *cobra.Command, args []string) {
 	if destroyAll {
 		l.Debugf("Destroying all deployments:")
 		for _, dep := range deployments {
-			destroyDeployment(dep)
+			destroyDeployment(dep, true)
 		}
 		return
 	}
@@ -183,10 +183,10 @@ func runDestroy(cmd *cobra.Command, args []string) {
 		selected = deployments[index-1]
 	}
 
-	destroyDeployment(selected)
+	destroyDeployment(selected, false)
 }
 
-func destroyDeployment(dep Deployment) {
+func destroyDeployment(dep Deployment, destroyAll bool) {
 	l := logger.Get()
 	l.Infof("Starting destruction of %s (%s) - %s\n", dep.Name, dep.Type, dep.ID)
 
@@ -200,7 +200,7 @@ func destroyDeployment(dep Deployment) {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
 			return
 		}
-		err = azureProvider.DestroyResources(ctx, dep.ID)
+		err = azureProvider.DestroyResources(ctx, dep.ID, destroyAll)
 		if err != nil {
 			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
 				l.Infof("Resource group '%s' is already destroyed.\n", dep.ID)
