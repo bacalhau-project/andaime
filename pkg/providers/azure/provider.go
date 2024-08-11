@@ -99,65 +99,35 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	return nil
 }
 
-func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
+func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- struct{}) {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
 
 	l.Debug("Starting StartResourcePolling")
 
-	p.ResourcePoller = &ResourcePoller{
-		statusTicker:   time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond),
-		resourceTicker: time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second),
-		tickerDone:     utils.CreateStructChannel("azure_createDeployment_tickerDone", 1),
-	}
-
-	go p.ResourcePoller.Start(ctx, p, disp)
-}
-
-func (p *AzureProvider) StopResourcePolling() {
-	if p.ResourcePoller != nil {
-		p.ResourcePoller.Stop()
-	}
-}
-
-type ResourcePoller struct {
-	statusTicker   *time.Ticker
-	resourceTicker *time.Ticker
-	tickerDone     chan struct{}
-}
-
-func (rp *ResourcePoller) Start(ctx context.Context, provider *AzureProvider, disp *display.Display) {
-	l := logger.Get()
-	l.Debug("Ticker goroutine started")
-	defer l.Debug("Ticker goroutine exited")
-	defer rp.Stop()
+	statusTicker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
+	resourceTicker := time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second)
+	defer statusTicker.Stop()
+	defer resourceTicker.Stop()
 
 	for {
 		select {
-		case <-rp.statusTicker.C:
-			rp.updateStatus(provider, disp)
-		case <-rp.resourceTicker.C:
-			err := provider.PollAndUpdateResources(ctx)
+		case <-statusTicker.C:
+			p.updateStatus(disp)
+		case <-resourceTicker.C:
+			err := p.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
-		case <-rp.tickerDone:
-			l.Debug("Received tickerDone signal, exiting goroutine")
-			return
 		case <-ctx.Done():
-			l.Debug("Context done, exiting goroutine")
+			l.Debug("Context done, exiting resource polling")
+			close(done)
 			return
 		}
 	}
 }
 
-func (rp *ResourcePoller) Stop() {
-	rp.statusTicker.Stop()
-	rp.resourceTicker.Stop()
-	utils.CloseChannel(rp.tickerDone)
-}
-
-func (rp *ResourcePoller) updateStatus(provider *AzureProvider, disp *display.Display) {
+func (p *AzureProvider) updateStatus(disp *display.Display) {
 	l := logger.Get()
 	allMachinesComplete := true
 	dep := GetGlobalDeployment()
@@ -178,8 +148,7 @@ func (rp *ResourcePoller) updateStatus(provider *AzureProvider, disp *display.Di
 		})
 	}
 	if allMachinesComplete {
-		l.Debug("All machines complete, sending tickerDone signal")
-		rp.tickerDone <- struct{}{}
+		l.Debug("All machines complete, resource polling will stop")
 	}
 }
 
