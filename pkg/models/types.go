@@ -28,16 +28,7 @@ type Status struct {
 	HighlightCycles int
 }
 
-type Deployment struct {
-	// ... existing fields ...
-	Resources []Resource
-}
-
-type Resource struct {
-	ID     string
-	Type   string
-	Status string
-}
+// Remove these duplicate declarations as they are already defined in deployment.go
 
 type AzureEvent struct {
 	Type       string
@@ -45,8 +36,4 @@ type AzureEvent struct {
 	Message    string
 }
 
-type Resource struct {
-	ID     string
-	Type   string
-	Status string
-}
+// Resource is already defined in deployment.go, so we'll remove this duplicate declaration
