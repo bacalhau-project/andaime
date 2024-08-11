@@ -184,24 +184,30 @@ func parseNetworkProperties(properties map[string]interface{}, propType string) 
 	return props
 }
 
-func parseSecurityRules(rules interface{}) []*armnetwork.SecurityRule {
-	securityRules, ok := rules.([]interface{})
+func parseNetworkRules[T any](items interface{}, parseItem func(map[string]interface{}) T) []T {
+	itemSlice, ok := items.([]interface{})
 	if !ok {
 		return nil
 	}
 
-	parsedRules := make([]*armnetwork.SecurityRule, 0, len(securityRules))
-	for _, rule := range securityRules {
-		ruleMap, ok := rule.(map[string]interface{})
+	parsedItems := make([]T, 0, len(itemSlice))
+	for _, item := range itemSlice {
+		itemMap, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
+		parsedItems = append(parsedItems, parseItem(itemMap))
+	}
+	return parsedItems
+}
+
+func parseSecurityRules(rules interface{}) []*armnetwork.SecurityRule {
+	return parseNetworkRules(rules, func(ruleMap map[string]interface{}) *armnetwork.SecurityRule {
 		ruleProps, ok := ruleMap["properties"].(map[string]interface{})
 		if !ok {
-			continue
+			return nil
 		}
-
-		parsedRules = append(parsedRules, &armnetwork.SecurityRule{
+		return &armnetwork.SecurityRule{
 			Name: utils.ToPtr(ruleMap["name"].(string)),
 			Properties: &armnetwork.SecurityRulePropertiesFormat{
 				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleProps["protocol"].(string))),
@@ -213,9 +219,8 @@ func parseSecurityRules(rules interface{}) []*armnetwork.SecurityRule {
 				Priority:                 utils.ToPtr(int32(ruleProps["priority"].(float64))),
 				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleProps["direction"].(string))),
 			},
-		})
-	}
-	return parsedRules
+		}
+	})
 }
 
 func parseAddressSpace(addressSpace interface{}) map[string]interface{} {
@@ -235,30 +240,18 @@ func parseAddressSpace(addressSpace interface{}) map[string]interface{} {
 }
 
 func parseIPConfigurations(configs interface{}) []*armnetwork.InterfaceIPConfiguration {
-	ipConfigs, ok := configs.([]interface{})
-	if !ok {
-		return nil
-	}
-
-	ipConfigurations := make([]*armnetwork.InterfaceIPConfiguration, 0, len(ipConfigs))
-	for _, config := range ipConfigs {
-		configMap, ok := config.(map[string]interface{})
-		if !ok {
-			continue
-		}
+	return parseNetworkRules(configs, func(configMap map[string]interface{}) *armnetwork.InterfaceIPConfiguration {
 		props, ok := configMap["properties"].(map[string]interface{})
 		if !ok {
-			continue
+			return nil
 		}
-
-		ipConfigurations = append(ipConfigurations, &armnetwork.InterfaceIPConfiguration{
+		return &armnetwork.InterfaceIPConfiguration{
 			Name: utils.ToPtr(configMap["name"].(string)),
 			Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 				PrivateIPAddress: utils.ToPtr(props["privateIPAddress"].(string)),
 			},
-		})
-	}
-	return ipConfigurations
+		}
+	})
 }
 
 func parseStringSlice(slice []interface{}) []*string {
