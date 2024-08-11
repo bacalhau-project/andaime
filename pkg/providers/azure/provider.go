@@ -21,18 +21,15 @@ type AzureProviderer interface {
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 
-	StartResourcePolling(ctx context.Context)
-	StopResourcePolling()
+	StartResourcePolling(ctx context.Context, done chan<- struct{})
 	DeployResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
-	DestroyResources(ctx context.Context,
-		resourceGroupName string) error
+	DestroyResources(ctx context.Context, resourceGroupName string) error
 }
 
 type AzureProvider struct {
-	Client         AzureClient
-	Config         *viper.Viper
-	ResourcePoller *ResourcePoller
+	Client AzureClient
+	Config *viper.Viper
 }
 
 var AzureProviderFunc = NewAzureProvider
