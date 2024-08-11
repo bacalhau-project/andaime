@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -152,7 +151,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 				l.Errorf("Failed to get resource group %s: %v", rgName, err)
 				continue
 			}
-			if rg.Tags["CreatedBy"] != nil && *rg.Tags["CreatedBy"] == "andaime" {
+			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil && *createdBy == "andaime" {
 				if err := destroyDeployment(Deployment{Name: rgName, Type: "Azure", ID: rgName}); err != nil {
 					l.Errorf("Failed to destroy resource group %s: %v", rgName, err)
 				}
