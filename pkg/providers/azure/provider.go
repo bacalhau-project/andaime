@@ -149,14 +149,11 @@ func (p *AzureProvider) updateStatus(disp *display.Display) {
 	}
 }
 
-func parseNetworkProperties(
-	properties map[string]interface{},
-	propType string,
-) interface{} {
+func parseNetworkProperties(properties map[string]interface{}, propType string) map[string]interface{} {
 	props := make(map[string]interface{})
 
 	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props["provisioningState"] = (*armnetwork.ProvisioningState)(utils.ToPtr(provisioningState))
+		props["provisioningState"] = provisioningState
 	}
 
 	switch propType {
@@ -171,29 +168,17 @@ func parseNetworkProperties(
 	case "VNET":
 		if addressSpace, ok := properties["addressSpace"].(map[string]interface{}); ok {
 			if addressPrefixes, ok := addressSpace["addressPrefixes"].([]interface{}); ok {
-				props["addressSpace"] = &armnetwork.AddressSpace{
-					AddressPrefixes: parseStringSlice(addressPrefixes),
+				props["addressSpace"] = map[string]interface{}{
+					"addressPrefixes": parseStringSlice(addressPrefixes),
 				}
 			}
 		}
+	case "NIC":
+		if ipConfigurations, ok := properties["ipConfigurations"].([]interface{}); ok {
+			props["ipConfigurations"] = parseIPConfigurations(ipConfigurations)
+		}
 	}
 
-	return props
-}
-
-func parseNICProperties(
-	properties map[string]interface{},
-) *armnetwork.InterfacePropertiesFormat {
-	props := &armnetwork.InterfacePropertiesFormat{}
-	if ipConfigurations, ok := properties["ipConfigurations"].([]interface{}); ok {
-		props.IPConfigurations = parseIPConfigurations(ipConfigurations)
-	}
-
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props.ProvisioningState = (*armnetwork.ProvisioningState)(
-			utils.ToPtr(provisioningState),
-		)
-	}
 	return props
 }
 
