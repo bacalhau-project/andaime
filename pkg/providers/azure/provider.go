@@ -74,7 +74,10 @@ func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
 }
 
-func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
+func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string, destroyAll bool) error {
+	if destroyAll {
+		return p.Client.DestroyAllResourceGroups(ctx, map[string]*string{"CreatedBy": utils.ToPtr("Andaime")})
+	}
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
