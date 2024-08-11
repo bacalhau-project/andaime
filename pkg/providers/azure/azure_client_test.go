@@ -96,7 +96,11 @@ func (m *MockAzureClient) ListAllResourceGroups(
 	ctx context.Context,
 ) (map[string]string, error) {
 	args := m.Called(ctx)
-	return args.Get(0).(map[string]string), args.Error(1)
+	result := args.Get(0)
+	if result == nil {
+		return nil, args.Error(1)
+	}
+	return result.(map[string]string), args.Error(1)
 }
 
 func (m *MockAzureClient) ListAllResourcesInSubscription(
@@ -186,11 +190,14 @@ func TestAzureProvider_ListAllResourceGroups(t *testing.T) {
 	provider := &AzureProvider{Client: mockClient}
 	ctx := context.Background()
 
-	mockClient.On("ListAllResourceGroups", ctx).Return([]string{"test-rg"}, nil)
+	expectedResourceGroups := map[string]string{
+		"test-rg": "eastus",
+	}
+	mockClient.On("ListAllResourceGroups", ctx).Return(expectedResourceGroups, nil)
 
 	resourceGroups, err := provider.Client.ListAllResourceGroups(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"test-rg"}, resourceGroups)
+	assert.Equal(t, expectedResourceGroups, resourceGroups)
 }
 
 func TestAzureProvider_ListAllResourcesInSubscription_ReturnsEmptySlice(t *testing.T) {
