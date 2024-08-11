@@ -157,18 +157,23 @@ func parseNetworkProperties(properties map[string]interface{}, propType string) 
 		props["provisioningState"] = provisioningState
 	}
 
+	// Define a map of property types to their parsing functions
+	parsers := map[string]func(interface{}) interface{}{
+		"NSG":  func(i interface{}) interface{} { return parseSecurityRules(i) },
+		"PIP":  func(i interface{}) interface{} { return i },
+		"VNET": func(i interface{}) interface{} { return parseAddressSpace(i) },
+		"NIC":  func(i interface{}) interface{} { return parseIPConfigurations(i) },
+	}
+
 	// Parse specific properties based on the type
-	switch propType {
-	case "NSG":
-		props["securityRules"] = parseSecurityRules(properties["securityRules"])
-	case "PIP":
-		if ipAddress, ok := properties["ipAddress"].(string); ok {
-			props["ipAddress"] = ipAddress
-		}
-	case "VNET":
-		props["addressSpace"] = parseAddressSpace(properties["addressSpace"])
-	case "NIC":
-		props["ipConfigurations"] = parseIPConfigurations(properties["ipConfigurations"])
+	if parser, ok := parsers[propType]; ok {
+		key := map[string]string{
+			"NSG":  "securityRules",
+			"PIP":  "ipAddress",
+			"VNET": "addressSpace",
+			"NIC":  "ipConfigurations",
+		}[propType]
+		props[key] = parser(properties[key])
 	}
 
 	// If no specific properties were parsed, return all properties
