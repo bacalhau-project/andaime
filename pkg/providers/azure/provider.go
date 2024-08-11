@@ -3,6 +3,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
@@ -118,10 +119,16 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
-			
+
 			// Update and display resource states
 			deployment := GetGlobalDeployment()
-			for _, resource := range deployment.Resources {
+			resources, err := deployment.GetAllResources()
+			if err != nil {
+				l.Errorf("Failed to get resources: %v", err)
+				continue
+			}
+
+			for _, resource := range resources {
 				currentState := resourceStates[resource.ID]
 				resourceType := getResourceTypeAbbreviation(resource.Type)
 				if currentState != resource.Status {
@@ -192,7 +199,10 @@ func (p *AzureProvider) updateStatus(disp *display.Display) {
 	}
 }
 
-func parseNetworkProperties(properties map[string]interface{}, propType string) map[string]interface{} {
+func parseNetworkProperties(
+	properties map[string]interface{},
+	propType string,
+) map[string]interface{} {
 	props := make(map[string]interface{})
 
 	// Always include provisioningState if available
@@ -253,14 +263,22 @@ func parseSecurityRules(rules interface{}) []*armnetwork.SecurityRule {
 		return &armnetwork.SecurityRule{
 			Name: utils.ToPtr(ruleMap["name"].(string)),
 			Properties: &armnetwork.SecurityRulePropertiesFormat{
-				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleProps["protocol"].(string))),
-				SourcePortRange:          utils.ToPtr(ruleProps["sourcePortRange"].(string)),
-				DestinationPortRange:     utils.ToPtr(ruleProps["destinationPortRange"].(string)),
-				SourceAddressPrefix:      utils.ToPtr(ruleProps["sourceAddressPrefix"].(string)),
-				DestinationAddressPrefix: utils.ToPtr(ruleProps["destinationAddressPrefix"].(string)),
-				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleProps["access"].(string))),
-				Priority:                 utils.ToPtr(int32(ruleProps["priority"].(float64))),
-				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleProps["direction"].(string))),
+				Protocol: (*armnetwork.SecurityRuleProtocol)(
+					utils.ToPtr(ruleProps["protocol"].(string)),
+				),
+				SourcePortRange:      utils.ToPtr(ruleProps["sourcePortRange"].(string)),
+				DestinationPortRange: utils.ToPtr(ruleProps["destinationPortRange"].(string)),
+				SourceAddressPrefix:  utils.ToPtr(ruleProps["sourceAddressPrefix"].(string)),
+				DestinationAddressPrefix: utils.ToPtr(
+					ruleProps["destinationAddressPrefix"].(string),
+				),
+				Access: (*armnetwork.SecurityRuleAccess)(
+					utils.ToPtr(ruleProps["access"].(string)),
+				),
+				Priority: utils.ToPtr(int32(ruleProps["priority"].(float64))),
+				Direction: (*armnetwork.SecurityRuleDirection)(
+					utils.ToPtr(ruleProps["direction"].(string)),
+				),
 			},
 		}
 	})
@@ -283,18 +301,21 @@ func parseAddressSpace(addressSpace interface{}) map[string]interface{} {
 }
 
 func parseIPConfigurations(configs interface{}) []*armnetwork.InterfaceIPConfiguration {
-	return parseNetworkRules(configs, func(configMap map[string]interface{}) *armnetwork.InterfaceIPConfiguration {
-		props, ok := configMap["properties"].(map[string]interface{})
-		if !ok {
-			return nil
-		}
-		return &armnetwork.InterfaceIPConfiguration{
-			Name: utils.ToPtr(configMap["name"].(string)),
-			Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-				PrivateIPAddress: utils.ToPtr(props["privateIPAddress"].(string)),
-			},
-		}
-	})
+	return parseNetworkRules(
+		configs,
+		func(configMap map[string]interface{}) *armnetwork.InterfaceIPConfiguration {
+			props, ok := configMap["properties"].(map[string]interface{})
+			if !ok {
+				return nil
+			}
+			return &armnetwork.InterfaceIPConfiguration{
+				Name: utils.ToPtr(configMap["name"].(string)),
+				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
+					PrivateIPAddress: utils.ToPtr(props["privateIPAddress"].(string)),
+				},
+			}
+		},
+	)
 }
 
 func parseStringSlice(slice []interface{}) []*string {
