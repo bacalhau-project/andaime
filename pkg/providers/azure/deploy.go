@@ -381,10 +381,9 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
 	deployment := GetGlobalDeployment()
-	resources, err := p.Client.ListResources(
+	resources, err := p.Client.ListAllResourcesInSubscription(
 		ctx,
 		deployment.SubscriptionID,
-		deployment.ResourceGroupName,
 		deployment.Tags,
 	)
 	if err != nil {
