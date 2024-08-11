@@ -22,6 +22,7 @@ type AzureProviderer interface {
 	SetConfig(config *viper.Viper)
 
 	StartResourcePolling(ctx context.Context)
+	StopResourcePolling()
 	DeployResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context,
@@ -29,8 +30,9 @@ type AzureProviderer interface {
 }
 
 type AzureProvider struct {
-	Client AzureClient
-	Config *viper.Viper
+	Client         AzureClient
+	Config         *viper.Viper
+	ResourcePoller *ResourcePoller
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -103,59 +105,81 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 
 	l.Debug("Starting StartResourcePolling")
 
-	// Create ticker channel for status updates
-	statusTicker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
-	defer statusTicker.Stop()
+	p.ResourcePoller = &ResourcePoller{
+		statusTicker:   time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond),
+		resourceTicker: time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second),
+		tickerDone:     utils.CreateStructChannel("azure_createDeployment_tickerDone", 1),
+	}
 
-	// Create ticker for PollAndUpdateResources
-	resourceTicker := time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second)
-	defer resourceTicker.Stop()
+	go p.ResourcePoller.Start(ctx, p, disp)
+}
 
-	tickerDone := utils.CreateStructChannel("azure_createDeployment_tickerDone", 1)
-	defer utils.CloseChannel(tickerDone)
+func (p *AzureProvider) StopResourcePolling() {
+	if p.ResourcePoller != nil {
+		p.ResourcePoller.Stop()
+	}
+}
 
+type ResourcePoller struct {
+	statusTicker   *time.Ticker
+	resourceTicker *time.Ticker
+	tickerDone     chan struct{}
+}
+
+func (rp *ResourcePoller) Start(ctx context.Context, provider *AzureProvider, disp *display.Display) {
+	l := logger.Get()
 	l.Debug("Ticker goroutine started")
 	defer l.Debug("Ticker goroutine exited")
+	defer rp.Stop()
+
 	for {
 		select {
-		case <-statusTicker.C:
-			// l.Debug("Status ticker triggered")
-			allMachinesComplete := true
-			dep := GetGlobalDeployment()
-			for _, machine := range dep.Machines {
-				if machine.Status != models.MachineStatusComplete {
-					allMachinesComplete = false
-				}
-				if machine.Status == models.MachineStatusComplete {
-					continue
-				}
-				// l.Debugf("Updating status for machine: %s", machine.Name)
-				disp.UpdateStatus(&models.Status{
-					ID: machine.Name,
-					ElapsedTime: time.Duration(
-						time.Since(machine.StartTime).
-							Milliseconds() /
-							1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
-					),
-				})
-			}
-			if allMachinesComplete {
-				l.Debug("All machines complete, sending tickerDone signal")
-				tickerDone <- struct{}{}
-			}
-		case <-resourceTicker.C:
-			// l.Debug("Resource ticker triggered")
-			err := p.PollAndUpdateResources(ctx)
+		case <-rp.statusTicker.C:
+			rp.updateStatus(provider, disp)
+		case <-rp.resourceTicker.C:
+			err := provider.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
-		case <-tickerDone:
+		case <-rp.tickerDone:
 			l.Debug("Received tickerDone signal, exiting goroutine")
 			return
 		case <-ctx.Done():
 			l.Debug("Context done, exiting goroutine")
 			return
 		}
+	}
+}
+
+func (rp *ResourcePoller) Stop() {
+	rp.statusTicker.Stop()
+	rp.resourceTicker.Stop()
+	utils.CloseChannel(rp.tickerDone)
+}
+
+func (rp *ResourcePoller) updateStatus(provider *AzureProvider, disp *display.Display) {
+	l := logger.Get()
+	allMachinesComplete := true
+	dep := GetGlobalDeployment()
+	for _, machine := range dep.Machines {
+		if machine.Status != models.MachineStatusComplete {
+			allMachinesComplete = false
+		}
+		if machine.Status == models.MachineStatusComplete {
+			continue
+		}
+		disp.UpdateStatus(&models.Status{
+			ID: machine.Name,
+			ElapsedTime: time.Duration(
+				time.Since(machine.StartTime).
+					Milliseconds() /
+					1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
+			),
+		})
+	}
+	if allMachinesComplete {
+		l.Debug("All machines complete, sending tickerDone signal")
+		rp.tickerDone <- struct{}{}
 	}
 }
 
