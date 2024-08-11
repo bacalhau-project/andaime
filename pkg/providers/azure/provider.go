@@ -149,34 +149,36 @@ func (p *AzureProvider) updateStatus(disp *display.Display) {
 	}
 }
 
-func parseNSGProperties(
+func parseNetworkProperties(
 	properties map[string]interface{},
-) *armnetwork.SecurityGroupPropertiesFormat {
-	props := &armnetwork.SecurityGroupPropertiesFormat{}
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props.ProvisioningState = (*armnetwork.ProvisioningState)(
-			utils.ToPtr(provisioningState),
-		)
+	propType string,
+) interface{} {
+	switch propType {
+	case "NSG":
+		props := &armnetwork.SecurityGroupPropertiesFormat{}
+		if provisioningState, ok := properties["provisioningState"].(string); ok {
+			props.ProvisioningState = (*armnetwork.ProvisioningState)(
+				utils.ToPtr(provisioningState),
+			)
+		}
+		if securityRules, ok := properties["securityRules"].([]interface{}); ok {
+			props.SecurityRules = parseSecurityRules(securityRules)
+		}
+		return props
+	case "PIP":
+		props := &armnetwork.PublicIPAddressPropertiesFormat{}
+		if ipAddress, ok := properties["ipAddress"].(string); ok {
+			props.IPAddress = &ipAddress
+		}
+		if provisioningState, ok := properties["provisioningState"].(string); ok {
+			props.ProvisioningState = (*armnetwork.ProvisioningState)(
+				utils.ToPtr(provisioningState),
+			)
+		}
+		return props
+	default:
+		return nil
 	}
-	if securityRules, ok := properties["securityRules"].([]interface{}); ok {
-		props.SecurityRules = parseSecurityRules(securityRules)
-	}
-	return props
-}
-
-func parsePIPProperties(
-	properties map[string]interface{},
-) *armnetwork.PublicIPAddressPropertiesFormat {
-	props := &armnetwork.PublicIPAddressPropertiesFormat{}
-	if ipAddress, ok := properties["ipAddress"].(string); ok {
-		props.IPAddress = &ipAddress
-	}
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props.ProvisioningState = (*armnetwork.ProvisioningState)(
-			utils.ToPtr(provisioningState),
-		)
-	}
-	return props
 }
 
 func parseVNetProperties(
