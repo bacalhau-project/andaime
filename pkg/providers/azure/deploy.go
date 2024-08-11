@@ -395,10 +395,14 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 	for _, resource := range resources {
 		l.Debugf("Resource: %s, Type: %s, Status: %s", resource.ID, resource.Type, resource.Status)
 		resourceType := getResourceTypeAbbreviation(resource.Type)
+		status := resource.Status
+		if status == "" {
+			status = "Provisioning"
+		}
 		disp.UpdateStatus(&models.Status{
 			ID:     resource.ID,
 			Type:   resourceType,
-			Status: fmt.Sprintf("%s %s", resourceType, resource.Status),
+			Status: fmt.Sprintf("%s %s", resourceType, status),
 		})
 	}
 

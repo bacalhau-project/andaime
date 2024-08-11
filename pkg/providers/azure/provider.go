@@ -135,9 +135,16 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			deployment := GetGlobalDeployment()
 			for _, resource := range deployment.Resources {
 				currentState := resourceStates[resource.ID]
+				resourceType := getResourceTypeAbbreviation(resource.Type)
 				if currentState != resource.Status {
 					resourceStates[resource.ID] = resource.Status
-					resourceType := getResourceTypeAbbreviation(resource.Type)
+					disp.UpdateStatus(&models.Status{
+						ID:     resource.ID,
+						Type:   resourceType,
+						Status: fmt.Sprintf("%s %s", resourceType, resource.Status),
+					})
+				} else {
+					// Even if the state hasn't changed, we still want to display the resource
 					disp.UpdateStatus(&models.Status{
 						ID:     resource.ID,
 						Type:   resourceType,
