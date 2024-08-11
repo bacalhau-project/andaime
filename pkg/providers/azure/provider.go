@@ -23,6 +23,7 @@ type AzureProviderer interface {
 
 	StartResourcePolling(ctx context.Context)
 	DeployResources(ctx context.Context) error
+	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context,
 		resourceGroupName string) error
 }
@@ -143,7 +144,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				tickerDone <- struct{}{}
 			}
 		case <-resourceTicker.C:
-			l.Debug("Resource ticker triggered")
+			// l.Debug("Resource ticker triggered")
 			err := p.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
