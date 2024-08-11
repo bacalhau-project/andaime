@@ -118,6 +118,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			err := p.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
+				continue
 			}
 
 			// Update and display resource states
@@ -128,18 +129,18 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 				continue
 			}
 
+			l.Debugf("Processing %d resources", len(resources))
+
 			for _, resource := range resources {
+				if resource.ID == "" {
+					l.Warnf("Skipping resource with empty ID. Type: %s, Status: %s", resource.Type, resource.Status)
+					continue
+				}
 				currentState := resourceStates[resource.ID]
 				resourceType := getResourceTypeAbbreviation(resource.Type)
 				if currentState != resource.Status {
 					resourceStates[resource.ID] = resource.Status
-					disp.UpdateStatus(&models.Status{
-						ID:     resource.ID,
-						Type:   resourceType,
-						Status: fmt.Sprintf("%s %s", resourceType, resource.Status),
-					})
-				} else {
-					// Even if the state hasn't changed, we still want to display the resource
+					l.Debugf("Updating status for resource %s: %s %s", resource.ID, resourceType, resource.Status)
 					disp.UpdateStatus(&models.Status{
 						ID:     resource.ID,
 						Type:   resourceType,
