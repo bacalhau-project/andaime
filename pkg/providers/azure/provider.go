@@ -74,10 +74,7 @@ func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
 }
 
-func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string, destroyAll bool) error {
-	if destroyAll {
-		return p.Client.DestroyAllResourceGroups(ctx, map[string]*string{"CreatedBy": utils.ToPtr("Andaime")})
-	}
+func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
@@ -136,14 +133,23 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 
 			for _, resource := range resources {
 				if resource.ID == "" {
-					l.Warnf("Skipping resource with empty ID. Type: %s, Status: %s", resource.Type, resource.Status)
+					l.Warnf(
+						"Skipping resource with empty ID. Type: %s, Status: %s",
+						resource.Type,
+						resource.Status,
+					)
 					continue
 				}
 				currentState := resourceStates[resource.ID]
 				resourceType := getResourceTypeAbbreviation(resource.Type)
 				if currentState != resource.Status {
 					resourceStates[resource.ID] = resource.Status
-					l.Debugf("Updating status for resource %s: %s %s", resource.ID, resourceType, resource.Status)
+					l.Debugf(
+						"Updating status for resource %s: %s %s",
+						resource.ID,
+						resourceType,
+						resource.Status,
+					)
 					disp.UpdateStatus(&models.Status{
 						ID:     resource.ID,
 						Type:   resourceType,
