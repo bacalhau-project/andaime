@@ -379,6 +379,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 	l := logger.Get()
+	disp := display.GetGlobalDisplay()
 	deployment := GetGlobalDeployment()
 	resources, err := p.Client.ListResources(
 		ctx,
@@ -394,6 +395,12 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 	deployment.Resources = resources
 	for _, resource := range resources {
 		l.Debugf("Resource: %s, Type: %s, Status: %s", resource.ID, resource.Type, resource.Status)
+		resourceType := getResourceTypeAbbreviation(resource.Type)
+		disp.UpdateStatus(&models.Status{
+			ID:     resource.ID,
+			Type:   resourceType,
+			Status: fmt.Sprintf("%s %s", resourceType, resource.Status),
+		})
 	}
 
 	return nil

@@ -125,10 +125,11 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 				currentState := resourceStates[resource.ID]
 				if currentState != resource.Status {
 					resourceStates[resource.ID] = resource.Status
+					resourceType := getResourceTypeAbbreviation(resource.Type)
 					disp.UpdateStatus(&models.Status{
 						ID:     resource.ID,
-						Type:   resource.Type,
-						Status: resource.Status,
+						Type:   resourceType,
+						Status: fmt.Sprintf("%s %s", resourceType, resource.Status),
 					})
 				}
 			}
@@ -137,6 +138,25 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			close(done)
 			return
 		}
+	}
+}
+
+func getResourceTypeAbbreviation(resourceType string) string {
+	switch {
+	case strings.Contains(resourceType, "networkSecurityGroups"):
+		return "NSG"
+	case strings.Contains(resourceType, "publicIPAddresses"):
+		return "PIP"
+	case strings.Contains(resourceType, "virtualNetworks"):
+		return "VNET"
+	case strings.Contains(resourceType, "subnets"):
+		return "SNET"
+	case strings.Contains(resourceType, "networkInterfaces"):
+		return "NIC"
+	case strings.Contains(resourceType, "virtualMachines"):
+		return "VM"
+	default:
+		return "UNK"
 	}
 }
 
