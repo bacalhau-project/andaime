@@ -2,15 +2,13 @@ package azure
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/sanity-io/litter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -54,7 +52,7 @@ var AzureListResourcesCmd = &cobra.Command{
 				getSubscriptionID(),
 				tags)
 		} else {
-			err = azureProvider.GetClient().ListTypedResources(cmd.Context(),
+			err = azureProvider.GetClient().UpdateResourceList(cmd.Context(),
 				getSubscriptionID(),
 				resourceGroup,
 				tags)
@@ -78,19 +76,8 @@ var AzureListResourcesCmd = &cobra.Command{
 			log.Warn("No resources created by Andaime were found")
 		} else {
 			for _, res := range sm.GetAllResources() {
-				fmt.Println("Resource Type:", res.Type)
-				switch r := res.Resource.(type) {
-				case armcompute.VirtualMachine:
-					fmt.Println("Found virtual machine:", *r.Name)
-				case armnetwork.Interface:
-					fmt.Println("Found network interface:", *r.Name)
-				case armnetwork.VirtualNetwork:
-					fmt.Println("Found virtual network:", *r.Name)
-				case armnetwork.PublicIPAddress:
-					fmt.Println("Found public IP address:", *r.Name)
-				case armnetwork.SecurityGroup:
-					fmt.Println("Found network security group:", *r.Name)
-				}
+				// If resource has "name" field, print it
+				log.Debugf("Resource: %s", litter.Sdump(res.Resource))
 			}
 		}
 	},

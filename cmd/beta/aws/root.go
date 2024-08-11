@@ -2,7 +2,6 @@ package aws
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/bacalhau-project/andaime/cmd/beta/destroy"
 )
 
 var AwsCmd = &cobra.Command{
@@ -14,5 +13,5 @@ var AwsCmd = &cobra.Command{
 func init() {
 	// Add all AWS-related subcommands
 	AwsCmd.AddCommand(createDeploymentCmd)
-	AwsCmd.AddCommand(destroy.GetDestroyCmd())
+	// AwsCmd.AddCommand(GetAwsDestroyCmd())
 }

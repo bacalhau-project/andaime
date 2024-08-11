@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
-	"github.com/bacalhau-project/andaime/cmd/beta/destroy"
 	"github.com/spf13/cobra"
 )
 
@@ -29,9 +28,9 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 		}
 		rootCmd.AddCommand(betaCmd)
 
-		betaCmd.AddCommand(getTestDisplayCmd())
+		betaCmd.AddCommand(GetTestDisplayCmd())
 		betaCmd.AddCommand(azure.GetAzureCmd())
-		betaCmd.AddCommand(destroy.GetDestroyCmd())
+		// betaCmd.AddCommand(azure.GetAwsCmd())
 	})
 	return betaCmd
 }

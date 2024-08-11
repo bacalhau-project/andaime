@@ -33,12 +33,12 @@ var createDeploymentCmd = &cobra.Command{
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	logger.InitProduction()
-	log := logger.Get()
+	l := logger.Get()
 
 	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to initialize AWS provider: %s", err.Error())
-		log.Error(errString)
+		l.Error(errString)
 		return fmt.Errorf(errString)
 	}
 
@@ -57,12 +57,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	err = awsProvider.CreateDeployment(cmd.Context())
 	if err != nil {
 		errString := fmt.Sprintf("Failed to create deployment: %s", err.Error())
-		log.Error(errString)
+		l.Error(errString)
 		return fmt.Errorf(errString)
 	}
 
 	// TODO: Implement resource status updates when AWS provider supports it
-	log.Info("AWS deployment created successfully")
-	cmd.Println("AWS deployment created successfully")
+	l.Info("AWS deployment created successfully")
 	return nil
 }

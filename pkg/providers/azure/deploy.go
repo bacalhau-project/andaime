@@ -381,19 +381,28 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
 	deployment := GetGlobalDeployment()
-	resources, err := p.Client.ListAllResourcesInSubscription(
+	err := p.Client.ListAllResourcesInSubscription(
 		ctx,
 		deployment.SubscriptionID,
 		deployment.Tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to list resources: %v", err)
-		return fmt.Errorf("failed to list resources: %w", err)
+		return err
 	}
 
-	deployment.Resources = resources
+	resources, err := deployment.GetAllResources()
+	if err != nil {
+		return err
+	}
+
+	l.Debugf("Found %d resources", len(resources))
+
 	for _, resource := range resources {
-		l.Debugf("Resource: %s, Type: %s, Status: %s", resource.ID, resource.Type, resource.Status)
+		if resource.ID == "" {
+			l.Warnf("Resource with empty ID found. Type: %s, Status: %s, Name: %s", resource.Type, resource.Status, resource.Name)
+			continue
+		}
+		l.Debugf("Resource: %s, Type: %s, Status: %s, Name: %s", resource.ID, resource.Type, resource.Status, resource.Name)
 		resourceType := getResourceTypeAbbreviation(resource.Type)
 		status := resource.Status
 		if status == "" {

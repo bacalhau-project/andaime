@@ -21,7 +21,7 @@ var testDisplayCmd = &cobra.Command{
 	Run:   runTestDisplay,
 }
 
-func getTestDisplayCmd() *cobra.Command {
+func GetTestDisplayCmd() *cobra.Command {
 	return testDisplayCmd
 }
 

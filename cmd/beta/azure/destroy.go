@@ -125,9 +125,13 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	l.Debugf("Found %d deployments", len(deployments))
 
-	// If no deployments are found in the config, look for resource groups with the "CreatedBy" tag
-	if len(deployments) == 0 {
-		l.Info("No deployments found in config. Searching for resource groups with CreatedBy tag...")
+	// Sort deployments alphabetically by name
+	sort.Slice(deployments, func(i, j int) bool {
+		return deployments[i].Name < deployments[j].Name
+	})
+
+	if destroyAll {
+		// Query the subscription for any remaining resource groups with the CreatedBy tag
 		azureProvider, err := azure.NewAzureProvider()
 		if err != nil {
 			l.Errorf("Failed to create Azure provider: %v", err)
@@ -138,38 +142,45 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			l.Errorf("Failed to get resource groups: %v", err)
 			return fmt.Errorf("failed to get resource groups: %v", err)
 		}
+
 		for rgName, rgLocation := range resourceGroups {
 			rg, err := azureProvider.GetClient().GetResourceGroup(cmd.Context(), rgLocation, rgName)
 			if err != nil {
 				l.Errorf("Failed to get resource group %s: %v", rgName, err)
 				continue
 			}
-			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil && *createdBy == "andaime" {
-				deployments = append(deployments, Deployment{
-					Name: rgName,
-					Type: "Azure",
-					ID:   rgName,
-				})
+			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil &&
+				strings.EqualFold(*createdBy, "andaime") {
+				l.Infof("Found resource group %s with CreatedBy tag", rgName)
+				// Only add the resource group if it is not already in the list
+				found := false
+				for _, dep := range deployments {
+					if dep.Name == rgName {
+						found = true
+						break
+					}
+				}
+
+				// Test to see if the resource group is already being destroyed
+				if *rg.Properties.ProvisioningState == "Deleting" {
+					l.Infof("Resource group %s is already being destroyed", rgName)
+					continue
+				}
+
+				if !found {
+					deployments = append(deployments, Deployment{
+						Name: rgName,
+						Type: "Azure",
+						ID:   rgName,
+					})
+				}
 			}
-		}
-		l.Debugf("Found %d deployments with CreatedBy tag", len(deployments))
-	}
 
-	if len(deployments) == 0 {
-		l.Error("No deployments available for destruction")
-		return fmt.Errorf("no deployments available for destruction")
-	}
-
-	// Sort deployments alphabetically by name
-	sort.Slice(deployments, func(i, j int) bool {
-		return deployments[i].Name < deployments[j].Name
-	})
-
-	if destroyAll {
-		l.Info("Destroying all deployments:")
-		for _, dep := range deployments {
-			if err := destroyDeployment(dep); err != nil {
-				l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
+			l.Info("Destroying all deployments:")
+			for _, dep := range deployments {
+				if err := destroyDeployment(dep); err != nil {
+					l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
+				}
 			}
 		}
 
@@ -180,7 +191,10 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	if index != 0 {
 		if index < 1 || index > len(deployments) {
 			l.Errorf("Invalid index. Please enter a number between 1 and %d", len(deployments))
-			return fmt.Errorf("invalid index. Please enter a number between 1 and %d", len(deployments))
+			return fmt.Errorf(
+				"invalid index. Please enter a number between 1 and %d",
+				len(deployments),
+			)
 		}
 		l.Debugf("Destroying deployment at index: %d", index)
 		return destroyDeployment(deployments[index-1])
@@ -216,7 +230,10 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		_, err = fmt.Sscanf(input, "%d", &index)
 		if err != nil || index < 1 || index > len(deployments) {
 			l.Errorf("Invalid selection. Please enter a number between 1 and %d", len(deployments))
-			return fmt.Errorf("invalid selection. Please enter a number between 1 and %d", len(deployments))
+			return fmt.Errorf(
+				"invalid selection. Please enter a number between 1 and %d",
+				len(deployments),
+			)
 		}
 
 		selected = deployments[index-1]

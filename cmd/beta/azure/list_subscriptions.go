@@ -53,27 +53,31 @@ func GetAzureListSubscriptionsCmd() *cobra.Command {
 var setSubscription bool
 
 func runListSubscriptions(cmd *cobra.Command, args []string) {
+	l := logger.Get()
 	configFile := viper.ConfigFileUsed()
 	if configFile == "" {
-		fmt.Println("Error: Config file not found")
+		l.Errorf("Error: Config file not found")
 		return
 	}
 
 	err := ListSubscriptions(configFile, setSubscription)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		l.Errorf("Error: %v", err)
 	}
 }
 
 func ListSubscriptions(configFilePath string, setSubscription bool) error {
+	l := logger.Get()
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		return fmt.Errorf("failed to obtain a credential: %v", err)
+		l.Errorf("failed to obtain a credential: %v", err)
+		return err
 	}
 
 	client, err := armsubscription.NewSubscriptionsClient(cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create client: %v", err)
+		l.Errorf("failed to create client: %v", err)
+		return err
 	}
 
 	pager := client.NewListPager(nil)
@@ -82,12 +86,14 @@ func ListSubscriptions(configFilePath string, setSubscription bool) error {
 	for pager.More() {
 		page, err := pager.NextPage(context.Background())
 		if err != nil {
-			return fmt.Errorf("failed to advance page: %v", err)
+			l.Errorf("failed to advance page: %v", err)
+			return err
 		}
 		subscriptions = append(subscriptions, page.Value...)
 	}
 
 	if len(subscriptions) == 0 {
+		l.Errorf("no subscriptions found for this account")
 		return fmt.Errorf("no subscriptions found for this account")
 	}
 
@@ -103,18 +109,17 @@ func ListSubscriptions(configFilePath string, setSubscription bool) error {
 		chosenSubscription := subscriptions[chosenIndex]
 		err = writeSubscriptionToConfig(*chosenSubscription.ID)
 		if err != nil {
-			return fmt.Errorf("failed to write subscription to config: %v", err)
+			l.Errorf("failed to write subscription to config: %v", err)
+			return err
 		}
 
-		logger.DebugPrint(
-			fmt.Sprintf(
-				"Subscription '%s' has been set in the config file.",
-				*chosenSubscription.DisplayName,
-			),
+		l.Debugf(
+			"Subscription '%s' has been set in the config file.",
+			*chosenSubscription.DisplayName,
 		)
 	} else {
-		logger.DebugPrint("\nTo set a subscription, run this command with the --set flag:")
-		fmt.Println("andaime azure list-subscriptions --set")
+		l.Infof("\nTo set a subscription, run this command with the --set flag:")
+		l.Infof("andaime azure list-subscriptions --set")
 	}
 
 	return nil
@@ -136,16 +141,19 @@ func createSubscriptionTable(subscriptions []*armsubscription.Subscription) *tab
 }
 
 func getUserChoice(max int) (int, error) {
+	l := logger.Get()
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("Enter the number of the subscription you want to use: ")
 		input, err := reader.ReadString('\n')
 		if err != nil {
-			return 0, fmt.Errorf("failed to read input: %v", err)
+			l.Errorf("failed to read input: %v", err)
+			return 0, err
 		}
 		input = strings.TrimSpace(input)
 		choice, err := strconv.Atoi(input)
 		if err != nil || choice < 1 || choice > max {
+			l.Errorf("Invalid input. Please enter a number between 1 and %d.", max)
 			fmt.Printf("Invalid input. Please enter a number between 1 and %d.\n", max)
 			continue
 		}
@@ -154,6 +162,7 @@ func getUserChoice(max int) (int, error) {
 }
 
 func writeSubscriptionToConfig(subscriptionID string) error {
+	l := logger.Get()
 	// Extract the UUID from the full subscription ID
 	uuidOnly := extractUUID(subscriptionID)
 
@@ -163,7 +172,8 @@ func writeSubscriptionToConfig(subscriptionID string) error {
 	// Write the updated configuration back to the file
 	err := viper.WriteConfig()
 	if err != nil {
-		return fmt.Errorf("failed to write updated config: %v", err)
+		l.Errorf("failed to write updated config: %v", err)
+		return err
 	}
 
 	return nil

@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -33,6 +32,7 @@ func TestUpdateStatus(t *testing.T) {
 	// Test updating the status of a resource
 	dsm.UpdateStatus(
 		"eastus-nsg",
+		"NSG",
 		models.Machine{ID: "eastus-nsg"},
 		StateSucceeded,
 	)
@@ -47,6 +47,7 @@ func TestUpdateStatus(t *testing.T) {
 	// Test updating the status of a resource to a lower state
 	dsm.UpdateStatus(
 		"eastus-nsg",
+		"NSG",
 		models.Machine{ID: "eastus-nsg"},
 		StateFailed,
 	)
@@ -61,6 +62,7 @@ func TestUpdateStatus(t *testing.T) {
 	// Test updating the status of a resource to a higher state
 	dsm.UpdateStatus(
 		"eastus-vm",
+		"VM",
 		models.Machine{ID: "eastus-vm"},
 		StateSucceeded,
 	)
@@ -85,7 +87,6 @@ func TestGetStatus(t *testing.T) {
 	state := StateSucceeded
 	// Test getting the status of a resource
 	dsm.Resources["123456-vm"] = StateMachineResource{
-		Type: reflect.TypeOf(models.Machine{}),
 		Resource: models.Machine{
 			ID: "123456-vm",
 		},
@@ -124,7 +125,7 @@ func TestStateProgression(t *testing.T) {
 
 	// Test forward progression
 	for i, currentState := range states {
-		dsm.UpdateStatus(resourceName, resource, currentState)
+		dsm.UpdateStatus(resourceName, "VM", resource, currentState)
 		status, ok := dsm.GetStatus(resourceName)
 		if !ok {
 			t.Errorf("Expected resource %s to exist, but it doesn't", resourceName)
@@ -136,7 +137,7 @@ func TestStateProgression(t *testing.T) {
 		// Try to update with all previous states
 		for j := 0; j < i; j++ {
 			previousState := states[j]
-			dsm.UpdateStatus(resourceName, resource, previousState)
+			dsm.UpdateStatus(resourceName, "VM", resource, previousState)
 			status, _ = dsm.GetStatus(resourceName)
 			if status != currentState {
 				t.Errorf("State incorrectly changed from %s to %s", currentState, status)
@@ -146,7 +147,7 @@ func TestStateProgression(t *testing.T) {
 
 	// Test that final state (StateFailed) cannot be changed
 	for _, state := range states {
-		dsm.UpdateStatus(resourceName, resource, state)
+		dsm.UpdateStatus(resourceName, "VM", resource, state)
 		status, _ := dsm.GetStatus(resourceName)
 		if status != StateFailed {
 			t.Errorf("Final state (StateFailed) was incorrectly changed to %s", status)

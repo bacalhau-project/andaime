@@ -5,13 +5,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"

@@ -103,16 +103,19 @@ nsgs
 olekukonko
 optup
 panicnil
+PBIP
 practise
 predeclared
 Providerer
 publicipaddress
 publicipaddresses
 pulumi
+PVIP
 resliced
 resourcegraph
 resourcegroupname
 resourcemanager
+resourcename
 Retryable
 rgname
 rivo
@@ -121,6 +124,7 @@ sess
 Sessioner
 sigchanyzer
 sirupsen
+SNET
 southcentralus
 southeastasia
 sqlserver

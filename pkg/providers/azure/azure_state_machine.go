@@ -1,12 +1,13 @@
 package azure
 
 import (
-	"reflect"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
@@ -25,7 +26,7 @@ const (
 )
 
 type StateMachineResource struct {
-	Type        reflect.Type
+	Name        string
 	Resource    interface{}
 	State       ResourceState
 	LastUpdated time.Time
@@ -52,6 +53,40 @@ func (rs ResourceState) String() string {
 	return [...]string{"Not Started", "Provisioning", "Succeeded", "Failed"}[rs]
 }
 
+func CreateStateMessage(resourceType string, state ResourceState, resourceName string) string {
+	prefix := ""
+	switch resourceType {
+	case "VM":
+		prefix = DisplayPrefixVM
+	case "PBIP":
+		prefix = DisplayPrefixPBIP
+	case "PVIP":
+		prefix = DisplayPrefixPVIP
+	case "NIC":
+		prefix = DisplayPrefixNIC
+	case "NSG":
+		prefix = DisplayPrefixNSG
+	case "VNET":
+		prefix = DisplayPrefixVNET
+	case "SNET":
+		prefix = DisplayPrefixSNET
+	case "DISK":
+		prefix = DisplayPrefixDISK
+	}
+
+	emoji := ""
+	switch state {
+	case StateSucceeded:
+		emoji = DisplayEmojiSuccess
+	case StateProvisioning:
+		emoji = DisplayEmojiWaiting
+	case StateFailed:
+		emoji = DisplayEmojiFailed
+	}
+
+	return fmt.Sprintf("%s %s = %s", prefix, emoji, resourceName)
+}
+
 func NewDeploymentStateMachine(deployment *models.Deployment) *AzureStateMachine {
 	return &AzureStateMachine{
 		Resources: make(map[string]StateMachineResource),
@@ -60,23 +95,24 @@ func NewDeploymentStateMachine(deployment *models.Deployment) *AzureStateMachine
 
 func (dsm *AzureStateMachine) UpdateStatus(
 	resourceName string,
+	resourceType string,
 	resource interface{},
 	state ResourceState,
 ) {
+	l := logger.Get()
 	dsm.mu.Lock()
 	defer dsm.mu.Unlock()
 	disp := display.GetGlobalDisplay()
 
 	if _, ok := dsm.Resources[resourceName]; !ok {
 		dsm.Resources[resourceName] = StateMachineResource{
-			Type:        reflect.TypeOf(resource),
 			Resource:    resource,
 			State:       state,
 			LastUpdated: time.Now(),
 		}
 	}
 
-	if dsm.Resources[resourceName].State > state {
+	if dsm.Resources[resourceName].State >= state {
 		return
 	}
 
@@ -92,9 +128,10 @@ func (dsm *AzureStateMachine) UpdateStatus(
 	for _, machine := range deployment.Machines {
 		if machine.Location == stub {
 			isLocation = true
+			l.Debugf("Updating status for location %s to %s", machine.Name, state.String())
 			disp.UpdateStatus(&models.Status{
 				ID:     machine.Name,
-				Status: state.String(),
+				Status: CreateStateMessage(resourceType, state, resourceName),
 			})
 		}
 	}
@@ -106,9 +143,11 @@ func (dsm *AzureStateMachine) UpdateStatus(
 
 	for _, machine := range deployment.Machines {
 		if machine.ID == stub {
+			l.Debugf("Updating status for machine %s to %s", machine.Name, state.String())
+			l.Debugf("Full Object: %s", resource)
 			disp.UpdateStatus(&models.Status{
 				ID:     machine.Name,
-				Status: state.String(),
+				Status: CreateStateMessage(resourceType, state, resourceName),
 			})
 		}
 	}

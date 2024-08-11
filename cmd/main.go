@@ -63,6 +63,7 @@ func main() {
 }
 
 func deploy(cfg Config) error {
+	l := logger.Get()
 	for providerName, providerConfig := range cfg.Providers {
 		switch providerName {
 		case "aws":
@@ -79,11 +80,11 @@ func deploy(cfg Config) error {
 				if err != nil {
 					return fmt.Errorf("failed to create AWS instances: %w", err)
 				}
-				logger.DebugPrint(fmt.Sprintf("Created %d AWS instances", len(instances)))
+				l.Debugf("Created %d AWS instances", len(instances))
 			}
 		// Add cases for other providers here
 		default:
-			log.Printf("Unsupported provider: %s", providerName)
+			l.Errorf("Unsupported provider: %s", providerName)
 		}
 	}
 	return nil

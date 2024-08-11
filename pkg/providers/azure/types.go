@@ -2,7 +2,6 @@ package azure
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -44,73 +43,15 @@ var ResourceTypeMap = map[string]reflect.Type{
 	"microsoft.compute/disks": reflect.TypeOf((*armcompute.Disk)(nil)).Elem(),
 }
 
-func UpdateResourceStatus(
-	ctx context.Context,
-	resourceName, resource, provisioningState string,
-) error {
-	stateMachine := GetGlobalStateMachine()
-
-	var state ResourceState
-	switch strings.ToLower(provisioningState) {
+func ConvertFromStringToResourceState(state string) (ResourceState, error) {
+	switch strings.ToLower(state) {
 	case "succeeded":
-		state = StateSucceeded
+		return StateSucceeded, nil
 	case "failed":
-		state = StateFailed
-	default:
-		state = StateProvisioning
+		return StateFailed, nil
+	case "provisioning":
+		return StateProvisioning, nil
 	}
 
-	stateMachine.UpdateStatus(
-		resourceName,
-		resource,
-		state,
-	)
-	return nil
-}
-
-func ProcessResource(ctx context.Context, resourceType string, resource interface{}) error {
-	resourceValue := reflect.ValueOf(resource)
-	if resourceValue.Kind() == reflect.Ptr {
-		resourceValue = resourceValue.Elem()
-	}
-
-	nameField := resourceValue.FieldByName("Name")
-	if !nameField.IsValid() {
-		return fmt.Errorf("resource does not have a Name field")
-	}
-
-	propertiesField := resourceValue.FieldByName("Properties")
-	if !propertiesField.IsValid() {
-		return fmt.Errorf("resource does not have a Properties field")
-	}
-
-	provisioningStateField := propertiesField.Elem().FieldByName("ProvisioningState")
-	if !provisioningStateField.IsValid() {
-		return fmt.Errorf("resource properties does not have a ProvisioningState field")
-	}
-
-	return UpdateResourceStatus(
-		ctx,
-		resourceType,
-		nameField.String(),
-		provisioningStateField.String(),
-	)
-}
-
-func (p *AzureProvider) ProcessResources(ctx context.Context, resources interface{}) error {
-	resourcesValue := reflect.ValueOf(resources)
-	if resourcesValue.Kind() != reflect.Slice {
-		return fmt.Errorf("resources must be a slice")
-	}
-
-	for i := 0; i < resourcesValue.Len(); i++ {
-		resource := resourcesValue.Index(i).Interface()
-		resourceType := reflect.TypeOf(resource).String()
-
-		if err := ProcessResource(ctx, resourceType, resource); err != nil {
-			return fmt.Errorf("failed to process resource: %w", err)
-		}
-	}
-
-	return nil
+	return StateNotStarted, nil
 }
