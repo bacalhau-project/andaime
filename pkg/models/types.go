@@ -28,6 +28,17 @@ type Status struct {
 	HighlightCycles int
 }
 
+type Deployment struct {
+	// ... existing fields ...
+	Resources []Resource
+}
+
+type Resource struct {
+	ID     string
+	Type   string
+	Status string
+}
+
 type AzureEvent struct {
 	Type       string
 	ResourceID string
