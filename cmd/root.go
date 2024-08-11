@@ -98,18 +98,16 @@ including deploying and managing Bacalhau nodes across multiple cloud providers.
 
 func initConfig() {
 	// Use a temporary logger for initial debugging
-	debugLog, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugLog, err := os.OpenFile(
+		"/tmp/andaime-start.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0644,
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening debug log file: %v\n", err)
 		os.Exit(1)
 	}
 	defer debugLog.Close()
-
-	logger.GlobalEnableConsoleLogger = false
-	logger.GlobalEnableFileLogger = true
-	logger.GlobalEnableBufferLogger = true
-	logger.GlobalLogPath = "/tmp/andaime.log"
-	logger.GlobalLogLevel = "info"
 
 	tmpLogger := log.New(debugLog, "", log.LstdFlags)
 
@@ -158,24 +156,26 @@ func initConfig() {
 		outputFormat = "text"
 	}
 
+	logger.GlobalEnableConsoleLogger = false
+	logger.GlobalEnableFileLogger = true
+	logger.GlobalEnableBufferLogger = true
+	logger.GlobalLogPath = "/tmp/andaime.log"
+	logger.GlobalLogLevel = "info"
+
 	// Initialize the logger after config is read
 	logger.InitProduction()
 	logger.SetOutputFormat(outputFormat)
 	logger.GlobalInstantSync = true
-	log := logger.Get()
-
 	// Set log level based on verbose flag
 	if verboseMode {
 		logger.SetLevel(logger.DEBUG)
 	}
 
-	if os.Getenv("LOG_LEVEL") == "debug" {
-		log.Debugf(
-			"Logger initialized with configuration: %v",
-			zap.String("outputFormat", outputFormat),
-		)
-		log.Debug("Configuration initialization complete")
-	}
+	tmpLogger.Printf(
+		"Logger initialized with configuration: %v",
+		zap.String("outputFormat", outputFormat),
+	)
+	tmpLogger.Print("Configuration initialization complete")
 }
 
 func SetupRootCommand() *cobra.Command {
