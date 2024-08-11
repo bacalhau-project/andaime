@@ -153,50 +153,31 @@ func parseNetworkProperties(
 	properties map[string]interface{},
 	propType string,
 ) interface{} {
+	props := make(map[string]interface{})
+
+	if provisioningState, ok := properties["provisioningState"].(string); ok {
+		props["provisioningState"] = (*armnetwork.ProvisioningState)(utils.ToPtr(provisioningState))
+	}
+
 	switch propType {
 	case "NSG":
-		props := &armnetwork.SecurityGroupPropertiesFormat{}
-		if provisioningState, ok := properties["provisioningState"].(string); ok {
-			props.ProvisioningState = (*armnetwork.ProvisioningState)(
-				utils.ToPtr(provisioningState),
-			)
-		}
 		if securityRules, ok := properties["securityRules"].([]interface{}); ok {
-			props.SecurityRules = parseSecurityRules(securityRules)
+			props["securityRules"] = parseSecurityRules(securityRules)
 		}
-		return props
 	case "PIP":
-		props := &armnetwork.PublicIPAddressPropertiesFormat{}
 		if ipAddress, ok := properties["ipAddress"].(string); ok {
-			props.IPAddress = &ipAddress
+			props["ipAddress"] = ipAddress
 		}
-		if provisioningState, ok := properties["provisioningState"].(string); ok {
-			props.ProvisioningState = (*armnetwork.ProvisioningState)(
-				utils.ToPtr(provisioningState),
-			)
-		}
-		return props
-	default:
-		return nil
-	}
-}
-
-func parseVNetProperties(
-	properties map[string]interface{},
-) *armnetwork.VirtualNetworkPropertiesFormat {
-	props := &armnetwork.VirtualNetworkPropertiesFormat{}
-	if addressSpace, ok := properties["addressSpace"].(map[string]interface{}); ok {
-		if addressPrefixes, ok := addressSpace["addressPrefixes"].([]interface{}); ok {
-			props.AddressSpace = &armnetwork.AddressSpace{
-				AddressPrefixes: parseStringSlice(addressPrefixes),
+	case "VNET":
+		if addressSpace, ok := properties["addressSpace"].(map[string]interface{}); ok {
+			if addressPrefixes, ok := addressSpace["addressPrefixes"].([]interface{}); ok {
+				props["addressSpace"] = &armnetwork.AddressSpace{
+					AddressPrefixes: parseStringSlice(addressPrefixes),
+				}
 			}
 		}
 	}
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		props.ProvisioningState = (*armnetwork.ProvisioningState)(
-			utils.ToPtr(provisioningState),
-		)
-	}
+
 	return props
 }
 
