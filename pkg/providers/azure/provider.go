@@ -107,6 +107,8 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 	defer statusTicker.Stop()
 	defer resourceTicker.Stop()
 
+	resourceStates := make(map[string]string)
+
 	for {
 		select {
 		case <-statusTicker.C:
@@ -115,6 +117,20 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			err := p.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
+			}
+			
+			// Update and display resource states
+			deployment := GetGlobalDeployment()
+			for _, resource := range deployment.Resources {
+				currentState := resourceStates[resource.ID]
+				if currentState != resource.Status {
+					resourceStates[resource.ID] = resource.Status
+					disp.UpdateStatus(&models.Status{
+						ID:     resource.ID,
+						Type:   resource.Type,
+						Status: resource.Status,
+					})
+				}
 			}
 		case <-ctx.Done():
 			l.Debug("Context done, exiting resource polling")

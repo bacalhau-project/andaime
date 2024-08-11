@@ -10,9 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
@@ -26,6 +23,22 @@ import (
 var (
 	globalDeployment *models.Deployment
 	deploymentMutex  sync.RWMutex
+)
+
+const (
+	DisplayPrefixRG   = "RG  "
+	DisplayPrefixVNET = "VNET"
+	DisplayPrefixSNET = "SNET"
+	DisplayPrefixNSG  = "NSG "
+	DisplayPrefixVM   = "VM  "
+	DisplayPrefixDISK = "DISK"
+	DisplayPrefixPBIP = "PBIP"
+	DisplayPrefixPVIP = "PVIP"
+	DisplayPrefixNIC  = "NIC "
+
+	DisplayEmojiSuccess = "✅"
+	DisplayEmojiWaiting = "⏳"
+	DisplayEmojiFailed  = "❌"
 )
 
 func GetGlobalDeployment() *models.Deployment {
@@ -112,7 +125,6 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
 	sm := GetGlobalStateMachine()
-	disp := display.GetGlobalDisplay()
 
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
@@ -130,11 +142,6 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 
 	for _, machine := range GetGlobalDeployment().Machines {
 		internalMachine := machine
-		disp.UpdateStatus(&models.Status{
-			ID:     internalMachine.Name,
-			Type:   "VM",
-			Status: "Preparing deployment ...",
-		})
 
 		sem <- struct{}{}
 		wg.Add(1)
@@ -145,11 +152,19 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				wg.Done()
 			}()
 
+			sm.UpdateStatus(
+				goRoutineMachine.Name,
+				"VM",
+				goRoutineMachine,
+				StateProvisioning,
+			)
+
 			err := p.deployMachine(ctx, goRoutineMachine, tags)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
 				sm.UpdateStatus(
-					goRoutineMachine.ID,
+					goRoutineMachine.Name,
+					"VM",
 					goRoutineMachine,
 					StateFailed,
 				)
@@ -171,6 +186,7 @@ func (p *AzureProvider) deployMachine(
 	sm := GetGlobalStateMachine()
 	sm.UpdateStatus(
 		machine.Name,
+		"VM",
 		machine,
 		StateProvisioning,
 	)
@@ -242,10 +258,18 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	tags map[string]*string,
 ) error {
 	l := logger.Get()
-	sm := GetGlobalStateMachine()
 	maxRetries := 3
 	deployment := GetGlobalDeployment()
+	disp := display.GetGlobalDisplay()
 
+	disp.UpdateStatus(
+		&models.Status{
+			ID:     machine.Name,
+			Status: CreateStateMessage("VM", StateProvisioning, machine.Name),
+		},
+	)
+
+	dnsFailed := false
 	for retry := 0; retry < maxRetries; retry++ {
 		poller, err := p.Client.DeployTemplate(
 			ctx,
@@ -260,6 +284,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		}
 
 		resp, err := poller.PollUntilDone(ctx, nil)
+		l.Debugf("Deployment response: %v", resp)
 		if resp.Properties != nil && resp.Properties.ProvisioningState != nil {
 			if *resp.Properties.ProvisioningState == "Failed" {
 				if resp.Properties.Error != nil && resp.Properties.Error.Message != nil {
@@ -284,377 +309,390 @@ func (p *AzureProvider) deployTemplateWithRetry(
 					utils.GenerateUniqueID()[:6],
 				),
 			}
-		} else {
-			sm.UpdateStatus(
-				machine.ID,
-				machine,
-				StateFailed,
+			disp.UpdateStatus(
+				&models.Status{
+					ID:     machine.Name,
+					Type:   "VM",
+					Status: fmt.Sprintf("DNS Conflict - Retrying... %d/%d", retry+1, maxRetries),
+				},
 			)
-			return fmt.Errorf("failed to start template deployment: %w", err)
+			dnsFailed = true
+			continue
+		} else if err != nil {
+			disp.UpdateStatus(
+				&models.Status{
+					ID:     machine.Name,
+					Type:   "VM",
+					Status: fmt.Sprintf("FATAL: %v", err),
+				},
+			)
+			return fmt.Errorf("error deploying template: %v", err)
 		}
+
+		// Finished with no errors
+		dnsFailed = false
+		break
 	}
 
-	sm.UpdateStatus(
-		machine.ID,
-		machine,
-		StateFailed,
-	)
-	return fmt.Errorf("failed to start template deployment after %d retries", maxRetries)
+	if dnsFailed {
+		disp.UpdateStatus(
+			&models.Status{
+				ID:     machine.Name,
+				Type:   "VM",
+				Status: "Failed to deploy due to DNS conflict.",
+			},
+		)
+	} else {
+		// Get the public IP
+		publicIP, err := p.Client.GetPublicIPAddress(ctx, deployment.ResourceGroupName, machine.ID)
+		if err != nil {
+			return err
+		}
+
+		// Get the private IP
+		privateIP, err := p.Client.GetNetworkInterface(ctx, deployment.ResourceGroupName, machine.ID)
+		if err != nil {
+			return err
+		}
+
+		for i, depMachine := range deployment.Machines {
+			if depMachine.ID == machine.ID {
+				deployment.Machines[i].PublicIP = *publicIP.Properties.IPAddress
+				deployment.Machines[i].PrivateIP = *privateIP.Properties.IPConfigurations[0].Properties.PrivateIPAddress
+				disp.UpdateStatus(
+					&models.Status{
+						ID:        machine.Name,
+						Type:      "VM",
+						Status:    "Successfully Deployed.",
+						PublicIP:  deployment.Machines[i].PublicIP,
+						PrivateIP: deployment.Machines[i].PrivateIP,
+					},
+				)
+				break
+			}
+		}
+
+	}
+
+	return nil
 }
 
-func (p *AzureProvider) PollAndUpdateResources(
-	ctx context.Context,
-) error {
-	sm := GetGlobalStateMachine()
+func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
+	l := logger.Get()
 	deployment := GetGlobalDeployment()
-	err := p.Client.ListTypedResources(
+	resources, err := p.Client.ListResources(
 		ctx,
 		deployment.SubscriptionID,
 		deployment.ResourceGroupName,
 		deployment.Tags,
 	)
 	if err != nil {
+		l.Errorf("Failed to list resources: %v", err)
 		return fmt.Errorf("failed to list resources: %w", err)
 	}
 
-	for _, res := range sm.GetAllResources() {
-		switch r := res.Resource.(type) {
-		case armcompute.VirtualMachine:
-			sm.UpdateStatus(
-				*r.Name,
-				r,
-				convertToResourceState(*r.Properties.ProvisioningState),
-			)
-		case armcompute.VirtualMachineExtension:
-			sm.UpdateStatus(
-				*r.Name,
-				r,
-				convertToResourceState(*r.Properties.ProvisioningState),
-			)
-		case armnetwork.PublicIPAddress:
-			sm.UpdateStatus(
-				*r.Name,
-				r,
-				convertToResourceState(string(*r.Properties.ProvisioningState)),
-			)
-		case armnetwork.Interface:
-			sm.UpdateStatus(
-				*r.Name,
-				r,
-				convertToResourceState(string(*r.Properties.ProvisioningState)),
-			)
-		case armnetwork.SecurityGroup:
-			sm.UpdateStatus(
-				*r.Name,
-				r,
-				convertToResourceState(string(*r.Properties.ProvisioningState)),
-			)
-		case armnetwork.VirtualNetwork:
-			sm.UpdateStatus(
-				*r.Name,
-				r,
-				convertToResourceState(string(*r.Properties.ProvisioningState)),
-			)
-		}
+	deployment.Resources = resources
+	for _, resource := range resources {
+		l.Debugf("Resource: %s, Type: %s, Status: %s", resource.ID, resource.Type, resource.Status)
 	}
 
 	return nil
 }
 
-func (p *AzureProvider) updateDeploymentStatus(
-	deployment *models.Deployment,
-) {
-	l := logger.Get()
-	sm := GetGlobalStateMachine()
+// func (p *AzureProvider) updateDeploymentStatus(
+// 	deployment *models.Deployment,
+// ) {
+// 	l := logger.Get()
+// 	sm := GetGlobalStateMachine()
 
-	for _, res := range sm.GetAllResources() {
-		switch res.Type {
-		case reflect.TypeOf(armcompute.VirtualMachine{}):
-			if vm, ok := res.Resource.(armcompute.VirtualMachine); ok {
-				p.updateVMStatus(deployment, &vm)
-			}
-		case reflect.TypeOf(armcompute.VirtualMachineExtension{}):
-			if vmExt, ok := res.Resource.(armcompute.VirtualMachineExtension); ok {
-				p.updateVMExtensionsStatus(
-					deployment,
-					&vmExt,
-				)
-			}
-		case reflect.TypeOf(armnetwork.PublicIPAddress{}):
-			if publicIP, ok := res.Resource.(armnetwork.PublicIPAddress); ok {
-				p.updatePublicIPStatus(deployment, &publicIP)
-			}
-		case reflect.TypeOf(armnetwork.Interface{}):
-			if nic, ok := res.Resource.(armnetwork.Interface); ok {
-				p.updateNICStatus(deployment, &nic)
-			}
-		case reflect.TypeOf(armnetwork.SecurityGroup{}):
-			if nsg, ok := res.Resource.(armnetwork.SecurityGroup); ok {
-				p.updateNSGStatus(deployment, &nsg)
-			}
-		case reflect.TypeOf(armnetwork.VirtualNetwork{}):
-			if vnet, ok := res.Resource.(armnetwork.VirtualNetwork); ok {
-				p.updateVNetStatus(deployment, &vnet)
-			}
-		case reflect.TypeOf(armcompute.Disk{}):
-			if disk, ok := res.Resource.(armcompute.Disk); ok {
-				p.updateDiskStatus(deployment, &disk)
-			}
-		default:
-			l.Debugf(
-				"Unhandled resource type: %v (reason: resource type not recognized)",
-				res.Type,
-			)
-		}
+// 	for _, res := range sm.GetAllResources() {
+// 		switch res.Type {
+// 		case reflect.TypeOf(armcompute.VirtualMachine{}):
+// 			if vm, ok := res.Resource.(armcompute.VirtualMachine); ok {
+// 				p.updateVMStatus(deployment, &vm)
+// 			}
+// 		case reflect.TypeOf(armcompute.VirtualMachineExtension{}):
+// 			if vmExt, ok := res.Resource.(armcompute.VirtualMachineExtension); ok {
+// 				p.updateVMExtensionsStatus(
+// 					deployment,
+// 					&vmExt,
+// 				)
+// 			}
+// 		case reflect.TypeOf(armnetwork.PublicIPAddress{}):
+// 			if publicIP, ok := res.Resource.(armnetwork.PublicIPAddress); ok {
+// 				p.updatePublicIPStatus(deployment, &publicIP)
+// 			}
+// 		case reflect.TypeOf(armnetwork.Interface{}):
+// 			if nic, ok := res.Resource.(armnetwork.Interface); ok {
+// 				p.updateNICStatus(deployment, &nic)
+// 			}
+// 		case reflect.TypeOf(armnetwork.SecurityGroup{}):
+// 			if nsg, ok := res.Resource.(armnetwork.SecurityGroup); ok {
+// 				p.updateNSGStatus(deployment, &nsg)
+// 			}
+// 		case reflect.TypeOf(armnetwork.VirtualNetwork{}):
+// 			if vnet, ok := res.Resource.(armnetwork.VirtualNetwork); ok {
+// 				p.updateVNetStatus(deployment, &vnet)
+// 			}
+// 		case reflect.TypeOf(armcompute.Disk{}):
+// 			if disk, ok := res.Resource.(armcompute.Disk); ok {
+// 				p.updateDiskStatus(deployment, &disk)
+// 			}
+// 		default:
+// 			l.Debugf(
+// 				"Unhandled resource type: %v (reason: resource type not recognized)",
+// 				res.Type,
+// 			)
+// 		}
 
-	}
-	// Update the Viper config after processing all resources
-	if err := deployment.UpdateViperConfig(); err != nil {
-		logger.Get().Errorf("Failed to update Viper config: %v", err)
-	}
-}
+// 	}
+// 	// Update the Viper config after processing all resources
+// 	if err := deployment.UpdateViperConfig(); err != nil {
+// 		logger.Get().Errorf("Failed to update Viper config: %v", err)
+// 	}
+// }
 
-func (p *AzureProvider) updateVMStatus(
-	deployment *models.Deployment,
-	resource *armcompute.VirtualMachine,
-) {
-	for i, machine := range deployment.Machines {
-		if machine.ID == *resource.Name {
-			// Set the type to "VM"
-			deployment.Machines[i].Type = "VM"
+// func (p *AzureProvider) updateVMStatus(
+// 	deployment *models.Deployment,
+// 	resource *armcompute.VirtualMachine,
+// ) {
+// 	for i, machine := range deployment.Machines {
+// 		if machine.ID == *resource.Name {
+// 			// Set the type to "VM"
+// 			deployment.Machines[i].Type = "VM"
 
-			// Set the location
-			if resource.Location != nil {
-				deployment.Machines[i].Location = *resource.Location
-			}
+// 			// Set the location
+// 			if resource.Location != nil {
+// 				deployment.Machines[i].Location = *resource.Location
+// 			}
 
-			// Update the status
-			if resource.Properties != nil {
-				deployment.Machines[i].Status = *resource.Properties.ProvisioningState
-			}
-			break
-		}
-	}
-}
+// 			// Update the status
+// 			if resource.Properties != nil {
+// 				deployment.Machines[i].Status = *resource.Properties.ProvisioningState
+// 			}
+// 			break
+// 		}
+// 	}
+// }
 
-func (p *AzureProvider) updateVMExtensionsStatus(
-	deployment *models.Deployment,
-	resource *armcompute.VirtualMachineExtension,
-) {
-	l := logger.Get()
-	l.Debugf("Updating VM extensions status for resource: %s", *resource.Name)
+// func (p *AzureProvider) updateVMExtensionsStatus(
+// 	deployment *models.Deployment,
+// 	resource *armcompute.VirtualMachineExtension,
+// ) {
+// 	l := logger.Get()
+// 	l.Debugf("Updating VM extensions status for resource: %s", *resource.Name)
 
-	if resource.Properties == nil {
-		l.Warn("Resource properties are nil, cannot update VM extension status")
-		return
-	}
+// 	if resource.Properties == nil {
+// 		l.Warn("Resource properties are nil, cannot update VM extension status")
+// 		return
+// 	}
 
-	provisioningState := resource.Properties.ProvisioningState
+// 	provisioningState := resource.Properties.ProvisioningState
 
-	// Extract VM name from the resource name
-	parts := strings.Split(*resource.Name, "/")
-	if len(parts) < 2 {
-		l.Warn("Invalid resource name format")
-		return
-	}
-	vmName := parts[0]
+// 	// Extract VM name from the resource name
+// 	parts := strings.Split(*resource.Name, "/")
+// 	if len(parts) < 2 {
+// 		l.Warn("Invalid resource name format")
+// 		return
+// 	}
+// 	vmName := parts[0]
 
-	extensionName := strings.Join(parts[1:], "/")
-	status := models.GetStatusCode(models.StatusString(*provisioningState))
+// 	extensionName := strings.Join(parts[1:], "/")
+// 	status := models.GetStatusCode(models.StatusString(*provisioningState))
 
-	// Initialize VMExtensionsStatus if it's nil
-	if deployment.VMExtensionsStatus == nil {
-		deployment.VMExtensionsStatus = make(map[string]models.StatusCode)
-	}
+// 	// Initialize VMExtensionsStatus if it's nil
+// 	if deployment.VMExtensionsStatus == nil {
+// 		deployment.VMExtensionsStatus = make(map[string]models.StatusCode)
+// 	}
 
-	// Use the VM name and extension name as the key
-	key := fmt.Sprintf("%s/%s", vmName, extensionName)
-	deployment.VMExtensionsStatus[key] = status
+// 	// Use the VM name and extension name as the key
+// 	key := fmt.Sprintf("%s/%s", vmName, extensionName)
+// 	deployment.VMExtensionsStatus[key] = status
 
-	l.Debugf("Updated VM extension status: %s = %s", key, status)
-}
+// 	l.Debugf("Updated VM extension status: %s = %s", key, status)
+// }
 
-func (p *AzureProvider) updatePublicIPStatus(
-	deployment *models.Deployment,
-	resource *armnetwork.PublicIPAddress,
-) {
-	// Assuming the public IP resource name contains the VM name
-	for i, machine := range deployment.Machines {
-		if strings.Contains(*resource.Name, machine.ID) && resource.Properties != nil {
-			if resource.Properties.IPAddress != nil {
-				deployment.Machines[i].PublicIP = *resource.Properties.IPAddress
-			} else {
-				deployment.Machines[i].PublicIP = "SUCCEEDED - Getting..."
-			}
-			break
-		}
-	}
-}
+// func (p *AzureProvider) updatePublicIPStatus(
+// 	deployment *models.Deployment,
+// 	resource *armnetwork.PublicIPAddress,
+// ) {
+// 	// Assuming the public IP resource name contains the VM name
+// 	for i, machine := range deployment.Machines {
+// 		if strings.Contains(*resource.Name, machine.ID) && resource.Properties != nil {
+// 			if resource.Properties.IPAddress != nil {
+// 				deployment.Machines[i].PublicIP = *resource.Properties.IPAddress
+// 			} else {
+// 				deployment.Machines[i].PublicIP = "SUCCEEDED - Getting..."
+// 			}
+// 			break
+// 		}
+// 	}
+// }
 
-func (p *AzureProvider) updateNICStatus(
-	deployment *models.Deployment,
-	resource *armnetwork.Interface,
-) {
-	l := logger.Get()
-	l.Debugf("Updating NIC status for resource: %s", *resource.Name)
+// func (p *AzureProvider) updateNICStatus(
+// 	deployment *models.Deployment,
+// 	resource *armnetwork.Interface,
+// ) {
+// 	l := logger.Get()
+// 	l.Debugf("Updating NIC status for resource: %s", *resource.Name)
 
-	for _, ipConfig := range resource.Properties.IPConfigurations {
-		if ipConfig.Properties.PrivateIPAddress == nil {
-			l.Warnf(
-				"Failed to get privateIPAddress from IP configuration for resource: %s",
-				*resource.Name,
-			)
-			continue
-		}
+// 	for _, ipConfig := range resource.Properties.IPConfigurations {
+// 		if ipConfig.Properties.PrivateIPAddress == nil {
+// 			l.Warnf(
+// 				"Failed to get privateIPAddress from IP configuration for resource: %s",
+// 				*resource.Name,
+// 			)
+// 			continue
+// 		}
 
-		privateIPAddress := ipConfig.Properties.PrivateIPAddress
-		if privateIPAddress == nil {
-			l.Warnf(
-				"Failed to get privateIPAddress from IP configuration for resource: %s",
-				*resource.Name,
-			)
-			continue
-		}
+// 		privateIPAddress := ipConfig.Properties.PrivateIPAddress
+// 		if privateIPAddress == nil {
+// 			l.Warnf(
+// 				"Failed to get privateIPAddress from IP configuration for resource: %s",
+// 				*resource.Name,
+// 			)
+// 			continue
+// 		}
 
-		machineUpdated := false
-		for i, machine := range deployment.Machines {
-			if strings.Contains(*resource.Name, machine.ID) {
-				deployment.Machines[i].PrivateIP = *privateIPAddress
-				l.Infof("Updated private IP for machine %s: %s", machine.ID, *privateIPAddress)
-				machineUpdated = true
-				break
-			}
-		}
+// 		machineUpdated := false
+// 		for i, machine := range deployment.Machines {
+// 			if strings.Contains(*resource.Name, machine.ID) {
+// 				deployment.Machines[i].PrivateIP = *privateIPAddress
+// 				l.Infof("Updated private IP for machine %s: %s", machine.ID, *privateIPAddress)
+// 				machineUpdated = true
+// 				break
+// 			}
+// 		}
 
-		if !machineUpdated {
-			l.Warnf("No matching machine found for NIC resource: %s", *resource.Name)
-		}
-	}
-}
+// 		if !machineUpdated {
+// 			l.Warnf("No matching machine found for NIC resource: %s", *resource.Name)
+// 		}
+// 	}
+// }
 
-func (p *AzureProvider) updateNSGStatus(
-	deployment *models.Deployment,
-	resource *armnetwork.SecurityGroup,
-) {
-	l := logger.Get()
-	disp := display.GetGlobalDisplay()
-	if resource == nil || resource.Name == nil || resource.Location == nil {
-		l.Warn("Resource, resource name, or resource location is nil, cannot update NSG status")
-		return
-	}
-	l.Debugf("Updating NSG status for resource: %s", *resource.Name)
+// func (p *AzureProvider) updateNSGStatus(
+// 	deployment *models.Deployment,
+// 	resource *armnetwork.SecurityGroup,
+// ) {
+// 	l := logger.Get()
+// 	disp := display.GetGlobalDisplay()
+// 	if resource == nil || resource.Name == nil || resource.Location == nil {
+// 		l.Warn("Resource, resource name, or resource location is nil, cannot update NSG status")
+// 		return
+// 	}
+// 	l.Debugf("Updating NSG status for resource: %s", *resource.Name)
 
-	// Initialize the NetworkSecurityGroups map if it's nil
-	if deployment.NetworkSecurityGroups == nil {
-		deployment.NetworkSecurityGroups = make(map[string]*armnetwork.SecurityGroup)
-		l.Debugf("Initialized NetworkSecurityGroups map")
-	}
+// 	// Initialize the NetworkSecurityGroups map if it's nil
+// 	if deployment.NetworkSecurityGroups == nil {
+// 		deployment.NetworkSecurityGroups = make(map[string]*armnetwork.SecurityGroup)
+// 		l.Debugf("Initialized NetworkSecurityGroups map")
+// 	}
 
-	// Create a deep copy of the resource
-	copiedResource := *resource
-	deployment.NetworkSecurityGroups[*resource.Name] = &copiedResource
+// 	// Create a deep copy of the resource
+// 	copiedResource := *resource
+// 	deployment.NetworkSecurityGroups[*resource.Name] = &copiedResource
 
-	for _, machine := range deployment.Machines {
-		if machine.Location == *resource.Location {
-			disp.UpdateStatus(
-				&models.Status{
-					ID:     *resource.Name,
-					Type:   "NSG",
-					Status: "SUCCEEDED",
-				},
-			)
-		}
-	}
+// 	for _, machine := range deployment.Machines {
+// 		if machine.Location == *resource.Location {
+// 			disp.UpdateStatus(
+// 				&models.Status{
+// 					ID:     *resource.Name,
+// 					Type:   "NSG",
+// 					Status: "SUCCEEDED",
+// 				},
+// 			)
+// 		}
+// 	}
 
-	l.Debugf(
-		"Updated NetworkSecurityGroups map. Current size: %d",
-		len(deployment.NetworkSecurityGroups),
-	)
-}
+// 	l.Debugf(
+// 		"Updated NetworkSecurityGroups map. Current size: %d",
+// 		len(deployment.NetworkSecurityGroups),
+// 	)
+// }
 
-func (p *AzureProvider) updateVNetStatus(
-	deployment *models.Deployment,
-	resource *armnetwork.VirtualNetwork,
-) {
-	l := logger.Get()
-	l.Debugf("Updating VNet status for resource: %s", *resource.Name)
+// func (p *AzureProvider) updateVNetStatus(
+// 	deployment *models.Deployment,
+// 	resource *armnetwork.VirtualNetwork,
+// ) {
+// 	l := logger.Get()
+// 	l.Debugf("Updating VNet status for resource: %s", *resource.Name)
 
-	if resource.Properties == nil {
-		l.Warnf("Resource properties are nil for VNet: %s", *resource.Name)
-		return
-	}
+// 	if resource.Properties == nil {
+// 		l.Warnf("Resource properties are nil for VNet: %s", *resource.Name)
+// 		return
+// 	}
 
-	for _, subnet := range resource.Properties.Subnets {
-		if deployment.Subnets == nil {
-			deployment.Subnets = make(map[string][]*armnetwork.Subnet)
-		}
+// 	for _, subnet := range resource.Properties.Subnets {
+// 		if deployment.Subnets == nil {
+// 			deployment.Subnets = make(map[string][]*armnetwork.Subnet)
+// 		}
 
-		deployment.Subnets[*resource.Name] = append(
-			deployment.Subnets[*resource.Name],
-			&armnetwork.Subnet{
-				Name: subnet.Name,
-				ID:   subnet.ID,
-				Properties: &armnetwork.SubnetPropertiesFormat{
-					AddressPrefix: subnet.Properties.AddressPrefix,
-				},
-			},
-		)
-	}
+// 		deployment.Subnets[*resource.Name] = append(
+// 			deployment.Subnets[*resource.Name],
+// 			&armnetwork.Subnet{
+// 				Name: subnet.Name,
+// 				ID:   subnet.ID,
+// 				Properties: &armnetwork.SubnetPropertiesFormat{
+// 					AddressPrefix: subnet.Properties.AddressPrefix,
+// 				},
+// 			},
+// 		)
+// 	}
 
-	l.Infof("Updated VNet status for: %s", *resource.Name)
-}
+// 	l.Infof("Updated VNet status for: %s", *resource.Name)
+// }
 
-func (p *AzureProvider) updateDiskStatus(
-	deployment *models.Deployment,
-	resource *armcompute.Disk,
-) {
-	l := logger.Get()
+// func (p *AzureProvider) updateDiskStatus(
+// 	deployment *models.Deployment,
+// 	resource *armcompute.Disk,
+// ) {
+// 	l := logger.Get()
 
-	if resource == nil {
-		l.Warn("Resource is nil, cannot update Disk status")
-		return
-	}
+// 	if resource == nil {
+// 		l.Warn("Resource is nil, cannot update Disk status")
+// 		return
+// 	}
 
-	if resource.Name == nil {
-		l.Warn("Resource name is nil, cannot update Disk status")
-		return
-	}
+// 	if resource.Name == nil {
+// 		l.Warn("Resource name is nil, cannot update Disk status")
+// 		return
+// 	}
 
-	l.Debugf("Updating Disk status for resource: %s", *resource.Name)
+// 	l.Debugf("Updating Disk status for resource: %s", *resource.Name)
 
-	if resource.Properties == nil {
-		l.Warnf("Resource properties are nil for Disk: %s", *resource.Name)
-		return
-	}
+// 	if resource.Properties == nil {
+// 		l.Warnf("Resource properties are nil for Disk: %s", *resource.Name)
+// 		return
+// 	}
 
-	// Initialize Disks map if it's nil
-	if deployment.Disks == nil {
-		deployment.Disks = make(map[string]*models.Disk)
-	}
+// 	// Initialize Disks map if it's nil
+// 	if deployment.Disks == nil {
+// 		deployment.Disks = make(map[string]*models.Disk)
+// 	}
 
-	disk := &models.Disk{
-		Name: *resource.Name,
-	}
+// 	disk := &models.Disk{
+// 		Name: *resource.Name,
+// 	}
 
-	if resource.ID != nil {
-		disk.ID = *resource.ID
-	}
+// 	if resource.ID != nil {
+// 		disk.ID = *resource.ID
+// 	}
 
-	if resource.Properties.DiskSizeGB != nil {
-		disk.SizeGB = *resource.Properties.DiskSizeGB
-	}
+// 	if resource.Properties.DiskSizeGB != nil {
+// 		disk.SizeGB = *resource.Properties.DiskSizeGB
+// 	}
 
-	if resource.Properties.DiskState != nil {
-		disk.State = *resource.Properties.DiskState
-	}
+// 	if resource.Properties.DiskState != nil {
+// 		disk.State = *resource.Properties.DiskState
+// 	}
 
-	// Only add the disk to the map if it has valid properties
-	if disk.ID != "" || disk.SizeGB != 0 || disk.State != "" {
-		deployment.Disks[*resource.Name] = disk
-	}
+// 	// Only add the disk to the map if it has valid properties
+// 	if disk.ID != "" || disk.SizeGB != 0 || disk.State != "" {
+// 		deployment.Disks[*resource.Name] = disk
+// 	}
 
-	l.Infof("Updated Disk status for: %s", *resource.Name)
-}
+// 	l.Infof("Updated Disk status for: %s", *resource.Name)
+// }
 
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(
@@ -759,6 +797,7 @@ func (p *AzureProvider) FinalizeDeployment(
 // 5. Updates the global deployment object with the finalized resource group information.
 func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	l := logger.Get()
+	disp := display.GetGlobalDisplay()
 	deployment := GetGlobalDeployment()
 
 	if deployment == nil {
@@ -792,6 +831,16 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 		deployment.ResourceGroupLocation,
 	)
 
+	for _, machine := range deployment.Machines {
+		disp.UpdateStatus(
+			&models.Status{
+				ID:     machine.Name,
+				Type:   "VM",
+				Status: fmt.Sprintf("RG ⌛️ = %s", deployment.ResourceGroupName),
+			},
+		)
+	}
+
 	_, err := p.Client.GetOrCreateResourceGroup(
 		ctx,
 		deployment.ResourceGroupName,
@@ -801,6 +850,16 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	if err != nil {
 		l.Errorf("Failed to create Resource Group - %s: %v", deployment.ResourceGroupName, err)
 		return fmt.Errorf("failed to create resource group: %w", err)
+	}
+
+	for _, machine := range deployment.Machines {
+		disp.UpdateStatus(
+			&models.Status{
+				ID:     machine.Name,
+				Type:   "VM",
+				Status: fmt.Sprintf("RG ✅ = %s", deployment.ResourceGroupName),
+			},
+		)
 	}
 
 	l.Debugf(
@@ -842,4 +901,82 @@ func convertToResourceState(provisioningState string) ResourceState {
 	default:
 		return StateNotStarted
 	}
+}
+
+func (p *AzureProvider) GetVMIPAddresses(
+	ctx context.Context,
+	resourceGroupName, vmName string,
+) (string, string, error) {
+	l := logger.Get()
+	l.Debugf("Getting IP addresses for VM %s in resource group %s", vmName, resourceGroupName)
+
+	// Get the VM
+	vm, err := p.Client.GetVirtualMachine(ctx, resourceGroupName, vmName)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get virtual machine: %w", err)
+	}
+
+	// Check if the VM has a network profile
+	if vm.Properties.NetworkProfile == nil ||
+		len(vm.Properties.NetworkProfile.NetworkInterfaces) == 0 {
+		return "", "", fmt.Errorf("VM has no network interfaces")
+	}
+
+	// Get the network interface ID
+	nicID := vm.Properties.NetworkProfile.NetworkInterfaces[0].ID
+	if nicID == nil {
+		return "", "", fmt.Errorf("network interface ID is nil")
+	}
+
+	// Parse the network interface ID to get its name
+	nicName, err := parseResourceID(*nicID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse network interface ID: %w", err)
+	}
+
+	// Get the network interface
+	nic, err := p.Client.GetNetworkInterface(ctx, resourceGroupName, nicName)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get network interface: %w", err)
+	}
+
+	// Check if the network interface has IP configurations
+	if nic.Properties.IPConfigurations == nil || len(nic.Properties.IPConfigurations) == 0 {
+		return "", "", fmt.Errorf("network interface has no IP configurations")
+	}
+
+	ipConfig := nic.Properties.IPConfigurations[0]
+
+	// Get private IP address
+	privateIP := *ipConfig.Properties.PrivateIPAddress
+
+	// Get public IP address
+	publicIP := ""
+	if ipConfig.Properties.PublicIPAddress != nil && ipConfig.Properties.PublicIPAddress.ID != nil {
+		publicIPID := *ipConfig.Properties.PublicIPAddress.ID
+		publicIPName, err := parseResourceID(publicIPID)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to parse public IP ID: %w", err)
+		}
+
+		publicIPAddress, err := p.GetClient().
+			GetPublicIPAddress(ctx, resourceGroupName, publicIPName)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get public IP address: %w", err)
+		}
+
+		publicIP = *publicIPAddress.Properties.IPAddress
+	}
+
+	l.Debugf("IP addresses for VM %s: Public IP: %s, Private IP: %s", vmName, publicIP, privateIP)
+
+	return publicIP, privateIP, nil
+}
+
+func parseResourceID(resourceID string) (string, error) {
+	parts := strings.Split(resourceID, "/")
+	if len(parts) < 9 {
+		return "", fmt.Errorf("invalid resource ID format")
+	}
+	return parts[8], nil
 }
