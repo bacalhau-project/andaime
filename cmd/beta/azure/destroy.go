@@ -44,17 +44,22 @@ func GetAzureDestroyCmd() *cobra.Command {
 
 func runDestroy(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
+	l.Debug("Starting runDestroy function")
 
 	// Get flags
 	name := cmd.Flag("name").Value.String()
 	index, err := strconv.Atoi(cmd.Flag("index").Value.String())
 	if err != nil {
-		l.Fatalf("Failed to convert index to int: %v", err)
+		l.Errorf("Failed to convert index to int: %v", err)
+		return fmt.Errorf("failed to convert index to int: %v", err)
 	}
 	destroyAll, err := cmd.Flags().GetBool("all")
 	if err != nil {
-		l.Fatalf("Failed to get 'all' flag: %v", err)
+		l.Errorf("Failed to get 'all' flag: %v", err)
+		return fmt.Errorf("failed to get 'all' flag: %v", err)
 	}
+
+	l.Debugf("Flags: name=%s, index=%d, destroyAll=%v", name, index, destroyAll)
 
 	// Read config.yaml
 	viper.SetConfigName("config")
@@ -62,8 +67,11 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	viper.AddConfigPath(".")
 	err = viper.ReadInConfig()
 	if err != nil {
-		l.Fatalf("Error reading config file: %s", err)
+		l.Errorf("Error reading config file: %s", err)
+		return fmt.Errorf("error reading config file: %s", err)
 	}
+
+	l.Debug("Config file read successfully")
 
 	// Extract deployments from config
 	var deployments []Deployment
@@ -88,7 +96,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			deployments = append(deployments, dep)
 		}
 	} else {
-		l.Warnf("Azure deployments are not in the expected format")
+		l.Warn("Azure deployments are not in the expected format")
 	}
 
 	awsDeployments := viper.Get("deployments.aws")
@@ -112,11 +120,14 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			deployments = append(deployments, dep)
 		}
 	} else {
-		l.Warnf("AWS deployments are not in the expected format")
+		l.Warn("AWS deployments are not in the expected format")
 	}
 
+	l.Debugf("Found %d deployments", len(deployments))
+
 	if len(deployments) == 0 {
-		l.Fatal("No deployments available for destruction")
+		l.Error("No deployments available for destruction")
+		return fmt.Errorf("no deployments available for destruction")
 	}
 
 	// Sort deployments alphabetically by name
@@ -125,7 +136,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	})
 
 	if destroyAll {
-		l.Infof("Destroying all deployments:")
+		l.Info("Destroying all deployments:")
 		for _, dep := range deployments {
 			if err := destroyDeployment(dep); err != nil {
 				l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
@@ -136,12 +147,12 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		azureProvider, err := azure.NewAzureProvider()
 		if err != nil {
 			l.Errorf("Failed to create Azure provider: %v", err)
-			return err
+			return fmt.Errorf("failed to create Azure provider: %v", err)
 		}
 		resourceGroups, err := azureProvider.GetClient().ListAllResourceGroups(cmd.Context())
 		if err != nil {
 			l.Errorf("Failed to get resource groups: %v", err)
-			return err
+			return fmt.Errorf("failed to get resource groups: %v", err)
 		}
 		for rgName, rgLocation := range resourceGroups {
 			// Check if the resource group already exists
@@ -158,23 +169,23 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		l.Infof("Finished destroying all deployments")
+		l.Info("Finished destroying all deployments")
 		return nil
 	}
 
 	if index != 0 {
 		if index < 1 || index > len(deployments) {
-			l.Fatalf("Invalid index. Please enter a number between 1 and %d", len(deployments))
+			l.Errorf("Invalid index. Please enter a number between 1 and %d", len(deployments))
+			return fmt.Errorf("invalid index. Please enter a number between 1 and %d", len(deployments))
 		}
 		l.Debugf("Destroying deployment at index: %d", index)
-		destroyDeployment(deployments[index-1])
-		return nil
+		return destroyDeployment(deployments[index-1])
 	}
 
 	// Present list to user
-	l.Debugf("Available deployments:")
+	l.Debug("Available deployments:")
 	for i, dep := range deployments {
-		l.Infof("%d. %s (%s) - %s\n", i+1, dep.Name, dep.Type, dep.ID)
+		l.Infof("%d. %s (%s) - %s", i+1, dep.Name, dep.Type, dep.ID)
 	}
 
 	var selected Deployment
@@ -194,27 +205,26 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	if selected.Name == "" {
 		// Get user selection
 		reader := bufio.NewReader(os.Stdin)
-		l.Debugf("Enter the number of the deployment to destroy: ")
+		l.Debug("Enter the number of the deployment to destroy: ")
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 		index := 0
 		_, err = fmt.Sscanf(input, "%d", &index)
 		if err != nil || index < 1 || index > len(deployments) {
-			l.Fatalf(
-				"Invalid selection. Please enter a number between 1 and %d",
-				len(deployments),
-			)
+			l.Errorf("Invalid selection. Please enter a number between 1 and %d", len(deployments))
+			return fmt.Errorf("invalid selection. Please enter a number between 1 and %d", len(deployments))
 		}
 
 		selected = deployments[index-1]
 	}
 
+	l.Debugf("Selected deployment: %s (%s) - %s", selected.Name, selected.Type, selected.ID)
 	return destroyDeployment(selected)
 }
 
 func destroyDeployment(dep Deployment) error {
 	l := logger.Get()
-	l.Infof("Starting destruction of %s (%s) - %s\n", dep.Name, dep.Type, dep.ID)
+	l.Infof("Starting destruction of %s (%s) - %s", dep.Name, dep.Type, dep.ID)
 
 	ctx := context.Background()
 	started := false
@@ -224,19 +234,20 @@ func destroyDeployment(dep Deployment) error {
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
-			return err
+			return fmt.Errorf("failed to create Azure provider for %s: %v", dep.Name, err)
 		}
+		l.Debugf("Destroying Azure resources for %s", dep.Name)
 		err = azureProvider.DestroyResources(ctx, dep.ID)
 		if err != nil {
 			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
-				l.Infof("Resource group '%s' is already destroyed.\n", dep.ID)
+				l.Infof("Resource group '%s' is already destroyed.", dep.ID)
 			} else {
 				l.Errorf("Failed to destroy Azure deployment %s: %v", dep.Name, err)
-				return err
+				return fmt.Errorf("failed to destroy Azure deployment %s: %v", dep.Name, err)
 			}
 		} else {
 			started = true
-			l.Infof("Azure deployment %s completed successfully", dep.Name)
+			l.Infof("Azure deployment %s destruction started successfully", dep.Name)
 			// Stop the display
 			if disp := display.GetGlobalDisplay(); disp != nil {
 				disp.Stop()
@@ -247,31 +258,35 @@ func destroyDeployment(dep Deployment) error {
 		dep.FullViperKey = fmt.Sprintf("deployments.aws.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create AWS provider for %s: %v", dep.Name, err)
-			return err
+			return fmt.Errorf("failed to create AWS provider for %s: %v", dep.Name, err)
 		}
+		l.Debugf("Destroying AWS resources for %s", dep.Name)
 		err = awsProvider.DestroyResources(ctx, dep.ID)
 		if err != nil {
 			l.Errorf("Failed to destroy AWS deployment %s: %v", dep.Name, err)
-			return err
+			return fmt.Errorf("failed to destroy AWS deployment %s: %v", dep.Name, err)
 		}
 		started = true
 	}
 
 	if started {
-		l.Infof("Destruction process started.")
+		l.Info("Destruction process started.")
 		fmt.Println("To watch the destruction progress, use the following CLI command:")
 		if dep.Type == "Azure" {
-			l.Infof("andaime beta azure destroy-status --resource-group %s\n", dep.ID)
+			l.Infof("andaime beta azure destroy-status --resource-group %s", dep.ID)
 		} else if dep.Type == "AWS" {
-			l.Infof("andaime beta aws destroy-status --vpc-id %s\n", dep.ID)
+			l.Infof("andaime beta aws destroy-status --vpc-id %s", dep.ID)
 		}
+	} else {
+		l.Warn("Destruction process did not start")
 	}
 
-	fmt.Println("Removing key from config.")
+	l.Debug("Removing key from config.")
 	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
 		l.Errorf("Failed to delete key from config for %s: %v", dep.Name, err)
-		return err
+		return fmt.Errorf("failed to delete key from config for %s: %v", dep.Name, err)
 	}
 
+	l.Infof("Destruction process for %s (%s) - %s completed", dep.Name, dep.Type, dep.ID)
 	return nil
 }
