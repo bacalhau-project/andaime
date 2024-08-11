@@ -96,6 +96,18 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	return nil
 }
 
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/globals"
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+)
+
 func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- struct{}) {
 	l := logger.Get()
 	disp := display.GetGlobalDisplay()
