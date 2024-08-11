@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -213,6 +214,15 @@ func destroyDeployment(dep Deployment) {
 			}
 		} else {
 			started = true
+			l.Infof("Azure deployment %s completed successfully", dep.Name)
+			// Stop the resource poller
+			if azureProvider.ResourcePoller != nil {
+				azureProvider.ResourcePoller.Stop()
+			}
+			// Stop the display
+			if disp := display.GetGlobalDisplay(); disp != nil {
+				disp.Stop()
+			}
 		}
 	} else if dep.Type == "AWS" {
 		awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
