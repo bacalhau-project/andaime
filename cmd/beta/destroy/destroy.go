@@ -70,44 +70,52 @@ func runDestroy(cmd *cobra.Command, args []string) {
 
 	// Extract deployments from config
 	var deployments []Deployment
-	azureDeployments := viper.GetStringMap("deployments.azure")
-	for name, details := range azureDeployments {
-		deploymentDetails, ok := details.(map[string]interface{})
-		if !ok {
-			l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
-			continue
+	azureDeployments := viper.Get("deployments.azure")
+	if azureMap, ok := azureDeployments.(map[string]interface{}); ok {
+		for name, details := range azureMap {
+			deploymentDetails, ok := details.(map[string]interface{})
+			if !ok {
+				l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
+				continue
+			}
+			resourceGroupName, ok := deploymentDetails["resourcegroupname"].(string)
+			if !ok {
+				l.Warnf("Resource group name not found for Azure deployment %s, skipping", name)
+				continue
+			}
+			dep := Deployment{
+				Name: name,
+				Type: "Azure",
+				ID:   resourceGroupName,
+			}
+			deployments = append(deployments, dep)
 		}
-		resourceGroupName, ok := deploymentDetails["resourcegroupname"].(string)
-		if !ok {
-			l.Warnf("Resource group name not found for Azure deployment %s, skipping", name)
-			continue
-		}
-		dep := Deployment{
-			Name: name,
-			Type: "Azure",
-			ID:   resourceGroupName,
-		}
-		deployments = append(deployments, dep)
+	} else {
+		l.Warnf("Azure deployments are not in the expected format")
 	}
 
-	awsDeployments := viper.GetStringMap("deployments.aws")
-	for name, details := range awsDeployments {
-		deploymentDetails, ok := details.(map[string]interface{})
-		if !ok {
-			l.Warnf("Invalid deployment details for AWS deployment %s, skipping", name)
-			continue
+	awsDeployments := viper.Get("deployments.aws")
+	if awsMap, ok := awsDeployments.(map[string]interface{}); ok {
+		for name, details := range awsMap {
+			deploymentDetails, ok := details.(map[string]interface{})
+			if !ok {
+				l.Warnf("Invalid deployment details for AWS deployment %s, skipping", name)
+				continue
+			}
+			vpcID, ok := deploymentDetails["vpc_id"].(string)
+			if !ok {
+				l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
+				continue
+			}
+			dep := Deployment{
+				Name: name,
+				Type: "AWS",
+				ID:   vpcID,
+			}
+			deployments = append(deployments, dep)
 		}
-		vpcID, ok := deploymentDetails["vpc_id"].(string)
-		if !ok {
-			l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
-			continue
-		}
-		dep := Deployment{
-			Name: name,
-			Type: "AWS",
-			ID:   vpcID,
-		}
-		deployments = append(deployments, dep)
+	} else {
+		l.Warnf("AWS deployments are not in the expected format")
 	}
 
 	if len(deployments) == 0 {

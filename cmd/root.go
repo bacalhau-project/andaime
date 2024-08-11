@@ -73,6 +73,9 @@ func Execute() error {
 				l.Errorf("Panic occurred: %v\n", r)
 				l.Error(string(debug.Stack()))
 				l.Errorf("Open Channels: %v", utils.GlobalChannels)
+				if err, ok := r.(error); ok {
+					l.Errorf("Error details: %v", err)
+				}
 			} else {
 				l.Errorf("Failed to open debug log file: %v", err)
 			}
@@ -80,6 +83,9 @@ func Execute() error {
 			// Print the stack trace to stderr
 			fmt.Fprintf(os.Stderr, "Panic occurred: %v\n", r)
 			debug.PrintStack()
+			if err, ok := r.(error); ok {
+				fmt.Fprintf(os.Stderr, "Error details: %v\n", err)
+			}
 		}
 	}()
 
