@@ -77,40 +77,46 @@ func TestParseNetworkProperties(t *testing.T) {
 	}
 }
 
-func TestParseSecurityRules(t *testing.T) {
-	rules := []interface{}{
-		map[string]interface{}{
-			"name": "AllowHTTP",
-			"properties": map[string]interface{}{
-				"protocol":                 "TCP",
-				"sourcePortRange":          "*",
-				"destinationPortRange":     "80",
-				"sourceAddressPrefix":      "*",
-				"destinationAddressPrefix": "*",
-				"access":                   "Allow",
-				"priority":                 float64(1001),
-				"direction":                "Inbound",
+func TestParseNetworkProperties_NSG(t *testing.T) {
+	properties := map[string]interface{}{
+		"provisioningState": "Succeeded",
+		"securityRules": []interface{}{
+			map[string]interface{}{
+				"name": "AllowHTTP",
+				"properties": map[string]interface{}{
+					"protocol":                 "TCP",
+					"sourcePortRange":          "*",
+					"destinationPortRange":     "80",
+					"sourceAddressPrefix":      "*",
+					"destinationAddressPrefix": "*",
+					"access":                   "Allow",
+					"priority":                 float64(1001),
+					"direction":                "Inbound",
+				},
 			},
 		},
 	}
 
-	expected := []*armnetwork.SecurityRule{
-		{
-			Name: utils.ToPtr("AllowHTTP"),
-			Properties: &armnetwork.SecurityRulePropertiesFormat{
-				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("TCP")),
-				SourcePortRange:          utils.ToPtr("*"),
-				DestinationPortRange:     utils.ToPtr("80"),
-				SourceAddressPrefix:      utils.ToPtr("*"),
-				DestinationAddressPrefix: utils.ToPtr("*"),
-				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
-				Priority:                 utils.ToPtr(int32(1001)),
-				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+	expected := map[string]interface{}{
+		"provisioningState": "Succeeded",
+		"securityRules": []*armnetwork.SecurityRule{
+			{
+				Name: utils.ToPtr("AllowHTTP"),
+				Properties: &armnetwork.SecurityRulePropertiesFormat{
+					Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr("TCP")),
+					SourcePortRange:          utils.ToPtr("*"),
+					DestinationPortRange:     utils.ToPtr("80"),
+					SourceAddressPrefix:      utils.ToPtr("*"),
+					DestinationAddressPrefix: utils.ToPtr("*"),
+					Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr("Allow")),
+					Priority:                 utils.ToPtr(int32(1001)),
+					Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr("Inbound")),
+				},
 			},
 		},
 	}
 
-	result := parseSecurityRules(rules)
+	result := parseNetworkProperties(properties, "NSG")
 	assert.Equal(t, expected, result)
 }
 
