@@ -52,7 +52,10 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		l.Fatalf("Failed to convert index to int: %v", err)
 	}
-	destroyAll, _ := cmd.Flags().GetBool("all")
+	destroyAll, err := cmd.Flags().GetBool("all")
+	if err != nil {
+		l.Fatalf("Failed to get 'all' flag: %v", err)
+	}
 
 	// Read config.yaml
 	viper.SetConfigName("config")
@@ -123,9 +126,11 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	})
 
 	if destroyAll {
-		l.Debugf("Destroying all deployments:")
+		l.Infof("Destroying all deployments:")
 		for _, dep := range deployments {
-			destroyDeployment(dep)
+			if err := destroyDeployment(dep); err != nil {
+				l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
+			}
 		}
 
 		// Get all resource groups with tag "CreatedBy" containing "andaime"
@@ -147,11 +152,14 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 				l.Errorf("Failed to get resource group %s: %v", rgName, err)
 				continue
 			}
-			if rg.Tags["CreatedBy"] == to.Ptr("andaime") {
-				destroyDeployment(Deployment{Name: rgName, Type: "Azure", ID: rgName})
+			if rg.Tags["CreatedBy"] != nil && *rg.Tags["CreatedBy"] == "andaime" {
+				if err := destroyDeployment(Deployment{Name: rgName, Type: "Azure", ID: rgName}); err != nil {
+					l.Errorf("Failed to destroy resource group %s: %v", rgName, err)
+				}
 			}
 		}
 
+		l.Infof("Finished destroying all deployments")
 		return nil
 	}
 
