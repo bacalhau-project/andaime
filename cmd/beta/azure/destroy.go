@@ -125,6 +125,36 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	l.Debugf("Found %d deployments", len(deployments))
 
+	// If no deployments are found in the config, look for resource groups with the "CreatedBy" tag
+	if len(deployments) == 0 {
+		l.Info("No deployments found in config. Searching for resource groups with CreatedBy tag...")
+		azureProvider, err := azure.NewAzureProvider()
+		if err != nil {
+			l.Errorf("Failed to create Azure provider: %v", err)
+			return fmt.Errorf("failed to create Azure provider: %v", err)
+		}
+		resourceGroups, err := azureProvider.GetClient().ListAllResourceGroups(cmd.Context())
+		if err != nil {
+			l.Errorf("Failed to get resource groups: %v", err)
+			return fmt.Errorf("failed to get resource groups: %v", err)
+		}
+		for rgName, rgLocation := range resourceGroups {
+			rg, err := azureProvider.GetClient().GetResourceGroup(cmd.Context(), rgLocation, rgName)
+			if err != nil {
+				l.Errorf("Failed to get resource group %s: %v", rgName, err)
+				continue
+			}
+			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil && *createdBy == "andaime" {
+				deployments = append(deployments, Deployment{
+					Name: rgName,
+					Type: "Azure",
+					ID:   rgName,
+				})
+			}
+		}
+		l.Debugf("Found %d deployments with CreatedBy tag", len(deployments))
+	}
+
 	if len(deployments) == 0 {
 		l.Error("No deployments available for destruction")
 		return fmt.Errorf("no deployments available for destruction")
@@ -140,32 +170,6 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		for _, dep := range deployments {
 			if err := destroyDeployment(dep); err != nil {
 				l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
-			}
-		}
-
-		// Get all resource groups with tag "CreatedBy" containing "andaime"
-		azureProvider, err := azure.NewAzureProvider()
-		if err != nil {
-			l.Errorf("Failed to create Azure provider: %v", err)
-			return fmt.Errorf("failed to create Azure provider: %v", err)
-		}
-		resourceGroups, err := azureProvider.GetClient().ListAllResourceGroups(cmd.Context())
-		if err != nil {
-			l.Errorf("Failed to get resource groups: %v", err)
-			return fmt.Errorf("failed to get resource groups: %v", err)
-		}
-		for rgName, rgLocation := range resourceGroups {
-			// Check if the resource group already exists
-			rg, err := azureProvider.GetClient().
-				GetResourceGroup(cmd.Context(), rgLocation, rgName)
-			if err != nil {
-				l.Errorf("Failed to get resource group %s: %v", rgName, err)
-				continue
-			}
-			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil && *createdBy == "andaime" {
-				if err := destroyDeployment(Deployment{Name: rgName, Type: "Azure", ID: rgName}); err != nil {
-					l.Errorf("Failed to destroy resource group %s: %v", rgName, err)
-				}
 			}
 		}
 
