@@ -46,23 +46,16 @@ func printFinalState(disp *display.Display) {
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
-
 	l.Info("Starting executeCreateDeployment")
 
-	// Create a context that can be cancelled
 	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
 
-	// Create a WaitGroup to wait for all goroutines to finish
 	var wg sync.WaitGroup
-
-	// Create a channel for error communication
 	errorChan := make(chan error, 1)
-
-	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Initialize the display
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	if !noDisplay {
@@ -73,34 +66,27 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}()
 	}
 
-	// Ensure proper cleanup in all scenarios
 	defer func() {
 		if r := recover(); r != nil {
 			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
 			l.Error(string(debug.Stack()))
 			errorChan <- fmt.Errorf("panic occurred: %v", r)
 		}
-		cancel() // Cancel the context
 		if !noDisplay {
 			disp.Stop()
 		}
-		wg.Wait() // Wait for all goroutines to finish
+		wg.Wait()
 		l.Info("Cleanup completed")
-
-		// Debug information about open channels
 		l.Debug("Checking for open channels:")
 		utils.DebugOpenChannels()
 	}()
 
-	// Create a unique ID for the deployment
 	UniqueID := time.Now().Format("060102150405")
 	l.Infof("Generated UniqueID: %s", UniqueID)
-
-	// Set the UniqueID on the context
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, UniqueID)
 
 	l.Debug("Initializing Azure provider")
-	azureProvider, err := azure.AzureProviderFunc()
+	p, err := azure.AzureProviderFunc()
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
 		l.Error(errMsg)
@@ -108,7 +94,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Azure provider initialized successfully")
 
-	// Create a new deployment object
 	deployment, err := InitializeDeployment(ctx, UniqueID)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to initialize deployment: %s", err.Error())
@@ -118,63 +103,62 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting resource deployment")
 	azure.SetGlobalDeployment(deployment)
 
-	l.Info("Starting resource deployment")
-	azure.SetGlobalDeployment(deployment)
-
-	// Start resource polling in the main thread
 	l.Debug("Starting resource polling")
-	go azureProvider.StartResourcePolling(ctx)
+	go p.StartResourcePolling(ctx)
 
+	deploymentDone := make(chan struct{})
+	wg.Add(1)
 	go func() {
-		// Start resource deployment
+		defer wg.Done()
+		defer close(deploymentDone)
 		l.Debug("Starting resource deployment")
-		err = azureProvider.DeployResources(ctx)
+		err := p.DeployResources(ctx)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to deploy resources: %s", err.Error())
 			l.Error(errMsg)
 			errorChan <- fmt.Errorf(errMsg)
 		} else {
 			l.Info("Azure deployment created successfully")
-			cmd.Println("Azure deployment created successfully")
 		}
 	}()
 
-	// Wait for signal, error, or deployment completion
 	select {
 	case <-sigChan:
 		l.Info("Interrupt signal received, initiating graceful shutdown")
-		cancel() // Cancel the context to stop all goroutines
+		cancel()
 	case err := <-errorChan:
 		l.Error(fmt.Sprintf("Error occurred during deployment: %v", err))
-		cancel() // Cancel the context to stop all goroutines
+		cancel()
 		return fmt.Errorf("deployment failed: %w", err)
+	case <-deploymentDone:
+		l.Info("Resource deployment completed successfully")
 	case <-ctx.Done():
 		l.Info("Context cancelled, initiating graceful shutdown")
 		return ctx.Err()
 	}
 
-	// Set up a channel to detect a second interrupt
-	secondInterrupt := make(chan os.Signal, 1)
-	signal.Notify(secondInterrupt, os.Interrupt, syscall.SIGTERM)
-
-	// Notify user that we're waiting for goroutines to finish
-	l.Info("Waiting for all operations to complete. Press Ctrl+C again to force exit.")
-
-	// Use a channel to signal when WaitGroup is done
-	done := make(chan struct{})
+	// Wait for all goroutines to finish
+	wgDone := make(chan struct{})
 	go func() {
 		wg.Wait()
-		close(done)
+		close(wgDone)
 	}()
 
-	// Wait for either WaitGroup to finish or a second interrupt
 	select {
-	case <-done:
+	case <-wgDone:
 		l.Info("All operations completed successfully.")
-	case <-secondInterrupt:
+	case <-sigChan:
 		l.Warn("Second interrupt received. Forcing exit...")
-		os.Exit(1)
+		return fmt.Errorf("deployment interrupted")
 	}
+
+	// FinalizeDeployment starts here, after all machines are deployed and WaitGroup is finished
+	l.Info("Starting FinalizeDeployment")
+	if err := p.FinalizeDeployment(ctx); err != nil {
+		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
+		return fmt.Errorf("failed to finalize deployment: %w", err)
+	}
+	l.Info("Deployment finalized successfully")
 
 	// Print final state and log buffer
 	printFinalState(disp)
