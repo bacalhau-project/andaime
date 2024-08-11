@@ -203,6 +203,10 @@ func destroyDeployment(dep Deployment) {
 		if err != nil {
 			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
 				l.Infof("Resource group '%s' is already destroyed.\n", dep.ID)
+			} else if strings.Contains(err.Error(), "QuotaExceeded") {
+				l.Errorf("Failed to destroy Azure deployment %s due to quota exceeded: %v", dep.Name, err)
+				l.Infof("You have reached your Azure quota limit. Please request a quota increase at: https://aka.ms/ProdportalCRP/#blade/Microsoft_Azure_Capacity/UsageAndQuota.ReactView")
+				return
 			} else {
 				l.Errorf("Failed to destroy Azure deployment %s: %v", dep.Name, err)
 				return
