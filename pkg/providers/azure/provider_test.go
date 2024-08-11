@@ -3,6 +3,8 @@ package azure
 import (
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/stretchr/testify/assert"
 )
 
