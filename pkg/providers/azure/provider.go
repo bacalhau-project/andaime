@@ -134,9 +134,10 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			for _, resource := range resources {
 				if resource.ID == "" {
 					l.Warnf(
-						"Skipping resource with empty ID. Type: %s, Status: %s",
+						"Skipping resource with empty ID. Type: %s, Status: %s, Name: %s",
 						resource.Type,
 						resource.Status,
+						resource.Name,
 					)
 					continue
 				}
@@ -145,15 +146,17 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 				if currentState != resource.Status {
 					resourceStates[resource.ID] = resource.Status
 					l.Debugf(
-						"Updating status for resource %s: %s %s",
+						"Updating status for resource %s: %s %s (Name: %s)",
 						resource.ID,
 						resourceType,
 						resource.Status,
+						resource.Name,
 					)
 					disp.UpdateStatus(&models.Status{
 						ID:     resource.ID,
 						Type:   resourceType,
 						Status: fmt.Sprintf("%s %s", resourceType, resource.Status),
+						Name:   resource.Name,
 					})
 				}
 			}
