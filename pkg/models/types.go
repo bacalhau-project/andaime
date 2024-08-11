@@ -26,6 +26,7 @@ type Status struct {
 	PublicIP        string
 	PrivateIP       string
 	HighlightCycles int
+	Name            string
 }
 
 // Remove these duplicate declarations as they are already defined in deployment.go
