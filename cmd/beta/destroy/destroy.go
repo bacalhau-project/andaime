@@ -72,8 +72,16 @@ func runDestroy(cmd *cobra.Command, args []string) {
 	var deployments []Deployment
 	azureDeployments := viper.GetStringMap("deployments.azure")
 	for name, details := range azureDeployments {
-		deploymentDetails := details.(map[string]interface{})
-		resourceGroupName := deploymentDetails["resourcegroupname"].(string)
+		deploymentDetails, ok := details.(map[string]interface{})
+		if !ok {
+			l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
+			continue
+		}
+		resourceGroupName, ok := deploymentDetails["resourcegroupname"].(string)
+		if !ok {
+			l.Warnf("Resource group name not found for Azure deployment %s, skipping", name)
+			continue
+		}
 		dep := Deployment{
 			Name: name,
 			Type: "Azure",
@@ -84,17 +92,22 @@ func runDestroy(cmd *cobra.Command, args []string) {
 
 	awsDeployments := viper.GetStringMap("deployments.aws")
 	for name, details := range awsDeployments {
-		deploymentDetails := details.(map[string]interface{})
+		deploymentDetails, ok := details.(map[string]interface{})
+		if !ok {
+			l.Warnf("Invalid deployment details for AWS deployment %s, skipping", name)
+			continue
+		}
 		vpcID, ok := deploymentDetails["vpc_id"].(string)
 		if !ok {
 			l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
 			continue
 		}
-		_ = Deployment{
+		dep := Deployment{
 			Name: name,
 			Type: "AWS",
 			ID:   vpcID,
 		}
+		deployments = append(deployments, dep)
 	}
 
 	if len(deployments) == 0 {

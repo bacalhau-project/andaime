@@ -54,7 +54,8 @@ func Execute() error {
 	// Set up panic handling
 	defer func() {
 		if r := recover(); r != nil {
-			_ = logger.Get().Sync()
+			l := logger.Get()
+			_ = l.Sync()
 
 			// Stop the display first
 			if disp := display.GetGlobalDisplay(); disp != nil {
@@ -69,11 +70,11 @@ func Execute() error {
 			)
 			if err == nil {
 				defer debugLog.Close()
-				fmt.Fprintf(debugLog, "Panic occurred: %v\n", r)
-				debug.PrintStack()
-				fmt.Fprintln(debugLog, string(debug.Stack()))
-
-				fmt.Fprintln(debugLog, "Open Channels: ", utils.GlobalChannels)
+				l.Errorf("Panic occurred: %v\n", r)
+				l.Error(string(debug.Stack()))
+				l.Errorf("Open Channels: %v", utils.GlobalChannels)
+			} else {
+				l.Errorf("Failed to open debug log file: %v", err)
 			}
 
 			// Print the stack trace to stderr
@@ -82,7 +83,11 @@ func Execute() error {
 		}
 	}()
 
-	return SetupRootCommand().Execute()
+	err := SetupRootCommand().Execute()
+	if err != nil {
+		logger.Get().Errorf("Command execution failed: %v", err)
+	}
+	return err
 }
 
 // rootCmd represents the base command when called without any subcommands
