@@ -33,3 +33,9 @@ type AzureEvent struct {
 	ResourceID string
 	Message    string
 }
+
+type Resource struct {
+	ID     string
+	Type   string
+	Status string
+}
