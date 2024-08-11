@@ -215,8 +215,6 @@ func destroyDeployment(dep Deployment) {
 		} else {
 			started = true
 			l.Infof("Azure deployment %s completed successfully", dep.Name)
-			// Stop the resource poller
-			azureProvider.StopResourcePolling()
 			// Stop the display
 			if disp := display.GetGlobalDisplay(); disp != nil {
 				disp.Stop()
