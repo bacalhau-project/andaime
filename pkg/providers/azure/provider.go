@@ -160,45 +160,15 @@ func parseNetworkProperties(properties map[string]interface{}, propType string) 
 	// Parse specific properties based on the type
 	switch propType {
 	case "NSG":
-		if securityRules, ok := properties["securityRules"].([]interface{}); ok {
-			parsedRules := make([]*armnetwork.SecurityRule, 0, len(securityRules))
-			for _, rule := range securityRules {
-				if ruleMap, ok := rule.(map[string]interface{}); ok {
-					if ruleProps, ok := ruleMap["properties"].(map[string]interface{}); ok {
-						parsedRules = append(parsedRules, &armnetwork.SecurityRule{
-							Name: utils.ToPtr(ruleMap["name"].(string)),
-							Properties: &armnetwork.SecurityRulePropertiesFormat{
-								Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleProps["protocol"].(string))),
-								SourcePortRange:          utils.ToPtr(ruleProps["sourcePortRange"].(string)),
-								DestinationPortRange:     utils.ToPtr(ruleProps["destinationPortRange"].(string)),
-								SourceAddressPrefix:      utils.ToPtr(ruleProps["sourceAddressPrefix"].(string)),
-								DestinationAddressPrefix: utils.ToPtr(ruleProps["destinationAddressPrefix"].(string)),
-								Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleProps["access"].(string))),
-								Priority:                 utils.ToPtr(int32(ruleProps["priority"].(float64))),
-								Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleProps["direction"].(string))),
-							},
-						})
-					}
-				}
-			}
-			props["securityRules"] = parsedRules
-		}
+		props["securityRules"] = parseSecurityRules(properties["securityRules"])
 	case "PIP":
 		if ipAddress, ok := properties["ipAddress"].(string); ok {
 			props["ipAddress"] = ipAddress
 		}
 	case "VNET":
-		if addressSpace, ok := properties["addressSpace"].(map[string]interface{}); ok {
-			if addressPrefixes, ok := addressSpace["addressPrefixes"].([]interface{}); ok {
-				props["addressSpace"] = map[string]interface{}{
-					"addressPrefixes": parseStringSlice(addressPrefixes),
-				}
-			}
-		}
+		props["addressSpace"] = parseAddressSpace(properties["addressSpace"])
 	case "NIC":
-		if ipConfigurations, ok := properties["ipConfigurations"].([]interface{}); ok {
-			props["ipConfigurations"] = parseIPConfigurations(ipConfigurations)
-		}
+		props["ipConfigurations"] = parseIPConfigurations(properties["ipConfigurations"])
 	}
 
 	// If no specific properties were parsed, return all properties
@@ -209,22 +179,79 @@ func parseNetworkProperties(properties map[string]interface{}, propType string) 
 	return props
 }
 
-func parseIPConfigurations(configs []interface{}) []*armnetwork.InterfaceIPConfiguration {
-	ipConfigurations := make([]*armnetwork.InterfaceIPConfiguration, 0, len(configs))
-	for _, config := range configs {
-		if configMap, ok := config.(map[string]interface{}); ok {
-			props, ok := configMap["properties"].(map[string]interface{})
-			if !ok {
-				continue
-			}
+func parseSecurityRules(rules interface{}) []*armnetwork.SecurityRule {
+	securityRules, ok := rules.([]interface{})
+	if !ok {
+		return nil
+	}
 
-			ipConfigurations = append(ipConfigurations, &armnetwork.InterfaceIPConfiguration{
-				Name: utils.ToPtr(configMap["name"].(string)),
-				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-					PrivateIPAddress: utils.ToPtr(props["privateIPAddress"].(string)),
-				},
-			})
+	parsedRules := make([]*armnetwork.SecurityRule, 0, len(securityRules))
+	for _, rule := range securityRules {
+		ruleMap, ok := rule.(map[string]interface{})
+		if !ok {
+			continue
 		}
+		ruleProps, ok := ruleMap["properties"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		parsedRules = append(parsedRules, &armnetwork.SecurityRule{
+			Name: utils.ToPtr(ruleMap["name"].(string)),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 (*armnetwork.SecurityRuleProtocol)(utils.ToPtr(ruleProps["protocol"].(string))),
+				SourcePortRange:          utils.ToPtr(ruleProps["sourcePortRange"].(string)),
+				DestinationPortRange:     utils.ToPtr(ruleProps["destinationPortRange"].(string)),
+				SourceAddressPrefix:      utils.ToPtr(ruleProps["sourceAddressPrefix"].(string)),
+				DestinationAddressPrefix: utils.ToPtr(ruleProps["destinationAddressPrefix"].(string)),
+				Access:                   (*armnetwork.SecurityRuleAccess)(utils.ToPtr(ruleProps["access"].(string))),
+				Priority:                 utils.ToPtr(int32(ruleProps["priority"].(float64))),
+				Direction:                (*armnetwork.SecurityRuleDirection)(utils.ToPtr(ruleProps["direction"].(string))),
+			},
+		})
+	}
+	return parsedRules
+}
+
+func parseAddressSpace(addressSpace interface{}) map[string]interface{} {
+	space, ok := addressSpace.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	addressPrefixes, ok := space["addressPrefixes"].([]interface{})
+	if !ok {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"addressPrefixes": parseStringSlice(addressPrefixes),
+	}
+}
+
+func parseIPConfigurations(configs interface{}) []*armnetwork.InterfaceIPConfiguration {
+	ipConfigs, ok := configs.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	ipConfigurations := make([]*armnetwork.InterfaceIPConfiguration, 0, len(ipConfigs))
+	for _, config := range ipConfigs {
+		configMap, ok := config.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		props, ok := configMap["properties"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		ipConfigurations = append(ipConfigurations, &armnetwork.InterfaceIPConfiguration{
+			Name: utils.ToPtr(configMap["name"].(string)),
+			Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
+				PrivateIPAddress: utils.ToPtr(props["privateIPAddress"].(string)),
+			},
+		})
 	}
 	return ipConfigurations
 }
