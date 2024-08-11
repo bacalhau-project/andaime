@@ -152,10 +152,12 @@ func (p *AzureProvider) updateStatus(disp *display.Display) {
 func parseNetworkProperties(properties map[string]interface{}, propType string) map[string]interface{} {
 	props := make(map[string]interface{})
 
+	// Always include provisioningState if available
 	if provisioningState, ok := properties["provisioningState"].(string); ok {
 		props["provisioningState"] = provisioningState
 	}
 
+	// Parse specific properties based on the type
 	switch propType {
 	case "NSG":
 		if securityRules, ok := properties["securityRules"].([]interface{}); ok {
@@ -179,16 +181,12 @@ func parseNetworkProperties(properties map[string]interface{}, propType string) 
 		}
 	}
 
-	return props
-}
-
-func parseDefaultProperties(properties map[string]interface{}) map[string]interface{} {
-	if provisioningState, ok := properties["provisioningState"].(string); ok {
-		return map[string]interface{}{
-			"provisioningState": provisioningState,
-		}
+	// If no specific properties were parsed, return all properties
+	if len(props) == 1 && props["provisioningState"] != nil {
+		return properties
 	}
-	return properties
+
+	return props
 }
 
 func parseSecurityRules(rules []interface{}) []*armnetwork.SecurityRule {
