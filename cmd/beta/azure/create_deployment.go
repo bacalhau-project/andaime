@@ -17,7 +17,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
@@ -43,7 +42,7 @@ func printFinalState(disp *display.Display) {
 	fmt.Println(logger.GlobalLoggedBuffer.String())
 }
 
-func printFinalTable(deployment *azureprovider.Deployment) {
+func printFinalTable(deployment *models.Deployment) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Machine", "Status", "Public IP", "Private IP", "Location", "Elapsed Time"})
 	table.SetBorder(false)
