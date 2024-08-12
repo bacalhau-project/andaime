@@ -355,13 +355,16 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 			deployment.Machines[machineIndex].PublicIP = publicIP
 			deployment.Machines[machineIndex].PrivateIP = privateIP
+			deployment.Machines[machineIndex].Status = "Successfully Deployed"
+			elapsedTime := time.Since(machine.StartTime)
 			disp.UpdateStatus(
 				&models.Status{
-					ID:        machine.Name,
-					Type:      models.UpdateStatusResourceTypeVM,
-					Status:    "Successfully Deployed.",
-					PublicIP:  deployment.Machines[machineIndex].PublicIP,
-					PrivateIP: deployment.Machines[machineIndex].PrivateIP,
+					ID:          machine.Name,
+					Type:        models.UpdateStatusResourceTypeVM,
+					Status:      "Successfully Deployed.",
+					PublicIP:    deployment.Machines[machineIndex].PublicIP,
+					PrivateIP:   deployment.Machines[machineIndex].PrivateIP,
+					ElapsedTime: elapsedTime,
 				},
 			)
 			break
