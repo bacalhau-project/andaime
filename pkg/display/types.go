@@ -11,8 +11,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-var testTasks []models.Status
-
 type Display struct {
 	Statuses   map[string]*models.Status
 	StatusesMu sync.RWMutex
