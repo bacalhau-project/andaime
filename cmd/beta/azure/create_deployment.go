@@ -11,11 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
@@ -41,7 +43,7 @@ func printFinalState(disp *display.Display) {
 	fmt.Println(logger.GlobalLoggedBuffer.String())
 }
 
-func printFinalTable(deployment *models.Deployment) {
+func printFinalTable(deployment *azureprovider.Deployment) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Machine", "Status", "Public IP", "Private IP", "Location", "Elapsed Time"})
 	table.SetBorder(false)
@@ -134,11 +136,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	disp.Stop()
 	utils.CloseAllChannels()
 
-	// Reset the display
-	disp.Reset()
-
 	// Print final static ASCII table
-	printFinalTable(GetGlobalDeployment())
+	printFinalTable(azure.GetGlobalDeployment())
 
 	// Enable pprof profiling
 	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
