@@ -41,6 +41,27 @@ func printFinalState(disp *display.Display) {
 	fmt.Println(logger.GlobalLoggedBuffer.String())
 }
 
+func printFinalTable(deployment *models.Deployment) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Machine", "Status", "Public IP", "Private IP", "Location", "Elapsed Time"})
+	table.SetBorder(false)
+
+	for _, machine := range deployment.Machines {
+		elapsedTime := machine.ElapsedTime.Round(time.Second).String()
+		table.Append([]string{
+			machine.Name,
+			machine.Status,
+			machine.PublicIP,
+			machine.PrivateIP,
+			machine.Location,
+			elapsedTime,
+		})
+	}
+
+	fmt.Println("\nFinal Deployment State:")
+	table.Render()
+}
+
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
 	l.Info("Starting executeCreateDeployment")
@@ -109,8 +130,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Deployment finalized successfully")
 
-	// Print final state and log buffer
-	printFinalState(disp)
+	// Stop all display updates and channels
+	disp.Stop()
+	utils.CloseAllChannels()
+
+	// Reset the display
+	disp.Reset()
+
+	// Print final static ASCII table
+	printFinalTable(GetGlobalDeployment())
 
 	// Enable pprof profiling
 	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
