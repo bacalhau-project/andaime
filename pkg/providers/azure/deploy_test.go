@@ -3,6 +3,7 @@ package azure
 import (
 	"bytes"
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/gdamore/tcell/v2"
 )
 
 func TestChannelClosing(t *testing.T) {
@@ -111,9 +113,6 @@ func TestCancelledDeployment(t *testing.T) {
 }
 
 func TestMockDeployment(t *testing.T) {
-	// Create a mock output buffer
-	var mockOutput bytes.Buffer
-
 	// Create a mock deployment
 	deployment := &models.Deployment{
 		Machines: []models.Machine{
@@ -124,8 +123,11 @@ func TestMockDeployment(t *testing.T) {
 	}
 
 	// Initialize the display with the mock output
-	disp := display.GetGlobalDisplay()
-	disp.SetOutput(&mockOutput)
+	simScreen := tcell.NewSimulationScreen("UTF-8")
+	simScreen.Init()
+	simScreen.Set
+
+	disp := display.NewMockDisplay(simScreen)
 	go disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
@@ -165,10 +167,12 @@ func TestMockDeployment(t *testing.T) {
 		t.Error("Not all channels were closed after mock deployment")
 	}
 
-	// Check if the mock output contains expected content
-	outputStr := mockOutput.String()
+	a, b, c := simScreen.GetContents()
+	_ = a
+	_ = b
+	_ = c
 	for _, machine := range deployment.Machines {
-		if !strings.Contains(outputStr, machine.Name) || !strings.Contains(outputStr, "Deployed") {
+		if !strings.Contains("", machine.Name) || !strings.Contains("", "Deployed") {
 			t.Errorf("Expected output for machine %s not found", machine.Name)
 		}
 	}
@@ -192,8 +196,8 @@ func TestMockCancelledDeployment(t *testing.T) {
 	defer cancel()
 
 	// Initialize the display with the mock output
-	disp := display.GetGlobalDisplay()
-	disp.SetOutput(&mockOutput)
+	screen := tcell.NewSimulationScreen("")
+	disp := display.NewMockDisplay(screen)
 	go disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
