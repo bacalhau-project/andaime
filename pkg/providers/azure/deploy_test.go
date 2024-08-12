@@ -497,6 +497,7 @@ func TestCancelledDeployment(t *testing.T) {
 
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Initialize the display
 	disp := display.GetGlobalDisplay()
