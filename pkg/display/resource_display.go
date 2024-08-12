@@ -149,9 +149,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		return
 	}
 
-	if newStatus.Status != "" {
-		l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
-	}
+	l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
 
 	d.StatusesMu.Lock()
 	if d.Statuses == nil {
@@ -159,15 +157,16 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	}
 
 	if _, exists := d.Statuses[newStatus.ID]; !exists {
-		//d.Logger.Debugf("New status added: %s", newStatus.ID)
+		l.Debugf("New status added: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = newStatus
 	} else {
-		// d.Logger.Debugf("Status updated: %s", newStatus.ID)
+		l.Debugf("Status updated: %s", newStatus.ID)
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 	}
 	d.StatusesMu.Unlock()
 
 	d.displayResourceProgress(newStatus)
+	d.scheduleUpdate()
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -435,29 +434,23 @@ func (d *Display) scheduleUpdate() {
 	d.UpdateMu.Lock()
 	defer d.UpdateMu.Unlock()
 
-	if !d.UpdatePending {
-		d.UpdatePending = true
-		d.Logger.Debug("Update scheduled")
-		go func() {
-			time.Sleep(250 * time.Millisecond) // Increased delay to reduce update frequency
-			d.App.QueueUpdateDraw(func() {
-				d.UpdateMu.Lock()
-				d.UpdatePending = false
-				d.UpdateMu.Unlock()
-				d.updateDisplay()
-			})
-		}()
-	} else {
-		d.Logger.Debug("Update already pending, skipping")
-	}
+	d.Logger.Debug("Update scheduled")
+	d.App.QueueUpdateDraw(func() {
+		d.updateDisplay()
+	})
 }
 
 func (d *Display) updateDisplay() {
+	d.Logger.Debug("Updating display")
 	d.renderTable()
 	d.updateLogBox()
+	d.App.Draw()
 }
 
 func (d *Display) renderTable() {
+	d.Logger.Debug("Rendering table")
+	d.Table.Clear()
+
 	// Add header row
 	for col, column := range DisplayColumns {
 		textWithPadding := d.padText(column.Text, column.Width)
@@ -470,9 +463,11 @@ func (d *Display) renderTable() {
 	}
 
 	resources := make([]*models.Status, 0)
+	d.StatusesMu.RLock()
 	for _, status := range d.Statuses {
 		resources = append(resources, status)
 	}
+	d.StatusesMu.RUnlock()
 
 	sort.Slice(resources, func(i, j int) bool {
 		return resources[i].ID < resources[j].ID
@@ -497,6 +492,8 @@ func (d *Display) renderTable() {
 		}
 		d.LastTableState = append(d.LastTableState, tableRow)
 	}
+
+	d.Logger.Debugf("Table rendered with %d rows", len(resources)+1)
 }
 
 func (d *Display) displayResourceProgress(status *models.Status) {
