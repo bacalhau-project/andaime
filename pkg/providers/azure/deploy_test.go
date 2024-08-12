@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"testing"
@@ -9,7 +10,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/creack/pty"
 )
 
 func TestChannelClosing(t *testing.T) {
@@ -111,13 +111,8 @@ func TestCancelledDeployment(t *testing.T) {
 }
 
 func TestMockDeployment(t *testing.T) {
-	// Create a mock TTY
-	pty, tty, err := pty.Open()
-	if err != nil {
-		t.Fatalf("Failed to open pty: %v", err)
-	}
-	defer pty.Close()
-	defer tty.Close()
+	// Create a mock output buffer
+	var mockOutput bytes.Buffer
 
 	// Create a mock deployment
 	deployment := &models.Deployment{
@@ -128,9 +123,9 @@ func TestMockDeployment(t *testing.T) {
 		},
 	}
 
-	// Initialize the display with the mock TTY
+	// Initialize the display with the mock output
 	disp := display.GetGlobalDisplay()
-	disp.SetOutput(tty)
+	disp.SetOutput(&mockOutput)
 	go disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
@@ -169,16 +164,19 @@ func TestMockDeployment(t *testing.T) {
 	if !utils.AreAllChannelsClosed() {
 		t.Error("Not all channels were closed after mock deployment")
 	}
+
+	// Check if the mock output contains expected content
+	outputStr := mockOutput.String()
+	for _, machine := range deployment.Machines {
+		if !strings.Contains(outputStr, machine.Name) || !strings.Contains(outputStr, "Deployed") {
+			t.Errorf("Expected output for machine %s not found", machine.Name)
+		}
+	}
 }
 
 func TestMockCancelledDeployment(t *testing.T) {
-	// Create a mock TTY
-	pty, tty, err := pty.Open()
-	if err != nil {
-		t.Fatalf("Failed to open pty: %v", err)
-	}
-	defer pty.Close()
-	defer tty.Close()
+	// Create a mock output buffer
+	var mockOutput bytes.Buffer
 
 	// Create a mock deployment
 	deployment := &models.Deployment{
@@ -193,9 +191,9 @@ func TestMockCancelledDeployment(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize the display with the mock TTY
+	// Initialize the display with the mock output
 	disp := display.GetGlobalDisplay()
-	disp.SetOutput(tty)
+	disp.SetOutput(&mockOutput)
 	go disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
@@ -237,5 +235,17 @@ func TestMockCancelledDeployment(t *testing.T) {
 	// Check if all channels are closed
 	if !utils.AreAllChannelsClosed() {
 		t.Error("Not all channels were closed after mock cancelled deployment")
+	}
+
+	// Check if the mock output contains expected content
+	outputStr := mockOutput.String()
+	cancelledCount := 0
+	for _, machine := range deployment.Machines {
+		if strings.Contains(outputStr, machine.Name) && strings.Contains(outputStr, "Cancelled") {
+			cancelledCount++
+		}
+	}
+	if cancelledCount == 0 {
+		t.Error("No machines were cancelled in the mock deployment")
 	}
 }
