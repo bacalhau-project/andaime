@@ -256,6 +256,10 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		}
 	}
 
+	if machineIndex == -1 {
+		return fmt.Errorf("machine %s not found in deployment", machine.ID)
+	}
+
 	disp.UpdateStatus(
 		&models.Status{
 			ID:     machine.Name,
@@ -336,16 +340,22 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				Status: "Failed to deploy due to DNS conflict.",
 			},
 		)
+		deployment.Machines[machineIndex].Status = "Failed to deploy due to DNS conflict"
 	} else {
 		for i := 0; i < ipRetries; i++ {
 			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, deployment.ResourceGroupName, machine.Name)
 			if err != nil {
+				if i == ipRetries-1 {
+					l.Errorf("Failed to get IP addresses for VM %s after %d retries: %v", machine.Name, ipRetries, err)
+					deployment.Machines[machineIndex].Status = "Failed to get IP addresses"
+					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
+				}
 				time.Sleep(timeBetweenIPRetries)
 				disp.UpdateStatus(
 					&models.Status{
 						ID:        machine.Name,
 						Type:      models.UpdateStatusResourceTypeVM,
-						Status:    "Failed to get IP addresses",
+						Status:    "Waiting for IP addresses",
 						PublicIP:  fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
 						PrivateIP: fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
 					},
@@ -370,10 +380,11 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			)
 			break
 		}
-		if deployment.Machines[machineIndex].PublicIP == "" || deployment.Machines[machineIndex].PrivateIP == "" {
-			return fmt.Errorf("failed to get IP addresses for VM %s", machine.Name)
-		}
 	}
+
+	// Update the global deployment
+	SetGlobalDeployment(deployment)
+
 	return nil
 }
 
