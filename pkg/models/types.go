@@ -16,7 +16,7 @@ const (
 
 type Status struct {
 	ID              string
-	Type            string
+	Type            UpdateStatusResourceType
 	Location        string
 	Status          string
 	DetailedStatus  string
@@ -37,4 +37,38 @@ type AzureEvent struct {
 	Message    string
 }
 
-// Resource is already defined in deployment.go, so we'll remove this duplicate declaration
+const (
+	DisplayPrefixRG   = "RG  "
+	DisplayPrefixVNET = "VNET"
+	DisplayPrefixSNET = "SNET"
+	DisplayPrefixNSG  = "NSG "
+	DisplayPrefixVM   = "VM  "
+	DisplayPrefixVMEX = "VMEX"
+	DisplayPrefixDISK = "DISK"
+	DisplayPrefixIP   = "IP  "
+	DisplayPrefixPBIP = "PBIP"
+	DisplayPrefixPVIP = "PVIP"
+	DisplayPrefixNIC  = "NIC "
+	DisplayPrefixUNK  = "UNK "
+
+	DisplayEmojiSuccess  = "✅"
+	DisplayEmojiWaiting  = "⏳"
+	DisplayEmojiFailed   = "❌"
+	DisplayEmojiQuestion = "❓"
+)
+
+type UpdateStatusResourceType string
+
+const (
+	UpdateStatusResourceTypeVM   UpdateStatusResourceType = "VM"
+	UpdateStatusResourceTypeVMEX UpdateStatusResourceType = "VMEX"
+	UpdateStatusResourceTypePBIP UpdateStatusResourceType = "PBIP"
+	UpdateStatusResourceTypePVIP UpdateStatusResourceType = "PVIP"
+	UpdateStatusResourceTypeNIC  UpdateStatusResourceType = "NIC"
+	UpdateStatusResourceTypeNSG  UpdateStatusResourceType = "NSG"
+	UpdateStatusResourceTypeVNET UpdateStatusResourceType = "VNET"
+	UpdateStatusResourceTypeSNET UpdateStatusResourceType = "SNET"
+	UpdateStatusResourceTypeDISK UpdateStatusResourceType = "DISK"
+	UpdateStatusResourceTypeIP   UpdateStatusResourceType = "IP"
+	UpdateStatusResourceTypeUNK  UpdateStatusResourceType = "UNK"
+)

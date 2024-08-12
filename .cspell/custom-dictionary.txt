@@ -31,6 +31,7 @@ Clienter
 Cmds
 compinit
 Configer
+creack
 createdeployment
 Deallocation
 Debugf
@@ -47,6 +48,7 @@ eventstream
 exportloopref
 Fatalf
 Fdump
+Fini
 forbidigo
 funcs
 funlen
@@ -77,12 +79,14 @@ igws
 ineffassign
 Infof
 Interfacer
+ipaddress
 IPID
 joho
 keyvault
 loadbalancer
 locabs
 logutils
+lostcancel
 mapstructure
 maxint
 mgmt
@@ -93,6 +97,7 @@ nats
 networkinterface
 networkinterfaces
 networksecuritygroup
+networksecuritygroups
 noctx
 noinit
 nolint
@@ -158,6 +163,7 @@ virtualmachine
 virtualmachines
 virtualnetwork
 virtualnetworks
+VMEX
 VMIP
 VMSS
 vnet

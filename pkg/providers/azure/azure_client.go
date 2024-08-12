@@ -4,8 +4,10 @@ package azure
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -15,6 +17,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
+
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
@@ -85,8 +88,8 @@ type AzureClient interface {
 	GetPublicIPAddress(
 		ctx context.Context,
 		resourceGroupName string,
-		publicIPName string,
-	) (*armnetwork.PublicIPAddress, error)
+		publicIP *armnetwork.PublicIPAddress,
+	) (string, error)
 	GetNetworkInterface(
 		ctx context.Context,
 		resourceGroupName string,
@@ -102,6 +105,7 @@ type LiveAzureClient struct {
 	deploymentsClient    *armresources.DeploymentsClient
 	computeClient        *armcompute.VirtualMachinesClient
 	networkClient        *armnetwork.InterfacesClient
+	publicIPClient       *armnetwork.PublicIPAddressesClient
 }
 
 func (c *LiveAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient {
@@ -142,6 +146,10 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 	if err != nil {
 		return &LiveAzureClient{}, err
 	}
+	publicIPClient, err := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
 
 	return &LiveAzureClient{
 		resourceGroupsClient: resourceGroupsClient,
@@ -150,6 +158,7 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		deploymentsClient:    deploymentsClient,
 		computeClient:        computeClient,
 		networkClient:        networkClient,
+		publicIPClient:       publicIPClient,
 	}, nil
 }
 
@@ -274,12 +283,6 @@ func (c *LiveAzureClient) UpdateResourceList(
 	if resourceGroupName != "" {
 		query += fmt.Sprintf(" | where resourceGroup == '%s'", resourceGroupName)
 	}
-
-	// for key, value := range tags {
-	// 	if value != nil {
-	// 		query += fmt.Sprintf(" | where tags['%s'] == '%s'", key, *value)
-	// 	}
-	// }
 	request := armresourcegraph.QueryRequest{
 		Query:         to.Ptr(query),
 		Subscriptions: []*string{to.Ptr(subscriptionID)},
@@ -312,7 +315,20 @@ func (c *LiveAzureClient) UpdateResourceList(
 			continue
 		}
 
-		sm.UpdateStatus(name, resourceType, resourceMap, state)
+		if slices.Contains(skipTypes, resourceType) {
+			l.Debugf("Skipping resource type %s", resourceType)
+			continue
+		}
+
+		// l.Debugf("CALLING RESOURCE TYPE - 1: %s", resourceType)
+
+		resourceTypeForUpdateStatus, err := CastResourceTypeForUpdateStatus(resourceType)
+		if err != nil {
+			l.Debugf("Failed to cast resource type for update status: %v", err)
+			continue
+		}
+
+		sm.UpdateStatus(name, resourceTypeForUpdateStatus, resourceMap, state)
 	}
 
 	return nil
@@ -345,11 +361,21 @@ func (c *LiveAzureClient) GetNetworkInterface(
 func (c *LiveAzureClient) GetPublicIPAddress(
 	ctx context.Context,
 	resourceGroupName string,
-	publicIPAddressName string,
-) (*armnetwork.PublicIPAddress, error) {
-	resp, err := c.networkClient.Get(ctx, resourceGroupName, publicIPAddressName, nil)
+	publicIPAddress *armnetwork.PublicIPAddress,
+) (string, error) {
+	publicID, err := arm.ParseResourceID(*publicIPAddress.ID)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("failed to parse public IP address ID: %w", err)
 	}
-	return resp.Properties.IPConfigurations[0].Properties.PublicIPAddress, nil
+
+	publicIPResponse, err := c.publicIPClient.Get(
+		ctx,
+		publicID.ResourceGroupName,
+		publicID.Name,
+		&armnetwork.PublicIPAddressesClientGetOptions{Expand: nil},
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to get public IP address: %w", err)
+	}
+	return *publicIPResponse.Properties.IPAddress, nil
 }

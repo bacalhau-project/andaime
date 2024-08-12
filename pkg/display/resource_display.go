@@ -27,17 +27,23 @@ const MaxLogLines = 8
 const RelativeSizeForTable = 5
 const RelativeSizeForLogBox = 1
 
+func NewMockDisplay(screen tcell.Screen) *Display {
+	newDisp := NewDisplay()
+	newDisp.App = newDisp.App.SetScreen(screen)
+	return newDisp
+}
+
 func NewDisplay() *Display {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Display{
-		Statuses:   make(map[string]*models.Status),
-		App:        tview.NewApplication(),
-		Table:      tview.NewTable().SetBorders(true),
-		LogBox:     tview.NewTextView().SetDynamicColors(true),
-		Ctx:        ctx,
-		Cancel:     cancel,
-		Logger:     logger.Get(),
-		updateChan: utils.CreateStructChannel("display_update_chan", 1),
+		Statuses: make(map[string]*models.Status),
+		App:      tview.NewApplication(),
+		Table:    tview.NewTable().SetBorders(true),
+		LogBox:   tview.NewTextView().SetDynamicColors(true),
+		Ctx:      ctx,
+		Cancel:   cancel,
+		Logger:   logger.Get(),
+		// updateChan: utils.CreateStructChannel("display_update_chan", 1),
 	}
 
 	d.LogBox.SetBorder(true).
@@ -46,7 +52,7 @@ func NewDisplay() *Display {
 		SetTitleColor(tcell.ColorWhite)
 	d.setupLayout()
 
-	d.Logger.Debugf("Display created with updateChan: %v", d.updateChan)
+	// d.Logger.Debugf("Display created with updateChan: %v", d.updateChan)
 
 	return d
 }
@@ -75,7 +81,7 @@ var DisplayColumns = []DisplayColumn{
 		Width:    8,
 		Color:    TextColor,
 		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return status.Type },
+		DataFunc: func(status models.Status) string { return string(status.Type) },
 	},
 	{
 		Text:     "Location",
@@ -96,9 +102,10 @@ var DisplayColumns = []DisplayColumn{
 		Color: TextColor,
 		Align: tview.AlignCenter,
 		DataFunc: func(status models.Status) string {
-			elapsedTime := time.Since(status.StartTime)
-			//l := logger.Get()
-			//l.Debugf("ID: %s, Elapsed time: %s", status.ID, elapsedTime)
+			elapsedTime := status.ElapsedTime
+			if elapsedTime == 0 {
+				elapsedTime = time.Since(status.StartTime)
+			}
 
 			// Format the elapsed time
 			minutes := int(elapsedTime.Minutes())
@@ -161,15 +168,6 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	d.StatusesMu.Unlock()
 
 	d.displayResourceProgress(newStatus)
-
-	select {
-	case d.updateChan <- struct{}{}:
-		//	d.Logger.Debugf("Update signal sent for status: %s", newStatus.ID)
-		_ = d.updateChan
-	default:
-		//	d.Logger.Debugf("Update channel full, skipped update for status: %s", newStatus.ID)
-		_ = d.updateChan
-	}
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -300,13 +298,13 @@ func (d *Display) Start() {
 			case <-d.StopChan:
 				// d.Logger.Debug("Stop signal received, stopping display")
 				return
-			case <-d.updateChan:
-				// d.Logger.Debug("Update signal received")
-				updateTimeout.Reset(30 * time.Second)
-				d.App.QueueUpdateDraw(func() {
-					d.renderTable()
-					d.updateLogBox()
-				})
+			// case <-d.updateChan:
+			// 	// d.Logger.Debug("Update signal received")
+			// 	updateTimeout.Reset(30 * time.Second)
+			// 	d.App.QueueUpdateDraw(func() {
+			// 		d.renderTable()
+			// 		d.updateLogBox()
+			// 	})
 			case <-updateTimeout.C:
 				d.Logger.Warn("Update timeout reached, possible hang detected")
 				// Optionally, you could trigger some recovery action here
@@ -321,15 +319,6 @@ func (d *Display) Start() {
 		d.Logger.Errorf("Error running display: %v", err)
 	}
 	d.Logger.Debug("tview application stopped")
-}
-
-func (d *Display) updateFromGlobalMap() {
-	StatusMutex.RLock()
-	defer StatusMutex.RUnlock()
-
-	for id, status := range GlobalStatusMap {
-		d.Statuses[id] = status
-	}
 }
 
 func (d *Display) Stop() {
@@ -358,7 +347,7 @@ func (d *Display) Stop() {
 	}
 
 	d.Logger.Debug("Closing updateChan")
-	utils.CloseChannel(d.updateChan)
+	// utils.CloseChannel(d.updateChan)
 
 	d.Logger.Debug("Closing all registered channels")
 	utils.CloseAllChannels()

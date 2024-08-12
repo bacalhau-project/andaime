@@ -21,6 +21,9 @@ type Display struct {
 	UpdatePending  bool
 	DisplayRunning bool
 
+	// Add the GetStatus method
+	GetStatus func(id string) *models.Status
+
 	App        *tview.Application
 	Table      *tview.Table
 	LogBox     *tview.TextView

@@ -458,9 +458,9 @@ func (p *AzureProvider) FinalizeDeployment(
 			privateIP = "Pending"
 		}
 		elapsedTime := time.Since(startTime).Seconds()
-		orchestratorSymbol := "○"
+		orchestratorSymbol := "🌑"
 		if machine.Parameters.Orchestrator {
-			orchestratorSymbol = "●"
+			orchestratorSymbol = "🌕"
 		}
 		table.Append([]string{
 			machine.ID,

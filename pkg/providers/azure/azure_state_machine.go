@@ -1,7 +1,9 @@
 package azure
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ type ResourceState int
 var (
 	globalStateMachine   *AzureStateMachine
 	globalStateMachineMu sync.Mutex
+	skipTypes            = []string{"microsoft.network/networkwatchers"}
 )
 
 const (
@@ -53,36 +56,51 @@ func (rs ResourceState) String() string {
 	return [...]string{"Not Started", "Provisioning", "Succeeded", "Failed"}[rs]
 }
 
-func CreateStateMessage(resourceType string, state ResourceState, resourceName string) string {
-	prefix := ""
+func CreateStateMessage(
+	resourceType models.UpdateStatusResourceType,
+	state ResourceState,
+	resourceName string,
+) string {
+	l := logger.Get()
+
+	prefix := models.DisplayPrefixUNK
 	switch resourceType {
-	case "VM":
-		prefix = DisplayPrefixVM
-	case "PBIP":
-		prefix = DisplayPrefixPBIP
-	case "PVIP":
-		prefix = DisplayPrefixPVIP
-	case "NIC":
-		prefix = DisplayPrefixNIC
-	case "NSG":
-		prefix = DisplayPrefixNSG
-	case "VNET":
-		prefix = DisplayPrefixVNET
-	case "SNET":
-		prefix = DisplayPrefixSNET
-	case "DISK":
-		prefix = DisplayPrefixDISK
+	case models.UpdateStatusResourceTypeVM:
+		prefix = models.DisplayPrefixVM
+	case models.UpdateStatusResourceTypeIP:
+		prefix = models.DisplayPrefixIP
+	case models.UpdateStatusResourceTypePBIP:
+		prefix = models.DisplayPrefixPBIP
+	case models.UpdateStatusResourceTypePVIP:
+		prefix = models.DisplayPrefixPVIP
+	case models.UpdateStatusResourceTypeNIC:
+		prefix = models.DisplayPrefixNIC
+	case models.UpdateStatusResourceTypeNSG:
+		prefix = models.DisplayPrefixNSG
+	case models.UpdateStatusResourceTypeVNET:
+		prefix = models.DisplayPrefixVNET
+	case models.UpdateStatusResourceTypeSNET:
+		prefix = models.DisplayPrefixSNET
+	case models.UpdateStatusResourceTypeDISK:
+		prefix = models.DisplayPrefixDISK
+	default:
+		l.Errorf("Unknown resource type: %s", resourceType)
 	}
 
-	emoji := ""
+	emoji := models.DisplayEmojiQuestion
 	switch state {
 	case StateSucceeded:
-		emoji = DisplayEmojiSuccess
+		emoji = models.DisplayEmojiSuccess
 	case StateProvisioning:
-		emoji = DisplayEmojiWaiting
+		emoji = models.DisplayEmojiWaiting
 	case StateFailed:
-		emoji = DisplayEmojiFailed
+		emoji = models.DisplayEmojiFailed
+	default:
+		l.Errorf("Unknown state: %s", state)
 	}
+
+	// Special case for resource name for disk - kl41d9-vm_disk1_effcdaed5bf14cbebb82bf65f2958ac6
+	resourceName = strings.ReplaceAll(resourceName, "_", "-")
 
 	return fmt.Sprintf("%s %s = %s", prefix, emoji, resourceName)
 }
@@ -93,13 +111,51 @@ func NewDeploymentStateMachine(deployment *models.Deployment) *AzureStateMachine
 	}
 }
 
+func CastResourceTypeForUpdateStatus(resourceType string) (models.UpdateStatusResourceType, error) {
+	l := logger.Get()
+	var resourceTypeForUpdateStatus models.UpdateStatusResourceType
+	switch resourceType {
+	case "microsoft.compute/virtualmachines":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeVM
+	case "microsoft.network/virtualnetworks":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeVNET
+	case "microsoft.network/virtualnetworks/subnets":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeSNET
+	case "microsoft.compute/disks":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeDISK
+	case "microsoft.network/publicipaddresses":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeIP
+	case "microsoft.network/networkinterfaces":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeNIC
+	case "microsoft.network/networksecuritygroups":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeNSG
+	case "microsoft.compute/virtualmachines/extensions":
+		resourceTypeForUpdateStatus = models.UpdateStatusResourceTypeVMEX
+	default:
+		l.Errorf("Unknown resource type: %s", resourceType)
+		return models.UpdateStatusResourceTypeUNK, errors.New("unknown resource type")
+	}
+
+	return resourceTypeForUpdateStatus, nil
+}
+
 func (dsm *AzureStateMachine) UpdateStatus(
 	resourceName string,
-	resourceType string,
+	resourceType models.UpdateStatusResourceType,
 	resource interface{},
 	state ResourceState,
 ) {
 	l := logger.Get()
+
+	if slices.Contains(skipTypes, string(resourceType)) {
+		l.Debugf(
+			"Skipping status update for %s %s",
+			resourceType,
+			resourceName,
+		)
+		return
+	}
+
 	dsm.mu.Lock()
 	defer dsm.mu.Unlock()
 	disp := display.GetGlobalDisplay()
@@ -107,7 +163,7 @@ func (dsm *AzureStateMachine) UpdateStatus(
 	if _, ok := dsm.Resources[resourceName]; !ok {
 		dsm.Resources[resourceName] = StateMachineResource{
 			Resource:    resource,
-			State:       state,
+			State:       -1,
 			LastUpdated: time.Now(),
 		}
 	}

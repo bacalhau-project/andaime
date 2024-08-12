@@ -2,11 +2,8 @@ package azure
 
 import (
 	"context"
-	"reflect"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 )
 
@@ -28,19 +25,6 @@ type QueryResponse struct {
 	Facets          []armresourcegraph.FacetClassification `json:"facets"`
 	ResultTruncated *armresourcegraph.ResultTruncated      `json:"resultTruncated"`
 	TotalRecords    *int64                                 `json:"totalRecords"`
-}
-
-var ResourceTypeMap = map[string]reflect.Type{
-	"microsoft.compute/virtualmachines": reflect.TypeOf((*armcompute.VirtualMachine)(nil)).
-		Elem(),
-	"microsoft.network/networkinterfaces": reflect.TypeOf((*armnetwork.Interface)(nil)).Elem(),
-	"microsoft.network/networksecuritygroups": reflect.TypeOf((*armnetwork.SecurityGroup)(nil)).
-		Elem(),
-	"microsoft.network/virtualnetworks": reflect.TypeOf((*armnetwork.VirtualNetwork)(nil)).
-		Elem(),
-	"microsoft.network/publicipaddresses": reflect.TypeOf((*armnetwork.PublicIPAddress)(nil)).
-		Elem(),
-	"microsoft.compute/disks": reflect.TypeOf((*armcompute.Disk)(nil)).Elem(),
 }
 
 func ConvertFromStringToResourceState(state string) (ResourceState, error) {

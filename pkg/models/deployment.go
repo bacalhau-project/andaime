@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -31,6 +32,8 @@ type Machine struct {
 	DiskSizeGB           int32 `default:"30"`
 	ComputerName         string
 	StartTime            time.Time
+	ElapsedTime          time.Duration
+	Orchestrator         bool
 }
 
 type Parameters struct {
@@ -50,6 +53,7 @@ type Deployment struct {
 	SubnetSlices          map[string][]*armnetwork.Subnet
 	NetworkSecurityGroups map[string]*armnetwork.SecurityGroup
 	Disks                 map[string]*Disk
+	NetworkWatchers       map[string]*armnetwork.Watcher
 	VMExtensionsStatus    map[string]StatusCode
 	ProjectID             string
 	UniqueID              string
@@ -77,7 +81,7 @@ type Disk struct {
 type AndaimeGenericResource struct {
 	MachineID string
 	Name      string
-	Type      string
+	Type      UpdateStatusResourceType
 	ID        string
 	Status    string
 }
@@ -125,44 +129,53 @@ func (d *Deployment) GetAllResources() ([]AndaimeGenericResource, error) {
 	resources := []AndaimeGenericResource{}
 	for _, vm := range d.Machines {
 		resources = append(resources, AndaimeGenericResource{
-			MachineID: vm.ID,
+			MachineID: vm.Name,
 			Name:      vm.Name,
-			Type:      "Microsoft.Compute/virtualMachines",
+			Type:      UpdateStatusResourceTypeVM,
 			ID:        vm.InstanceID,
 			Status:    vm.Status,
 		})
 	}
 	for _, disk := range d.Disks {
+		// Convert disk name to machine name
+		machineName := strings.TrimSuffix(disk.Name, "-disk")
 		resources = append(resources, AndaimeGenericResource{
-			Name:   disk.Name,
-			Type:   "Microsoft.Compute/disks",
-			ID:     disk.ID,
-			Status: string(disk.State),
+			MachineID: machineName,
+			Name:      disk.Name,
+			Type:      UpdateStatusResourceTypeDISK,
+			ID:        disk.ID,
+			Status:    string(disk.State),
 		})
 	}
 	for _, nsg := range d.NetworkSecurityGroups {
+		machineName := strings.TrimSuffix(*nsg.Name, "-nsg")
 		resources = append(resources, AndaimeGenericResource{
-			Name:   *nsg.Name,
-			Type:   "Microsoft.Network/networkSecurityGroups",
-			ID:     *nsg.ID,
-			Status: string(*nsg.Properties.ProvisioningState),
+			MachineID: machineName,
+			Name:      *nsg.Name,
+			Type:      UpdateStatusResourceTypeNSG,
+			ID:        *nsg.ID,
+			Status:    string(*nsg.Properties.ProvisioningState),
 		})
 	}
 	for _, vnet := range d.VNet {
+		machineName := strings.TrimSuffix(*vnet.Name, "-vnet")
 		resources = append(resources, AndaimeGenericResource{
-			Name:   *vnet.Name,
-			Type:   "Microsoft.Network/virtualNetworks",
-			ID:     *vnet.ID,
-			Status: string(*vnet.Properties.ProvisioningState),
+			MachineID: machineName,
+			Name:      *vnet.Name,
+			Type:      UpdateStatusResourceTypeVNET,
+			ID:        *vnet.ID,
+			Status:    string(*vnet.Properties.ProvisioningState),
 		})
 	}
 	for _, subnets := range d.SubnetSlices {
 		for _, subnet := range subnets {
+			machineName := strings.TrimSuffix(*subnet.Name, "-subnet")
 			resources = append(resources, AndaimeGenericResource{
-				Name:   *subnet.Name,
-				Type:   "Microsoft.Network/virtualNetworks/subnets",
-				ID:     *subnet.ID,
-				Status: string(*subnet.Properties.ProvisioningState),
+				MachineID: machineName,
+				Name:      *subnet.Name,
+				Type:      UpdateStatusResourceTypeSNET,
+				ID:        *subnet.ID,
+				Status:    string(*subnet.Properties.ProvisioningState),
 			})
 		}
 	}

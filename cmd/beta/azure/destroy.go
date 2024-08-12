@@ -81,6 +81,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			deploymentDetails, ok := details.(map[string]interface{})
 			if !ok {
 				l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
+				l.Debugf("Details: %v", details)
 				continue
 			}
 			resourceGroupName, ok := deploymentDetails["resourcegroupname"].(string)

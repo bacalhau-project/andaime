@@ -4,12 +4,20 @@ import (
 	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/gdamore/tcell/v2"
 )
 
 var (
 	globalDisplay *Display
 	once          sync.Once
 )
+
+func GetGlobalMockDisplay(screen tcell.Screen) *Display {
+	once.Do(func() {
+		globalDisplay = NewMockDisplay(screen)
+	})
+	return globalDisplay
+}
 
 // GetGlobalDisplay returns the global Display instance
 func GetGlobalDisplay() *Display {

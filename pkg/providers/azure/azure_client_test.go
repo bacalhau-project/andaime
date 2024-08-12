@@ -156,34 +156,12 @@ func (m *MockAzureClient) GetNetworkInterface(
 
 func (m *MockAzureClient) GetPublicIPAddress(
 	ctx context.Context,
-	resourceGroupName, publicIPAddressName string,
-) (*armnetwork.PublicIPAddress, error) {
-	args := m.Called(ctx, resourceGroupName, publicIPAddressName)
-	return args.Get(0).(*armnetwork.PublicIPAddress), args.Error(1)
+	resourceGroupName string,
+	publicIPAddress *armnetwork.PublicIPAddress,
+) (string, error) {
+	args := m.Called(ctx, resourceGroupName, publicIPAddress)
+	return args.Get(0).(string), args.Error(1)
 }
-
-// func TestAzureProvider_updateVMExtensionsStatus(t *testing.T) {
-// 	mockClient := new(MockAzureClient)
-// 	provider := &AzureProvider{Client: mockClient}
-
-// 	deployment := &models.Deployment{
-// 		ResourceGroupName:  "test-rg",
-// 		VMExtensionsStatus: make(map[string]models.StatusCode),
-// 	}
-
-// 	resource := armcompute.VirtualMachineExtension{
-// 		Name: to.Ptr("test-vm/ext1"),
-// 		Properties: &armcompute.VirtualMachineExtensionProperties{
-// 			ProvisioningState: to.Ptr("Succeeded"),
-// 		},
-// 	}
-
-// 	provider.updateVMExtensionsStatus(deployment, &resource)
-
-// 	assert.Equal(t, models.StatusSucceeded, deployment.VMExtensionsStatus["test-vm/ext1"])
-
-//		mockClient.AssertExpectations(t)
-//	}
 
 func TestAzureProvider_ListAllResourceGroups(t *testing.T) {
 	mockClient := new(MockAzureClient)

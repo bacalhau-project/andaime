@@ -14,6 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.30.3
 	github.com/aws/aws-sdk-go-v2/config v1.27.27
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.171.0
+	github.com/creack/pty v1.1.21
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/pulumi/pulumi-azure-native-sdk/compute v1.104.0
 	github.com/pulumi/pulumi/sdk/v3 v3.127.0
