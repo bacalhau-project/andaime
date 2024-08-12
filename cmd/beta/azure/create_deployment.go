@@ -134,12 +134,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Deployment finalized successfully")
 
+	// Print final static ASCII table
+	printFinalTable(azure.GetGlobalDeployment())
+
 	// Stop all display updates and channels
 	disp.Stop()
 	utils.CloseAllChannels()
-
-	// Print final static ASCII table
-	printFinalTable(azure.GetGlobalDeployment())
 
 	// Enable pprof profiling
 	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
