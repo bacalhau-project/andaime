@@ -325,11 +325,12 @@ func (d *Display) Stop() {
 	d.Cancel() // Cancel the context
 
 	d.Logger.Debug("Closing StopChan")
+	utils.CloseChannel(d.StopChan)
 
 	// Stop the application in a separate goroutine to avoid deadlock
-	stopDone := utils.CreateBoolChannel("stop_done", 1)
+	stopDone := make(chan struct{})
 	go func() {
-		defer utils.CloseChannel(stopDone)
+		defer close(stopDone)
 		d.Logger.Debug("Stopping tview application")
 		if d.DisplayRunning {
 			d.App.Stop()
@@ -345,23 +346,31 @@ func (d *Display) Stop() {
 		d.Logger.Warn("Timeout waiting for application to stop")
 	}
 
-	d.Logger.Debug("Closing updateChan")
-	// utils.CloseChannel(d.updateChan)
-
 	d.Logger.Debug("Closing all registered channels")
 	utils.CloseAllChannels()
 
-	defer d.DumpGoroutines()
+	d.DisplayRunning = false
 	d.resetTerminal()
+	d.DumpGoroutines()
 }
 
 func (d *Display) WaitForStop() {
 	d.Logger.Debug("Waiting for display to stop")
-	select {
-	case <-d.Quit:
-		d.Logger.Debug("Display stopped")
-	case <-time.After(5 * time.Second): //nolint:gomnd
-		d.Logger.Debug("Timeout waiting for display to stop")
+	timeout := time.After(10 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !d.DisplayRunning {
+				d.Logger.Debug("Display stopped")
+				return
+			}
+		case <-timeout:
+			d.Logger.Warn("Timeout waiting for display to stop")
+			return
+		}
 	}
 }
 

@@ -74,7 +74,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	if !noDisplay {
 		go disp.Start()
-		defer disp.Stop()
+		defer func() {
+			disp.Stop()
+			disp.WaitForStop()
+		}()
 	}
 
 	defer func() {
