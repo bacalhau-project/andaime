@@ -122,7 +122,6 @@ func TestMockDeployment(t *testing.T) {
 	// Initialize the display
 	disp := display.GetGlobalDisplay()
 	go disp.Start()
-	defer disp.Stop()
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -149,6 +148,13 @@ func TestMockDeployment(t *testing.T) {
 	// Wait for all deployments to finish
 	wg.Wait()
 
+	// Stop the display and close all channels
+	disp.Stop()
+	utils.CloseAllChannels()
+
+	// Allow some time for channels to close
+	time.Sleep(100 * time.Millisecond)
+
 	// Check if all channels are closed
 	if !utils.AreAllChannelsClosed() {
 		t.Error("Not all channels were closed after mock deployment")
@@ -172,7 +178,6 @@ func TestMockCancelledDeployment(t *testing.T) {
 	// Initialize the display
 	disp := display.GetGlobalDisplay()
 	go disp.Start()
-	defer disp.Stop()
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -202,6 +207,13 @@ func TestMockCancelledDeployment(t *testing.T) {
 
 	// Wait for all deployments to finish or be cancelled
 	wg.Wait()
+
+	// Stop the display and close all channels
+	disp.Stop()
+	utils.CloseAllChannels()
+
+	// Allow some time for channels to close
+	time.Sleep(100 * time.Millisecond)
 
 	// Check if all channels are closed
 	if !utils.AreAllChannelsClosed() {
