@@ -123,6 +123,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	<-done
 	l.Info("Resource polling completed")
 
+	// Stop resource polling
+	cancel()
+
 	// FinalizeDeployment starts here, after all machines are deployed and WaitGroup is finished
 	l.Info("Starting FinalizeDeployment")
 	if err := p.FinalizeDeployment(ctx); err != nil {
