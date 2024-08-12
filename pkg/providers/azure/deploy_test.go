@@ -448,9 +448,6 @@ func TestChannelClosing(t *testing.T) {
 		},
 	}
 
-	// Create a mock AzureProvider
-	provider := &AzureProvider{}
-
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -497,9 +494,6 @@ func TestCancelledDeployment(t *testing.T) {
 			{ID: "3", Name: "vm3"},
 		},
 	}
-
-	// Create a mock AzureProvider
-	provider := &AzureProvider{}
 
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
