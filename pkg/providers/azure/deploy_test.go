@@ -9,6 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/creack/pty"
 )
 
 func TestChannelClosing(t *testing.T) {
@@ -110,6 +111,14 @@ func TestCancelledDeployment(t *testing.T) {
 }
 
 func TestMockDeployment(t *testing.T) {
+	// Create a mock TTY
+	pty, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("Failed to open pty: %v", err)
+	}
+	defer pty.Close()
+	defer tty.Close()
+
 	// Create a mock deployment
 	deployment := &models.Deployment{
 		Machines: []models.Machine{
@@ -119,8 +128,9 @@ func TestMockDeployment(t *testing.T) {
 		},
 	}
 
-	// Initialize the display
+	// Initialize the display with the mock TTY
 	disp := display.GetGlobalDisplay()
+	disp.SetOutput(tty)
 	go disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
@@ -162,6 +172,14 @@ func TestMockDeployment(t *testing.T) {
 }
 
 func TestMockCancelledDeployment(t *testing.T) {
+	// Create a mock TTY
+	pty, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("Failed to open pty: %v", err)
+	}
+	defer pty.Close()
+	defer tty.Close()
+
 	// Create a mock deployment
 	deployment := &models.Deployment{
 		Machines: []models.Machine{
@@ -175,8 +193,9 @@ func TestMockCancelledDeployment(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize the display
+	// Initialize the display with the mock TTY
 	disp := display.GetGlobalDisplay()
+	disp.SetOutput(tty)
 	go disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
