@@ -170,9 +170,6 @@ func TestMockDeployment(t *testing.T) {
 }
 
 func TestMockCancelledDeployment(t *testing.T) {
-	// Create a mock output buffer
-	var mockOutput bytes.Buffer
-
 	// Create a mock deployment
 	deployment := &models.Deployment{
 		Machines: []models.Machine{
@@ -186,26 +183,31 @@ func TestMockCancelledDeployment(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize the display with the mock output
-	screen := tcell.NewSimulationScreen("")
-	disp := display.NewMockDisplay(screen)
+	// Initialize the display
+	disp := display.GetGlobalDisplay()
 	go disp.Start()
+	defer disp.Stop()
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
+
+	// Create a channel to signal when all goroutines are ready
+	ready := make(chan struct{})
 
 	// Simulate deployment with cancellation
 	for _, machine := range deployment.Machines {
 		wg.Add(1)
 		go func(m models.Machine) {
 			defer wg.Done()
+			// Signal that this goroutine is ready
+			ready <- struct{}{}
 			select {
 			case <-ctx.Done():
 				disp.UpdateStatus(&models.Status{
 					ID:     m.Name,
 					Status: "Cancelled",
 				})
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(500 * time.Millisecond):
 				disp.UpdateStatus(&models.Status{
 					ID:     m.Name,
 					Status: "Deployed",
@@ -214,33 +216,37 @@ func TestMockCancelledDeployment(t *testing.T) {
 		}(machine)
 	}
 
-	// Cancel the deployment after a short delay
-	time.AfterFunc(100*time.Millisecond, cancel)
+	// Wait for all goroutines to be ready
+	for range deployment.Machines {
+		<-ready
+	}
+
+	// Cancel the deployment immediately
+	cancel()
 
 	// Wait for all deployments to finish or be cancelled
 	wg.Wait()
 
-	// Stop the display and close all channels
-	disp.Stop()
-	utils.CloseAllChannels()
-
-	// Allow some time for channels to close
+	// Allow some time for the display to update
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if all channels are closed
+	utils.CloseAllChannels()
 	if !utils.AreAllChannelsClosed() {
 		t.Error("Not all channels were closed after mock cancelled deployment")
 	}
 
-	// Check if the mock output contains expected content
-	outputStr := mockOutput.String()
+	// Check if any machines were cancelled
 	cancelledCount := 0
 	for _, machine := range deployment.Machines {
-		if strings.Contains(outputStr, machine.Name) && strings.Contains(outputStr, "Cancelled") {
+		status := disp.GetStatus(machine.Name)
+		if status != nil && status.Status == "Cancelled" {
 			cancelledCount++
 		}
 	}
 	if cancelledCount == 0 {
 		t.Error("No machines were cancelled in the mock deployment")
+	} else {
+		t.Logf("%d machines were cancelled in the mock deployment", cancelledCount)
 	}
 }
