@@ -201,3 +201,14 @@ func DebugOpenChannels() {
 		}
 	}
 }
+
+func AreAllChannelsClosed() bool {
+	GlobalChannelsMutex.Lock()
+	defer GlobalChannelsMutex.Unlock()
+	for _, ch := range GlobalChannels {
+		if !ch.IsClosed() {
+			return false
+		}
+	}
+	return true
+}
