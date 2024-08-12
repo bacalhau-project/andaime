@@ -80,10 +80,12 @@ func CreateAndRegisterChannel(channelType reflect.Type, name string, capacity in
 	return ch
 }
 
-func RegisterChannel(safeChannel *SafeChannel, name string) {
+func RegisterChannel(ch interface{}) {
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	GlobalChannels = append(GlobalChannels, safeChannel)
+	if safeChannel, ok := ch.(*SafeChannel); ok {
+		GlobalChannels = append(GlobalChannels, safeChannel)
+	}
 }
 
 func CloseAllChannels() {
