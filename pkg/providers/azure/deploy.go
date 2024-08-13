@@ -325,7 +325,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			dnsFailed = true
 			continue
 		} else if err != nil {
-			disp.UpdateStatus(
+			UpdateStatus(
 				&models.Status{
 					ID:     machine.Name,
 					Type:   models.UpdateStatusResourceTypeVM,
@@ -511,7 +511,6 @@ func (p *AzureProvider) FinalizeDeployment(
 // 5. Updates the global deployment object with the finalized resource group information.
 func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	l := logger.Get()
-	disp := display.GetGlobalDisplay()
 	deployment := GetGlobalDeployment()
 
 	if deployment == nil {

@@ -184,7 +184,7 @@ func (dsm *AzureStateMachine) UpdateStatus(
 		if machine.Location == stub {
 			isLocation = true
 			l.Debugf("Updating status for location %s to %s", machine.Name, state.String())
-			display.UpdateStatus(&models.Status{
+			UpdateStatus(&models.Status{
 				ID:     machine.Name,
 				Status: CreateStateMessage(resourceType, state, resourceName),
 			})
@@ -200,7 +200,7 @@ func (dsm *AzureStateMachine) UpdateStatus(
 		if machine.ID == stub {
 			l.Debugf("Updating status for machine %s to %s", machine.Name, state.String())
 			l.Debugf("Full Object: %s", resource)
-			disp.UpdateStatus(&models.Status{
+			UpdateStatus(&models.Status{
 				ID:     machine.Name,
 				Status: CreateStateMessage(resourceType, state, resourceName),
 			})
@@ -222,4 +222,13 @@ func (dsm *AzureStateMachine) GetTotalResourcesCount() int {
 
 func (dsm *AzureStateMachine) GetAllResources() map[string]StateMachineResource {
 	return dsm.Resources
+}
+import (
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
+)
+
+// Add this function at the end of the file
+func UpdateStatus(status *models.Status) {
+	display.UpdateStatus(status)
 }
