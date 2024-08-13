@@ -82,10 +82,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Quitting {
 			return m, nil
 		}
-		m.TextBox = append(m.TextBox, fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05")))
-		if len(m.TextBox) > 8 {
-			m.TextBox = m.TextBox[len(m.TextBox)-8:]
-		}
 		allFinished := true
 		for _, machine := range m.Deployment.Machines {
 			if machine.Status != "Successfully Deployed" && machine.Status != "Failed" {
@@ -209,7 +205,13 @@ func (m *DisplayModel) View() string {
 
 	infoText := infoStyle.Render("Press 'q' or Ctrl+C to quit")
 
-	textBoxContent := strings.Join(m.TextBox, "\n")
+	var textBoxContent string
+	if len(m.TextBox) > 0 {
+		textBoxContent = strings.Join(m.TextBox, "\n")
+	}
+
+	lastUpdated := fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05"))
+	
 	output := lipgloss.JoinVertical(
 		lipgloss.Left,
 		tableStyle.Render(tableStr),
@@ -217,6 +219,8 @@ func (m *DisplayModel) View() string {
 		infoText,
 		"",
 		textBoxStyle.Render(textBoxContent),
+		"",
+		lastUpdated,
 	)
 
 	return output
