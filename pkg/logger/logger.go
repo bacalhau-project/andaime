@@ -1,10 +1,9 @@
 package logger
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -386,7 +385,7 @@ func GetLastLines(n int) []string {
 	defer file.Close()
 
 	// Read the entire file content
-	content, err := ioutil.ReadAll(file)
+	content, err := io.ReadAll(file)
 	if err != nil {
 		l.Errorf("Error reading GlobalLogFile: %v", err)
 		writeToDebugLog(fmt.Sprintf("Error reading GlobalLogFile: %v", err))
