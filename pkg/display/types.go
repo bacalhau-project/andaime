@@ -1,21 +1,12 @@
 package display
 
 import (
-	"context"
 	"os"
 	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
-
-// This struct is now defined in resource_display.go
-
-func (d *Display) Close() {
-	d.App.Stop()
-}
 
 type TestDisplay struct {
 	Display

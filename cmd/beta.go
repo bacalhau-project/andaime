@@ -28,7 +28,6 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 		}
 		rootCmd.AddCommand(betaCmd)
 
-		betaCmd.AddCommand(GetTestDisplayCmd())
 		betaCmd.AddCommand(azure.GetAzureCmd())
 		// betaCmd.AddCommand(azure.GetAwsCmd())
 	})

@@ -7,79 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/spf13/cobra"
 )
 
 var totalTasks = 20
-
-var testDisplayCmd = &cobra.Command{
-	Use:   "testDisplay",
-	Short: "Test the display functionality",
-	Run:   runTestDisplay,
-}
-
-func GetTestDisplayCmd() *cobra.Command {
-	return testDisplayCmd
-}
-
-func runTestDisplay(cmd *cobra.Command, args []string) {
-	_, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runTestDisplayInternal()
-
-}
-
-func runTestDisplayInternal() {
-	d := display.NewDisplay()
-	d.Logger.Info("Display initialized")
-
-	// Create 10 initial statuses
-	for i := 0; i < 10; i++ {
-		status := createRandomStatus()
-		d.Logger.Infof("Created random status: %+v", status)
-		d.UpdateStatus(status)
-	}
-
-	// Create a ticker for periodic updates
-	ticker := time.NewTicker(500 * time.Millisecond) // Increased the interval
-	defer ticker.Stop()
-
-	// Start the update loop in a separate goroutine
-	go func() {
-		d.Log("Starting update loop")
-		for {
-			select {
-			case <-ticker.C:
-				d.Log("Update loop tick")
-				status := getRandomStatus(d.Statuses)
-				if status != nil {
-					d.Logger.Infof("Got random status: %+v", status)
-					updateRandomStatus(status)
-					d.Logger.Infof("Updated random status: %+v", status)
-					d.UpdateStatus(status)
-					d.App.Draw()
-				} else {
-					d.Logger.Info("Got nil status")
-				}
-			case <-d.Quit:
-				d.Log("Quit signal received")
-				return
-			case <-d.Ctx.Done():
-				d.Log("Context done")
-				return
-			}
-		}
-	}()
-
-	// Run the application
-	d.Logger.Info("Starting application")
-	if err := d.App.Run(); err != nil {
-		d.Logger.Errorf("Error running application: %s", err.Error())
-	}
-}
 
 func generateEvents(ctx context.Context, logChan chan<- string) {
 	log := logger.Get()

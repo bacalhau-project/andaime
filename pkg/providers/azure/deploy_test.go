@@ -23,6 +23,8 @@ func TestChannelClosing(t *testing.T) {
 
 	// Initialize the display
 	disp := display.NewDisplay()
+	disp.Visible = false
+	disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -65,6 +67,8 @@ func TestCancelledDeployment(t *testing.T) {
 
 	// Initialize the display
 	disp := display.NewDisplay()
+	disp.Visible = false
+	disp.Start()
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup

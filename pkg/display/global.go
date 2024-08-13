@@ -14,7 +14,8 @@ var (
 
 func GetGlobalMockDisplay(screen tcell.Screen) *Display {
 	once.Do(func() {
-		globalDisplay = NewMockDisplay(screen)
+		globalDisplay = NewDisplay()
+		globalDisplay.Visible = false
 	})
 	return globalDisplay
 }

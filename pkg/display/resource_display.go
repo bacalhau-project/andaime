@@ -4,15 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/charmbracelet/bubbles/table"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type Display struct {
@@ -24,17 +22,6 @@ type Display struct {
 	Visible        bool
 	DisplayRunning bool
 	LastTableState [][]string
-	Program        *tea.Program
-}
-
-var DisplayColumns = []table.Column{
-	{Title: "ID", Width: 13},
-	{Title: "Type", Width: 8},
-	{Title: "Location", Width: 12},
-	{Title: "Status", Width: 44},
-	{Title: "Time", Width: 10},
-	{Title: "Public IP", Width: 15},
-	{Title: "Private IP", Width: 15},
 }
 
 func NewDisplay() *Display {
@@ -66,8 +53,8 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 	}
 
-	if d.Visible && d.Program != nil {
-		d.Program.Send(updateMsg(d.Statuses))
+	if d.Visible {
+		d.updateDisplay()
 	}
 }
 
@@ -82,13 +69,21 @@ func (d *Display) Start() {
 		return
 	}
 
-	model := initialModel(d)
-	p := tea.NewProgram(model)
-	d.Program = p
-
 	go func() {
-		if err := p.Start(); err != nil {
-			d.Logger.Errorf("Error starting Bubble Tea program: %v", err)
+		d.Logger.Debug("Display goroutine started")
+		defer d.Logger.Debug("Display goroutine exiting")
+
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				d.updateDisplay()
+			case <-d.Ctx.Done():
+				d.Logger.Debug("Context cancelled, stopping display")
+				return
+			}
 		}
 	}()
 
@@ -99,9 +94,6 @@ func (d *Display) Start() {
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
-	if d.Program != nil {
-		d.Program.Quit()
-	}
 	d.DisplayRunning = false
 	d.Logger.Debug("Display stop process completed")
 }
@@ -114,10 +106,24 @@ func (d *Display) WaitForStop() {
 	d.Logger.Debug("Display stopped")
 }
 
+func (d *Display) updateDisplay() {
+	d.Logger.Debug("Updating display")
+	table := d.renderTable()
+	fmt.Print("\033[2J\033[H") // Clear screen and move cursor to top-left
+	fmt.Println(table)
+}
+
 func (d *Display) renderTable() string {
 	d.Logger.Debug("Rendering table")
 
-	var rows []table.Row
+	var rows [][]string
+
+	// Add header row
+	headerRow := make([]string, len(DisplayColumns))
+	for i, col := range DisplayColumns {
+		headerRow[i] = col.Title
+	}
+	rows = append(rows, headerRow)
 
 	resources := make([]*models.Status, 0)
 	d.StatusesMu.RLock()
@@ -131,7 +137,7 @@ func (d *Display) renderTable() string {
 	})
 
 	for _, resource := range resources {
-		row := table.Row{
+		row := []string{
 			resource.ID,
 			string(resource.Type),
 			resource.Location,
@@ -143,26 +149,21 @@ func (d *Display) renderTable() string {
 		rows = append(rows, row)
 	}
 
-	t := table.New(
-		table.WithColumns(DisplayColumns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(len(rows)),
-	)
+	d.LastTableState = rows
 
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
-		Bold(false)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
-	t.SetStyles(s)
+	var sb strings.Builder
+	for _, row := range rows {
+		for i, cell := range row {
+			sb.WriteString(fmt.Sprintf("%-*s", DisplayColumns[i].Width, cell))
+			if i < len(row)-1 {
+				sb.WriteString(" | ")
+			}
+		}
+		sb.WriteString("\n")
+	}
 
-	return t.View()
+	d.Logger.Debugf("Table rendered with %d rows", len(rows))
+	return sb.String()
 }
 
 func formatElapsedTime(elapsedTime time.Duration, startTime time.Time) string {

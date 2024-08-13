@@ -3,6 +3,7 @@ package azure
 import (
 	"testing"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
@@ -22,6 +23,11 @@ func TestUpdateStatus(t *testing.T) {
 	UpdateGlobalDeployment(func(d *models.Deployment) {
 		d.Machines = sampleMachines
 	})
+
+	disp := display.GetGlobalDisplay()
+	disp.Visible = false
+	disp.Start()
+
 	dsm := GetGlobalStateMachine()
 	defer func() {
 		dsm.mu.Lock()
@@ -84,6 +90,10 @@ func TestGetStatus(t *testing.T) {
 		dsm.mu.Unlock()
 	}()
 
+	disp := display.GetGlobalDisplay()
+	disp.Visible = false
+	disp.Start()
+
 	state := StateSucceeded
 	// Test getting the status of a resource
 	dsm.Resources["123456-vm"] = StateMachineResource{
@@ -112,6 +122,10 @@ func TestStateProgression(t *testing.T) {
 		dsm.Resources = make(map[string]StateMachineResource, 0)
 		dsm.mu.Unlock()
 	}()
+
+	disp := display.GetGlobalDisplay()
+	disp.Visible = false
+	disp.Start()
 
 	resourceName := "test-resource"
 	resource := models.Machine{ID: resourceName}

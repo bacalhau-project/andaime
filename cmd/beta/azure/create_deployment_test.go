@@ -7,11 +7,15 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestInitializeDeployment(t *testing.T) {
+	disp := display.GetGlobalDisplay()
+	disp.Visible = false
+
 	// Set up the base path for test data
 	testDataPath := os.Getenv("TEST_DATA_PATH")
 	if testDataPath == "" {

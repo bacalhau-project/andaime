@@ -27,6 +27,7 @@ briandowns
 BUHJ
 centralus
 chans
+charmbracelet
 Clienter
 Cmds
 compinit
@@ -83,6 +84,7 @@ ipaddress
 IPID
 joho
 keyvault
+lipgloss
 loadbalancer
 locabs
 logutils

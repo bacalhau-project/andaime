@@ -14,7 +14,8 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.30.3
 	github.com/aws/aws-sdk-go-v2/config v1.27.27
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.171.0
-	github.com/creack/pty v1.1.21
+	github.com/charmbracelet/bubbletea v0.25.0
+	github.com/charmbracelet/lipgloss v0.12.1
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/pulumi/pulumi-azure-native-sdk/compute v1.104.0
 	github.com/pulumi/pulumi/sdk/v3 v3.127.0
@@ -40,9 +41,8 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/charmbracelet/bubbles v0.16.1 // indirect
-	github.com/charmbracelet/bubbletea v0.25.0 // indirect
-	github.com/charmbracelet/lipgloss v0.7.1 // indirect
+	github.com/charmbracelet/bubbles v0.18.0 // indirect
+	github.com/charmbracelet/x/ansi v0.1.4 // indirect
 	github.com/cheggaaa/pb v1.0.29 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
@@ -61,7 +61,7 @@ require (
 	github.com/hashicorp/hcl/v2 v2.17.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
