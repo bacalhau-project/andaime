@@ -109,12 +109,26 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			if err, _ := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
+			p.updateStatusMessage()
 		case <-ctx.Done():
 			l.Debug("Context done, exiting resource polling")
 			close(done)
 			return
 		}
 	}
+}
+
+func (p *AzureProvider) updateStatusMessage() {
+	l := logger.Get()
+	totalMachines := len(p.Deployment.Machines)
+	runningMachines := 0
+	for _, machine := range p.Deployment.Machines {
+		if machine.Status == "Succeeded" {
+			runningMachines++
+		}
+	}
+	statusMsg := fmt.Sprintf("Machines: %d/%d running", runningMachines, totalMachines)
+	l.Infof(statusMsg)
 }
 
 func (p *AzureProvider) GetResources(
