@@ -95,63 +95,17 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting resource deployment")
 	azure.SetGlobalDeployment(deployment)
 
-	// Initialize the Bubbletea model
-	m := display.InitialModel()
-
-	// Create a channel for deployment errors
-	deploymentErr := make(chan error, 1)
-
-	// Start the Bubbletea program
-	go func() {
-		p := tea.NewProgram(m)
-		if _, err := p.Run(); err != nil {
-			l.Errorf("Error running Bubbletea program: %v", err)
-			deploymentErr <- err
-		}
-	}()
+	disp := display.GetGlobalDisplay()
+	disp.Start()
 
 	// Start resource deployment
-	go func() {
-		err := p.DeployResources(ctx)
-		if err != nil {
-			l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
-			deploymentErr <- fmt.Errorf("deployment failed: %w", err)
-		} else {
-			l.Info("Azure deployment created successfully")
-			deploymentErr <- nil
-		}
-	}()
-
-	// Start resource polling
-	go func() error {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-ticker.C:
-				resources, err := p.GetResources(ctx, deployment.ResourceGroupName)
-				if err != nil {
-					return err
-				}
-				m.UpdateResources(resources)
-			}
-		}
-	}()
-
-	// Wait for deployment to complete or context to be cancelled
-	select {
-	case <-ctx.Done():
-		l.Info("Deployment cancelled")
-		return fmt.Errorf("deployment cancelled by user")
-	case err := <-deploymentErr:
-		if err != nil {
-			l.Error(fmt.Sprintf("Deployment error: %v", err))
-			return err
-		}
+	err = p.DeployResources(ctx)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
+		return fmt.Errorf("deployment failed: %w", err)
 	}
+
+	l.Info("Azure deployment created successfully")
 
 	// Cleanup and finalization
 	l.Info("Starting cleanup and finalization")
@@ -160,8 +114,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Deployment finalized")
 
-	// Stop the Bubbletea program
-	m.Quitting = true
+	disp.Stop()
+	disp.WaitForStop()
 
 	// Print final static ASCII table
 	printFinalTable(azure.GetGlobalDeployment())
