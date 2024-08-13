@@ -108,6 +108,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			cancel()
 		case <-ctx.Done():
 			l.Info("Context cancelled")
+			go disp.Stop()
+			l.Info("Display stop called.")
+			disp.WaitForStop()
 		}
 	}()
 	l.Debug("Signal and context cancellation handler started")
@@ -157,19 +160,25 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Debug("Dumping goroutines:")
 		utils.DumpGoroutines()
 		l.Debug("Execution of executeCreateDeployment completed")
-		
+
 		// Print final deployment state
 		l.Info("Final Deployment State:")
 		deployment := azure.GetGlobalDeployment()
 		if deployment != nil {
 			for _, machine := range deployment.Machines {
-				l.Infof("Machine: %s, Status: %s, Public IP: %s, Private IP: %s, Location: %s",
-					machine.Name, machine.Status, machine.PublicIP, machine.PrivateIP, machine.Location)
+				l.Infof(
+					"Machine: %s, Status: %s, Public IP: %s, Private IP: %s, Location: %s",
+					machine.Name,
+					machine.Status,
+					machine.PublicIP,
+					machine.PrivateIP,
+					machine.Location,
+				)
 			}
 		} else {
 			l.Info("No deployment information available")
 		}
-		
+
 		// Print logged buffer
 		l.Info("Logged Buffer:")
 		l.Info(logger.GlobalLoggedBuffer.String())
