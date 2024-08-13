@@ -160,7 +160,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 					p.Deployment.UpdateStatus(status)
 					if resourceType == "Microsoft.Network/publicIPAddresses" && provisioningState == "Succeeded" {
 						publicIP, err := p.Client.GetPublicIPAddress(ctx, p.Deployment.ResourceGroupName, name)
-						if err == nil {
+						if err == nil && publicIP != nil && publicIP.IPAddress != nil {
 							p.Deployment.Machines[i].PublicIP = *publicIP.IPAddress
 						} else {
 							l.Errorf("Failed to get public IP address: %v", err)
