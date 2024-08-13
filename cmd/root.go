@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"runtime/debug"
 	"sync"
+	"syscall"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
