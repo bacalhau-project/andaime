@@ -28,11 +28,15 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Name", Width: 13},
 	{Title: "Type", Width: 8},
 	{Title: "Location", Width: 12},
-	{Title: "Status", Width: 20},
-	{Title: "Progress", Width: 20},
-	{Title: "Time", Width: 10},
-	{Title: "Public IP", Width: 15},
-	{Title: "Private IP", Width: 15},
+	{Title: "Status", Width: 25},
+	{Title: "Progress", Width: 24},
+	{Title: "Time", Width: 12},
+	{Title: "Pub IP", Width: 14},
+	{Title: "Priv IP", Width: 14},
+	{Title: "Orch.", Width: 5},
+	{Title: "SSH", Width: 6},
+	{Title: "Docker", Width: 6},
+	{Title: "Bac.", Width: 8},
 }
 
 type DisplayModel struct {
@@ -178,11 +182,15 @@ func (m *DisplayModel) View() string {
 		var rowStr string
 		elapsedTime := time.Since(machine.StartTime).Truncate(time.Second).String()
 		progressBar := renderProgressBar(
-			machine.Progress,
+			machine.Progress/azureTotalSteps,
 			machine.ProgressFinish,
 			DisplayColumns[4].Width-2,
 		)
 
+		orchString := models.DisplayEmojiWorker
+		if machine.Orchestrator {
+			orchString = models.DisplayEmojiOrchestrator
+		}
 		rowData := []string{
 			machine.ID,
 			machine.Type,
@@ -192,6 +200,9 @@ func (m *DisplayModel) View() string {
 			elapsedTime,
 			machine.PublicIP,
 			machine.PrivateIP,
+			orchString,
+			machine.Docker,
+			machine.Bacalhau,
 		}
 
 		for i, cell := range rowData {
@@ -204,7 +215,9 @@ func (m *DisplayModel) View() string {
 	}
 
 	lastUpdated := time.Now().Format("15:04:05")
-	infoText := infoStyle.Render(fmt.Sprintf("Press 'q' or Ctrl+C to quit (Last Updated: %s)", lastUpdated))
+	infoText := infoStyle.Render(
+		fmt.Sprintf("Press 'q' or Ctrl+C to quit (Last Updated: %s)", lastUpdated),
+	)
 
 	logLines := logger.GetLastLines(8)
 	textBoxContent := strings.Join(logLines, "\n")
