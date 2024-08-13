@@ -34,6 +34,7 @@ var (
 	GlobalInstantSync         bool
 	GlobalLoggedBuffer        strings.Builder
 	GlobalLoggedBufferSize    int = 8192
+	GlobalLogFile             *os.File
 )
 
 // Logger is a wrapper around zap.Logger
@@ -122,11 +123,12 @@ func InitProduction() {
 			fileEncoderConfig := zap.NewProductionEncoderConfig()
 			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-			debugFile, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			var err error
+			GlobalLogFile, err = os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err == nil {
 				fileCore := zapcore.NewCore(
 					zapcore.NewConsoleEncoder(fileEncoderConfig),
-					zapcore.AddSync(debugFile),
+					zapcore.AddSync(GlobalLogFile),
 					logLevel,
 				)
 				cores = append(cores, fileCore)
@@ -366,39 +368,28 @@ var (
 	ZapAny     = zap.Any
 )
 
-func GetLastLines(filepath string, n int) []string {
+func GetLastLines(n int) []string {
 	l := Get()
-	if filepath == "" {
-		l.Errorf("Error: filepath is empty")
-		writeToDebugLog("Error: filepath is empty in GetLastLines")
+	if GlobalLogFile == nil {
+		l.Errorf("Error: GlobalLogFile is nil")
+		writeToDebugLog("Error: GlobalLogFile is nil in GetLastLines")
 		buf := make([]byte, 1024)
 		runtime.Stack(buf, false)
 		writeToDebugLog(fmt.Sprintf("Stack trace:\n%s", string(buf)))
 		return make([]string, n) // Return an empty slice with length n
 	}
 
-	file, err := os.Open(filepath)
-	if err != nil {
-		errMsg := fmt.Sprintf("Error opening file '%s': %v", filepath, err)
-		l.Errorf(errMsg)
-		writeToDebugLog(errMsg)
-		return []string{errMsg}
-	}
-	defer file.Close()
-
 	var lines []string
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
+	scanner := bufio.NewScanner(GlobalLogFile)
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 		if len(lines) > n {
 			lines = lines[1:]
 		}
-		lineCount++
 	}
 
 	if err := scanner.Err(); err != nil {
-		errMsg := fmt.Sprintf("Error reading file '%s': %v", filepath, err)
+		errMsg := fmt.Sprintf("Error reading GlobalLogFile: %v", err)
 		l.Errorf(errMsg)
 		writeToDebugLog(errMsg)
 		return append([]string{errMsg}, lines...)
