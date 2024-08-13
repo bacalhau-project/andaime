@@ -269,7 +269,7 @@ func (c *LiveAzureClient) UpdateResourceList(
 	resourceGroupName string,
 	tags map[string]*string) error {
 	l := logger.Get()
-	sm := GetGlobalStateMachine()
+	// Remove the state machine reference
 	// --- START OF MERGED SearchResources functionality ---
 
 	query := `Resources 
@@ -313,20 +313,15 @@ func (c *LiveAzureClient) UpdateResourceList(
 			continue
 		}
 
-		if slices.Contains(skipTypes, resourceType) {
-			l.Debugf("Skipping resource type %s", resourceType)
-			continue
-		}
+		// Remove the skipTypes check
 
 		// l.Debugf("CALLING RESOURCE TYPE - 1: %s", resourceType)
 
-		resourceTypeForUpdateStatus, err := CastResourceTypeForUpdateStatus(resourceType)
-		if err != nil {
-			l.Debugf("Failed to cast resource type for update status: %v", err)
-			continue
-		}
-
-		sm.UpdateStatus(name, resourceTypeForUpdateStatus, resourceMap, state)
+		UpdateStatus(&models.Status{
+			ID:     name,
+			Type:   models.UpdateStatusResourceType(resourceType),
+			Status: string(state),
+		})
 	}
 
 	return nil

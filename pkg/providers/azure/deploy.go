@@ -113,7 +113,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
-	sm := GetGlobalStateMachine()
+	// Remove the state machine reference
 
 	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
 
@@ -324,7 +324,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				&models.Status{
 					ID:     machine.Name,
 					Type:   models.UpdateStatusResourceTypeVM,
-					Status: fmt.Sprintf("FATAL: %v", err),
+					Status: fmt.Sprintf("Failed: %v", err),
 				},
 			)
 			return fmt.Errorf("error deploying template: %v", err)
@@ -405,10 +405,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	return resources, nil
 }
 
-// UpdateStatus updates the status using the display package
-func UpdateStatus(status *models.Status) {
-	display.UpdateStatus(status)
-}
+// This function is already defined in azure_state_machine.go, so we can remove it from here
 
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(
@@ -545,15 +542,11 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	)
 
 	for _, machine := range deployment.Machines {
-		display.UpdateStatus(
+		UpdateStatus(
 			&models.Status{
-				ID:   machine.Name,
-				Type: "VM",
-				Status: CreateStateMessage(
-					models.UpdateStatusResourceTypeVM,
-					StateProvisioning,
-					machine.Name,
-				),
+				ID:     machine.Name,
+				Type:   models.UpdateStatusResourceTypeVM,
+				Status: "Provisioning",
 			},
 		)
 	}
