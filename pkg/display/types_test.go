@@ -2,10 +2,8 @@ package display
 
 import (
 	"testing"
-	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/stretchr/testify/assert"
 )
 

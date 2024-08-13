@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 )
@@ -185,7 +184,7 @@ func (dsm *AzureStateMachine) UpdateStatus(
 		if machine.Location == stub {
 			isLocation = true
 			l.Debugf("Updating status for location %s to %s", machine.Name, state.String())
-			disp.UpdateStatus(&models.Status{
+			display.UpdateStatus(&models.Status{
 				ID:     machine.Name,
 				Status: CreateStateMessage(resourceType, state, resourceName),
 			})

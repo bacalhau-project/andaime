@@ -47,10 +47,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM) //nolint:sigchanyzer
 
-	disp := display.GetGlobalDisplay()
-
 	defer func() {
-		disp.Stop()
 		utils.CloseChannel(sigChan)
 	}()
 

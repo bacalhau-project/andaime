@@ -143,7 +143,7 @@ func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struc
 	}
 }
 
-func (p *AzureProvider) updateStatus(disp *display.Display) {
+func (p *AzureProvider) updateStatus() {
 	l := logger.Get()
 	allMachinesComplete := true
 	dep := GetGlobalDeployment()

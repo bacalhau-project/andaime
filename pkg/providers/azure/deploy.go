@@ -254,7 +254,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	l := logger.Get()
 	maxRetries := 3
 	deployment := GetGlobalDeployment()
-	disp := display.GetGlobalDisplay()
+	// disp := display.GetGlobalDisplay()
 
 	machineIndex := -1
 	for i, depMachine := range deployment.Machines {
