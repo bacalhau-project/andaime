@@ -8,6 +8,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 type DisplayColumn struct {
@@ -40,7 +41,10 @@ func InitialModel() *DisplayModel {
 }
 
 func (m *DisplayModel) Init() tea.Cmd {
-	return tickCmd()
+	return tea.Batch(
+		tickCmd(),
+		tea.ClearScreen,
+	)
 }
 
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -56,6 +60,17 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.TextBox = fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05"))
+		allFinished := true
+		for _, machine := range m.Deployment.Machines {
+			if machine.Status != "Successfully Deployed" && machine.Status != "Failed" {
+				allFinished = false
+				break
+			}
+		}
+		if allFinished {
+			m.Quitting = true
+			return m, tea.Quit
+		}
 		return m, tickCmd()
 	case models.StatusUpdateMsg:
 		m.Deployment.UpdateStatus(msg.Status)
@@ -127,10 +142,6 @@ func (m *DisplayModel) View() string {
 		"",
 		infoText,
 	)
-
-	if m.Quitting {
-		return output + "\n\nProgram exited. CLI is now available below.\n"
-	}
 
 	return output
 }
