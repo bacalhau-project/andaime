@@ -110,6 +110,8 @@ func Execute() error {
 		logger.Get().Errorf("Command execution failed: %v", err)
 		os.Exit(1)
 	}
+	cancel() // Ensure context is cancelled
+	logger.Get().Debug("Command execution completed")
 	return nil
 }
 

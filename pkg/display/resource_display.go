@@ -333,12 +333,24 @@ func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 
-	// Stop the application in the main goroutine
-	d.Logger.Debug("Stopping tview application")
-	if d.DisplayRunning {
-		d.App.Stop()
+	// Stop the application in a separate goroutine to avoid deadlock
+	go func() {
+		d.Logger.Debug("Stopping tview application")
+		if d.DisplayRunning {
+			d.App.QueueUpdateDraw(func() {
+				d.App.Stop()
+			})
+		}
+		d.Logger.Debug("tview application stop queued")
+	}()
+
+	// Wait for the application to stop with a timeout
+	select {
+	case <-time.After(5 * time.Second):
+		d.Logger.Warn("Timeout waiting for application to stop")
+	case <-d.Ctx.Done():
+		d.Logger.Debug("Application stop confirmed")
 	}
-	d.Logger.Debug("tview application stopped")
 
 	d.Logger.Debug("Closing all registered channels")
 	utils.CloseAllChannels()

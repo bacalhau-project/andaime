@@ -197,6 +197,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	select {
 	case <-ctx.Done():
 		l.Info("Deployment cancelled")
+		if disp != nil {
+			l.Debug("Stopping display")
+			disp.Stop()
+			l.Debug("Waiting for display to stop")
+			disp.WaitForStop()
+		}
 		return fmt.Errorf("deployment cancelled by user")
 	case err := <-deploymentErr:
 		if err != nil {
