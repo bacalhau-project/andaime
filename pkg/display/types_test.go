@@ -14,15 +14,17 @@ func TestUpdateStatus(t *testing.T) {
 	// Create a test status
 	testStatus := &models.Status{
 		ID:       "test1",
-		Type:     "test",
+		Type:     models.UpdateStatusResourceTypeVM,
 		Location: "us-west-2",
 		Status:   "Running",
 	}
 
 	// Update the status
-	model.Update(models.StatusUpdateMsg{Status: testStatus})
+	_, _ = model.Update(models.StatusUpdateMsg{Status: testStatus})
 
 	// Check if the status was updated correctly
 	assert.Len(t, model.Deployment.Machines, 1)
 	assert.Equal(t, testStatus.Status, model.Deployment.Machines[0].Status)
+	assert.Equal(t, testStatus.ID, model.Deployment.Machines[0].ID)
+	assert.Equal(t, testStatus.Location, model.Deployment.Machines[0].Location)
 }
