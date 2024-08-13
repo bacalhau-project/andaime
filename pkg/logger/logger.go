@@ -374,7 +374,7 @@ func GetLastLines(filepath string, n int) []string {
 		buf := make([]byte, 1024)
 		runtime.Stack(buf, false)
 		writeToDebugLog(fmt.Sprintf("Stack trace:\n%s", string(buf)))
-		return []string{"Error: filepath is empty"}
+		return make([]string, n) // Return an empty slice with length n
 	}
 
 	file, err := os.Open(filepath)
