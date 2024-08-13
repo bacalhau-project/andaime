@@ -349,9 +349,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			}
 
 			sshWaiter := sshutils.NewSSHWaiter(nil)
-			err := sshWaiter.WaitForSSH(sshConfig)
+			sshErr := sshWaiter.WaitForSSH(sshConfig)
 
-			if err != nil {
+			if sshErr != nil {
 				m.Deployment.Machines[machineIndex].Status = "Failed"
 				m.Deployment.Machines[machineIndex].SSH = false
 				prog.UpdateStatus(
@@ -359,7 +359,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 						ID:     machine.Name,
 						Type:   models.UpdateStatusResourceTypeVM,
 						Status: "Failed",
-						SSH:    "❌",
 					},
 				)
 			} else {
@@ -370,7 +369,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 						ID:     machine.Name,
 						Type:   models.UpdateStatusResourceTypeVM,
 						Status: "Successfully Deployed",
-						SSH:    "✅",
 					},
 				)
 			}
