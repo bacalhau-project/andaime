@@ -20,11 +20,16 @@ func TestUpdateStatus(t *testing.T) {
 	}
 
 	// Update the status
-	_, _ = model.Update(models.StatusUpdateMsg{Status: testStatus})
+	updatedModel, _ := model.Update(models.StatusUpdateMsg{Status: testStatus})
+
+	// Assert that the model was updated
+	updatedDisplayModel, ok := updatedModel.(*DisplayModel)
+	assert.True(t, ok, "Updated model should be of type *DisplayModel")
 
 	// Check if the status was updated correctly
-	assert.Len(t, model.Deployment.Machines, 1)
-	assert.Equal(t, testStatus.Status, model.Deployment.Machines[0].Status)
-	assert.Equal(t, testStatus.ID, model.Deployment.Machines[0].ID)
-	assert.Equal(t, testStatus.Location, model.Deployment.Machines[0].Location)
+	assert.Len(t, updatedDisplayModel.Deployment.Machines, 1)
+	assert.Equal(t, testStatus.Status, updatedDisplayModel.Deployment.Machines[0].Status)
+	assert.Equal(t, testStatus.ID, updatedDisplayModel.Deployment.Machines[0].ID)
+	assert.Equal(t, testStatus.Location, updatedDisplayModel.Deployment.Machines[0].Location)
+	assert.Equal(t, string(testStatus.Type), updatedDisplayModel.Deployment.Machines[0].Type)
 }

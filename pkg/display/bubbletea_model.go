@@ -72,10 +72,30 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tickCmd()
 	case models.StatusUpdateMsg:
-		m.Deployment.UpdateStatus(msg.Status)
+		m.updateStatus(msg.Status)
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m *DisplayModel) updateStatus(status *models.Status) {
+	found := false
+	for i, machine := range m.Deployment.Machines {
+		if machine.ID == status.ID {
+			m.Deployment.Machines[i].Status = status.Status
+			m.Deployment.Machines[i].Location = status.Location
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.Deployment.Machines = append(m.Deployment.Machines, models.Machine{
+			ID:       status.ID,
+			Type:     string(status.Type),
+			Location: status.Location,
+			Status:   status.Status,
+		})
+	}
 }
 
 func (m *DisplayModel) View() string {
