@@ -75,7 +75,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting executeCreateDeployment")
 
 	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
+	defer func() {
+		cancel()
+		l.Debug("Context cancelled in executeCreateDeployment")
+	}()
 
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
