@@ -455,7 +455,7 @@ func (p *AzureProvider) FinalizeDeployment(
 	table.Render()
 
 	fmt.Println("\nDeployment completed. Full list of deployed machines:")
-	fmt.Println(buf.String())
+	fmt.Print(buf.String())
 
 	// Ensure all configurations are saved
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
