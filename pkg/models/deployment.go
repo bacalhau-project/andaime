@@ -37,6 +37,7 @@ type Machine struct {
 	Orchestrator         bool
 	Docker               string
 	Bacalhau             string
+	SSH                  string
 	Progress             int
 	ProgressFinish       int
 }
