@@ -34,7 +34,7 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Pub IP", Width: 14},
 	{Title: "Priv IP", Width: 14},
 	{Title: "🤖", Width: 3},
-	{Title: "SSH", Width: 6},
+	{Title: "🔒", Width: 3},
 	{Title: "🐳", Width: 3},
 	{Title: "🐟", Width: 3},
 }
@@ -215,7 +215,7 @@ func (m *DisplayModel) View() string {
 			machine.PublicIP,
 			machine.PrivateIP,
 			orchString,
-			machine.SSH,
+			fmt.Sprintf("%t", machine.SSH),
 			machine.Docker,
 			machine.Bacalhau,
 		}
