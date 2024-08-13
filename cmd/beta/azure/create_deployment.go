@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/olekukonko/tablewriter"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -23,6 +22,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/olekukonko/tablewriter"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -48,7 +48,9 @@ func printFinalState(disp *display.Display) {
 
 func printFinalTable(deployment *models.Deployment) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Machine", "Status", "Public IP", "Private IP", "Location", "Elapsed Time"})
+	table.SetHeader(
+		[]string{"Machine", "Status", "Public IP", "Private IP", "Location", "Elapsed Time"},
+	)
 	table.SetBorder(false)
 
 	for _, machine := range deployment.Machines {
@@ -77,7 +79,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	isTest := os.Getenv("ANDAIME_TEST") == "true"
