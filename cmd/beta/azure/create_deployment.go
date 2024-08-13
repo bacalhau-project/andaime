@@ -125,10 +125,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 					l.Debug("Exiting user input handler due to error")
 					return
 				}
-				l.Debugf("Received user input: %c", char)
+				l.Debugf("Received user input: %c (ASCII: %d)", char, char)
 				if char == 'q' || char == 'Q' {
 					l.Info("User requested to quit. Cancelling deployment...")
 					cancel()
+					l.Debug("Cancel function called")
 					return
 				}
 			}
@@ -137,6 +138,13 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	} else {
 		l.Debug("User input handler not started (noDisplay or isTest)")
 	}
+
+	// Add a goroutine to check for context cancellation
+	go func() {
+		<-ctx.Done()
+		l.Info("Context cancelled. Stopping deployment...")
+		// You might want to add additional cleanup or stopping logic here
+	}()
 
 	// Handle context cancellation
 	go func() {
