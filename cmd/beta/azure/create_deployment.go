@@ -2,13 +2,16 @@
 package azure
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/olekukonko/tablewriter"
@@ -70,6 +73,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
+	// Set up signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		l.Info("Received interrupt signal. Cancelling deployment...")
+		cancel()
+	}()
+
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	if !noDisplay {
@@ -77,6 +89,23 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		defer func() {
 			disp.Stop()
 			disp.WaitForStop()
+		}()
+
+		// Add a goroutine to handle user input for quitting
+		go func() {
+			reader := bufio.NewReader(os.Stdin)
+			for {
+				char, _, err := reader.ReadRune()
+				if err != nil {
+					l.Error(fmt.Sprintf("Error reading input: %v", err))
+					continue
+				}
+				if char == 'q' || char == 'Q' {
+					l.Info("User requested to quit. Cancelling deployment...")
+					cancel()
+					return
+				}
+			}
 		}()
 	}
 
