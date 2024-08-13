@@ -224,7 +224,7 @@ func (m *DisplayModel) View() string {
 
 func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	return func() tea.Msg {
-		logLines := logger.GetLastLines(8)
+		logLines := logger.GetLastLines("", 8)
 		return logLinesMsg(logLines)
 	}
 }
