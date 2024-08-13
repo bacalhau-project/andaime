@@ -333,8 +333,11 @@ func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 
+	stopChan := make(chan struct{})
+
 	// Stop the application in a separate goroutine to avoid deadlock
 	go func() {
+		defer close(stopChan)
 		d.Logger.Debug("Stopping tview application")
 		if d.DisplayRunning {
 			d.App.QueueUpdateDraw(func() {
@@ -348,7 +351,7 @@ func (d *Display) Stop() {
 	select {
 	case <-time.After(5 * time.Second):
 		d.Logger.Warn("Timeout waiting for application to stop")
-	case <-d.Ctx.Done():
+	case <-stopChan:
 		d.Logger.Debug("Application stop confirmed")
 	}
 

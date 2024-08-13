@@ -153,6 +153,8 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Info("Cleanup completed")
 		l.Debug("Checking for open channels:")
 		utils.DebugOpenChannels()
+		l.Debug("Dumping goroutines:")
+		utils.DumpGoroutines()
 		l.Debug("Execution of executeCreateDeployment completed")
 	}()
 
