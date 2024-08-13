@@ -92,39 +92,38 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}()
 	}
 
-	// Handle both signal interrupts and user input in a single goroutine
+	// Handle signal interrupts
 	go func() {
-		inputChan := make(chan rune)
-		if !noDisplay && !isTest {
-			go func() {
-				reader := bufio.NewReader(os.Stdin)
-				for {
-					char, _, err := reader.ReadRune()
-					if err != nil {
-						l.Error(fmt.Sprintf("Error reading input: %v", err))
-						continue
-					}
-					inputChan <- char
-				}
-			}()
-		}
+		<-sigChan
+		l.Info("Received interrupt signal. Cancelling deployment...")
+		cancel()
+	}()
 
-		for {
-			select {
-			case <-sigChan:
-				l.Info("Received interrupt signal. Cancelling deployment...")
-				cancel()
-				return
-			case char := <-inputChan:
+	// Handle user input for quitting
+	if !noDisplay && !isTest {
+		go func() {
+			reader := bufio.NewReader(os.Stdin)
+			for {
+				char, _, err := reader.ReadRune()
+				if err != nil {
+					if err != io.EOF {
+						l.Error(fmt.Sprintf("Error reading input: %v", err))
+					}
+					return
+				}
 				if char == 'q' || char == 'Q' {
 					l.Info("User requested to quit. Cancelling deployment...")
 					cancel()
 					return
 				}
-			case <-ctx.Done():
-				return
 			}
-		}
+		}()
+	}
+
+	// Handle context cancellation
+	go func() {
+		<-ctx.Done()
+		l.Info("Context cancelled. Stopping deployment...")
 	}()
 
 	defer func() {
