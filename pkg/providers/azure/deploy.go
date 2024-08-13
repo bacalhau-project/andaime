@@ -268,7 +268,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		return fmt.Errorf("machine %s not found in deployment", machine.ID)
 	}
 
-	disp.UpdateStatus(
+	display.UpdateStatus(
 		&models.Status{
 			ID:     machine.Name,
 			Status: CreateStateMessage("VM", StateProvisioning, machine.Name),
@@ -546,7 +546,7 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	)
 
 	for _, machine := range deployment.Machines {
-		disp.UpdateStatus(
+		display.UpdateStatus(
 			&models.Status{
 				ID:   machine.Name,
 				Type: "VM",
