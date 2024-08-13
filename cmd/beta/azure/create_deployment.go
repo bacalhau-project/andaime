@@ -84,7 +84,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
+	isTest := os.Getenv("ANDAIME_TEST") == "true"
+
 	if !noDisplay {
+		if isTest {
+			disp.Visible = false
+		}
 		go disp.Start()
 		defer func() {
 			disp.Stop()
@@ -92,21 +97,23 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}()
 
 		// Add a goroutine to handle user input for quitting
-		go func() {
-			reader := bufio.NewReader(os.Stdin)
-			for {
-				char, _, err := reader.ReadRune()
-				if err != nil {
-					l.Error(fmt.Sprintf("Error reading input: %v", err))
-					continue
+		if !isTest {
+			go func() {
+				reader := bufio.NewReader(os.Stdin)
+				for {
+					char, _, err := reader.ReadRune()
+					if err != nil {
+						l.Error(fmt.Sprintf("Error reading input: %v", err))
+						continue
+					}
+					if char == 'q' || char == 'Q' {
+						l.Info("User requested to quit. Cancelling deployment...")
+						cancel()
+						return
+					}
 				}
-				if char == 'q' || char == 'Q' {
-					l.Info("User requested to quit. Cancelling deployment...")
-					cancel()
-					return
-				}
-			}
-		}()
+			}()
+		}
 	}
 
 	defer func() {
