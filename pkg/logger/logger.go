@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/rivo/tview"
 	"github.com/spf13/viper"
 )
 
@@ -45,18 +44,6 @@ type Logger struct {
 
 func (l *Logger) SetVerbose(verbose bool) {
 	l.verbose = verbose
-}
-
-type LogBoxWriter struct {
-	LogBox *tview.TextView
-	App    *tview.Application
-}
-
-func (w *LogBoxWriter) Write(p []byte) (n int, err error) {
-	w.App.QueueUpdateDraw(func() {
-		_, err = w.LogBox.Write(p)
-	})
-	return len(p), err
 }
 
 func InitLoggerOutputs() {
@@ -107,7 +94,7 @@ func InitProduction() {
 		if logPath != "" {
 			GlobalLogPath = logPath
 		}
-		
+
 		// Prioritize LOG_LEVEL environment variable
 		envLogLevel := os.Getenv("LOG_LEVEL")
 		if envLogLevel != "" {
