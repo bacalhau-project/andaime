@@ -275,6 +275,11 @@ func (d *Display) padText(text string, width int) string {
 
 func (d *Display) Start() {
 	d.Logger.Debug("Starting display")
+	if !d.Visible {
+		d.Logger.Debug("Display is not visible, skipping start")
+		return
+	}
+
 	d.Table.SetTitle("Deployment Status").
 		SetBorder(true).
 		SetBorderColor(tcell.ColorWhite).

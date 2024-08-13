@@ -111,6 +111,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Debug("Signal interrupt handler started")
 
 	// Handle user input for quitting
+	// Set up signal handling for Ctrl-C
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		l.Info("Interrupt received, cancelling deployment...")
+		cancel()
+	}()
+
 	if !noDisplay && !isTest {
 		go func() {
 			l.Debug("Starting user input handler")

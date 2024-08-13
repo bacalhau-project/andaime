@@ -51,6 +51,17 @@ func Execute() error {
 	logger.InitProduction()
 	initConfig()
 
+	// Set up signal handling
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		<-c
+		logger.Get().Info("Interrupt received, cancelling execution...")
+		cancel()
+	}()
+
 	// Set up panic handling
 	defer func() {
 		if r := recover(); r != nil {
@@ -89,7 +100,9 @@ func Execute() error {
 		}
 	}()
 
-	err := SetupRootCommand().Execute()
+	rootCmd := SetupRootCommand()
+	rootCmd.SetContext(ctx)
+	err := rootCmd.Execute()
 	if err != nil {
 		logger.Get().Errorf("Command execution failed: %v", err)
 	}

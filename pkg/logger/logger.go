@@ -107,8 +107,11 @@ func InitProduction() {
 		if logPath != "" {
 			GlobalLogPath = logPath
 		}
-		if os.Getenv("LOG_LEVEL") != "" {
-			GlobalLogLevel = os.Getenv("LOG_LEVEL")
+		
+		// Prioritize LOG_LEVEL environment variable
+		envLogLevel := os.Getenv("LOG_LEVEL")
+		if envLogLevel != "" {
+			GlobalLogLevel = envLogLevel
 		} else {
 			logLevelString := viper.GetString("general.log_level")
 			if logLevelString != "" {
