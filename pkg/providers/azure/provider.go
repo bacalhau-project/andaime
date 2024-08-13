@@ -106,7 +106,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 	for {
 		select {
 		case <-resourceTicker.C:
-			if err := p.PollAndUpdateResources(ctx); err != nil {
+			if err, _ := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
 		case <-ctx.Done():
@@ -124,65 +124,6 @@ func (p *AzureProvider) GetResources(
 	return p.Client.GetResources(ctx, resourceGroupName)
 }
 
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
-	l := logger.Get()
-
-	resources, err := p.Client.GetResources(ctx, p.Deployment.ResourceGroupName)
-	if err != nil {
-		return err
-	}
-
-	for _, resource := range resources {
-		r := resource.(map[string]interface{})
-		name := r["name"].(string)
-		resourceType := r["type"].(string)
-		provisioningState := r["properties"].(map[string]interface{})["provisioningState"].(string)
-
-		status := &models.Status{
-			ID:             name,
-			Type:           models.UpdateStatusResourceType(resourceType),
-			Status:         provisioningState,
-			DetailedStatus: provisioningState,
-		}
-
-		switch resourceType {
-		case "Microsoft.Network/networkSecurityGroups", "Microsoft.Network/securityRules":
-			for _, machine := range p.Deployment.Machines {
-				if strings.HasPrefix(name, machine.Location) {
-					status.ID = machine.Name
-					p.Deployment.UpdateStatus(status)
-				}
-			}
-		case "Microsoft.Network/publicIPAddresses", "Microsoft.Compute/disks", "Microsoft.Network/networkInterfaces":
-			for i, machine := range p.Deployment.Machines {
-				if strings.HasPrefix(name, machine.Name) {
-					status.ID = machine.Name
-					p.Deployment.UpdateStatus(status)
-					if resourceType == "Microsoft.Network/publicIPAddresses" && provisioningState == "Succeeded" {
-						publicIP, err := p.Client.GetPublicIPAddress(ctx, p.Deployment.ResourceGroupName, name)
-						if err == nil && publicIP != nil && publicIP.IPAddress != nil {
-							p.Deployment.Machines[i].PublicIP = *publicIP.IPAddress
-						} else {
-							l.Errorf("Failed to get public IP address: %v", err)
-						}
-					}
-				}
-			}
-		case "Microsoft.Compute/virtualMachines":
-			for i, machine := range p.Deployment.Machines {
-				if name == machine.Name {
-					status.ID = machine.Name
-					p.Deployment.UpdateStatus(status)
-					p.Deployment.Machines[i].Status = provisioningState
-					p.Deployment.Machines[i].DetailedStatus = provisioningState
-				}
-			}
-		default:
-			p.Deployment.UpdateStatus(status)
-		}
-	}
-
-	return nil
-}
+// PollAndUpdateResources is now defined in pkg/providers/azure/deploy.go
 
 var _ AzureProviderer = &AzureProvider{}
