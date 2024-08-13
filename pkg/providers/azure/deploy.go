@@ -64,15 +64,10 @@ func UpdateGlobalDeploymentKeyValue(key string, value interface{}) {
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
-	deployment := GetGlobalDeployment()
+	deployment := p.GetDeployment()
 
 	// Set the start time for the deployment
-	UpdateGlobalDeploymentKeyValue("StartTime", time.Now())
-
-	// Ensure we have a deployment object
-	if deployment == nil {
-		return fmt.Errorf("global deployment object is not initialized")
-	}
+	deployment.StartTime = time.Now()
 
 	// Ensure we have a location set
 	if deployment.ResourceGroupLocation == "" {
@@ -104,7 +99,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return err
 	}
 
-	if err := GetGlobalDeployment().UpdateViperConfig(); err != nil {
+	if err := deployment.UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
