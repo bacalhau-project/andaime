@@ -35,6 +35,10 @@ type Machine struct {
 	StartTime            time.Time
 	ElapsedTime          time.Duration
 	Orchestrator         bool
+	Docker               string
+	Bacalhau             string
+	Progress             int
+	ProgressFinish       int
 }
 
 type Parameters struct {
