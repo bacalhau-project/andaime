@@ -3,6 +3,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -41,6 +42,15 @@ func NewAzureProvider() (AzureProviderer, error) {
 
 	if !config.IsSet("azure.subscription_id") {
 		return nil, fmt.Errorf("azure.subscription_id is required")
+	}
+
+	// Check for SSH key
+	sshPublicKeyPath := config.GetString("azure.ssh_public_key_path")
+	if sshPublicKeyPath == "" {
+		return nil, fmt.Errorf("azure.ssh_public_key_path is required")
+	}
+	if _, err := os.Stat(sshPublicKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("SSH public key file does not exist: %s", sshPublicKeyPath)
 	}
 
 	subscriptionID := config.GetString("azure.subscription_id")
