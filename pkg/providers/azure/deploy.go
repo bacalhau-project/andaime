@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -20,57 +19,20 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-var (
-	globalDeployment     *models.Deployment
-	deploymentMutex      sync.RWMutex
-	ipRetries            = 5
-	timeBetweenIPRetries = 10 * time.Second
-)
-
-func GetGlobalDeployment() *models.Deployment {
-	deploymentMutex.RLock()
-	defer deploymentMutex.RUnlock()
-	if globalDeployment == nil {
-		globalDeployment = &models.Deployment{}
-	}
-	return globalDeployment
-}
-
-func SetGlobalDeployment(deployment *models.Deployment) {
-	deploymentMutex.Lock()
-	globalDeployment = deployment
-	deploymentMutex.Unlock()
-}
-
-func UpdateGlobalDeployment(updateFunc func(*models.Deployment)) {
-	deploymentMutex.Lock()
-	defer deploymentMutex.Unlock()
-	if globalDeployment == nil {
-		globalDeployment = &models.Deployment{}
-	}
-	updateFunc(globalDeployment)
-}
-
-func UpdateGlobalDeploymentKeyValue(key string, value interface{}) {
-	deploymentMutex.Lock()
-	defer deploymentMutex.Unlock()
-	if globalDeployment == nil {
-		globalDeployment = &models.Deployment{}
-	}
-	reflect.ValueOf(globalDeployment).Elem().FieldByName(key).Set(reflect.ValueOf(value))
-}
+const ipRetries = 3
+const timeBetweenIPRetries = 10 * time.Second
 
 // DeployResources deploys Azure resources based on the provided configuration.
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
-	deployment := p.GetDeployment()
+	m := display.GetGlobalModel()
 
 	// Set the start time for the deployment
-	deployment.StartTime = time.Now()
+	m.Deployment.StartTime = time.Now()
 
 	// Ensure we have a location set
-	if deployment.ResourceGroupLocation == "" {
+	if m.Deployment.ResourceGroupLocation == "" {
 		return fmt.Errorf("no resource group location specified")
 	}
 
@@ -89,7 +51,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
 
-	if err := deployment.UpdateViperConfig(); err != nil {
+	if err := m.Deployment.UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
@@ -99,7 +61,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return err
 	}
 
-	if err := deployment.UpdateViperConfig(); err != nil {
+	if err := m.Deployment.UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
@@ -113,14 +75,16 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
+	prog := display.GetGlobalProgram()
+	m := display.GetGlobalModel()
 	// Remove the state machine reference
 
-	l.Debugf("Deploying template for deployment: %v", GetGlobalDeployment())
+	l.Debugf("Deploying template for deployment: %v", m.Deployment)
 
 	tags := utils.EnsureAzureTags(
-		GetGlobalDeployment().Tags,
-		GetGlobalDeployment().ProjectID,
-		GetGlobalDeployment().UniqueID,
+		m.Deployment.Tags,
+		m.Deployment.ProjectID,
+		m.Deployment.UniqueID,
 	)
 
 	// Create wait group
@@ -129,7 +93,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	// Run maximum 5 deployments at a time
 	sem := make(chan struct{}, globals.MaximumSimultaneousDeployments)
 
-	for _, machine := range GetGlobalDeployment().Machines {
+	for _, machine := range m.Deployment.Machines {
 		internalMachine := machine
 
 		sem <- struct{}{}
@@ -144,9 +108,9 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 			err := p.deployMachine(ctx, goRoutineMachine, tags)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
-				UpdateStatus(
+				prog.UpdateStatus(
 					&models.Status{
-						ID:     goRoutineMachine.Name,
+						Name:   goRoutineMachine.Name,
 						Type:   models.UpdateStatusResourceTypeVM,
 						Status: "Failed",
 					},
@@ -166,9 +130,10 @@ func (p *AzureProvider) deployMachine(
 	machine *models.Machine,
 	tags map[string]*string,
 ) error {
-	UpdateStatus(
+	prog := display.GetGlobalProgram()
+	prog.UpdateStatus(
 		&models.Status{
-			ID:     machine.Name,
+			Name:   machine.Name,
 			Type:   models.UpdateStatusResourceTypeVM,
 			Status: "Provisioning",
 		},
@@ -212,12 +177,12 @@ func (p *AzureProvider) getAndPrepareTemplate() (map[string]interface{}, error) 
 func (p *AzureProvider) prepareDeploymentParams(
 	machine *models.Machine,
 ) map[string]interface{} {
-	deployment := GetGlobalDeployment()
+	m := display.GetGlobalModel()
 	return map[string]interface{}{
 		"vmName":             fmt.Sprintf("%s-vm", machine.ID),
 		"adminUsername":      "azureuser",
 		"authenticationType": "sshPublicKey",
-		"adminPasswordOrKey": deployment.SSHPublicKeyMaterial,
+		"adminPasswordOrKey": m.Deployment.SSHPublicKeyMaterial,
 		"dnsLabelPrefix": fmt.Sprintf(
 			"vm-%s-%s",
 			strings.ToLower(machine.ID),
@@ -242,11 +207,11 @@ func (p *AzureProvider) deployTemplateWithRetry(
 ) error {
 	l := logger.Get()
 	maxRetries := 3
-	deployment := GetGlobalDeployment()
-	// disp := display.GetGlobalDisplay()
+	prog := display.GetGlobalProgram()
+	m := display.GetGlobalModel()
 
 	machineIndex := -1
-	for i, depMachine := range deployment.Machines {
+	for i, depMachine := range m.Deployment.Machines {
 		if depMachine.ID == machine.ID {
 			machineIndex = i
 			break
@@ -257,9 +222,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		return fmt.Errorf("machine %s not found in deployment", machine.ID)
 	}
 
-	display.UpdateStatus(
+	prog.UpdateStatus(
 		&models.Status{
-			ID:     machine.Name,
+			Name:   machine.Name,
 			Status: models.CreateStateMessage("VM", models.StatusCreating, machine.Name),
 		},
 	)
@@ -268,7 +233,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	for retry := 0; retry < maxRetries; retry++ {
 		poller, err := p.Client.DeployTemplate(
 			ctx,
-			deployment.ResourceGroupName,
+			m.Deployment.ResourceGroupName,
 			fmt.Sprintf("deployment-%s", machine.Name),
 			vmTemplate,
 			params,
@@ -304,9 +269,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 					utils.GenerateUniqueID()[:6],
 				),
 			}
-			display.UpdateStatus(
+			prog.UpdateStatus(
 				&models.Status{
-					ID:     machine.Name,
+					Name:   machine.Name,
 					Type:   models.UpdateStatusResourceTypeVM,
 					Status: fmt.Sprintf("DNS Conflict - Retrying... %d/%d", retry+1, maxRetries),
 				},
@@ -314,9 +279,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			dnsFailed = true
 			continue
 		} else if err != nil {
-			UpdateStatus(
+			prog.UpdateStatus(
 				&models.Status{
-					ID:     machine.Name,
+					Name:   machine.Name,
 					Type:   models.UpdateStatusResourceTypeVM,
 					Status: fmt.Sprintf("Failed: %v", err),
 				},
@@ -330,27 +295,27 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	if dnsFailed {
-		display.UpdateStatus(
+		prog.UpdateStatus(
 			&models.Status{
-				ID:     machine.Name,
+				Name:   machine.Name,
 				Type:   models.UpdateStatusResourceTypeVM,
 				Status: "Failed to deploy due to DNS conflict.",
 			},
 		)
-		deployment.Machines[machineIndex].Status = "Failed to deploy due to DNS conflict"
+		m.Deployment.Machines[machineIndex].Status = "Failed to deploy due to DNS conflict"
 	} else {
 		for i := 0; i < ipRetries; i++ {
-			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, deployment.ResourceGroupName, machine.Name)
+			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, m.Deployment.ResourceGroupName, machine.Name)
 			if err != nil {
 				if i == ipRetries-1 {
 					l.Errorf("Failed to get IP addresses for VM %s after %d retries: %v", machine.Name, ipRetries, err)
-					deployment.Machines[machineIndex].Status = "Failed to get IP addresses"
+					m.Deployment.Machines[machineIndex].Status = "Failed to get IP addresses"
 					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
 				}
 				time.Sleep(timeBetweenIPRetries)
-				display.UpdateStatus(
+				prog.UpdateStatus(
 					&models.Status{
-						ID:        machine.Name,
+						Name:      machine.Name,
 						Type:      models.UpdateStatusResourceTypeVM,
 						Status:    "Waiting for IP addresses",
 						PublicIP:  fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
@@ -360,37 +325,34 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				continue
 			}
 
-			deployment.Machines[machineIndex].PublicIP = publicIP
-			deployment.Machines[machineIndex].PrivateIP = privateIP
-			deployment.Machines[machineIndex].Status = "Successfully Deployed"
-			if deployment.Machines[machineIndex].ElapsedTime == 0 {
-				deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
+			m.Deployment.Machines[machineIndex].PublicIP = publicIP
+			m.Deployment.Machines[machineIndex].PrivateIP = privateIP
+			m.Deployment.Machines[machineIndex].Status = "Successfully Deployed"
+			if m.Deployment.Machines[machineIndex].ElapsedTime == 0 {
+				m.Deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
 			}
-			display.UpdateStatus(
+			prog.UpdateStatus(
 				&models.Status{
 					ID:          machine.Name,
 					Type:        models.UpdateStatusResourceTypeVM,
 					Status:      "Successfully Deployed",
 					PublicIP:    publicIP,
 					PrivateIP:   privateIP,
-					ElapsedTime: deployment.Machines[machineIndex].ElapsedTime,
+					ElapsedTime: m.Deployment.Machines[machineIndex].ElapsedTime,
 				},
 			)
 			break
 		}
 	}
 
-	// Update the global deployment
-	SetGlobalDeployment(deployment)
-
 	return nil
 }
 
 func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
-	deployment := GetGlobalDeployment()
+	m := display.GetGlobalModel()
 	resources, err := p.Client.GetResources(
 		ctx,
-		deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupName,
 	)
 	if err != nil {
 		return nil, err
@@ -406,7 +368,7 @@ func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,
 ) error {
 	l := logger.Get()
-	deployment := GetGlobalDeployment()
+	m := display.GetGlobalModel()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
@@ -420,9 +382,9 @@ func (p *AzureProvider) FinalizeDeployment(
 	// Print summary of deployed resources
 	summaryMsg := fmt.Sprintf(
 		"\nDeployment Summary for Resource Group: %s\n",
-		deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupName,
 	)
-	summaryMsg += fmt.Sprintf("Location: %s\n", deployment.ResourceGroupLocation)
+	summaryMsg += fmt.Sprintf("Location: %s\n", m.Deployment.ResourceGroupLocation)
 	l.Info(summaryMsg)
 
 	table := tablewriter.NewWriter(os.Stdout)
@@ -440,12 +402,12 @@ func (p *AzureProvider) FinalizeDeployment(
 		},
 	)
 
-	startTime := deployment.StartTime
+	startTime := m.Deployment.StartTime
 	if startTime.IsZero() {
 		startTime = time.Now() // Fallback if start time wasn't set
 	}
 
-	for _, machine := range deployment.Machines {
+	for _, machine := range m.Deployment.Machines {
 		publicIP := machine.PublicIP
 		privateIP := machine.PrivateIP
 		if publicIP == "" {
@@ -475,7 +437,7 @@ func (p *AzureProvider) FinalizeDeployment(
 	table.Render()
 
 	// Ensure all configurations are saved
-	if err := deployment.UpdateViperConfig(); err != nil {
+	if err := m.Deployment.UpdateViperConfig(); err != nil {
 		l.Errorf("Failed to save final configuration: %v", err)
 		return fmt.Errorf("failed to save final configuration: %w", err)
 	}
@@ -502,24 +464,25 @@ func (p *AzureProvider) FinalizeDeployment(
 // 5. Updates the global deployment object with the finalized resource group information.
 func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	l := logger.Get()
-	deployment := GetGlobalDeployment()
+	prog := display.GetGlobalProgram()
+	m := display.GetGlobalModel()
 
-	if deployment == nil {
+	if m.Deployment == nil {
 		return fmt.Errorf("global deployment object is not initialized")
 	}
 
 	// Check if the resource group name already contains a timestamp
-	if deployment.ResourceGroupName == "" {
-		deployment.ResourceGroupName = "andaime-rg"
+	if m.Deployment.ResourceGroupName == "" {
+		m.Deployment.ResourceGroupName = "andaime-rg"
 	}
-	newRGName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	UpdateGlobalDeploymentKeyValue("ResourceGroupName", newRGName)
+	newRGName := m.Deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
+	m.Deployment.ResourceGroupName = newRGName
 
 	var resourceGroupLocation string
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
-		if len(deployment.Machines) > 0 {
-			resourceGroupLocation = deployment.Machines[0].Location
+		if len(m.Deployment.Machines) > 0 {
+			resourceGroupLocation = m.Deployment.Machines[0].Location
 		}
 		if resourceGroupLocation == "" {
 			return fmt.Errorf(
@@ -527,18 +490,18 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 			)
 		}
 	}
-	UpdateGlobalDeploymentKeyValue("ResourceGroupLocation", resourceGroupLocation)
+	m.Deployment.ResourceGroupLocation = resourceGroupLocation
 
 	l.Debugf(
 		"Creating Resource Group - %s in location %s",
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation,
+		m.Deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupLocation,
 	)
 
-	for _, machine := range deployment.Machines {
-		UpdateStatus(
+	for _, machine := range m.Deployment.Machines {
+		prog.UpdateStatus(
 			&models.Status{
-				ID:     machine.Name,
+				Name:   machine.Name,
 				Type:   models.UpdateStatusResourceTypeVM,
 				Status: "Provisioning",
 			},
@@ -547,19 +510,19 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	_, err := p.Client.GetOrCreateResourceGroup(
 		ctx,
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation,
-		deployment.Tags,
+		m.Deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to create Resource Group - %s: %v", deployment.ResourceGroupName, err)
+		l.Errorf("Failed to create Resource Group - %s: %v", m.Deployment.ResourceGroupName, err)
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
-	for _, machine := range deployment.Machines {
-		display.UpdateStatus(
+	for _, machine := range m.Deployment.Machines {
+		prog.UpdateStatus(
 			&models.Status{
-				ID:   machine.Name,
+				Name: machine.Name,
 				Type: models.UpdateStatusResourceTypeVM,
 				Status: models.CreateStateMessage(
 					models.UpdateStatusResourceTypeVM,
@@ -572,8 +535,8 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	l.Debugf(
 		"Created Resource Group - %s in location %s",
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation,
+		m.Deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupLocation,
 	)
 
 	return nil
