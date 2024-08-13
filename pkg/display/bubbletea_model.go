@@ -33,10 +33,10 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 12},
 	{Title: "Pub IP", Width: 14},
 	{Title: "Priv IP", Width: 14},
-	{Title: "Orch.", Width: 5},
+	{Title: "🤖", Width: 3},
 	{Title: "SSH", Width: 6},
-	{Title: "Docker", Width: 6},
-	{Title: "Bac.", Width: 8},
+	{Title: "🐳", Width: 3},
+	{Title: "🐟", Width: 3},
 }
 
 type DisplayModel struct {
@@ -215,6 +215,7 @@ func (m *DisplayModel) View() string {
 			machine.PublicIP,
 			machine.PrivateIP,
 			orchString,
+			machine.SSH,
 			machine.Docker,
 			machine.Bacalhau,
 		}
