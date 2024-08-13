@@ -3,116 +3,62 @@ package display
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/charmbracelet/lipgloss"
 )
 
-const NumberOfCyclesToHighlight = 8
-const HighlightTimer = 250 * time.Millisecond
-const HighlightColor = tcell.ColorDarkGreen
-const TextColor = tcell.ColorWhite
-const timeoutDuration = 5 * time.Second
-const updateTimeoutDuration = 30 * time.Second
-const displayStopTimeout = 10 * time.Second
-const timeBetweenDisplayTicks = 100 * time.Millisecond
-const textColumnPadding = 2
-const MaxLogLines = 8
+const (
+	timeoutDuration         = 5 * time.Second
+	updateTimeoutDuration   = 30 * time.Second
+	displayStopTimeout      = 10 * time.Second
+	timeBetweenDisplayTicks = 100 * time.Millisecond
+	MaxLogLines             = 8
+)
 
-const RelativeSizeForTable = 5
-const RelativeSizeForLogBox = 1
-
-const tableSize = 0
-const tableProportion = 3
-const logBoxSize = 12
-const logBoxProportion = 1
-
-func NewDisplay() *Display {
-	ctx, cancel := context.WithCancel(context.Background())
-	d := &Display{
-		Statuses: make(map[string]*models.Status),
-		App:      tview.NewApplication(),
-		Table:    tview.NewTable().SetBorders(true),
-		LogBox:   tview.NewTextView().SetDynamicColors(true),
-		Ctx:      ctx,
-		Cancel:   cancel,
-		Logger:   logger.Get(),
-		Visible:  true,
-	}
-
-	d.LogBox.SetBorder(true).
-		SetBorderColor(tcell.ColorWhite).
-		SetTitle("Log").
-		SetTitleColor(tcell.ColorWhite)
-	d.setupLayout()
-
-	return d
+type Display struct {
+	Statuses       map[string]*models.Status
+	StatusesMu     sync.RWMutex
+	Ctx            context.Context
+	Cancel         context.CancelFunc
+	Logger         *logger.Logger
+	Visible        bool
+	DisplayRunning bool
+	LastTableState [][]string
 }
 
 type DisplayColumn struct {
-	Text         string
-	Width        int
-	Color        tcell.Color
-	Align        int
-	PaddingLeft  int
-	PaddingRight int
-	DataFunc     func(status models.Status) string
+	Text     string
+	Width    int
+	DataFunc func(status models.Status) string
 }
 
-//nolint:gomnd
 var DisplayColumns = []DisplayColumn{
-	{
-		Text:     "ID",
-		Width:    13,
-		Color:    TextColor,
-		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return status.ID },
-	},
-	{
-		Text:     "Type",
-		Width:    8,
-		Color:    TextColor,
-		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return string(status.Type) },
-	},
-	{
-		Text:     "Location",
-		Width:    12,
-		Color:    TextColor,
-		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return status.Location },
-	},
-	{
-		Text:     "Status",
-		Width:    44,
-		Align:    tview.AlignLeft,
-		Color:    TextColor,
-		DataFunc: func(status models.Status) string { return " " + status.Status }},
+	{Text: "ID", Width: 13, DataFunc: func(status models.Status) string { return status.ID }},
+	{Text: "Type", Width: 8, DataFunc: func(status models.Status) string { return string(status.Type) }},
+	{Text: "Location", Width: 12, DataFunc: func(status models.Status) string { return status.Location }},
+	{Text: "Status", Width: 44, DataFunc: func(status models.Status) string { return status.Status }},
 	{
 		Text:  "Time",
 		Width: 10,
-		Color: TextColor,
-		Align: tview.AlignCenter,
 		DataFunc: func(status models.Status) string {
 			elapsedTime := status.ElapsedTime
 			if elapsedTime == 0 {
 				elapsedTime = time.Since(status.StartTime)
 			}
-
-			// Format the elapsed time
 			minutes := int(elapsedTime.Minutes())
 			seconds := float64(elapsedTime.Milliseconds()%60000) / 1000.0
-
 			if minutes < 1 && seconds < 10 {
 				return fmt.Sprintf("%1.1fs", seconds)
 			} else if minutes < 1 {
@@ -121,158 +67,47 @@ var DisplayColumns = []DisplayColumn{
 			return fmt.Sprintf("%dm%01.1fs", minutes, seconds)
 		},
 	},
-	{
-		Text:     "Public IP",
-		Width:    15,
-		Color:    TextColor,
-		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return status.PublicIP }},
-	{
-		Text:     "Private IP",
-		Width:    15,
-		Color:    TextColor,
-		Align:    tview.AlignCenter,
-		DataFunc: func(status models.Status) string { return status.PrivateIP }},
+	{Text: "Public IP", Width: 15, DataFunc: func(status models.Status) string { return status.PublicIP }},
+	{Text: "Private IP", Width: 15, DataFunc: func(status models.Status) string { return status.PrivateIP }},
 }
 
-func (d *Display) setupLayout() {
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(d.Table, tableSize, tableProportion, true).
-		AddItem(d.LogBox, logBoxSize, logBoxProportion, false)
-
-	d.App.SetRoot(flex, true).EnableMouse(false)
+func NewDisplay() *Display {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Display{
+		Statuses: make(map[string]*models.Status),
+		Ctx:      ctx,
+		Cancel:   cancel,
+		Logger:   logger.Get(),
+		Visible:  true,
+	}
 }
 
 func (d *Display) UpdateStatus(newStatus *models.Status) {
-	l := logger.Get()
-
 	if d == nil || newStatus == nil {
-		l.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, newStatus)
+		d.Logger.Infof("Invalid state in UpdateStatus: d=%v, status=%v", d, newStatus)
 		return
 	}
 
-	// l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
+	d.StatusesMu.Lock()
+	defer d.StatusesMu.Unlock()
+	if d.Statuses == nil {
+		d.Statuses = make(map[string]*models.Status)
+	}
 
-	// Execute this in a function to avoid deadlocks
-	func() {
-		d.StatusesMu.Lock()
-		defer d.StatusesMu.Unlock()
-		if d.Statuses == nil {
-			d.Statuses = make(map[string]*models.Status)
-		}
+	if _, exists := d.Statuses[newStatus.ID]; !exists {
+		d.Statuses[newStatus.ID] = newStatus
+	} else {
+		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
+	}
 
-		if _, exists := d.Statuses[newStatus.ID]; !exists {
-			// l.Debugf("New status added: %s", newStatus.ID)
-			d.Statuses[newStatus.ID] = newStatus
-		} else {
-			// l.Debugf("Status updated: %s", newStatus.ID)
-			d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
-		}
-	}()
-
-	// These calls are now outside the lock
-	d.displayResourceProgress(newStatus)
 	if d.Visible {
 		d.updateDisplay()
 	}
 }
 
-func (d *Display) getHighlightColor(cycles int) tcell.Color {
-	if cycles <= 0 {
-		return tcell.ColorDefault
-	}
-
-	// Convert HighlightColor to RGB
-	baseR, baseG, baseB := HighlightColor.RGB()
-
-	// End with white
-	targetR, targetG, targetB := tcell.ColorWhite.RGB()
-
-	stepR := float64(targetR-baseR) / float64(d.FadeSteps)
-	stepG := float64(targetG-baseG) / float64(d.FadeSteps)
-	stepB := float64(targetB-baseB) / float64(d.FadeSteps)
-
-	fadeProgress := d.FadeSteps - cycles
-	r := uint8(float64(baseR) + stepR*float64(fadeProgress))
-	g := uint8(float64(baseG) + stepG*float64(fadeProgress))
-	b := uint8(float64(baseB) + stepB*float64(fadeProgress))
-
-	return tcell.NewRGBColor(int32(r), int32(g), int32(b))
-}
-
 func (d *Display) GetTableString() string {
-	var tableContent strings.Builder
-	tableContent.WriteString(d.getTableHeader())
-	if len(d.LastTableState) > 1 {
-		for _, row := range d.LastTableState[1:] {
-			tableContent.WriteString(d.getTableRow(row))
-		}
-	}
-	tableContent.WriteString(d.getTableFooter())
-	return tableContent.String()
-}
-
-func (d *Display) getTableRow(row []string) string {
-	var rowContent strings.Builder
-	rowContent.WriteString("│")
-	for col, cell := range row {
-		paddedText := d.padText(cell, DisplayColumns[col].Width)
-		rowContent.WriteString(fmt.Sprintf(" %s │", paddedText))
-	}
-	rowContent.WriteString("\n")
-	return rowContent.String()
-}
-
-func (d *Display) getTableHeader() string {
-	var header strings.Builder
-	header.WriteString("┌")
-	for i, column := range DisplayColumns {
-		header.WriteString(strings.Repeat("─", column.Width+textColumnPadding))
-		if i < len(DisplayColumns)-1 {
-			header.WriteString("┬")
-		}
-	}
-	header.WriteString("┐\n")
-
-	header.WriteString("│")
-	for _, column := range DisplayColumns {
-		header.WriteString(fmt.Sprintf(" %-*s │", column.Width, column.Text))
-	}
-	header.WriteString("\n")
-
-	header.WriteString("├")
-	for i, column := range DisplayColumns {
-		header.WriteString(strings.Repeat("─", column.Width+textColumnPadding))
-		if i < len(DisplayColumns)-1 {
-			header.WriteString("┼")
-		}
-	}
-	header.WriteString("┤\n")
-
-	return header.String()
-}
-
-func (d *Display) getTableFooter() string {
-	var footer strings.Builder
-	footer.WriteString("└")
-	for i, column := range DisplayColumns {
-		footer.WriteString(strings.Repeat("─", column.Width+textColumnPadding))
-		if i < len(DisplayColumns)-1 {
-			footer.WriteString("┴")
-		}
-	}
-	footer.WriteString("┘\n")
-	return footer.String()
-}
-
-func (d *Display) padText(text string, width int) string {
-	if len(text) >= width {
-		return text[:width]
-	}
-	padding := width - len(text)
-	leftPadding := padding / 2 //nolint:gomnd
-	rightPadding := padding - leftPadding
-	return strings.Repeat(" ", leftPadding) + text + strings.Repeat(" ", rightPadding)
+	table := d.renderTable()
+	return table.Render()
 }
 
 func (d *Display) Start() {
@@ -281,11 +116,6 @@ func (d *Display) Start() {
 		d.Logger.Debug("Display is not visible, skipping start")
 		return
 	}
-
-	d.Table.SetTitle("Deployment Status").
-		SetBorder(true).
-		SetBorderColor(tcell.ColorWhite).
-		SetTitleColor(tcell.ColorWhite)
 
 	go func() {
 		d.Logger.Debug("Display goroutine started")
@@ -302,15 +132,15 @@ func (d *Display) Start() {
 		defer updateTimeout.Stop()
 		defer displayTicker.Stop()
 
-		signalChan := utils.CreateSignalChannel("signal_chan", 1)
+		signalChan := make(chan os.Signal, 1)
 		signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 		for {
 			select {
 			case <-displayTicker.C:
 				d.updateDisplay()
-			case <-signalChan:
-				d.Logger.Infof("Received signal: %v", <-signalChan)
+			case sig := <-signalChan:
+				d.Logger.Infof("Received signal: %v", sig)
 				return
 			case <-d.Ctx.Done():
 				d.Logger.Debug("Context cancelled, stopping display")
@@ -322,45 +152,18 @@ func (d *Display) Start() {
 		}
 	}()
 
-	d.Logger.Debug("Starting tview application")
+	d.Logger.Debug("Display started")
 	d.DisplayRunning = true
-
-	if err := d.App.Run(); err != nil {
-		d.DisplayRunning = false
-		d.Logger.Errorf("Error running display: %v", err)
-	}
-	d.Logger.Debug("tview application stopped")
 }
 
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 
-	stopChan := utils.CreateStructChannel("stop_chan", 1)
-
-	// Stop the application in a separate goroutine to avoid deadlock
-	go func() {
-		defer utils.CloseChannel(stopChan)
-		d.Logger.Debug("Stopping tview application")
-		if d.DisplayRunning {
-			d.App.Stop()
-		}
-		d.Logger.Debug("tview application stop queued")
-	}()
-
-	// Wait for the application to stop or timeout
-	select {
-	case <-stopChan:
-		d.Logger.Debug("tview application stopped successfully")
-	case <-time.After(timeoutDuration):
-		d.Logger.Warn("Timeout waiting for tview application to stop")
-	}
-
 	d.Logger.Debug("Closing all registered channels")
 	utils.CloseAllChannels()
 
 	d.DisplayRunning = false
-	d.resetTerminal()
 	d.Logger.Debug("Display stop process completed")
 	d.DumpGoroutines()
 	d.Logger.Debug("Dumped goroutines")
@@ -391,99 +194,28 @@ func (d *Display) WaitForStop() {
 
 func (d *Display) forceStop() {
 	d.Logger.Debug("Force stopping display")
-	d.App.QueueUpdateDraw(func() {
-		d.App.Stop()
-	})
 	d.DisplayRunning = false
 	d.Logger.Debug("Display force stopped")
 }
 
-func (d *Display) resetTerminal() {
-	l := logger.Get()
-	l.Debug("Resetting terminal")
-	d.App.Suspend(func() {
-		fmt.Print("\033[?1049l") // Exit alternate screen buffer
-		fmt.Print("\033[?25h")   // Show cursor
-	})
-	fmt.Print(logger.GlobalLoggedBuffer.String())
-}
-
-func (d *Display) AddLogEntry(logEntry string) {
-	d.App.QueueUpdateDraw(func() {
-		fmt.Fprintf(d.LogBox, "%s\n", logEntry)
-	})
-}
-
-func (d *Display) printFinalTableState() {
-	if len(d.LastTableState) == 0 {
-		fmt.Println("No data to display")
-		return
-	}
-
-	// Determine column widths
-	colWidths := make([]int, len(d.LastTableState[0]))
-	for _, row := range d.LastTableState {
-		for col, cell := range row {
-			if len(cell) > colWidths[col] {
-				colWidths[col] = len(cell)
-			}
-		}
-	}
-
-	// Function to print a row separator
-	printSeparator := func() {
-		for col, width := range colWidths {
-			if col == 0 {
-				fmt.Print("+")
-			}
-			fmt.Print(strings.Repeat("-", width+2)) //nolint:gomnd
-			fmt.Print("+")
-		}
-		fmt.Println()
-	}
-
-	// Clear screen and move cursor to top-left
-	fmt.Print("\033[2J\033[H")
-
-	printSeparator() // Print top separator
-
-	// Print header row
-	for col, cell := range d.LastTableState[0] {
-		fmt.Printf("| %-*s ", colWidths[col], cell)
-	}
-	fmt.Println("|")
-	printSeparator() // Print separator after header
-
-	// Print the table
-	for _, row := range d.LastTableState[1:] {
-		for col, cell := range row {
-			fmt.Printf("| %-*s ", colWidths[col], cell)
-		}
-		fmt.Println("|")
-	}
-	printSeparator() // Print bottom separator
-}
-
 func (d *Display) updateDisplay() {
 	d.Logger.Debug("Updating display")
-	d.renderTable()
-	d.updateLogBox()
+	table := d.renderTable()
+	fmt.Print("\033[2J\033[H") // Clear screen and move cursor to top-left
+	fmt.Println(table.Render())
 }
 
-func (d *Display) renderTable() {
+func (d *Display) renderTable() lipgloss.Table {
 	d.Logger.Debug("Rendering table")
-	d.Table.Clear()
+
+	var rows [][]string
 
 	// Add header row
-	for col, column := range DisplayColumns {
-		textWithPadding := d.padText(column.Text, column.Width)
-		cell := tview.NewTableCell(textWithPadding).
-			SetMaxWidth(column.Width).
-			SetTextColor(tcell.ColorYellow).
-			SetSelectable(false).
-			SetAlign(tview.AlignCenter)
-		d.Table.SetCell(0, col, cell)
+	headerRow := make([]string, len(DisplayColumns))
+	for i, col := range DisplayColumns {
+		headerRow[i] = col.Text
 	}
+	rows = append(rows, headerRow)
 
 	resources := make([]*models.Status, 0)
 	d.StatusesMu.RLock()
@@ -496,40 +228,35 @@ func (d *Display) renderTable() {
 		return resources[i].ID < resources[j].ID
 	})
 
-	// Initialize lastTableState with header row
-	d.LastTableState = [][]string{make([]string, len(DisplayColumns))}
-	for col, column := range DisplayColumns {
-		d.LastTableState[0][col] = column.Text
-	}
-
-	for row, resource := range resources {
-		tableRow := make([]string, len(DisplayColumns))
-		for col, column := range DisplayColumns {
-			cellText := column.DataFunc(*resource)
-			tableRow[col] = cellText
-			cell := tview.NewTableCell(cellText).
-				SetMaxWidth(column.Width).
-				SetTextColor(column.Color).
-				SetAlign(column.Align)
-			d.Table.SetCell(row+1, col, cell)
+	for _, resource := range resources {
+		row := make([]string, len(DisplayColumns))
+		for i, col := range DisplayColumns {
+			row[i] = col.DataFunc(*resource)
 		}
-		d.LastTableState = append(d.LastTableState, tableRow)
+		rows = append(rows, row)
 	}
 
-	d.Logger.Debugf("Table rendered with %d rows", len(resources)+1)
-}
+	d.LastTableState = rows
 
-func (d *Display) displayResourceProgress(status *models.Status) {
-	progressText := fmt.Sprintf("%s: %s - %s", status.Type, status.ID, status.Status)
-	_, _ = d.LogBox.Write([]byte(progressText + "\n"))
-}
+	table := lipgloss.NewTable().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("236")))
 
-func (d *Display) updateLogBox() {
-	lines := logger.GetLastLines(logger.GlobalLogPath, MaxLogLines)
-	d.LogBox.Clear()
-	for _, line := range lines {
-		fmt.Fprintln(d.LogBox, line)
+	for _, row := range rows {
+		var rowEntries []interface{}
+		for i, cell := range row {
+			style := lipgloss.NewStyle().Width(DisplayColumns[i].Width).Align(lipgloss.Center)
+			if i == 0 {
+				rowEntries = append(rowEntries, style.Render(cell))
+			} else {
+				rowEntries = append(rowEntries, style.Render(cell))
+			}
+		}
+		table.Row(rowEntries...)
 	}
+
+	d.Logger.Debugf("Table rendered with %d rows", len(rows))
+	return table
 }
 
 func (d *Display) DumpGoroutines() {

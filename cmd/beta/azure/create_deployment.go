@@ -76,7 +76,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Debug("Context cancelled in executeCreateDeployment")
 	}()
 
-	disp := display.GetGlobalDisplay()
+	disp := display.NewDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	isTest := os.Getenv("ANDAIME_TEST") == "true"
 	l.Debugf("Display settings: noDisplay=%v, isTest=%v", noDisplay, isTest)
@@ -85,28 +85,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		if isTest {
 			disp.Visible = false
 		}
-		go disp.Start()
+		disp.Start()
 		defer func() {
-			l.Debug("Stopping display - 1")
+			l.Debug("Stopping display")
 			disp.Stop()
-			l.Debug("Waiting for display to stop - 1")
+			l.Debug("Waiting for display to stop")
 			disp.WaitForStop()
 		}()
 		l.Debug("Display started")
 	}
-
-	// Handle signal interrupts
-	// Combine signal and user input handling
-	go func() {
-		<-ctx.Done()
-		l.Info("Context cancelled")
-		l.Debug("Stopping display - 2")
-		go disp.Stop()
-		l.Debug("Display stop called.")
-		l.Debug("Waiting for display to stop - 2")
-		disp.WaitForStop()
-	}()
-	l.Debug("Signal and context cancellation handler started")
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -115,11 +102,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 		l.Info("Starting cleanup process")
 		if disp != nil {
-			l.Debug("Stopping display - 3")
+			l.Debug("Stopping display")
 			disp.Stop()
-			l.Debug("Waiting for display to stop - 3")
+			l.Debug("Waiting for display to stop")
 			disp.WaitForStop()
-			l.Debug("Display stopped - 3")
 		}
 		l.Info("Cleanup completed")
 		l.Debug("Checking for open channels:")
@@ -130,21 +116,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 		// Print final deployment state
 		l.Info("Final Deployment State:")
-		deployment := azure.GetGlobalDeployment()
-		if deployment != nil {
-			for _, machine := range deployment.Machines {
-				l.Infof(
-					"Machine: %s, Status: %s, Public IP: %s, Private IP: %s, Location: %s",
-					machine.Name,
-					machine.Status,
-					machine.PublicIP,
-					machine.PrivateIP,
-					machine.Location,
-				)
-			}
-		} else {
-			l.Info("No deployment information available")
-		}
+		fmt.Println(disp.GetTableString())
 
 		// Print logged buffer
 		l.Info("Logged Buffer:")
