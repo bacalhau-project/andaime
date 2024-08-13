@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )

@@ -14,7 +14,7 @@ func GetStatus(id string) *models.Status {
 	return GlobalStatusMap[id]
 }
 
-// UpdateStatus updates the status in the global map
-func UpdateStatus(status *models.Status) {
+// UpdateGlobalStatus updates the status in the global map
+func UpdateGlobalStatus(status *models.Status) {
 	GlobalStatusMap[status.ID] = status
 }
