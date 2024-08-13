@@ -11,18 +11,13 @@ import (
 	"github.com/spf13/viper"
 )
 
-var (
-	MachineStatusInitializing = "Initializing"
-	MachineStatusComplete     = "Complete"
-	MachineStatusFailed       = "Failed"
-)
-
 type Machine struct {
 	ID                   string
 	Name                 string
 	Type                 string
 	Location             string
 	Status               string
+	DetailedStatus       string
 	Parameters           Parameters
 	PublicIP             string
 	PrivateIP            string
@@ -214,6 +209,7 @@ func (d *Deployment) UpdateStatus(status *Status) {
 	for i, machine := range d.Machines {
 		if machine.ID == status.ID {
 			d.Machines[i].Status = status.Status
+			d.Machines[i].DetailedStatus = status.DetailedStatus
 			d.Machines[i].PublicIP = status.PublicIP
 			d.Machines[i].PrivateIP = status.PrivateIP
 			d.Machines[i].ElapsedTime = status.ElapsedTime
