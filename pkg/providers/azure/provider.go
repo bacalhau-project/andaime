@@ -20,6 +20,7 @@ type AzureProviderer interface {
 	SetConfig(config *viper.Viper)
 
 	StartResourcePolling(ctx context.Context, done chan<- struct{})
+	GetResources(ctx context.Context, resourceGroupName string) ([]interface{}, error)
 	DeployResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
@@ -95,56 +96,31 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 }
 func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- struct{}) {
 	l := logger.Get()
-	disp := display.GetGlobalDisplay()
-
 	l.Debug("Starting StartResourcePolling")
-
-	//nolint:govet,lostcancel // Cancel still works
-	statusCtx, statusCancel := context.WithCancel(ctx)
 
 	//nolint:govet,lostcancel // Cancel still works
 	resourceCtx, resourceCancel := context.WithCancel(ctx)
 
-	statusDone := make(chan struct{})
 	resourceDone := make(chan struct{})
 
-	go p.runStatusTicker(statusCtx, disp, statusDone)
 	go p.runResourceTicker(resourceCtx, resourceDone)
 
-	select {
-	case <-statusDone:
-		resourceCancel()
-	case <-resourceDone:
-		statusCancel()
-	case <-ctx.Done():
-		statusCancel()
+	// Directly check if the context is done
+	if ctx.Err() != nil {
 		resourceCancel()
 	}
 
-	<-statusDone
 	<-resourceDone
 
 	l.Debug("Context done, exiting resource polling")
 	close(done)
 }
 
-func (p *AzureProvider) runStatusTicker(
+func (p *AzureProvider) GetResources(
 	ctx context.Context,
-	disp *display.Display,
-	done chan<- struct{},
-) {
-	statusTicker := time.NewTicker(globals.MillisecondsBetweenUpdates * time.Millisecond)
-	defer statusTicker.Stop()
-	defer close(done)
-
-	for {
-		select {
-		case <-statusTicker.C:
-			p.updateStatus(disp)
-		case <-ctx.Done():
-			return
-		}
-	}
+	resourceGroupName string,
+) ([]interface{}, error) {
+	return p.Client.GetResources(ctx, resourceGroupName)
 }
 
 func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struct{}) {
@@ -156,10 +132,11 @@ func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struc
 	for {
 		select {
 		case <-resourceTicker.C:
-			err := p.PollAndUpdateResources(ctx)
+			resources, err := p.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
+			_ = resources // TODO: Figure out if this is still necessary
 		case <-ctx.Done():
 			return
 		}

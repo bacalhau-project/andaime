@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime/debug"
-	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -19,6 +17,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/olekukonko/tablewriter"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -71,57 +71,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting executeCreateDeployment")
 
 	ctx, cancel := context.WithCancel(cmd.Context())
-	defer func() {
-		cancel()
-		l.Debug("Context cancelled in executeCreateDeployment")
-	}()
-
-	disp := display.NewDisplay()
-	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
-	isTest := os.Getenv("ANDAIME_TEST") == "true"
-	l.Debugf("Display settings: noDisplay=%v, isTest=%v", noDisplay, isTest)
-
-	if !noDisplay {
-		if isTest {
-			disp.Visible = false
-		}
-		disp.Start()
-		defer func() {
-			l.Debug("Stopping display")
-			disp.Stop()
-			l.Debug("Waiting for display to stop")
-			disp.WaitForStop()
-		}()
-		l.Debug("Display started")
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
-			l.Error(string(debug.Stack()))
-		}
-		l.Info("Starting cleanup process")
-		if disp != nil {
-			l.Debug("Stopping display")
-			disp.Stop()
-			l.Debug("Waiting for display to stop")
-			disp.WaitForStop()
-		}
-		l.Info("Cleanup completed")
-		l.Debug("Checking for open channels:")
-		utils.DebugOpenChannels()
-		l.Debug("Dumping goroutines:")
-		utils.DumpGoroutines()
-		l.Debug("Execution of executeCreateDeployment completed")
-
-		// Print final deployment state
-		l.Info("Final Deployment State:")
-		fmt.Println(disp.GetTableString())
-
-		// Print logged buffer
-		l.Info("Logged Buffer:")
-		l.Info(logger.GlobalLoggedBuffer.String())
-	}()
+	defer cancel()
 
 	UniqueID := time.Now().Format("060102150405")
 	l.Infof("Generated UniqueID: %s", UniqueID)
@@ -145,11 +95,22 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting resource deployment")
 	azure.SetGlobalDeployment(deployment)
 
-	l.Debug("Starting resource polling")
-	done := make(chan struct{})
-	go p.StartResourcePolling(ctx, done)
+	// Initialize the Bubbletea model
+	m := display.InitialModel()
 
+	// Create a channel for deployment errors
 	deploymentErr := make(chan error, 1)
+
+	// Start the Bubbletea program
+	go func() {
+		p := tea.NewProgram(m)
+		if _, err := p.Run(); err != nil {
+			l.Errorf("Error running Bubbletea program: %v", err)
+			deploymentErr <- err
+		}
+	}()
+
+	// Start resource deployment
 	go func() {
 		err := p.DeployResources(ctx)
 		if err != nil {
@@ -161,15 +122,29 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
+	// Start resource polling
+	go func() error {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				resources, err := p.GetResources(ctx, deployment.ResourceGroupName)
+				if err != nil {
+					return err
+				}
+				m.UpdateResources(resources)
+			}
+		}
+	}()
+
+	// Wait for deployment to complete or context to be cancelled
 	select {
 	case <-ctx.Done():
 		l.Info("Deployment cancelled")
-		if disp != nil {
-			l.Debug("Stopping display - 4")
-			disp.Stop()
-			l.Debug("Waiting for display to stop - 4")
-			disp.WaitForStop()
-		}
 		return fmt.Errorf("deployment cancelled by user")
 	case err := <-deploymentErr:
 		if err != nil {
@@ -178,11 +153,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Stop resource polling
-	cancel()
-	<-done
-	l.Info("Resource polling completed")
-
 	// Cleanup and finalization
 	l.Info("Starting cleanup and finalization")
 	if err := p.FinalizeDeployment(context.Background()); err != nil {
@@ -190,22 +160,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Deployment finalized")
 
+	// Stop the Bubbletea program
+	m.Quitting = true
+
 	// Print final static ASCII table
 	printFinalTable(azure.GetGlobalDeployment())
-
-	// Stop all display updates and channels
-	l.Debug("Stopping display and closing channels")
-
-	l.Debug("Stopping display - 5")
-	disp.Stop()
-	l.Debug("Waiting for display to stop - 5")
-	disp.WaitForStop()
-	utils.CloseAllChannels()
-	l.Debug("Display stopped and channels closed")
-
-	// Enable pprof profiling
-	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
-	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
 
 	l.Debug("executeCreateDeployment completed")
 	return nil

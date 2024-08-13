@@ -1,17 +1,13 @@
 package display
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	lgTable "github.com/charmbracelet/lipgloss/table"
 )
-
-type model struct {
-	Statuses map[string]models.Status
-}
 
 type DisplayColumn struct {
 	Title string
@@ -22,85 +18,225 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "ID", Width: 13},
 	{Title: "Type", Width: 8},
 	{Title: "Location", Width: 12},
-	{Title: "Status", Width: 44},
+	{Title: "Status", Width: 20},
+	{Title: "Progress", Width: 20},
 	{Title: "Time", Width: 10},
 	{Title: "Public IP", Width: 15},
 	{Title: "Private IP", Width: 15},
 }
 
-type UpdateMsg models.Status
+// DisplayResources is a subset of the underlying Azure resources
+type DisplayResources struct {
+	id            string
+	resType       string
+	location      string
+	status        string
+	progress      int
+	total         int
+	startTime     time.Time
+	completedTime time.Time
+	publicIP      string
+	privateIP     string
+}
 
-var HeaderStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("15")).
-	Background(lipgloss.Color("4")).
-	Bold(true).
-	Width(80).
-	Align(lipgloss.Center)
+type DisplayModel struct {
+	Resources []DisplayResources
+	TextBox   string
+	Quitting  bool
+}
 
-var OddRowStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("7")).
-	Background(lipgloss.Color("0")).
-	Padding(2)
-
-var EvenRowStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("5")).
-	Background(lipgloss.Color("1")).
-	Padding(2)
-
-func initialModel(d *Display) model {
-	all_column_titles := []string{}
-	for _, col := range DisplayColumns {
-		all_column_titles = append(all_column_titles, col.Title)
-	}
-
-	return model{
-		Statuses: map[string]models.Status{},
+func InitialModel() DisplayModel {
+	now := time.Now()
+	return DisplayModel{
+		Resources: []DisplayResources{
+			{
+				id:        "res-001",
+				resType:   "VM",
+				location:  "us-west",
+				status:    "Provisioning",
+				progress:  0,
+				total:     10,
+				startTime: now,
+				publicIP:  "203.0.113.1",
+				privateIP: "10.0.0.1",
+			},
+			{
+				id:        "res-002",
+				resType:   "Storage",
+				location:  "us-east",
+				status:    "Running",
+				progress:  5,
+				total:     10,
+				startTime: now,
+				publicIP:  "203.0.113.2",
+				privateIP: "10.0.0.2",
+			},
+			{
+				id:        "res-003",
+				resType:   "Network",
+				location:  "eu-central",
+				status:    "Stopping",
+				progress:  8,
+				total:     10,
+				startTime: now,
+				publicIP:  "203.0.113.3",
+				privateIP: "10.0.0.3",
+			},
+		},
+		TextBox: "Resource Status Monitor",
 	}
 }
 
-func (m model) Init() tea.Cmd {
-	return nil
+func (m DisplayModel) Init() tea.Cmd {
+	return tickCmd()
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+func (m DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.Quitting = true
 			return m, tea.Quit
 		}
-	case UpdateMsg:
-		status := m.Statuses[msg.ID]
-		status.ID = msg.ID
-		status.Type = msg.Type
-		status.Status = msg.Status
-		status.ElapsedTime = time.Since(status.StartTime)
-		status.PublicIP = msg.PublicIP
-		status.PrivateIP = msg.PrivateIP
-
-		m.Statuses[msg.ID] = status
-	}
-	return m, cmd
-}
-
-func (m model) View() string {
-
-}
-
-func (m model) getRows() lgTable.Data {
-	var rows []lgTable.Table
-	for _, status := range dsm {
-		row := table.Row{
-			status.ID,
-			string(status.Type),
-			status.Location,
-			status.Status,
-			formatElapsedTime(status.ElapsedTime, status.StartTime),
-			status.PublicIP,
-			status.PrivateIP,
+	case tickMsg:
+		if m.Quitting {
+			return m, nil
 		}
-		rows = append(rows, row)
+		m.TextBox = fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05"))
+
+		// Simulate status and progress changes
+		for i := range m.Resources {
+			switch m.Resources[i].status {
+			case "Provisioning":
+				m.Resources[i].progress++
+				if m.Resources[i].progress >= m.Resources[i].total {
+					m.Resources[i].status = "Running"
+					m.Resources[i].progress = m.Resources[i].total
+				}
+			case "Running":
+				if i%2 == 0 {
+					m.Resources[i].status = "Stopping"
+					m.Resources[i].progress = 0
+				}
+			case "Stopping":
+				m.Resources[i].progress++
+				if m.Resources[i].progress >= m.Resources[i].total {
+					m.Resources[i].status = "Stopped"
+					m.Resources[i].progress = m.Resources[i].total
+					m.Resources[i].completedTime = time.Now()
+				}
+			case "Stopped":
+				// Do nothing, keep the progress at 100%
+			}
+		}
+
+		return m, tickCmd()
 	}
-	return rows
+	return m, nil
+}
+
+func (m DisplayModel) View() string {
+	tableStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39"))
+	cellStyle := lipgloss.NewStyle().
+		PaddingLeft(1)
+	textBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(1).
+		Width(70)
+	infoStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Italic(true)
+
+	var tableStr string
+
+	// Render headers
+	var headerRow string
+	for _, col := range DisplayColumns {
+		headerRow += headerStyle.Copy().Width(col.Width).MaxWidth(col.Width).Render(col.Title)
+	}
+	tableStr += headerRow + "\n"
+
+	// Render rows
+	for _, res := range m.Resources {
+		var rowStr string
+		var elapsedTime string
+		if !res.completedTime.IsZero() {
+			elapsedTime = res.completedTime.Sub(res.startTime).Truncate(time.Second).String()
+		} else {
+			elapsedTime = time.Since(res.startTime).Truncate(time.Second).String()
+		}
+		progressBar := renderProgressBar(res.progress, res.total, DisplayColumns[4].Width-2)
+
+		rowData := []string{
+			res.id,
+			res.resType,
+			res.location,
+			res.status,
+			progressBar,
+			elapsedTime,
+			res.publicIP,
+			res.privateIP,
+		}
+
+		for i, cell := range rowData {
+			rowStr += cellStyle.Copy().
+				Width(DisplayColumns[i].Width).
+				MaxWidth(DisplayColumns[i].Width).
+				Render(cell)
+		}
+		tableStr += rowStr + "\n"
+	}
+
+	infoText := infoStyle.Render("Press 'q' or Ctrl+C to quit")
+
+	output := lipgloss.JoinVertical(
+		lipgloss.Left,
+		tableStyle.Render(tableStr),
+		"",
+		textBoxStyle.Render(m.TextBox),
+		"",
+		infoText,
+	)
+
+	if m.Quitting {
+		return output + "\n\nProgram exited. CLI is now available below.\n"
+	}
+
+	return output
+}
+
+func renderProgressBar(progress, total, width int) string {
+	if total == 0 {
+		return ""
+	}
+	filledWidth := int(float64(progress) / float64(total) * float64(width))
+	emptyWidth := width - filledWidth
+
+	filled := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("42")).
+		Render(strings.Repeat("█", filledWidth))
+	empty := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("237")).
+		Render(strings.Repeat("█", emptyWidth))
+
+	return filled + empty
+}
+
+func (m DisplayModel) UpdateResources(resources []interface{}) {
+
+}
+
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }

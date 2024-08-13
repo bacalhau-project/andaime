@@ -47,16 +47,17 @@ var AzureListResourcesCmd = &cobra.Command{
 		log.Info("Contacting Azure API...")
 		startTime := time.Now()
 
+		var resources []interface{}
 		if allFlag {
 			err = azureProvider.GetClient().ListAllResourcesInSubscription(cmd.Context(),
 				getSubscriptionID(),
 				tags)
 		} else {
-			err = azureProvider.GetClient().UpdateResourceList(cmd.Context(),
-				getSubscriptionID(),
-				resourceGroup,
-				tags)
+			resources, err = azureProvider.GetClient().GetResources(cmd.Context(),
+				resourceGroup)
 		}
+
+		_ = resources // TODO: Figure out if this is still necessary
 
 		if err != nil {
 			switch {

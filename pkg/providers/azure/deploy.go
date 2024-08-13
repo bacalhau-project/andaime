@@ -397,19 +397,17 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	return nil
 }
 
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
+func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
 	deployment := GetGlobalDeployment()
-	err := p.Client.UpdateResourceList(
+	resources, err := p.Client.GetResources(
 		ctx,
-		deployment.SubscriptionID,
 		deployment.ResourceGroupName,
-		deployment.Tags,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return resources, nil
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps

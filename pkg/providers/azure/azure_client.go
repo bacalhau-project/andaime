@@ -63,12 +63,10 @@ type AzureClient interface {
 		tags map[string]*string,
 	) error
 
-	UpdateResourceList(
+	GetResources(
 		ctx context.Context,
-		subscriptionID string,
 		resourceGroupName string,
-		tags map[string]*string,
-	) error
+	) ([]interface{}, error)
 
 	// New methods for ARM template deployment
 	DeployTemplate(
@@ -378,4 +376,10 @@ func (c *LiveAzureClient) GetPublicIPAddress(
 		return "", fmt.Errorf("failed to get public IP address: %w", err)
 	}
 	return *publicIPResponse.Properties.IPAddress, nil
+}
+
+func (c *LiveAzureClient) GetResources(
+	ctx context.Context,
+	resourceGroupName string) ([]interface{}, error) {
+	return nil, nil
 }

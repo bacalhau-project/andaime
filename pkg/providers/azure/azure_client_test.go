@@ -112,14 +112,27 @@ func (m *MockAzureClient) ListAllResourcesInSubscription(
 	return args.Error(0)
 }
 
-func (m *MockAzureClient) UpdateResourceList(
+func (m *MockAzureClient) GetResources(
 	ctx context.Context,
-	subscriptionID string,
-	filter string,
-	tags map[string]*string,
-) error {
-	args := m.Called(ctx, subscriptionID, filter, tags)
-	return args.Error(0)
+	resourceGroupName string) ([]interface{}, error) {
+	args := m.Called(ctx, resourceGroupName)
+
+	// Get the first argument as []armresources.GenericResource
+	genericResources, ok := args.Get(0).([]armresources.GenericResource)
+	if !ok {
+		// If the type assertion fails, return an empty slice and the error
+		return []interface{}{}, args.Error(1)
+	}
+
+	// Create a new slice of interface{}
+	resources := make([]interface{}, len(genericResources))
+
+	// Convert each GenericResource to interface{}
+	for i, resource := range genericResources {
+		resources[i] = resource
+	}
+
+	return resources, args.Error(1)
 }
 
 func (m *MockAzureClient) NewSubscriptionListPager(
