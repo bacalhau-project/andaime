@@ -2,17 +2,13 @@
 package azure
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -80,11 +76,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Debug("Context cancelled in executeCreateDeployment")
 	}()
 
-	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	l.Debug("Signal handling set up")
-
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	isTest := os.Getenv("ANDAIME_TEST") == "true"
@@ -96,7 +87,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 		go disp.Start()
 		defer func() {
+			l.Debug("Stopping display - 1")
 			disp.Stop()
+			l.Debug("Waiting for display to stop - 1")
 			disp.WaitForStop()
 		}()
 		l.Debug("Display started")
@@ -105,44 +98,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Handle signal interrupts
 	// Combine signal and user input handling
 	go func() {
-		select {
-		case <-sigChan:
-			l.Info("Received interrupt signal. Cancelling deployment...")
-			cancel()
-		case <-ctx.Done():
-			l.Info("Context cancelled")
-			go disp.Stop()
-			l.Info("Display stop called.")
-			disp.WaitForStop()
-		}
+		<-ctx.Done()
+		l.Info("Context cancelled")
+		l.Debug("Stopping display - 2")
+		go disp.Stop()
+		l.Debug("Display stop called.")
+		l.Debug("Waiting for display to stop - 2")
+		disp.WaitForStop()
 	}()
 	l.Debug("Signal and context cancellation handler started")
-
-	if !noDisplay && !isTest {
-		go func() {
-			l.Debug("Starting user input handler")
-			reader := bufio.NewReader(os.Stdin)
-			for {
-				char, _, err := reader.ReadRune()
-				if err != nil {
-					if err != io.EOF {
-						l.Error(fmt.Sprintf("Error reading input: %v", err))
-					}
-					l.Debug("Exiting user input handler due to error")
-					return
-				}
-				l.Debugf("Received user input: %c (ASCII: %d)", char, char)
-				if char == 'q' || char == 'Q' || char == 3 { // 3 is Ctrl+C
-					l.Info("User requested to quit. Cancelling deployment...")
-					cancel()
-					return
-				}
-			}
-		}()
-		l.Debug("User input handler started")
-	} else {
-		l.Debug("User input handler not started (noDisplay or isTest)")
-	}
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -151,11 +115,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 		l.Info("Starting cleanup process")
 		if disp != nil {
-			l.Debug("Stopping display")
+			l.Debug("Stopping display - 3")
 			disp.Stop()
-			l.Debug("Waiting for display to stop")
+			l.Debug("Waiting for display to stop - 3")
 			disp.WaitForStop()
-			l.Debug("Display stopped")
+			l.Debug("Display stopped - 3")
 		}
 		l.Info("Cleanup completed")
 		l.Debug("Checking for open channels:")
@@ -229,9 +193,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	case <-ctx.Done():
 		l.Info("Deployment cancelled")
 		if disp != nil {
-			l.Debug("Stopping display")
+			l.Debug("Stopping display - 4")
 			disp.Stop()
-			l.Debug("Waiting for display to stop")
+			l.Debug("Waiting for display to stop - 4")
 			disp.WaitForStop()
 		}
 		return fmt.Errorf("deployment cancelled by user")
@@ -259,7 +223,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	// Stop all display updates and channels
 	l.Debug("Stopping display and closing channels")
+
+	l.Debug("Stopping display - 5")
 	disp.Stop()
+	l.Debug("Waiting for display to stop - 5")
 	disp.WaitForStop()
 	utils.CloseAllChannels()
 	l.Debug("Display stopped and channels closed")

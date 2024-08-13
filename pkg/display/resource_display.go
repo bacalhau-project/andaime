@@ -3,10 +3,12 @@ package display
 import (
 	"context"
 	"fmt"
+	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -149,7 +151,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		return
 	}
 
-	l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
+	// l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
 
 	// Execute this in a function to avoid deadlocks
 	func() {
@@ -160,10 +162,10 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		}
 
 		if _, exists := d.Statuses[newStatus.ID]; !exists {
-			l.Debugf("New status added: %s", newStatus.ID)
+			// l.Debugf("New status added: %s", newStatus.ID)
 			d.Statuses[newStatus.ID] = newStatus
 		} else {
-			l.Debugf("Status updated: %s", newStatus.ID)
+			// l.Debugf("Status updated: %s", newStatus.ID)
 			d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 		}
 	}()
@@ -171,7 +173,7 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 	// These calls are now outside the lock
 	d.displayResourceProgress(newStatus)
 	if d.Visible {
-		d.scheduleUpdate()
+		d.updateDisplay()
 	}
 }
 
@@ -295,32 +297,33 @@ func (d *Display) Start() {
 			d.Logger.Debug("Display goroutine exiting")
 		}()
 
+		displayTicker := time.NewTicker(timeBetweenDisplayTicks)
 		updateTimeout := time.NewTimer(updateTimeoutDuration)
 		defer updateTimeout.Stop()
+		defer displayTicker.Stop()
+
+		signalChan := utils.CreateSignalChannel("signal_chan", 1)
+		signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 		for {
 			select {
+			case <-displayTicker.C:
+				d.updateDisplay()
+			case <-signalChan:
+				d.Logger.Infof("Received signal: %v", <-signalChan)
+				return
 			case <-d.Ctx.Done():
 				d.Logger.Debug("Context cancelled, stopping display")
 				return
 			case <-updateTimeout.C:
 				d.Logger.Warn("Update timeout reached, possible hang detected")
-				// Optionally, you could trigger some recovery action here
+				return
 			}
 		}
 	}()
 
 	d.Logger.Debug("Starting tview application")
 	d.DisplayRunning = true
-
-	d.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
-			d.Logger.Info("User requested to quit. Cancelling deployment...")
-			d.Cancel()
-			return nil
-		}
-		return event
-	})
 
 	if err := d.App.Run(); err != nil {
 		d.DisplayRunning = false
@@ -333,11 +336,11 @@ func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 
-	stopChan := make(chan struct{})
+	stopChan := utils.CreateStructChannel("stop_chan", 1)
 
 	// Stop the application in a separate goroutine to avoid deadlock
 	go func() {
-		defer close(stopChan)
+		defer utils.CloseChannel(stopChan)
 		d.Logger.Debug("Stopping tview application")
 		if d.DisplayRunning {
 			d.App.Stop()
@@ -349,7 +352,7 @@ func (d *Display) Stop() {
 	select {
 	case <-stopChan:
 		d.Logger.Debug("tview application stopped successfully")
-	case <-time.After(5 * time.Second):
+	case <-time.After(timeoutDuration):
 		d.Logger.Warn("Timeout waiting for tview application to stop")
 	}
 
@@ -358,8 +361,9 @@ func (d *Display) Stop() {
 
 	d.DisplayRunning = false
 	d.resetTerminal()
-	d.DumpGoroutines()
 	d.Logger.Debug("Display stop process completed")
+	d.DumpGoroutines()
+	d.Logger.Debug("Dumped goroutines")
 }
 
 func (d *Display) WaitForStop() {
@@ -459,18 +463,11 @@ func (d *Display) printFinalTableState() {
 	}
 	printSeparator() // Print bottom separator
 }
-func (d *Display) scheduleUpdate() {
-	d.Logger.Debug("Update scheduled")
-	d.App.QueueUpdateDraw(func() {
-		d.updateDisplay()
-	})
-}
 
 func (d *Display) updateDisplay() {
 	d.Logger.Debug("Updating display")
 	d.renderTable()
 	d.updateLogBox()
-	d.App.Draw()
 }
 
 func (d *Display) renderTable() {
@@ -533,11 +530,6 @@ func (d *Display) updateLogBox() {
 	for _, line := range lines {
 		fmt.Fprintln(d.LogBox, line)
 	}
-}
-
-func (d *Display) Log(message string) {
-	d.Logger.Info(message)
-	d.scheduleUpdate()
 }
 
 func (d *Display) DumpGoroutines() {
