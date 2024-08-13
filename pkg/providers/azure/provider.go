@@ -155,13 +155,20 @@ func (p *AzureProvider) updateStatusMessage() {
 	l := logger.Get()
 	totalMachines := len(p.Deployment.Machines)
 	runningMachines := 0
+	var statusLines []string
+
 	for _, machine := range p.Deployment.Machines {
 		if machine.Status == "Succeeded" {
 			runningMachines++
 		}
+		statusLines = append(statusLines, formatMachineStatus(machine))
 	}
-	statusMsg := fmt.Sprintf("Machines: %d/%d running", runningMachines, totalMachines)
-	l.Infof(statusMsg)
+
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	header := headerStyle.Render(fmt.Sprintf("Machines: %d/%d running", runningMachines, totalMachines))
+	
+	statusMsg := lipgloss.JoinVertical(lipgloss.Left, append([]string{header}, statusLines...)...)
+	l.Infof("\n%s", statusMsg)
 }
 
 func (p *AzureProvider) GetResources(
