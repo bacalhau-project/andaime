@@ -33,10 +33,10 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 15},
 	{Title: "Pub IP", Width: 18},
 	{Title: "Priv IP", Width: 18},
-	{Title: "🤖", Width: 3},
-	{Title: "🔒", Width: 3},
-	{Title: "🐳", Width: 3},
-	{Title: "🐟", Width: 3},
+	{Title: models.DisplayEmojiOrchestrator, Width: 3},
+	{Title: models.DisplayEmojiSSH, Width: 3},
+	{Title: models.DisplayEmojiDocker, Width: 3},
+	{Title: models.DisplayEmojiBacalhau, Width: 3},
 }
 
 type DisplayModel struct {
@@ -201,9 +201,9 @@ func (m *DisplayModel) View() string {
 			DisplayColumns[4].Width-2,
 		)
 
-		orchString := models.DisplayEmojiWorker
+		orchString := models.DisplayEmojiWorkerNode
 		if machine.Orchestrator {
-			orchString = models.DisplayEmojiOrchestrator
+			orchString = models.DisplayEmojiOrchestratorNode
 		}
 		rowData := []string{
 			machine.Name,
@@ -215,7 +215,7 @@ func (m *DisplayModel) View() string {
 			machine.PublicIP,
 			machine.PrivateIP,
 			orchString,
-			fmt.Sprintf("%t", machine.SSH),
+			machine.SSH,
 			machine.Docker,
 			machine.Bacalhau,
 		}

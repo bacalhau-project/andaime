@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -18,7 +17,6 @@ type AzureProviderer interface {
 	SetClient(client AzureClient)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
-	GetDeployment() *models.Deployment
 
 	StartResourcePolling(ctx context.Context, done chan<- struct{})
 	GetResources(ctx context.Context, resourceGroupName string) ([]interface{}, error)
@@ -73,10 +71,6 @@ func (p *AzureProvider) GetConfig() *viper.Viper {
 
 func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
-}
-
-func (p *AzureProvider) GetDeployment() *models.Deployment {
-	return p.Deployment
 }
 
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
@@ -143,30 +137,6 @@ func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struc
 		case <-ctx.Done():
 			return
 		}
-	}
-}
-
-func (p *AzureProvider) updateStatus() {
-	l := logger.Get()
-	allMachinesComplete := true
-	for _, machine := range p.Deployment.Machines {
-		if machine.Status != models.MachineStatusComplete {
-			allMachinesComplete = false
-		}
-		if machine.Status == models.MachineStatusComplete {
-			continue
-		}
-		display.UpdateStatus(&models.Status{
-			ID: machine.Name,
-			ElapsedTime: time.Duration(
-				time.Since(machine.StartTime).
-					Milliseconds() /
-					1000, //nolint:gomnd // Divide by 1000 to convert milliseconds to seconds
-			),
-		})
-	}
-	if allMachinesComplete {
-		l.Debug("All machines complete, resource polling will stop")
 	}
 }
 
