@@ -410,6 +410,11 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	return resources, nil
 }
 
+// UpdateStatus updates the status using the display package
+func UpdateStatus(status *models.Status) {
+	display.UpdateStatus(status)
+}
+
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,

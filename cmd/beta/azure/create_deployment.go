@@ -172,7 +172,7 @@ func PrepareDeployment(
 	projectID, uniqueID string,
 ) (*models.Deployment, error) {
 	l := logger.Get()
-	disp := display.GetGlobalDisplay()
+	// disp := display.GetGlobalDisplay()
 
 	deployment := &models.Deployment{}
 	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")

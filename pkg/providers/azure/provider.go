@@ -154,7 +154,7 @@ func (p *AzureProvider) updateStatus() {
 		if machine.Status == models.MachineStatusComplete {
 			continue
 		}
-		disp.UpdateStatus(&models.Status{
+		display.UpdateStatus(&models.Status{
 			ID: machine.Name,
 			ElapsedTime: time.Duration(
 				time.Since(machine.StartTime).
