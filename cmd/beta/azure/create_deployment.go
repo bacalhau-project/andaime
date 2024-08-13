@@ -85,10 +85,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			return
 		}
 		l.Info("Deployment finalized")
+		time.Sleep(2 * time.Second) // Wait for 2 seconds before quitting
 		prog.Quit()
 	}()
 
-	if _, err := prog.Run(); err != nil {
+	model, err := prog.Run()
+	if err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
 		return err
 	}
@@ -97,6 +99,10 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Error(deploymentErr.Error())
 		return deploymentErr
 	}
+
+	// Print the entire table
+	fmt.Println("\nFinal Deployment Status:")
+	fmt.Println(model.(*display.DisplayModel).View())
 
 	l.Debug("executeCreateDeployment completed")
 	return nil
