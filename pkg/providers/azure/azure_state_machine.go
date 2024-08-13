@@ -158,7 +158,7 @@ func (dsm *AzureStateMachine) UpdateStatus(
 
 	dsm.mu.Lock()
 	defer dsm.mu.Unlock()
-	disp := display.GetGlobalDisplay()
+	// disp := display.GetGlobalDisplay()
 
 	if _, ok := dsm.Resources[resourceName]; !ok {
 		dsm.Resources[resourceName] = StateMachineResource{

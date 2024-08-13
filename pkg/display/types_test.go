@@ -9,56 +9,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTestDisplayStart(t *testing.T) {
-	display := NewTestDisplay(1)
-	sigChan := utils.CreateSignalChannel("sigChan", 1)
+func TestUpdateGlobalStatus(t *testing.T) {
+	// Initialize the global status map
+	GlobalStatusMap = make(map[string]*models.Status)
 
-	// Start the display in a goroutine
-	go display.Start(sigChan)
-
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
-
-	// Update status
-	status := &models.Status{ID: "test1", Type: "test", Location: "us-west-2", Status: "Running"}
-	display.UpdateStatus(status)
-
-	// Stop the display
-	display.Stop()
-
-	// Wait for it to stop
-	display.WaitForStop()
-
-	// Assert that no panic occurred and the status was updated
-	assert.NotNil(t, display.Logger)
-	assert.Len(t, display.Statuses, 1)
-	assert.Equal(t, status.ID, display.Statuses["test1"].ID)
-}
-
-func TestTestDisplayUpdateStatus(t *testing.T) {
-	display := NewTestDisplay(1)
-	sigChan := utils.CreateSignalChannel("sigChan", 1)
-
-	// Start the display
-	go display.Start(sigChan)
-	defer display.Stop()
-
-	// Update status multiple times
-	for i := 0; i < 10; i++ {
-		status := &models.Status{
-			ID:       "test1",
-			Type:     "test",
-			Location: "us-west-2",
-			Status:   "Running",
-		}
-		assert.NotPanics(t, func() {
-			display.UpdateStatus(status)
-		})
+	// Create a test status
+	testStatus := &models.Status{
+		ID:       "test1",
+		Type:     "test",
+		Location: "us-west-2",
+		Status:   "Running",
 	}
 
+	// Update the global status
+	UpdateGlobalStatus(testStatus)
+
 	// Check if the status was updated correctly
-	display.StatusesMu.RLock()
-	defer display.StatusesMu.RUnlock()
-	assert.Len(t, display.Statuses, 1)
-	assert.Equal(t, "test1", display.Statuses["test1"].ID)
+	assert.Len(t, GlobalStatusMap, 1)
+	assert.Equal(t, testStatus, GlobalStatusMap["test1"])
 }
