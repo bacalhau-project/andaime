@@ -25,10 +25,10 @@ type DisplayColumn struct {
 }
 
 var DisplayColumns = []DisplayColumn{
-	{Title: "Name", Width: 20},
-	{Title: "Type", Width: 10},
+	{Title: "Name", Width: 10},
+	{Title: "Type", Width: 6},
 	{Title: "Location", Width: 15},
-	{Title: "Status", Width: 30},
+	{Title: "Status", Width: 40},
 	{Title: "Progress", Width: 24},
 	{Title: "Time", Width: 15},
 	{Title: "Pub IP", Width: 18},
@@ -37,10 +37,6 @@ var DisplayColumns = []DisplayColumn{
 	{Title: models.DisplayEmojiSSH, Width: 3},
 	{Title: models.DisplayEmojiDocker, Width: 3},
 	{Title: models.DisplayEmojiBacalhau, Width: 3},
-	{Title: "NSG", Width: 3},
-	{Title: "IP", Width: 3},
-	{Title: "Disk", Width: 3},
-	{Title: "NIC", Width: 3},
 }
 
 type DisplayModel struct {
