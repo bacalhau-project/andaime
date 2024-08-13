@@ -71,6 +71,7 @@ func printFinalTable(deployment *models.Deployment) {
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
+	logger.SetLevel(logger.DEBUG)
 	l.Info("Starting executeCreateDeployment")
 
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -156,6 +157,22 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Debug("Dumping goroutines:")
 		utils.DumpGoroutines()
 		l.Debug("Execution of executeCreateDeployment completed")
+		
+		// Print final deployment state
+		l.Info("Final Deployment State:")
+		deployment := azure.GetGlobalDeployment()
+		if deployment != nil {
+			for _, machine := range deployment.Machines {
+				l.Infof("Machine: %s, Status: %s, Public IP: %s, Private IP: %s, Location: %s",
+					machine.Name, machine.Status, machine.PublicIP, machine.PrivateIP, machine.Location)
+			}
+		} else {
+			l.Info("No deployment information available")
+		}
+		
+		// Print logged buffer
+		l.Info("Logged Buffer:")
+		l.Info(logger.GlobalLoggedBuffer.String())
 	}()
 
 	UniqueID := time.Now().Format("060102150405")
