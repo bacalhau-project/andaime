@@ -197,9 +197,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	select {
 	case <-ctx.Done():
 		l.Info("Deployment cancelled")
+		return fmt.Errorf("deployment cancelled by user")
 	case err := <-deploymentErr:
 		if err != nil {
 			l.Error(fmt.Sprintf("Deployment error: %v", err))
+			return err
 		}
 	}
 

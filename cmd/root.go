@@ -108,8 +108,9 @@ func Execute() error {
 	err := rootCmd.Execute()
 	if err != nil {
 		logger.Get().Errorf("Command execution failed: %v", err)
+		os.Exit(1)
 	}
-	return err
+	return nil
 }
 
 // rootCmd represents the base command when called without any subcommands
