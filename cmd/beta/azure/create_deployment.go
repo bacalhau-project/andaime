@@ -76,12 +76,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		l.Info("Received interrupt signal. Cancelling deployment...")
-		cancel()
-	}()
-
+	
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	isTest := os.Getenv("ANDAIME_TEST") == "true"
@@ -95,9 +90,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			disp.Stop()
 			disp.WaitForStop()
 		}()
+	}
 
-		// Add a goroutine to handle user input for quitting
-		if !isTest {
+	// Handle both signal interrupts and user input in a single goroutine
+	go func() {
+		inputChan := make(chan rune)
+		if !noDisplay && !isTest {
 			go func() {
 				reader := bufio.NewReader(os.Stdin)
 				for {
@@ -106,15 +104,28 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 						l.Error(fmt.Sprintf("Error reading input: %v", err))
 						continue
 					}
-					if char == 'q' || char == 'Q' {
-						l.Info("User requested to quit. Cancelling deployment...")
-						cancel()
-						return
-					}
+					inputChan <- char
 				}
 			}()
 		}
-	}
+
+		for {
+			select {
+			case <-sigChan:
+				l.Info("Received interrupt signal. Cancelling deployment...")
+				cancel()
+				return
+			case char := <-inputChan:
+				if char == 'q' || char == 'Q' {
+					l.Info("User requested to quit. Cancelling deployment...")
+					cancel()
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	defer func() {
 		if r := recover(); r != nil {
