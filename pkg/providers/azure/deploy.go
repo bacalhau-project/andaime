@@ -388,74 +388,16 @@ func (p *AzureProvider) FinalizeDeployment(
 	summaryMsg += fmt.Sprintf("Location: %s\n", m.Deployment.ResourceGroupLocation)
 	l.Info(summaryMsg)
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader(
-		[]string{
-			"ID",
-			"Type",
-			"Location",
-			"Status",
-			"Public IP",
-			"Private IP",
-			"Instance ID",
-			"Elapsed Time (s)",
-			"Orchestrator",
-			"VM Size",
-		},
-	)
-
 	startTime := m.Deployment.StartTime
 	if startTime.IsZero() {
 		startTime = time.Now() // Fallback if start time wasn't set
 	}
 
-	for _, machine := range m.Deployment.Machines {
-		publicIP := machine.PublicIP
-		privateIP := machine.PrivateIP
-		if publicIP == "" {
-			publicIP = "Pending"
-		}
-		if privateIP == "" {
-			privateIP = "Pending"
-		}
-		elapsedTime := time.Since(startTime).Seconds()
-		orchestratorSymbol := "🌑"
-		if machine.Parameters.Orchestrator {
-			orchestratorSymbol = "🌕"
-		}
-		table.Append([]string{
-			machine.ID,
-			machine.Type,
-			machine.Location,
-			machine.Status,
-			publicIP,
-			privateIP,
-			machine.InstanceID,
-			fmt.Sprintf("%.2f", elapsedTime),
-			orchestratorSymbol,
-			machine.VMSize,
-		})
-	}
-
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("\t")
-	table.SetNoWhiteSpace(true)
-
-	// Capture the table output in a buffer
-	var buf bytes.Buffer
-	table.SetOutput(&buf)
-	table.Render()
+	// Use the existing View method to generate the table
+	tableOutput := m.View()
 
 	fmt.Println("\nDeployment completed. Full list of deployed machines:")
-	fmt.Print(buf.String())
+	fmt.Print(tableOutput)
 
 	// Ensure all configurations are saved
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
