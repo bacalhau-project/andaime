@@ -95,30 +95,27 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l.Info("Starting resource deployment")
 	azure.SetGlobalDeployment(deployment)
 
-	disp := display.GetGlobalDisplay()
-	disp.Start()
+	// Initialize and run bubbletea program
+	model := display.InitialModel()
+	program := tea.NewProgram(model)
 
-	// Start resource deployment
-	err = p.DeployResources(ctx)
-	if err != nil {
-		l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
-		return fmt.Errorf("deployment failed: %w", err)
+	go func() {
+		if err := p.DeployResources(ctx); err != nil {
+			l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
+			program.Quit()
+		}
+		l.Info("Azure deployment created successfully")
+		if err := p.FinalizeDeployment(context.Background()); err != nil {
+			l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
+		}
+		l.Info("Deployment finalized")
+		program.Quit()
+	}()
+
+	if _, err := program.Run(); err != nil {
+		l.Error(fmt.Sprintf("Error running program: %v", err))
+		return err
 	}
-
-	l.Info("Azure deployment created successfully")
-
-	// Cleanup and finalization
-	l.Info("Starting cleanup and finalization")
-	if err := p.FinalizeDeployment(context.Background()); err != nil {
-		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
-	}
-	l.Info("Deployment finalized")
-
-	disp.Stop()
-	disp.WaitForStop()
-
-	// Print final static ASCII table
-	printFinalTable(azure.GetGlobalDeployment())
 
 	l.Debug("executeCreateDeployment completed")
 	return nil

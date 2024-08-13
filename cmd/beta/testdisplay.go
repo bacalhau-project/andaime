@@ -6,7 +6,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/utils"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -23,25 +23,28 @@ func newTestDisplayCmd() *cobra.Command {
 }
 
 func runTestDisplay() error {
-	totalTasks := 5
-	testDisplay := display.NewTestDisplay(totalTasks)
-	sigChan := utils.CreateSignalChannel("sigChan", 1)
+	model := display.InitialModel()
+	p := tea.NewProgram(model)
 
-	go testDisplay.Start(sigChan)
-
-	for i := 0; i < totalTasks; i++ {
-		status := &models.Status{
-			ID:       fmt.Sprintf("test%d", i+1),
-			Type:     "test",
-			Location: "us-west-2",
-			Status:   "Running",
+	go func() {
+		totalTasks := 5
+		for i := 0; i < totalTasks; i++ {
+			status := &models.Status{
+				ID:       fmt.Sprintf("test%d", i+1),
+				Type:     models.UpdateStatusResourceType("test"),
+				Location: "us-west-2",
+				Status:   "Running",
+				StartTime: time.Now(),
+			}
+			display.UpdateStatus(status)
+			time.Sleep(1 * time.Second)
 		}
-		testDisplay.UpdateStatus(status)
-		time.Sleep(1 * time.Second)
-	}
+		p.Quit()
+	}()
 
-	testDisplay.Stop()
-	testDisplay.WaitForStop()
+	if _, err := p.Run(); err != nil {
+		return err
+	}
 
 	fmt.Println("Test display completed successfully")
 	return nil

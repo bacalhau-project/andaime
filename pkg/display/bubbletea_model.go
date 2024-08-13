@@ -230,7 +230,27 @@ func renderProgressBar(progress, total, width int) string {
 }
 
 func (m DisplayModel) UpdateResources(resources []interface{}) {
-
+	for _, resource := range resources {
+		if r, ok := resource.(models.Status); ok {
+			for i, existingResource := range m.Resources {
+				if existingResource.id == r.ID {
+					m.Resources[i] = DisplayResources{
+						id:            r.ID,
+						resType:       string(r.Type),
+						location:      r.Location,
+						status:        r.Status,
+						progress:      0, // You might want to calculate this based on r.DetailedStatus
+						total:         100,
+						startTime:     r.StartTime,
+						completedTime: time.Time{},
+						publicIP:      r.PublicIP,
+						privateIP:     r.PrivateIP,
+					}
+					break
+				}
+			}
+		}
+	}
 }
 
 type tickMsg time.Time

@@ -1,63 +1,20 @@
 package display
 
 import (
-	"os"
-	"sync"
-
-	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 )
-
-type TestDisplay struct {
-	Display
-	Logger *logger.Logger
-}
-
-func NewTestDisplay(totalTasks int) *TestDisplay {
-	return &TestDisplay{
-		Display: *NewDisplay(),
-		Logger:  logger.Get(),
-	}
-}
-
-// Override the Start method for testing
-func (d *TestDisplay) Start(sigChan chan os.Signal) {
-	if d.Logger == nil {
-		d.Logger = logger.Get()
-	}
-	d.Logger.Debug("Starting test display")
-	d.Statuses = make(map[string]*models.Status)
-}
-
-// Override the UpdateStatus method to skip tview operations
-func (d *TestDisplay) UpdateStatus(status *models.Status) {
-	d.Logger.Debugf("UpdateStatus called with %s", status.ID)
-	d.StatusesMu.Lock()
-	defer d.StatusesMu.Unlock()
-
-	newStatus := *status // Create a copy of the status
-	d.Statuses[newStatus.ID] = &newStatus
-}
-
-func (d *TestDisplay) Stop() {
-	d.Logger.Debug("Stopping test display")
-}
-
-func (d *TestDisplay) WaitForStop() {
-	d.Logger.Debug("Waiting for test display to stop")
-}
-
-// This function is no longer needed
 
 // Global status map
 var (
 	GlobalStatusMap = make(map[string]*models.Status)
-	StatusMutex     sync.RWMutex
 )
 
 // GetStatus retrieves a status from the global map
 func GetStatus(id string) *models.Status {
-	StatusMutex.RLock()
-	defer StatusMutex.RUnlock()
 	return GlobalStatusMap[id]
+}
+
+// UpdateStatus updates the status in the global map
+func UpdateStatus(status *models.Status) {
+	GlobalStatusMap[status.ID] = status
 }
