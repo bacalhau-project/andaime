@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -448,10 +449,13 @@ func (p *AzureProvider) FinalizeDeployment(
 	table.SetTablePadding("\t")
 	table.SetNoWhiteSpace(true)
 
+	// Capture the table output in a buffer
+	var buf bytes.Buffer
+	table.SetOutput(&buf)
 	table.Render()
 
 	fmt.Println("\nDeployment completed. Full list of deployed machines:")
-	fmt.Println(table.String())
+	fmt.Println(buf.String())
 
 	// Ensure all configurations are saved
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
