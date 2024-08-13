@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -36,7 +37,7 @@ var DisplayColumns = []DisplayColumn{
 
 type DisplayModel struct {
 	Deployment *models.Deployment
-	TextBox    string
+	TextBox    []string
 	Quitting   bool
 }
 
@@ -58,7 +59,7 @@ func SetGlobalModel(m *DisplayModel) {
 func InitialModel() *DisplayModel {
 	return &DisplayModel{
 		Deployment: models.NewDeployment(),
-		TextBox:    "Resource Status Monitor",
+		TextBox:    []string{"Resource Status Monitor"},
 	}
 }
 
@@ -81,7 +82,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Quitting {
 			return m, nil
 		}
-		m.TextBox = fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05"))
+		m.TextBox = append(m.TextBox, fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05")))
+		if len(m.TextBox) > 8 {
+			m.TextBox = m.TextBox[len(m.TextBox)-8:]
+		}
 		allFinished := true
 		for _, machine := range m.Deployment.Machines {
 			if machine.Status != "Successfully Deployed" && machine.Status != "Failed" {
@@ -93,7 +97,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Quitting = true
 			return m, tea.Quit
 		}
-		return m, tickCmd()
+		return m, tea.Batch(
+			tickCmd(),
+			m.updateLogCmd(),
+		)
 	case models.StatusUpdateMsg:
 		m.updateStatus(msg.Status)
 		return m, nil
@@ -152,7 +159,7 @@ func (m *DisplayModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
 		Padding(1).
-		Height(8).
+		Height(10).
 		Width(tableWidth)
 	infoStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
@@ -199,16 +206,39 @@ func (m *DisplayModel) View() string {
 
 	infoText := infoStyle.Render("Press 'q' or Ctrl+C to quit")
 
+	textBoxContent := strings.Join(m.TextBox, "\n")
 	output := lipgloss.JoinVertical(
 		lipgloss.Left,
 		tableStyle.Render(tableStr),
 		"",
-		textBoxStyle.Render(m.TextBox),
-		"",
 		infoText,
+		"",
+		textBoxStyle.Render(textBoxContent),
 	)
 
 	return output
+}
+
+func (m *DisplayModel) updateLogCmd() tea.Cmd {
+	return func() tea.Msg {
+		logLines, err := logger.GetLastLines(logger.GetLogFilePath(), 8)
+		if err != nil {
+			return nil
+		}
+		return logLinesMsg(logLines)
+	}
+}
+
+type logLinesMsg []string
+
+func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	// ... (existing cases)
+	case logLinesMsg:
+		m.TextBox = msg
+		return m, nil
+	}
+	return m, nil
 }
 
 func renderProgressBar(progress, total, width int) string {
