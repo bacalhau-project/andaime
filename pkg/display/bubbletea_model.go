@@ -3,11 +3,19 @@ package display
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	globalModelInstance *DisplayModel
+	globalModelOnce     sync.Once
+
+	azureTotalSteps = 7
 )
 
 type DisplayColumn struct {
@@ -16,7 +24,7 @@ type DisplayColumn struct {
 }
 
 var DisplayColumns = []DisplayColumn{
-	{Title: "ID", Width: 13},
+	{Title: "Name", Width: 13},
 	{Title: "Type", Width: 8},
 	{Title: "Location", Width: 12},
 	{Title: "Status", Width: 20},
@@ -30,6 +38,21 @@ type DisplayModel struct {
 	Deployment *models.Deployment
 	TextBox    string
 	Quitting   bool
+}
+
+// GetGlobalProgram returns the singleton instance of GlobalProgram
+func GetGlobalModel() *DisplayModel {
+	if globalModelInstance != nil {
+		return globalModelInstance
+	}
+	globalModelOnce.Do(func() {
+		globalModelInstance = InitialModel()
+	})
+	return globalModelInstance
+}
+
+func SetGlobalModel(m *DisplayModel) {
+	globalModelInstance = m
 }
 
 func InitialModel() *DisplayModel {
@@ -81,16 +104,29 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *DisplayModel) updateStatus(status *models.Status) {
 	found := false
 	for i, machine := range m.Deployment.Machines {
-		if machine.ID == status.ID {
-			m.Deployment.Machines[i].Status = status.Status
-			m.Deployment.Machines[i].Location = status.Location
+		if machine.Name == status.Name {
+			if status.Status != "" {
+				m.Deployment.Machines[i].Status = status.Status
+			}
+			if status.Location != "" {
+				m.Deployment.Machines[i].Location = status.Location
+			}
+			if status.PublicIP != "" {
+				m.Deployment.Machines[i].PublicIP = status.PublicIP
+			}
+			if status.PrivateIP != "" {
+				m.Deployment.Machines[i].PrivateIP = status.PrivateIP
+			}
+			if status.Progress != 0 {
+				m.Deployment.Machines[i].Progress = status.Progress
+			}
 			found = true
 			break
 		}
 	}
 	if !found {
 		m.Deployment.Machines = append(m.Deployment.Machines, models.Machine{
-			ID:       status.ID,
+			Name:     status.Name,
 			Type:     string(status.Type),
 			Location: status.Location,
 			Status:   status.Status,
@@ -99,6 +135,11 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 }
 
 func (m *DisplayModel) View() string {
+	tableWidth := 0
+	for _, col := range DisplayColumns {
+		tableWidth += col.Width
+	}
+
 	tableStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
@@ -111,7 +152,8 @@ func (m *DisplayModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
 		Padding(1).
-		Width(70)
+		Height(8).
+		Width(tableWidth)
 	infoStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Italic(true)
@@ -129,7 +171,11 @@ func (m *DisplayModel) View() string {
 	for _, machine := range m.Deployment.Machines {
 		var rowStr string
 		elapsedTime := time.Since(machine.StartTime).Truncate(time.Second).String()
-		progressBar := renderProgressBar(0, 100, DisplayColumns[4].Width-2) // Placeholder progress
+		progressBar := renderProgressBar(
+			machine.Progress,
+			machine.ProgressFinish,
+			DisplayColumns[4].Width-2,
+		)
 
 		rowData := []string{
 			machine.ID,
@@ -143,7 +189,7 @@ func (m *DisplayModel) View() string {
 		}
 
 		for i, cell := range rowData {
-			rowStr += cellStyle.Copy().
+			rowStr += cellStyle.
 				Width(DisplayColumns[i].Width).
 				MaxWidth(DisplayColumns[i].Width).
 				Render(cell)
