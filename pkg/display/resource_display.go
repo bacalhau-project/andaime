@@ -20,18 +20,20 @@ const NumberOfCyclesToHighlight = 8
 const HighlightTimer = 250 * time.Millisecond
 const HighlightColor = tcell.ColorDarkGreen
 const TextColor = tcell.ColorWhite
-const timeoutDuration = 5
+const timeoutDuration = 5 * time.Second
+const updateTimeoutDuration = 30 * time.Second
+const displayStopTimeout = 10 * time.Second
+const timeBetweenDisplayTicks = 100 * time.Millisecond
 const textColumnPadding = 2
 const MaxLogLines = 8
 
 const RelativeSizeForTable = 5
 const RelativeSizeForLogBox = 1
 
-func NewMockDisplay(screen tcell.Screen) *Display {
-	newDisp := NewDisplay()
-	newDisp.App = newDisp.App.SetScreen(screen)
-	return newDisp
-}
+const tableSize = 0
+const tableProportion = 3
+const logBoxSize = 12
+const logBoxProportion = 1
 
 func NewDisplay() *Display {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -43,7 +45,7 @@ func NewDisplay() *Display {
 		Ctx:      ctx,
 		Cancel:   cancel,
 		Logger:   logger.Get(),
-		// updateChan: utils.CreateStructChannel("display_update_chan", 1),
+		Visible:  true,
 	}
 
 	d.LogBox.SetBorder(true).
@@ -51,8 +53,6 @@ func NewDisplay() *Display {
 		SetTitle("Log").
 		SetTitleColor(tcell.ColorWhite)
 	d.setupLayout()
-
-	// d.Logger.Debugf("Display created with updateChan: %v", d.updateChan)
 
 	return d
 }
@@ -135,8 +135,8 @@ var DisplayColumns = []DisplayColumn{
 
 func (d *Display) setupLayout() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(d.Table, 0, 3, true).
-		AddItem(d.LogBox, 12, 1, false)
+		AddItem(d.Table, tableSize, tableProportion, true).
+		AddItem(d.LogBox, logBoxSize, logBoxProportion, false)
 
 	d.App.SetRoot(flex, true).EnableMouse(false)
 }
@@ -151,22 +151,28 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 
 	l.Debugf("UpdateStatus called: ID: %s, Status: %s", newStatus.ID, newStatus.Status)
 
-	d.StatusesMu.Lock()
-	if d.Statuses == nil {
-		d.Statuses = make(map[string]*models.Status)
-	}
+	// Execute this in a function to avoid deadlocks
+	func() {
+		d.StatusesMu.Lock()
+		defer d.StatusesMu.Unlock()
+		if d.Statuses == nil {
+			d.Statuses = make(map[string]*models.Status)
+		}
 
-	if _, exists := d.Statuses[newStatus.ID]; !exists {
-		l.Debugf("New status added: %s", newStatus.ID)
-		d.Statuses[newStatus.ID] = newStatus
-	} else {
-		l.Debugf("Status updated: %s", newStatus.ID)
-		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
-	}
-	d.StatusesMu.Unlock()
+		if _, exists := d.Statuses[newStatus.ID]; !exists {
+			l.Debugf("New status added: %s", newStatus.ID)
+			d.Statuses[newStatus.ID] = newStatus
+		} else {
+			l.Debugf("Status updated: %s", newStatus.ID)
+			d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
+		}
+	}()
 
+	// These calls are now outside the lock
 	d.displayResourceProgress(newStatus)
-	d.scheduleUpdate()
+	if d.Visible {
+		d.scheduleUpdate()
+	}
 }
 
 func (d *Display) getHighlightColor(cycles int) tcell.Color {
@@ -269,8 +275,6 @@ func (d *Display) padText(text string, width int) string {
 
 func (d *Display) Start() {
 	d.Logger.Debug("Starting display")
-	d.StopChan = utils.CreateStructChannel("display_stop_chan", 1)
-
 	d.Table.SetTitle("Deployment Status").
 		SetBorder(true).
 		SetBorderColor(tcell.ColorWhite).
@@ -286,7 +290,7 @@ func (d *Display) Start() {
 			d.Logger.Debug("Display goroutine exiting")
 		}()
 
-		updateTimeout := time.NewTimer(30 * time.Second)
+		updateTimeout := time.NewTimer(updateTimeoutDuration)
 		defer updateTimeout.Stop()
 
 		for {
@@ -294,16 +298,6 @@ func (d *Display) Start() {
 			case <-d.Ctx.Done():
 				// d.Logger.Debug("Context cancelled, stopping display")
 				return
-			case <-d.StopChan:
-				// d.Logger.Debug("Stop signal received, stopping display")
-				return
-			// case <-d.updateChan:
-			// 	// d.Logger.Debug("Update signal received")
-			// 	updateTimeout.Reset(30 * time.Second)
-			// 	d.App.QueueUpdateDraw(func() {
-			// 		d.renderTable()
-			// 		d.updateLogBox()
-			// 	})
 			case <-updateTimeout.C:
 				d.Logger.Warn("Update timeout reached, possible hang detected")
 				// Optionally, you could trigger some recovery action here
@@ -313,6 +307,7 @@ func (d *Display) Start() {
 
 	d.Logger.Debug("Starting tview application")
 	d.DisplayRunning = true
+
 	if err := d.App.Run(); err != nil {
 		d.DisplayRunning = false
 		d.Logger.Errorf("Error running display: %v", err)
@@ -324,13 +319,10 @@ func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
 
-	d.Logger.Debug("Closing StopChan")
-	utils.CloseChannel(d.StopChan)
-
 	// Stop the application in a separate goroutine to avoid deadlock
-	stopDone := make(chan struct{})
+	stopDone := utils.CreateStructChannel("stop_done", 1)
 	go func() {
-		defer close(stopDone)
+		defer utils.CloseChannel(stopDone)
 		d.Logger.Debug("Stopping tview application")
 		if d.DisplayRunning {
 			d.App.Stop()
@@ -342,7 +334,7 @@ func (d *Display) Stop() {
 	select {
 	case <-stopDone:
 		d.Logger.Debug("Application stop confirmed")
-	case <-time.After(5 * time.Second):
+	case <-time.After(timeoutDuration):
 		d.Logger.Warn("Timeout waiting for application to stop")
 	}
 
@@ -356,8 +348,8 @@ func (d *Display) Stop() {
 
 func (d *Display) WaitForStop() {
 	d.Logger.Debug("Waiting for display to stop")
-	timeout := time.After(10 * time.Second)
-	ticker := time.NewTicker(100 * time.Millisecond)
+	timeout := time.After(displayStopTimeout)
+	ticker := time.NewTicker(timeBetweenDisplayTicks)
 	defer ticker.Stop()
 
 	for {
@@ -440,9 +432,6 @@ func (d *Display) printFinalTableState() {
 	printSeparator() // Print bottom separator
 }
 func (d *Display) scheduleUpdate() {
-	d.UpdateMu.Lock()
-	defer d.UpdateMu.Unlock()
-
 	d.Logger.Debug("Update scheduled")
 	d.App.QueueUpdateDraw(func() {
 		d.updateDisplay()
