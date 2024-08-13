@@ -16,9 +16,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/olekukonko/tablewriter"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -35,31 +32,10 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 	return createAzureDeploymentCmd
 }
 
-func printFinalTable(deployment *models.Deployment) {
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader(
-		[]string{"Machine", "Status", "Public IP", "Private IP", "Location", "Elapsed Time"},
-	)
-	table.SetBorder(false)
-
-	for _, machine := range deployment.Machines {
-		elapsedTime := machine.ElapsedTime.Round(time.Second).String()
-		table.Append([]string{
-			machine.Name,
-			machine.Status,
-			machine.PublicIP,
-			machine.PrivateIP,
-			machine.Location,
-			elapsedTime,
-		})
-	}
-
-	fmt.Println("\nFinal Deployment State:")
-	table.Render()
-}
-
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
+	prog := display.GetGlobalProgram()
+
 	logger.SetLevel(logger.DEBUG)
 	l.Info("Starting executeCreateDeployment")
 
@@ -85,33 +61,34 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Error(errMsg)
 		return fmt.Errorf(errMsg)
 	}
+
 	l.Info("Starting resource deployment")
-	p.GetDeployment().Machines = deployment.Machines // Copy machines to the provider's deployment
 
 	// Initialize and run bubbletea program
-	model := display.InitialModel()
-	model.Deployment = p.GetDeployment()
-	program := tea.NewProgram(model, tea.WithAltScreen())
-	display.InitGlobalProgram(model)
+	m := display.InitialModel()
+	m.Deployment = deployment
+	prog.InitProgram(m)
 
 	var deploymentErr error
 	go func() {
 		if err := p.DeployResources(ctx); err != nil {
-			deploymentErr = fmt.Errorf("Failed to deploy resources: %s", err.Error())
-			program.Quit()
+			deploymentErr = fmt.Errorf("failed to deploy resources: %s", err.Error())
+			l.Error(deploymentErr.Error())
+			prog.Quit()
 			return
 		}
 		l.Info("Azure deployment created successfully")
 		if err := p.FinalizeDeployment(context.Background()); err != nil {
-			deploymentErr = fmt.Errorf("Failed to finalize deployment: %v", err)
-			program.Quit()
+			deploymentErr = fmt.Errorf("failed to finalize deployment: %v", err)
+			l.Error(deploymentErr.Error())
+			prog.Quit()
 			return
 		}
 		l.Info("Deployment finalized")
-		program.Quit()
+		prog.Quit()
 	}()
 
-	if _, err := program.Run(); err != nil {
+	if _, err := prog.Run(); err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
 		return err
 	}
@@ -176,7 +153,6 @@ func PrepareDeployment(
 	projectID, uniqueID string,
 ) (*models.Deployment, error) {
 	l := logger.Get()
-	// disp := display.GetGlobalDisplay()
 
 	deployment := &models.Deployment{}
 	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")
@@ -363,6 +339,7 @@ func ProcessMachinesConfig(
 
 	for _, rawMachine := range rawMachines {
 		var thisMachine models.Machine
+		thisMachine.Type = string(models.UpdateStatusResourceTypeVM)
 		thisMachine.DiskSizeGB = int32(defaultDiskSize)
 		thisMachine.VMSize = defaultType
 		thisMachine.Location = rawMachine.Location
@@ -390,6 +367,8 @@ func ProcessMachinesConfig(
 			thisMachine.Name = fmt.Sprintf("%s-vm", thisMachine.ID)
 			thisMachine.ComputerName = fmt.Sprintf("%s-vm", thisMachine.ID)
 			thisMachine.StartTime = time.Now()
+			thisMachine.Progress = 0
+			thisMachine.ProgressFinish = 100
 
 			allMachines = append(allMachines, thisMachine)
 		}
