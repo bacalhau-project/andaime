@@ -1,11 +1,9 @@
 package azure
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -16,8 +14,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-
-	"github.com/olekukonko/tablewriter"
 )
 
 const ipRetries = 3
