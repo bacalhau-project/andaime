@@ -79,10 +79,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	l.Debug("Signal handling set up")
 
 	disp := display.GetGlobalDisplay()
 	noDisplay := os.Getenv("ANDAIME_NO_DISPLAY") != ""
 	isTest := os.Getenv("ANDAIME_TEST") == "true"
+	l.Debugf("Display settings: noDisplay=%v, isTest=%v", noDisplay, isTest)
 
 	if !noDisplay {
 		if isTest {
@@ -93,27 +95,37 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			disp.Stop()
 			disp.WaitForStop()
 		}()
+		l.Debug("Display started")
 	}
 
 	// Handle signal interrupts
 	go func() {
-		<-sigChan
-		l.Info("Received interrupt signal. Cancelling deployment...")
-		cancel()
+		select {
+		case <-sigChan:
+			l.Info("Received interrupt signal. Cancelling deployment...")
+			cancel()
+		case <-ctx.Done():
+			l.Info("Context cancelled before receiving interrupt signal")
+		}
 	}()
+	l.Debug("Signal interrupt handler started")
 
 	// Handle user input for quitting
 	if !noDisplay && !isTest {
 		go func() {
+			l.Debug("Starting user input handler")
 			reader := bufio.NewReader(os.Stdin)
 			for {
+				l.Debug("Waiting for user input...")
 				char, _, err := reader.ReadRune()
 				if err != nil {
 					if err != io.EOF {
 						l.Error(fmt.Sprintf("Error reading input: %v", err))
 					}
+					l.Debug("Exiting user input handler due to error")
 					return
 				}
+				l.Debugf("Received user input: %c", char)
 				if char == 'q' || char == 'Q' {
 					l.Info("User requested to quit. Cancelling deployment...")
 					cancel()
@@ -121,6 +133,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}()
+		l.Debug("User input handler started")
+	} else {
+		l.Debug("User input handler not started (noDisplay or isTest)")
 	}
 
 	// Handle context cancellation
@@ -128,6 +143,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		<-ctx.Done()
 		l.Info("Context cancelled. Stopping deployment...")
 	}()
+	l.Debug("Context cancellation handler started")
 
 	defer func() {
 		if r := recover(); r != nil {
