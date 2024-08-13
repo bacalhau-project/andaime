@@ -296,7 +296,7 @@ func (d *Display) Start() {
 		for {
 			select {
 			case <-d.Ctx.Done():
-				// d.Logger.Debug("Context cancelled, stopping display")
+				d.Logger.Debug("Context cancelled, stopping display")
 				return
 			case <-updateTimeout.C:
 				d.Logger.Warn("Update timeout reached, possible hang detected")
@@ -307,6 +307,15 @@ func (d *Display) Start() {
 
 	d.Logger.Debug("Starting tview application")
 	d.DisplayRunning = true
+
+	d.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
+			d.Logger.Info("User requested to quit. Cancelling deployment...")
+			d.Cancel()
+			return nil
+		}
+		return event
+	})
 
 	if err := d.App.Run(); err != nil {
 		d.DisplayRunning = false

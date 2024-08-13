@@ -79,6 +79,14 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return fmt.Errorf("no resource group location specified")
 	}
 
+	// Check for context cancellation
+	select {
+	case <-ctx.Done():
+		l.Info("Deployment cancelled before starting")
+		return ctx.Err()
+	default:
+	}
+
 	// Prepare resource group
 	err := p.PrepareResourceGroup(ctx)
 	if err != nil {

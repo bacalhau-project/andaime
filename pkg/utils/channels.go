@@ -167,7 +167,7 @@ func CloseChannel(ch interface{}) {
 				return
 			}
 			l.Debugf("Closing channel %v", safeChannel.GetName())
-			// safeChannel.Close()
+			safeChannel.Close()
 			return
 		}
 	}
