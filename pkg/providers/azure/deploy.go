@@ -13,6 +13,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -324,7 +325,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 			m.Deployment.Machines[machineIndex].PublicIP = publicIP
 			m.Deployment.Machines[machineIndex].PrivateIP = privateIP
-			m.Deployment.Machines[machineIndex].Status = "Successfully Deployed"
+			m.Deployment.Machines[machineIndex].Status = "Testing SSH"
 			if m.Deployment.Machines[machineIndex].ElapsedTime == 0 {
 				m.Deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
 			}
@@ -332,12 +333,47 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				&models.Status{
 					ID:          machine.Name,
 					Type:        models.UpdateStatusResourceTypeVM,
-					Status:      "Successfully Deployed",
+					Status:      "Testing SSH",
 					PublicIP:    publicIP,
 					PrivateIP:   privateIP,
 					ElapsedTime: m.Deployment.Machines[machineIndex].ElapsedTime,
 				},
 			)
+
+			// Test SSH connectivity
+			sshConfig := &sshutils.SSHConfig{
+				Host:               publicIP,
+				User:               "azureuser",
+				PrivateKeyMaterial: m.Deployment.SSHPrivateKeyMaterial,
+				Port:               22,
+			}
+
+			sshWaiter := sshutils.NewSSHWaiter(nil)
+			err := sshWaiter.WaitForSSH(sshConfig)
+
+			if err != nil {
+				m.Deployment.Machines[machineIndex].Status = "Failed"
+				m.Deployment.Machines[machineIndex].SSH = false
+				prog.UpdateStatus(
+					&models.Status{
+						ID:     machine.Name,
+						Type:   models.UpdateStatusResourceTypeVM,
+						Status: "Failed",
+						SSH:    "❌",
+					},
+				)
+			} else {
+				m.Deployment.Machines[machineIndex].Status = "Successfully Deployed"
+				m.Deployment.Machines[machineIndex].SSH = true
+				prog.UpdateStatus(
+					&models.Status{
+						ID:     machine.Name,
+						Type:   models.UpdateStatusResourceTypeVM,
+						Status: "Successfully Deployed",
+						SSH:    "✅",
+					},
+				)
+			}
 			break
 		}
 	}
