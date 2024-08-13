@@ -379,6 +379,26 @@ func GetLastLines(n int) []string {
 		return make([]string, n) // Return an empty slice with length n
 	}
 
+	// Attempt to reopen the file if it's closed
+	if _, err := GlobalLogFile.Stat(); err != nil {
+		l.Warnf("GlobalLogFile seems to be closed, attempting to reopen")
+		GlobalLogFile, err = os.OpenFile(GlobalLogPath, os.O_RDONLY, 0666)
+		if err != nil {
+			l.Errorf("Failed to reopen GlobalLogFile: %v", err)
+			writeToDebugLog(fmt.Sprintf("Failed to reopen GlobalLogFile: %v", err))
+			return make([]string, n)
+		}
+		defer GlobalLogFile.Close()
+	}
+
+	// Seek to the end of the file
+	_, err := GlobalLogFile.Seek(0, 2)
+	if err != nil {
+		l.Errorf("Error seeking to end of file: %v", err)
+		writeToDebugLog(fmt.Sprintf("Error seeking to end of file: %v", err))
+		return make([]string, n)
+	}
+
 	var lines []string
 	scanner := bufio.NewScanner(GlobalLogFile)
 	for scanner.Scan() {
