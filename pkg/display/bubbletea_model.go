@@ -25,14 +25,14 @@ type DisplayColumn struct {
 }
 
 var DisplayColumns = []DisplayColumn{
-	{Title: "Name", Width: 13},
-	{Title: "Type", Width: 8},
-	{Title: "Location", Width: 12},
-	{Title: "Status", Width: 25},
+	{Title: "Name", Width: 20},
+	{Title: "Type", Width: 10},
+	{Title: "Location", Width: 15},
+	{Title: "Status", Width: 30},
 	{Title: "Progress", Width: 24},
-	{Title: "Time", Width: 12},
-	{Title: "Pub IP", Width: 14},
-	{Title: "Priv IP", Width: 14},
+	{Title: "Time", Width: 15},
+	{Title: "Pub IP", Width: 18},
+	{Title: "Priv IP", Width: 18},
 	{Title: "🤖", Width: 3},
 	{Title: "🔒", Width: 3},
 	{Title: "🐳", Width: 3},
