@@ -91,17 +91,21 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Initialize and run bubbletea program
 	model := display.InitialModel()
 	model.Deployment = p.GetDeployment()
-	program := tea.NewProgram(model)
+	program := tea.NewProgram(model, tea.WithAltScreen())
 	display.InitGlobalProgram(model)
 
+	var deploymentErr error
 	go func() {
 		if err := p.DeployResources(ctx); err != nil {
-			l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
+			deploymentErr = fmt.Errorf("Failed to deploy resources: %s", err.Error())
 			program.Quit()
+			return
 		}
 		l.Info("Azure deployment created successfully")
 		if err := p.FinalizeDeployment(context.Background()); err != nil {
-			l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
+			deploymentErr = fmt.Errorf("Failed to finalize deployment: %v", err)
+			program.Quit()
+			return
 		}
 		l.Info("Deployment finalized")
 		program.Quit()
@@ -110,6 +114,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	if _, err := program.Run(); err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
 		return err
+	}
+
+	if deploymentErr != nil {
+		l.Error(deploymentErr.Error())
+		return deploymentErr
 	}
 
 	l.Debug("executeCreateDeployment completed")
