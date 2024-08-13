@@ -3,9 +3,9 @@ package azure
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
@@ -129,8 +129,7 @@ func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struc
 	for {
 		select {
 		case <-resourceTicker.C:
-			err := p.PollAndUpdateResources(ctx)
-			if err != nil {
+			if err := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
 		case <-ctx.Done():
@@ -140,10 +139,9 @@ func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struc
 }
 
 func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
-	m := display.GetGlobalModel()
-	prog := display.GetGlobalProgram()
+	l := logger.Get()
 
-	resources, err := p.Client.GetResources(ctx, m.Deployment.ResourceGroupName)
+	resources, err := p.Client.GetResources(ctx, p.Deployment.ResourceGroupName)
 	if err != nil {
 		return err
 	}
@@ -162,27 +160,29 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
 
 		switch resourceType {
 		case "Microsoft.Network/networkSecurityGroups", "Microsoft.Network/securityRules":
-			for _, machine := range m.Deployment.Machines {
+			for _, machine := range p.Deployment.Machines {
 				if strings.HasPrefix(name, machine.Location) {
 					status.ID = machine.Name
-					prog.UpdateStatus(status)
+					p.Deployment.UpdateStatus(status)
 				}
 			}
 		case "Microsoft.Network/publicIPAddresses", "Microsoft.Compute/disks", "Microsoft.Network/networkInterfaces":
-			for i, machine := range m.Deployment.Machines {
+			for i, machine := range p.Deployment.Machines {
 				if strings.HasPrefix(name, machine.Name) {
 					status.ID = machine.Name
-					prog.UpdateStatus(status)
+					p.Deployment.UpdateStatus(status)
 					if resourceType == "Microsoft.Network/publicIPAddresses" && provisioningState == "Succeeded" {
-						publicIP, err := p.Client.GetPublicIPAddress(ctx, m.Deployment.ResourceGroupName, name)
+						publicIP, err := p.Client.GetPublicIPAddress(ctx, p.Deployment.ResourceGroupName, name)
 						if err == nil {
-							m.Deployment.Machines[i].PublicIP = publicIP
+							p.Deployment.Machines[i].PublicIP = *publicIP.IPAddress
+						} else {
+							l.Errorf("Failed to get public IP address: %v", err)
 						}
 					}
 				}
 			}
 		default:
-			prog.UpdateStatus(status)
+			p.Deployment.UpdateStatus(status)
 		}
 	}
 
