@@ -122,22 +122,71 @@ func (p *AzureProvider) GetResources(
 
 func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struct{}) {
 	l := logger.Get()
-	resourceTicker := time.NewTicker(globals.NumberOfSecondsToProbeResourceGroup * time.Second)
+	resourceTicker := time.NewTicker(1 * time.Second)
 	defer resourceTicker.Stop()
 	defer close(done)
 
 	for {
 		select {
 		case <-resourceTicker.C:
-			resources, err := p.PollAndUpdateResources(ctx)
+			err := p.PollAndUpdateResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
-			_ = resources // TODO: Figure out if this is still necessary
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) error {
+	m := display.GetGlobalModel()
+	prog := display.GetGlobalProgram()
+
+	resources, err := p.Client.GetResources(ctx, m.Deployment.ResourceGroupName)
+	if err != nil {
+		return err
+	}
+
+	for _, resource := range resources {
+		r := resource.(map[string]interface{})
+		name := r["name"].(string)
+		resourceType := r["type"].(string)
+		provisioningState := r["properties"].(map[string]interface{})["provisioningState"].(string)
+
+		status := &models.Status{
+			ID:     name,
+			Type:   models.UpdateStatusResourceType(resourceType),
+			Status: provisioningState,
+		}
+
+		switch resourceType {
+		case "Microsoft.Network/networkSecurityGroups", "Microsoft.Network/securityRules":
+			for _, machine := range m.Deployment.Machines {
+				if strings.HasPrefix(name, machine.Location) {
+					status.ID = machine.Name
+					prog.UpdateStatus(status)
+				}
+			}
+		case "Microsoft.Network/publicIPAddresses", "Microsoft.Compute/disks", "Microsoft.Network/networkInterfaces":
+			for i, machine := range m.Deployment.Machines {
+				if strings.HasPrefix(name, machine.Name) {
+					status.ID = machine.Name
+					prog.UpdateStatus(status)
+					if resourceType == "Microsoft.Network/publicIPAddresses" && provisioningState == "Succeeded" {
+						publicIP, err := p.Client.GetPublicIPAddress(ctx, m.Deployment.ResourceGroupName, name)
+						if err == nil {
+							m.Deployment.Machines[i].PublicIP = publicIP
+						}
+					}
+				}
+			}
+		default:
+			prog.UpdateStatus(status)
+		}
+	}
+
+	return nil
 }
 
 var _ AzureProviderer = &AzureProvider{}
