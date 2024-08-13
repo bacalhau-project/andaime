@@ -203,15 +203,12 @@ func (m *DisplayModel) View() string {
 		tableStr += rowStr + "\n"
 	}
 
-	infoText := infoStyle.Render("Press 'q' or Ctrl+C to quit")
+	lastUpdated := time.Now().Format("15:04:05")
+	infoText := infoStyle.Render(fmt.Sprintf("Press 'q' or Ctrl+C to quit (Last Updated: %s)", lastUpdated))
 
-	var textBoxContent string
-	if len(m.TextBox) > 0 {
-		textBoxContent = strings.Join(m.TextBox, "\n")
-	}
+	logLines := logger.GetLastLines(8)
+	textBoxContent := strings.Join(logLines, "\n")
 
-	lastUpdated := fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05"))
-	
 	output := lipgloss.JoinVertical(
 		lipgloss.Left,
 		tableStyle.Render(tableStr),
@@ -219,8 +216,6 @@ func (m *DisplayModel) View() string {
 		infoText,
 		"",
 		textBoxStyle.Render(textBoxContent),
-		"",
-		lastUpdated,
 	)
 
 	return output

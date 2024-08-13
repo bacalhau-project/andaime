@@ -373,27 +373,7 @@ func GetLastLines(n int) []string {
 	if GlobalLogFile == nil {
 		l.Errorf("Error: GlobalLogFile is nil")
 		writeToDebugLog("Error: GlobalLogFile is nil in GetLastLines")
-		buf := make([]byte, 1024)
-		runtime.Stack(buf, false)
-		writeToDebugLog(fmt.Sprintf("Stack trace:\n%s", string(buf)))
 		return make([]string, n) // Return an empty slice with length n
-	}
-
-	// Check if the file exists
-	if _, err := os.Stat(GlobalLogPath); os.IsNotExist(err) {
-		// File doesn't exist, create it and write the initial log line
-		file, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			l.Errorf("Failed to create log file: %v", err)
-			return make([]string, n)
-		}
-		defer file.Close()
-
-		initialLogLine := fmt.Sprintf("[%s] Starting logging\n", time.Now().Format(time.RFC3339))
-		if _, err := file.WriteString(initialLogLine); err != nil {
-			l.Errorf("Failed to write initial log line: %v", err)
-			return make([]string, n)
-		}
 	}
 
 	// Open the file for reading
@@ -405,31 +385,33 @@ func GetLastLines(n int) []string {
 	}
 	defer file.Close()
 
-	// Seek to the end of the file
-	_, err = file.Seek(0, 2)
+	// Read the entire file content
+	content, err := ioutil.ReadAll(file)
 	if err != nil {
-		l.Errorf("Error seeking to end of file: %v", err)
-		writeToDebugLog(fmt.Sprintf("Error seeking to end of file: %v", err))
+		l.Errorf("Error reading GlobalLogFile: %v", err)
+		writeToDebugLog(fmt.Sprintf("Error reading GlobalLogFile: %v", err))
 		return make([]string, n)
 	}
 
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-		if len(lines) > n {
-			lines = lines[1:]
+	// Split the content into lines
+	lines := strings.Split(string(content), "\n")
+
+	// Get the last n lines
+	start := len(lines) - n
+	if start < 0 {
+		start = 0
+	}
+	lastLines := lines[start:]
+
+	// Remove empty lines
+	var result []string
+	for _, line := range lastLines {
+		if line != "" {
+			result = append(result, line)
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		errMsg := fmt.Sprintf("Error reading GlobalLogFile: %v", err)
-		l.Errorf(errMsg)
-		writeToDebugLog(errMsg)
-		return append([]string{errMsg}, lines...)
-	}
-
-	return lines
+	return result
 }
 
 func writeToDebugLog(message string) {
