@@ -142,9 +142,18 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			l.Error(fmt.Sprintf("Panic recovered in executeCreateDeployment: %v", r))
 			l.Error(string(debug.Stack()))
 		}
+		l.Info("Starting cleanup process")
+		if disp != nil {
+			l.Debug("Stopping display")
+			disp.Stop()
+			l.Debug("Waiting for display to stop")
+			disp.WaitForStop()
+			l.Debug("Display stopped")
+		}
 		l.Info("Cleanup completed")
 		l.Debug("Checking for open channels:")
 		utils.DebugOpenChannels()
+		l.Debug("Execution of executeCreateDeployment completed")
 	}()
 
 	UniqueID := time.Now().Format("060102150405")
@@ -210,8 +219,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	printFinalTable(azure.GetGlobalDeployment())
 
 	// Stop all display updates and channels
+	l.Debug("Stopping display and closing channels")
 	disp.Stop()
+	disp.WaitForStop()
 	utils.CloseAllChannels()
+	l.Debug("Display stopped and channels closed")
 
 	// Enable pprof profiling
 	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")

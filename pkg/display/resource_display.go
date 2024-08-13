@@ -339,9 +339,11 @@ func (d *Display) Stop() {
 		defer utils.CloseChannel(stopDone)
 		d.Logger.Debug("Stopping tview application")
 		if d.DisplayRunning {
-			d.App.Stop()
+			d.App.QueueUpdateDraw(func() {
+				d.App.Stop()
+			})
 		}
-		d.Logger.Debug("tview application stopped")
+		d.Logger.Debug("tview application stop queued")
 	}()
 
 	// Wait for the application to stop with a timeout
@@ -358,6 +360,7 @@ func (d *Display) Stop() {
 	d.DisplayRunning = false
 	d.resetTerminal()
 	d.DumpGoroutines()
+	d.Logger.Debug("Display stop process completed")
 }
 
 func (d *Display) WaitForStop() {
@@ -373,11 +376,23 @@ func (d *Display) WaitForStop() {
 				d.Logger.Debug("Display stopped")
 				return
 			}
+			d.Logger.Debug("Display still running, waiting...")
 		case <-timeout:
 			d.Logger.Warn("Timeout waiting for display to stop")
+			d.Logger.Debug("Forcing display stop")
+			d.forceStop()
 			return
 		}
 	}
+}
+
+func (d *Display) forceStop() {
+	d.Logger.Debug("Force stopping display")
+	d.App.QueueUpdateDraw(func() {
+		d.App.Stop()
+	})
+	d.DisplayRunning = false
+	d.Logger.Debug("Display force stopped")
 }
 
 func (d *Display) resetTerminal() {
