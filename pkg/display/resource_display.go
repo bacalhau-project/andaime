@@ -3,27 +3,16 @@ package display
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/signal"
-	"runtime/debug"
-	"runtime/pprof"
 	"sort"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-)
-
-const (
-	timeoutDuration         = 5 * time.Second
-	updateTimeoutDuration   = 30 * time.Second
-	displayStopTimeout      = 10 * time.Second
-	timeBetweenDisplayTicks = 100 * time.Millisecond
-	MaxLogLines             = 8
 )
 
 type Display struct {
@@ -35,40 +24,17 @@ type Display struct {
 	Visible        bool
 	DisplayRunning bool
 	LastTableState [][]string
-	App            *lipgloss.Table
+	Program        *tea.Program
 }
 
-type DisplayColumn struct {
-	Text     string
-	Width    int
-	DataFunc func(status models.Status) string
-}
-
-var DisplayColumns = []DisplayColumn{
-	{Text: "ID", Width: 13, DataFunc: func(status models.Status) string { return status.ID }},
-	{Text: "Type", Width: 8, DataFunc: func(status models.Status) string { return string(status.Type) }},
-	{Text: "Location", Width: 12, DataFunc: func(status models.Status) string { return status.Location }},
-	{Text: "Status", Width: 44, DataFunc: func(status models.Status) string { return status.Status }},
-	{
-		Text:  "Time",
-		Width: 10,
-		DataFunc: func(status models.Status) string {
-			elapsedTime := status.ElapsedTime
-			if elapsedTime == 0 {
-				elapsedTime = time.Since(status.StartTime)
-			}
-			minutes := int(elapsedTime.Minutes())
-			seconds := float64(elapsedTime.Milliseconds()%60000) / 1000.0
-			if minutes < 1 && seconds < 10 {
-				return fmt.Sprintf("%1.1fs", seconds)
-			} else if minutes < 1 {
-				return fmt.Sprintf("%01.1fs", seconds)
-			}
-			return fmt.Sprintf("%dm%01.1fs", minutes, seconds)
-		},
-	},
-	{Text: "Public IP", Width: 15, DataFunc: func(status models.Status) string { return status.PublicIP }},
-	{Text: "Private IP", Width: 15, DataFunc: func(status models.Status) string { return status.PrivateIP }},
+var DisplayColumns = []table.Column{
+	{Title: "ID", Width: 13},
+	{Title: "Type", Width: 8},
+	{Title: "Location", Width: 12},
+	{Title: "Status", Width: 44},
+	{Title: "Time", Width: 10},
+	{Title: "Public IP", Width: 15},
+	{Title: "Private IP", Width: 15},
 }
 
 func NewDisplay() *Display {
@@ -100,14 +66,13 @@ func (d *Display) UpdateStatus(newStatus *models.Status) {
 		d.Statuses[newStatus.ID] = utils.UpdateStatus(d.Statuses[newStatus.ID], newStatus)
 	}
 
-	if d.Visible {
-		d.updateDisplay()
+	if d.Visible && d.Program != nil {
+		d.Program.Send(updateMsg(d.Statuses))
 	}
 }
 
 func (d *Display) GetTableString() string {
-	table := d.renderTable()
-	return table.Render()
+	return d.renderTable()
 }
 
 func (d *Display) Start() {
@@ -117,38 +82,13 @@ func (d *Display) Start() {
 		return
 	}
 
+	model := initialModel(d)
+	p := tea.NewProgram(model)
+	d.Program = p
+
 	go func() {
-		d.Logger.Debug("Display goroutine started")
-		defer func() {
-			if r := recover(); r != nil {
-				d.Logger.Errorf("Panic in display goroutine: %v", r)
-				d.Logger.Debugf("Stack trace:\n%s", debug.Stack())
-			}
-			d.Logger.Debug("Display goroutine exiting")
-		}()
-
-		displayTicker := time.NewTicker(timeBetweenDisplayTicks)
-		updateTimeout := time.NewTimer(updateTimeoutDuration)
-		defer updateTimeout.Stop()
-		defer displayTicker.Stop()
-
-		signalChan := make(chan os.Signal, 1)
-		signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-
-		for {
-			select {
-			case <-displayTicker.C:
-				d.updateDisplay()
-			case sig := <-signalChan:
-				d.Logger.Infof("Received signal: %v", sig)
-				return
-			case <-d.Ctx.Done():
-				d.Logger.Debug("Context cancelled, stopping display")
-				return
-			case <-updateTimeout.C:
-				d.Logger.Warn("Update timeout reached, possible hang detected")
-				return
-			}
+		if err := p.Start(); err != nil {
+			d.Logger.Errorf("Error starting Bubble Tea program: %v", err)
 		}
 	}()
 
@@ -159,63 +99,25 @@ func (d *Display) Start() {
 func (d *Display) Stop() {
 	d.Logger.Debug("Stopping display")
 	d.Cancel() // Cancel the context
-
-	d.Logger.Debug("Closing all registered channels")
-	utils.CloseAllChannels()
-
+	if d.Program != nil {
+		d.Program.Quit()
+	}
 	d.DisplayRunning = false
 	d.Logger.Debug("Display stop process completed")
-	d.DumpGoroutines()
-	d.Logger.Debug("Dumped goroutines")
 }
 
 func (d *Display) WaitForStop() {
 	d.Logger.Debug("Waiting for display to stop")
-	timeout := time.After(displayStopTimeout)
-	ticker := time.NewTicker(timeBetweenDisplayTicks)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if !d.DisplayRunning {
-				d.Logger.Debug("Display stopped")
-				return
-			}
-			d.Logger.Debug("Display still running, waiting...")
-		case <-timeout:
-			d.Logger.Warn("Timeout waiting for display to stop")
-			d.Logger.Debug("Forcing display stop")
-			d.forceStop()
-			return
-		}
+	for d.DisplayRunning {
+		time.Sleep(100 * time.Millisecond)
 	}
-}
-
-func (d *Display) forceStop() {
-	d.Logger.Debug("Force stopping display")
-	d.DisplayRunning = false
-	d.Logger.Debug("Display force stopped")
-}
-
-func (d *Display) updateDisplay() {
-	d.Logger.Debug("Updating display")
-	table := d.renderTable()
-	fmt.Print("\033[2J\033[H") // Clear screen and move cursor to top-left
-	fmt.Println(table.Render())
+	d.Logger.Debug("Display stopped")
 }
 
 func (d *Display) renderTable() string {
 	d.Logger.Debug("Rendering table")
 
-	var rows [][]string
-
-	// Add header row
-	headerRow := make([]string, len(DisplayColumns))
-	for i, col := range DisplayColumns {
-		headerRow[i] = col.Text
-	}
-	rows = append(rows, headerRow)
+	var rows []table.Row
 
 	resources := make([]*models.Status, 0)
 	d.StatusesMu.RLock()
@@ -229,38 +131,50 @@ func (d *Display) renderTable() string {
 	})
 
 	for _, resource := range resources {
-		row := make([]string, len(DisplayColumns))
-		for i, col := range DisplayColumns {
-			row[i] = col.DataFunc(*resource)
+		row := table.Row{
+			resource.ID,
+			string(resource.Type),
+			resource.Location,
+			resource.Status,
+			formatElapsedTime(resource.ElapsedTime, resource.StartTime),
+			resource.PublicIP,
+			resource.PrivateIP,
 		}
 		rows = append(rows, row)
 	}
 
-	d.LastTableState = rows
+	t := table.New(
+		table.WithColumns(DisplayColumns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(len(rows)),
+	)
 
-	table := lipgloss.NewStyle().
+	s := table.DefaultStyles()
+	s.Header = s.Header.
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("236")).
-		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	t.SetStyles(s)
 
-	for _, row := range rows {
-		var rowEntries []interface{}
-		for i, cell := range row {
-			style := lipgloss.NewStyle().Width(DisplayColumns[i].Width).Align(lipgloss.Center)
-			if i == 0 {
-				rowEntries = append(rowEntries, style.Render(cell))
-			} else {
-				rowEntries = append(rowEntries, style.Render(cell))
-			}
-		}
-		table.Row(rowEntries...)
-	}
-
-	d.Logger.Debugf("Table rendered with %d rows", len(rows))
-	return table
+	return t.View()
 }
 
-func (d *Display) DumpGoroutines() {
-	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "pprof at end of executeCreateDeployment\n")
-	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
+func formatElapsedTime(elapsedTime time.Duration, startTime time.Time) string {
+	if elapsedTime == 0 {
+		elapsedTime = time.Since(startTime)
+	}
+	minutes := int(elapsedTime.Minutes())
+	seconds := float64(elapsedTime.Milliseconds()%60000) / 1000.0
+	if minutes < 1 && seconds < 10 {
+		return fmt.Sprintf("%1.1fs", seconds)
+	} else if minutes < 1 {
+		return fmt.Sprintf("%01.1fs", seconds)
+	}
+	return fmt.Sprintf("%dm%01.1fs", minutes, seconds)
 }
