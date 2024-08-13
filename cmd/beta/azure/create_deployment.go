@@ -99,33 +99,23 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	// Handle signal interrupts
+	// Combine signal and user input handling
 	go func() {
 		select {
 		case <-sigChan:
 			l.Info("Received interrupt signal. Cancelling deployment...")
 			cancel()
 		case <-ctx.Done():
-			l.Info("Context cancelled before receiving interrupt signal")
+			l.Info("Context cancelled")
 		}
 	}()
-	l.Debug("Signal interrupt handler started")
-
-	// Handle user input for quitting
-	// Set up signal handling for Ctrl-C
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		l.Info("Interrupt received, cancelling deployment...")
-		cancel()
-	}()
+	l.Debug("Signal and context cancellation handler started")
 
 	if !noDisplay && !isTest {
 		go func() {
 			l.Debug("Starting user input handler")
 			reader := bufio.NewReader(os.Stdin)
 			for {
-				l.Debug("Waiting for user input...")
 				char, _, err := reader.ReadRune()
 				if err != nil {
 					if err != io.EOF {
@@ -135,10 +125,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 					return
 				}
 				l.Debugf("Received user input: %c (ASCII: %d)", char, char)
-				if char == 'q' || char == 'Q' {
+				if char == 'q' || char == 'Q' || char == 3 { // 3 is Ctrl+C
 					l.Info("User requested to quit. Cancelling deployment...")
 					cancel()
-					l.Debug("Cancel function called")
 					return
 				}
 			}
@@ -147,20 +136,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	} else {
 		l.Debug("User input handler not started (noDisplay or isTest)")
 	}
-
-	// Add a goroutine to check for context cancellation
-	go func() {
-		<-ctx.Done()
-		l.Info("Context cancelled. Stopping deployment...")
-		// You might want to add additional cleanup or stopping logic here
-	}()
-
-	// Handle context cancellation
-	go func() {
-		<-ctx.Done()
-		l.Info("Context cancelled. Stopping deployment...")
-	}()
-	l.Debug("Context cancellation handler started")
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -198,26 +173,38 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	done := make(chan struct{})
 	go p.StartResourcePolling(ctx, done)
 
-	err = p.DeployResources(ctx)
-	if err != nil {
-		l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
-		return fmt.Errorf("deployment failed: %w", err)
-	}
-	l.Info("Azure deployment created successfully")
+	deploymentErr := make(chan error, 1)
+	go func() {
+		err := p.DeployResources(ctx)
+		if err != nil {
+			l.Error(fmt.Sprintf("Failed to deploy resources: %s", err.Error()))
+			deploymentErr <- fmt.Errorf("deployment failed: %w", err)
+		} else {
+			l.Info("Azure deployment created successfully")
+			deploymentErr <- nil
+		}
+	}()
 
-	<-done
-	l.Info("Resource polling completed")
+	select {
+	case <-ctx.Done():
+		l.Info("Deployment cancelled")
+	case err := <-deploymentErr:
+		if err != nil {
+			l.Error(fmt.Sprintf("Deployment error: %v", err))
+		}
+	}
 
 	// Stop resource polling
 	cancel()
+	<-done
+	l.Info("Resource polling completed")
 
-	// FinalizeDeployment starts here, after all machines are deployed and WaitGroup is finished
-	l.Info("Starting FinalizeDeployment")
-	if err := p.FinalizeDeployment(ctx); err != nil {
+	// Cleanup and finalization
+	l.Info("Starting cleanup and finalization")
+	if err := p.FinalizeDeployment(context.Background()); err != nil {
 		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
-		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
-	l.Info("Deployment finalized successfully")
+	l.Info("Deployment finalized")
 
 	// Print final static ASCII table
 	printFinalTable(azure.GetGlobalDeployment())
