@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
