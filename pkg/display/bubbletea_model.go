@@ -37,6 +37,10 @@ var DisplayColumns = []DisplayColumn{
 	{Title: models.DisplayEmojiSSH, Width: 3},
 	{Title: models.DisplayEmojiDocker, Width: 3},
 	{Title: models.DisplayEmojiBacalhau, Width: 3},
+	{Title: "NSG", Width: 3},
+	{Title: "IP", Width: 3},
+	{Title: "Disk", Width: 3},
+	{Title: "NIC", Width: 3},
 }
 
 type DisplayModel struct {
