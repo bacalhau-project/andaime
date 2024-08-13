@@ -315,7 +315,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 					utils.GenerateUniqueID()[:6],
 				),
 			}
-			disp.UpdateStatus(
+			display.UpdateStatus(
 				&models.Status{
 					ID:     machine.Name,
 					Type:   models.UpdateStatusResourceTypeVM,
@@ -341,7 +341,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	if dnsFailed {
-		disp.UpdateStatus(
+		display.UpdateStatus(
 			&models.Status{
 				ID:     machine.Name,
 				Type:   models.UpdateStatusResourceTypeVM,
@@ -359,7 +359,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
 				}
 				time.Sleep(timeBetweenIPRetries)
-				disp.UpdateStatus(
+				display.UpdateStatus(
 					&models.Status{
 						ID:        machine.Name,
 						Type:      models.UpdateStatusResourceTypeVM,
@@ -377,7 +377,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			if deployment.Machines[machineIndex].ElapsedTime == 0 {
 				deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
 			}
-			disp.UpdateStatus(
+			display.UpdateStatus(
 				&models.Status{
 					ID:          machine.Name,
 					Type:        models.UpdateStatusResourceTypeVM,
@@ -571,7 +571,7 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	}
 
 	for _, machine := range deployment.Machines {
-		disp.UpdateStatus(
+		display.UpdateStatus(
 			&models.Status{
 				ID:   machine.Name,
 				Type: models.UpdateStatusResourceTypeVM,
