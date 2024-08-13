@@ -353,7 +353,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 			if sshErr != nil {
 				m.Deployment.Machines[machineIndex].Status = "Failed"
-				m.Deployment.Machines[machineIndex].SSH = false
+				m.Deployment.Machines[machineIndex].SSH = "❌"
 				prog.UpdateStatus(
 					&models.Status{
 						ID:     machine.Name,
@@ -363,7 +363,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				)
 			} else {
 				m.Deployment.Machines[machineIndex].Status = "Successfully Deployed"
-				m.Deployment.Machines[machineIndex].SSH = true
+				m.Deployment.Machines[machineIndex].SSH = "✅"
 				prog.UpdateStatus(
 					&models.Status{
 						ID:     machine.Name,
