@@ -8,7 +8,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 )
 
 type DisplayColumn struct {
