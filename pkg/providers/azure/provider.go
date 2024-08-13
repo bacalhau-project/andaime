@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
 
@@ -53,12 +55,28 @@ func NewAzureProvider() (AzureProviderer, error) {
 	if sshPrivateKeyPath == "" {
 		return nil, fmt.Errorf("general.ssh_private_key_path is required")
 	}
-	if _, err := os.Stat(sshPublicKeyPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("SSH public key file does not exist: %s", sshPublicKeyPath)
+
+	// Expand the paths
+	expandedPublicKeyPath, err := homedir.Expand(sshPublicKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand public key path: %w", err)
 	}
-	if _, err := os.Stat(sshPrivateKeyPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("SSH private key file does not exist: %s", sshPrivateKeyPath)
+	expandedPrivateKeyPath, err := homedir.Expand(sshPrivateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand private key path: %w", err)
 	}
+
+	// Check if the files exist
+	if _, err := os.Stat(expandedPublicKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("SSH public key file does not exist: %s", expandedPublicKeyPath)
+	}
+	if _, err := os.Stat(expandedPrivateKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("SSH private key file does not exist: %s", expandedPrivateKeyPath)
+	}
+
+	// Update the config with the expanded paths
+	config.Set("general.ssh_public_key_path", expandedPublicKeyPath)
+	config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
 
 	subscriptionID := config.GetString("azure.subscription_id")
 	client, err := NewAzureClientFunc(subscriptionID)
