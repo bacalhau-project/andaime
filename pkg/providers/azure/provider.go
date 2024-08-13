@@ -168,7 +168,12 @@ func (p *AzureProvider) updateStatusMessage() {
 	header := headerStyle.Render(fmt.Sprintf("Machines: %d/%d running", runningMachines, totalMachines))
 	
 	statusMsg := lipgloss.JoinVertical(lipgloss.Left, append([]string{header}, statusLines...)...)
-	l.Infof("\n%s", statusMsg)
+	
+	// Clear the screen and move cursor to top-left corner
+	fmt.Print("\033[2J\033[H")
+	
+	// Print the status message
+	l.Infof("\n%s\n", statusMsg)
 }
 
 func (p *AzureProvider) GetResources(
