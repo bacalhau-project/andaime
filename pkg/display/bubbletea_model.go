@@ -104,6 +104,9 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case models.StatusUpdateMsg:
 		m.updateStatus(msg.Status)
 		return m, nil
+	case logLinesMsg:
+		m.TextBox = []string(msg)
+		return m, nil
 	}
 	return m, nil
 }
@@ -221,25 +224,12 @@ func (m *DisplayModel) View() string {
 
 func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	return func() tea.Msg {
-		logLines, err := logger.GetLastLines(logger.GetLogFilePath(), 8)
-		if err != nil {
-			return nil
-		}
+		logLines := logger.GetLastLines(8)
 		return logLinesMsg(logLines)
 	}
 }
 
 type logLinesMsg []string
-
-func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	// ... (existing cases)
-	case logLinesMsg:
-		m.TextBox = msg
-		return m, nil
-	}
-	return m, nil
-}
 
 func renderProgressBar(progress, total, width int) string {
 	if total == 0 {
