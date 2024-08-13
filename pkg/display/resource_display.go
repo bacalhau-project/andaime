@@ -8,7 +8,6 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,6 +35,7 @@ type Display struct {
 	Visible        bool
 	DisplayRunning bool
 	LastTableState [][]string
+	App            *lipgloss.Table
 }
 
 type DisplayColumn struct {
@@ -205,7 +205,7 @@ func (d *Display) updateDisplay() {
 	fmt.Println(table.Render())
 }
 
-func (d *Display) renderTable() lipgloss.Table {
+func (d *Display) renderTable() string {
 	d.Logger.Debug("Rendering table")
 
 	var rows [][]string
@@ -238,9 +238,10 @@ func (d *Display) renderTable() lipgloss.Table {
 
 	d.LastTableState = rows
 
-	table := lipgloss.NewTable().
-		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("236")))
+	table := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("236")).
+		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
 	for _, row := range rows {
 		var rowEntries []interface{}
