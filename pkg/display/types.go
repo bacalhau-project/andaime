@@ -14,23 +14,20 @@ import (
 type Display struct {
 	Statuses   map[string]*models.Status
 	StatusesMu sync.RWMutex
-	UpdateChan chan struct{}
-	UpdateMu   sync.Mutex
-	StopChan   chan struct{}
 
 	UpdatePending  bool
 	DisplayRunning bool
+	Visible        bool
 
 	// Add the GetStatus method
 	GetStatus func(id string) *models.Status
 
-	App        *tview.Application
-	Table      *tview.Table
-	LogBox     *tview.TextView
-	Ctx        context.Context
-	Cancel     context.CancelFunc
-	Logger     *logger.Logger
-	updateChan chan struct{}
+	App    *tview.Application
+	Table  *tview.Table
+	LogBox *tview.TextView
+	Ctx    context.Context
+	Cancel context.CancelFunc
+	Logger *logger.Logger
 
 	FadeSteps          int
 	BaseHighlightColor tcell.Color
