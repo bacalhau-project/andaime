@@ -112,6 +112,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *DisplayModel) updateStatus(status *models.Status) {
+	if status == nil || status.Name == "" {
+		return // Ignore invalid status updates
+	}
+
 	found := false
 	for i, machine := range m.Deployment.Machines {
 		if machine.Name == status.Name {
@@ -130,11 +134,14 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 			if status.Progress != 0 {
 				m.Deployment.Machines[i].Progress = status.Progress
 			}
+			if !status.ElapsedTime.IsZero() {
+				m.Deployment.Machines[i].ElapsedTime = status.ElapsedTime
+			}
 			found = true
 			break
 		}
 	}
-	if !found {
+	if !found && status.Name != "" && string(status.Type) != "" {
 		m.Deployment.Machines = append(m.Deployment.Machines, models.Machine{
 			Name:     status.Name,
 			Type:     string(status.Type),
@@ -179,8 +186,15 @@ func (m *DisplayModel) View() string {
 
 	// Render rows
 	for _, machine := range m.Deployment.Machines {
+		if machine.Name == "" || machine.Type == "" {
+			continue // Skip invalid entries
+		}
+
 		var rowStr string
-		elapsedTime := time.Since(machine.StartTime).Truncate(time.Second).String()
+		elapsedTime := machine.ElapsedTime.Truncate(time.Second).String()
+		if elapsedTime == "0s" {
+			elapsedTime = time.Since(machine.StartTime).Truncate(time.Second).String()
+		}
 		progressBar := renderProgressBar(
 			machine.Progress/azureTotalSteps,
 			machine.ProgressFinish,
@@ -192,7 +206,7 @@ func (m *DisplayModel) View() string {
 			orchString = models.DisplayEmojiOrchestrator
 		}
 		rowData := []string{
-			machine.ID,
+			machine.Name,
 			machine.Type,
 			machine.Location,
 			machine.Status,
