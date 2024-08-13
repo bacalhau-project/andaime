@@ -27,15 +27,11 @@ type QueryResponse struct {
 	TotalRecords    *int64                                 `json:"totalRecords"`
 }
 
-func ConvertFromStringToResourceState(state string) (ResourceState, error) {
+func ConvertFromStringToResourceState(state string) (string, error) {
 	switch strings.ToLower(state) {
-	case "succeeded":
-		return StateSucceeded, nil
-	case "failed":
-		return StateFailed, nil
-	case "provisioning":
-		return StateProvisioning, nil
+	case "succeeded", "failed", "provisioning":
+		return state, nil
 	}
 
-	return StateNotStarted, nil
+	return "not started", nil
 }
