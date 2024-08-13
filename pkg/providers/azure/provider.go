@@ -45,13 +45,13 @@ func NewAzureProvider() (AzureProviderer, error) {
 	}
 
 	// Check for SSH keys
-	sshPublicKeyPath := config.GetString("azure.ssh_public_key_path")
-	sshPrivateKeyPath := config.GetString("azure.ssh_private_key_path")
+	sshPublicKeyPath := config.GetString("general.ssh_public_key_path")
+	sshPrivateKeyPath := config.GetString("general.ssh_private_key_path")
 	if sshPublicKeyPath == "" {
-		return nil, fmt.Errorf("azure.ssh_public_key_path is required")
+		return nil, fmt.Errorf("general.ssh_public_key_path is required")
 	}
 	if sshPrivateKeyPath == "" {
-		return nil, fmt.Errorf("azure.ssh_private_key_path is required")
+		return nil, fmt.Errorf("general.ssh_private_key_path is required")
 	}
 	if _, err := os.Stat(sshPublicKeyPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("SSH public key file does not exist: %s", sshPublicKeyPath)
