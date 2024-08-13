@@ -399,6 +399,7 @@ func (p *AzureProvider) FinalizeDeployment(
 			"Instance ID",
 			"Elapsed Time (s)",
 			"Orchestrator",
+			"VM Size",
 		},
 	)
 
@@ -431,10 +432,26 @@ func (p *AzureProvider) FinalizeDeployment(
 			machine.InstanceID,
 			fmt.Sprintf("%.2f", elapsedTime),
 			orchestratorSymbol,
+			machine.VMSize,
 		})
 	}
 
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(true)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetBorder(false)
+	table.SetTablePadding("\t")
+	table.SetNoWhiteSpace(true)
+
 	table.Render()
+
+	fmt.Println("\nDeployment completed. Full list of deployed machines:")
+	fmt.Println(table.String())
 
 	// Ensure all configurations are saved
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
