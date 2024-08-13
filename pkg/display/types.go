@@ -56,14 +56,7 @@ func (d *TestDisplay) WaitForStop() {
 	d.Logger.Debug("Waiting for test display to stop")
 }
 
-//nolint:unused
-func (d *TestDisplay) GetHighlightColor(cycles int) tcell.Color {
-	if cycles <= 0 {
-		return tcell.ColorDefault
-	}
-
-	return HighlightColor
-}
+// This function is no longer needed
 
 // Global status map
 var (
