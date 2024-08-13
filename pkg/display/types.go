@@ -11,31 +11,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-type Display struct {
-	Statuses   map[string]*models.Status
-	StatusesMu sync.RWMutex
-
-	UpdatePending  bool
-	DisplayRunning bool
-	Visible        bool
-
-	// Add the GetStatus method
-	GetStatus func(id string) *models.Status
-
-	App    *tview.Application
-	Table  *tview.Table
-	LogBox *tview.TextView
-	Ctx    context.Context
-	Cancel context.CancelFunc
-	Logger *logger.Logger
-
-	FadeSteps          int
-	BaseHighlightColor tcell.Color
-
-	Quit chan struct{}
-
-	LastTableState [][]string
-}
+// This struct is now defined in resource_display.go
 
 func (d *Display) Close() {
 	d.App.Stop()
