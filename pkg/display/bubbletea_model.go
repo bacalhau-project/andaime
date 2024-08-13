@@ -134,7 +134,7 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 			if status.Progress != 0 {
 				m.Deployment.Machines[i].Progress = status.Progress
 			}
-			if !status.ElapsedTime.IsZero() {
+			if status.ElapsedTime > 0 {
 				m.Deployment.Machines[i].ElapsedTime = status.ElapsedTime
 			}
 			found = true
