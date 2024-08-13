@@ -23,20 +23,20 @@ func newTestDisplayCmd() *cobra.Command {
 }
 
 func runTestDisplay() error {
-	model := display.InitialModel()
-	p := tea.NewProgram(model)
+	m := display.InitialModel()
+	p := tea.NewProgram(m)
 
 	go func() {
 		totalTasks := 5
 		for i := 0; i < totalTasks; i++ {
 			status := &models.Status{
-				ID:       fmt.Sprintf("test%d", i+1),
-				Type:     models.UpdateStatusResourceType("test"),
-				Location: "us-west-2",
-				Status:   "Running",
+				ID:        fmt.Sprintf("test%d", i+1),
+				Type:      models.UpdateStatusResourceType("test"),
+				Location:  "us-west-2",
+				Status:    "Running",
 				StartTime: time.Now(),
 			}
-			display.UpdateStatus(status)
+			m.Deployment.UpdateStatus(status)
 			time.Sleep(1 * time.Second)
 		}
 		p.Quit()
