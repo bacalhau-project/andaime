@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestUpdateGlobalStatus(t *testing.T) {
-	// Initialize the global status map
-	GlobalStatusMap = make(map[string]*models.Status)
+func TestUpdateStatus(t *testing.T) {
+	// Initialize the model
+	model := InitialModel()
 
 	// Create a test status
 	testStatus := &models.Status{
@@ -19,10 +19,10 @@ func TestUpdateGlobalStatus(t *testing.T) {
 		Status:   "Running",
 	}
 
-	// Update the global status
-	UpdateGlobalStatus(testStatus)
+	// Update the status
+	model.Update(models.StatusUpdateMsg{Status: testStatus})
 
 	// Check if the status was updated correctly
-	assert.Len(t, GlobalStatusMap, 1)
-	assert.Equal(t, testStatus, GlobalStatusMap["test1"])
+	assert.Len(t, model.Deployment.Machines, 1)
+	assert.Equal(t, testStatus.Status, model.Deployment.Machines[0].Status)
 }

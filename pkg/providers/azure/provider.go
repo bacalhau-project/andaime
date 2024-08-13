@@ -18,6 +18,7 @@ type AzureProviderer interface {
 	SetClient(client AzureClient)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
+	GetDeployment() *models.Deployment
 
 	StartResourcePolling(ctx context.Context, done chan<- struct{})
 	GetResources(ctx context.Context, resourceGroupName string) ([]interface{}, error)
@@ -27,8 +28,9 @@ type AzureProviderer interface {
 }
 
 type AzureProvider struct {
-	Client AzureClient
-	Config *viper.Viper
+	Client     AzureClient
+	Config     *viper.Viper
+	Deployment *models.Deployment
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -51,8 +53,9 @@ func NewAzureProvider() (AzureProviderer, error) {
 	}
 
 	return &AzureProvider{
-		Client: client,
-		Config: config,
+		Client:     client,
+		Config:     config,
+		Deployment: models.NewDeployment(),
 	}, nil
 }
 
@@ -72,11 +75,15 @@ func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
 }
 
+func (p *AzureProvider) GetDeployment() *models.Deployment {
+	return p.Deployment
+}
+
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
-// Updates the state machine with the latest resource state
+// Updates the deployment with the latest resource state
 func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	subscriptionID string,
 	tags map[string]*string) error {
@@ -94,21 +101,17 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 
 	return nil
 }
+
 func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- struct{}) {
 	l := logger.Get()
 	l.Debug("Starting StartResourcePolling")
 
-	//nolint:govet,lostcancel // Cancel still works
 	resourceCtx, resourceCancel := context.WithCancel(ctx)
+	defer resourceCancel()
 
 	resourceDone := make(chan struct{})
 
 	go p.runResourceTicker(resourceCtx, resourceDone)
-
-	// Directly check if the context is done
-	if ctx.Err() != nil {
-		resourceCancel()
-	}
 
 	<-resourceDone
 
@@ -146,8 +149,7 @@ func (p *AzureProvider) runResourceTicker(ctx context.Context, done chan<- struc
 func (p *AzureProvider) updateStatus() {
 	l := logger.Get()
 	allMachinesComplete := true
-	dep := GetGlobalDeployment()
-	for _, machine := range dep.Machines {
+	for _, machine := range p.Deployment.Machines {
 		if machine.Status != models.MachineStatusComplete {
 			allMachinesComplete = false
 		}

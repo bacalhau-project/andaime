@@ -141,21 +141,15 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				wg.Done()
 			}()
 
-			sm.UpdateStatus(
-				goRoutineMachine.Name,
-				models.UpdateStatusResourceTypeVM,
-				goRoutineMachine,
-				StateProvisioning,
-			)
-
 			err := p.deployMachine(ctx, goRoutineMachine, tags)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
-				sm.UpdateStatus(
-					goRoutineMachine.Name,
-					models.UpdateStatusResourceTypeVM,
-					goRoutineMachine,
-					StateFailed,
+				UpdateStatus(
+					&models.Status{
+						ID:     goRoutineMachine.Name,
+						Type:   models.UpdateStatusResourceTypeVM,
+						Status: "Failed",
+					},
 				)
 			}
 		}(&internalMachine)
@@ -172,12 +166,12 @@ func (p *AzureProvider) deployMachine(
 	machine *models.Machine,
 	tags map[string]*string,
 ) error {
-	sm := GetGlobalStateMachine()
-	sm.UpdateStatus(
-		machine.Name,
-		models.UpdateStatusResourceTypeVM,
-		machine,
-		StateProvisioning,
+	UpdateStatus(
+		&models.Status{
+			ID:     machine.Name,
+			Type:   models.UpdateStatusResourceTypeVM,
+			Status: "Provisioning",
+		},
 	)
 
 	params := p.prepareDeploymentParams(machine)
@@ -266,7 +260,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	display.UpdateStatus(
 		&models.Status{
 			ID:     machine.Name,
-			Status: CreateStateMessage("VM", StateProvisioning, machine.Name),
+			Status: models.CreateStateMessage("VM", models.StatusCreating, machine.Name),
 		},
 	)
 
@@ -567,9 +561,9 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 			&models.Status{
 				ID:   machine.Name,
 				Type: models.UpdateStatusResourceTypeVM,
-				Status: CreateStateMessage(
+				Status: models.CreateStateMessage(
 					models.UpdateStatusResourceTypeVM,
-					StateProvisioning,
+					models.StatusCreating,
 					machine.Name,
 				),
 			},

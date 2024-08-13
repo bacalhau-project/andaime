@@ -35,13 +35,6 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 	return createAzureDeploymentCmd
 }
 
-func printFinalState(disp *display.Display) {
-	fmt.Println("Final Deployment State:")
-	fmt.Println(disp.GetTableString())
-	fmt.Println("\nLogged Buffer:")
-	fmt.Println(logger.GlobalLoggedBuffer.String())
-}
-
 func printFinalTable(deployment *models.Deployment) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader(
@@ -93,11 +86,13 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errMsg)
 	}
 	l.Info("Starting resource deployment")
-	azure.SetGlobalDeployment(deployment)
+	p.GetDeployment().Machines = deployment.Machines // Copy machines to the provider's deployment
 
 	// Initialize and run bubbletea program
 	model := display.InitialModel()
+	model.Deployment = p.GetDeployment()
 	program := tea.NewProgram(model)
+	display.InitGlobalProgram(model)
 
 	go func() {
 		if err := p.DeployResources(ctx); err != nil {
@@ -248,13 +243,7 @@ func PrepareDeployment(
 	deployment.Locations = locations
 
 	for _, machine := range deployment.Machines {
-		disp.UpdateStatus(&models.Status{
-			ID:        machine.Name,
-			Type:      "VM",
-			Status:    "Initializing machine...",
-			Location:  machine.Location,
-			StartTime: time.Now(),
-		})
+		_ = machine // TODO: Figure out how to pass around model
 	}
 	return deployment, nil
 }

@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -43,6 +44,7 @@ type Parameters struct {
 }
 
 type Deployment struct {
+	mu                    sync.RWMutex
 	Name                  string
 	ResourceGroupName     string
 	ResourceGroupLocation string
@@ -57,7 +59,7 @@ type Deployment struct {
 	VMExtensionsStatus    map[string]StatusCode
 	ProjectID             string
 	UniqueID              string
-	Tags                  map[string]*string // This needs to be a pointer because that's what Azure requires
+	Tags                  map[string]*string
 	AllowedPorts          []int
 	SSHPort               int
 	SSHPublicKeyPath      string
@@ -86,7 +88,21 @@ type AndaimeGenericResource struct {
 	Status    string
 }
 
+func NewDeployment() *Deployment {
+	return &Deployment{
+		VNet:                  make(map[string]*armnetwork.VirtualNetwork),
+		SubnetSlices:          make(map[string][]*armnetwork.Subnet),
+		NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
+		Disks:                 make(map[string]*Disk),
+		NetworkWatchers:       make(map[string]*armnetwork.Watcher),
+		VMExtensionsStatus:    make(map[string]StatusCode),
+		Tags:                  make(map[string]*string),
+	}
+}
+
 func (d *Deployment) ToMap() map[string]interface{} {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	return map[string]interface{}{
 		"ResourceGroupName":     d.ResourceGroupName,
 		"ResourceGroupLocation": d.ResourceGroupLocation,
@@ -99,11 +115,11 @@ func (d *Deployment) ToMap() map[string]interface{} {
 	}
 }
 
-// UpdateViperConfig updates the Viper configuration with the current Deployment state
 func (d *Deployment) UpdateViperConfig() error {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	v := viper.GetViper()
 	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.ResourceGroupName)
-	// Just write machine name, public ip, private ip, and orchestrator bool
 	viperMachines := make([]map[string]interface{}, len(d.Machines))
 	for i, machine := range d.Machines {
 		viperMachines[i] = map[string]interface{}{
@@ -119,6 +135,8 @@ func (d *Deployment) UpdateViperConfig() error {
 }
 
 func (d *Deployment) SetSubnet(location string, subnets ...*armnetwork.Subnet) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.SubnetSlices == nil {
 		d.SubnetSlices = make(map[string][]*armnetwork.Subnet)
 	}
@@ -126,6 +144,8 @@ func (d *Deployment) SetSubnet(location string, subnets ...*armnetwork.Subnet) {
 }
 
 func (d *Deployment) GetAllResources() ([]AndaimeGenericResource, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	resources := []AndaimeGenericResource{}
 	for _, vm := range d.Machines {
 		resources = append(resources, AndaimeGenericResource{
@@ -137,7 +157,6 @@ func (d *Deployment) GetAllResources() ([]AndaimeGenericResource, error) {
 		})
 	}
 	for _, disk := range d.Disks {
-		// Convert disk name to machine name
 		machineName := strings.TrimSuffix(disk.Name, "-disk")
 		resources = append(resources, AndaimeGenericResource{
 			MachineID: machineName,
@@ -181,4 +200,22 @@ func (d *Deployment) GetAllResources() ([]AndaimeGenericResource, error) {
 	}
 
 	return resources, nil
+}
+
+func (d *Deployment) UpdateStatus(status *Status) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i, machine := range d.Machines {
+		if machine.ID == status.ID {
+			d.Machines[i].Status = status.Status
+			d.Machines[i].PublicIP = status.PublicIP
+			d.Machines[i].PrivateIP = status.PrivateIP
+			d.Machines[i].ElapsedTime = status.ElapsedTime
+			break
+		}
+	}
+}
+
+type StatusUpdateMsg struct {
+	Status *Status
 }

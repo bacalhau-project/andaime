@@ -26,73 +26,24 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Private IP", Width: 15},
 }
 
-// DisplayResources is a subset of the underlying Azure resources
-type DisplayResources struct {
-	id            string
-	resType       string
-	location      string
-	status        string
-	progress      int
-	total         int
-	startTime     time.Time
-	completedTime time.Time
-	publicIP      string
-	privateIP     string
-}
-
 type DisplayModel struct {
-	Resources []DisplayResources
-	TextBox   string
-	Quitting  bool
+	Deployment *models.Deployment
+	TextBox    string
+	Quitting   bool
 }
 
-func InitialModel() DisplayModel {
-	now := time.Now()
-	return DisplayModel{
-		Resources: []DisplayResources{
-			{
-				id:        "res-001",
-				resType:   "VM",
-				location:  "us-west",
-				status:    "Provisioning",
-				progress:  0,
-				total:     10,
-				startTime: now,
-				publicIP:  "203.0.113.1",
-				privateIP: "10.0.0.1",
-			},
-			{
-				id:        "res-002",
-				resType:   "Storage",
-				location:  "us-east",
-				status:    "Running",
-				progress:  5,
-				total:     10,
-				startTime: now,
-				publicIP:  "203.0.113.2",
-				privateIP: "10.0.0.2",
-			},
-			{
-				id:        "res-003",
-				resType:   "Network",
-				location:  "eu-central",
-				status:    "Stopping",
-				progress:  8,
-				total:     10,
-				startTime: now,
-				publicIP:  "203.0.113.3",
-				privateIP: "10.0.0.3",
-			},
-		},
-		TextBox: "Resource Status Monitor",
+func InitialModel() *DisplayModel {
+	return &DisplayModel{
+		Deployment: models.NewDeployment(),
+		TextBox:    "Resource Status Monitor",
 	}
 }
 
-func (m DisplayModel) Init() tea.Cmd {
+func (m *DisplayModel) Init() tea.Cmd {
 	return tickCmd()
 }
 
-func (m DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -105,39 +56,15 @@ func (m DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.TextBox = fmt.Sprintf("Last Updated: %s", time.Now().Format("15:04:05"))
-
-		// Simulate status and progress changes
-		for i := range m.Resources {
-			switch m.Resources[i].status {
-			case "Provisioning":
-				m.Resources[i].progress++
-				if m.Resources[i].progress >= m.Resources[i].total {
-					m.Resources[i].status = "Running"
-					m.Resources[i].progress = m.Resources[i].total
-				}
-			case "Running":
-				if i%2 == 0 {
-					m.Resources[i].status = "Stopping"
-					m.Resources[i].progress = 0
-				}
-			case "Stopping":
-				m.Resources[i].progress++
-				if m.Resources[i].progress >= m.Resources[i].total {
-					m.Resources[i].status = "Stopped"
-					m.Resources[i].progress = m.Resources[i].total
-					m.Resources[i].completedTime = time.Now()
-				}
-			case "Stopped":
-				// Do nothing, keep the progress at 100%
-			}
-		}
-
 		return m, tickCmd()
+	case models.StatusUpdateMsg:
+		m.Deployment.UpdateStatus(msg.Status)
+		return m, nil
 	}
 	return m, nil
 }
 
-func (m DisplayModel) View() string {
+func (m *DisplayModel) View() string {
 	tableStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
@@ -160,30 +87,25 @@ func (m DisplayModel) View() string {
 	// Render headers
 	var headerRow string
 	for _, col := range DisplayColumns {
-		headerRow += headerStyle.Copy().Width(col.Width).MaxWidth(col.Width).Render(col.Title)
+		headerRow += headerStyle.Width(col.Width).MaxWidth(col.Width).Render(col.Title)
 	}
 	tableStr += headerRow + "\n"
 
 	// Render rows
-	for _, res := range m.Resources {
+	for _, machine := range m.Deployment.Machines {
 		var rowStr string
-		var elapsedTime string
-		if !res.completedTime.IsZero() {
-			elapsedTime = res.completedTime.Sub(res.startTime).Truncate(time.Second).String()
-		} else {
-			elapsedTime = time.Since(res.startTime).Truncate(time.Second).String()
-		}
-		progressBar := renderProgressBar(res.progress, res.total, DisplayColumns[4].Width-2)
+		elapsedTime := time.Since(machine.StartTime).Truncate(time.Second).String()
+		progressBar := renderProgressBar(0, 100, DisplayColumns[4].Width-2) // Placeholder progress
 
 		rowData := []string{
-			res.id,
-			res.resType,
-			res.location,
-			res.status,
+			machine.ID,
+			machine.Type,
+			machine.Location,
+			machine.Status,
 			progressBar,
 			elapsedTime,
-			res.publicIP,
-			res.privateIP,
+			machine.PublicIP,
+			machine.PrivateIP,
 		}
 
 		for i, cell := range rowData {
@@ -228,30 +150,6 @@ func renderProgressBar(progress, total, width int) string {
 		Render(strings.Repeat("█", emptyWidth))
 
 	return filled + empty
-}
-
-func (m DisplayModel) UpdateResources(resources []interface{}) {
-	for _, resource := range resources {
-		if r, ok := resource.(models.Status); ok {
-			for i, existingResource := range m.Resources {
-				if existingResource.id == r.ID {
-					m.Resources[i] = DisplayResources{
-						id:            r.ID,
-						resType:       string(r.Type),
-						location:      r.Location,
-						status:        r.Status,
-						progress:      0, // You might want to calculate this based on r.DetailedStatus
-						total:         100,
-						startTime:     r.StartTime,
-						completedTime: time.Time{},
-						publicIP:      r.PublicIP,
-						privateIP:     r.PrivateIP,
-					}
-					break
-				}
-			}
-		}
-	}
 }
 
 type tickMsg time.Time

@@ -4,7 +4,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -19,6 +18,7 @@ import (
 	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )

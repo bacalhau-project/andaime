@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
-	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -70,11 +69,6 @@ func Execute() error {
 		if r := recover(); r != nil {
 			l := logger.Get()
 			_ = l.Sync()
-
-			// Stop the display first
-			if disp := display.GetGlobalDisplay(); disp != nil {
-				disp.Stop()
-			}
 
 			// Log the panic to debug.log
 			debugLog, err := os.OpenFile(

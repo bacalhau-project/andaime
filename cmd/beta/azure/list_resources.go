@@ -8,7 +8,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/sanity-io/litter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -72,15 +71,6 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		log.Infof("Azure API contacted (took %s)", time.Since(startTime).Round(time.Millisecond))
 
-		sm := azure.GetGlobalStateMachine()
-		if sm.GetTotalResourcesCount() == 0 {
-			log.Warn("No resources created by Andaime were found")
-		} else {
-			for _, res := range sm.GetAllResources() {
-				// If resource has "name" field, print it
-				log.Debugf("Resource: %s", litter.Sdump(res.Resource))
-			}
-		}
 	},
 }
 

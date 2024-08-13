@@ -16,11 +16,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.171.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.12.1
-	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/pulumi/pulumi-azure-native-sdk/compute v1.104.0
 	github.com/pulumi/pulumi/sdk/v3 v3.127.0
 	github.com/rivo/tview v0.0.0-20240625185742-b0a7293b8130
-	github.com/sanity-io/litter v1.5.5
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
@@ -49,6 +47,7 @@ require (
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/djherbis/times v1.5.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
+	github.com/gdamore/tcell/v2 v2.7.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.5.0 // indirect
 	github.com/go-git/go-git/v5 v5.12.0 // indirect

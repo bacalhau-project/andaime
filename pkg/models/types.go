@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -72,3 +73,11 @@ const (
 	UpdateStatusResourceTypeIP   UpdateStatusResourceType = "IP"
 	UpdateStatusResourceTypeUNK  UpdateStatusResourceType = "UNK"
 )
+
+func CreateStateMessage(
+	resourceName UpdateStatusResourceType,
+	stateString StatusCode,
+	machineName string,
+) string {
+	return fmt.Sprintf("%s %s - %s", resourceName, stateString, machineName)
+}
