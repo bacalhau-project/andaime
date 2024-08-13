@@ -379,6 +379,23 @@ func GetLastLines(n int) []string {
 		return make([]string, n) // Return an empty slice with length n
 	}
 
+	// Check if the file exists
+	if _, err := os.Stat(GlobalLogPath); os.IsNotExist(err) {
+		// File doesn't exist, create it and write the initial log line
+		file, err := os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			l.Errorf("Failed to create log file: %v", err)
+			return make([]string, n)
+		}
+		defer file.Close()
+
+		initialLogLine := fmt.Sprintf("[%s] Starting logging\n", time.Now().Format(time.RFC3339))
+		if _, err := file.WriteString(initialLogLine); err != nil {
+			l.Errorf("Failed to write initial log line: %v", err)
+			return make([]string, n)
+		}
+	}
+
 	// Attempt to reopen the file if it's closed
 	if _, err := GlobalLogFile.Stat(); err != nil {
 		l.Warnf("GlobalLogFile seems to be closed, attempting to reopen")
