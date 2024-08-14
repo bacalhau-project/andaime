@@ -122,8 +122,8 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 	for i, machine := range m.Deployment.Machines {
 		if machine.Name == status.Name {
 			if status.Status != "" {
-				if len(status.Status) > StatusLength {
-					m.Deployment.Machines[i].Status = status.Status[:StatusLength]
+				if len(status.Status) > StatusLength-3 {
+					m.Deployment.Machines[i].Status = status.Status[:StatusLength-3] + "..."
 				} else {
 					m.Deployment.Machines[i].Status = fmt.Sprintf("%-*s", StatusLength, status.Status)
 				}
