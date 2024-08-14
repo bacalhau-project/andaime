@@ -29,6 +29,10 @@ type Status struct {
 	HighlightCycles int
 	Name            string
 	Progress        int
+	Orchestrator    bool
+	SSH             string
+	Docker          string
+	Bacalhau        string
 }
 
 type TimeUpdateMsg struct{}
@@ -55,14 +59,14 @@ const (
 	DisplayPrefixNIC  = "NIC "
 	DisplayPrefixUNK  = "UNK "
 
-	DisplayEmojiSuccess    = "✅"
-	DisplayEmojiWaiting    = "⏳"
-	DisplayEmojiFailed     = "❌"
-	DisplayEmojiQuestion   = "❓"
-	DisplayEmojiNotStarted = "⬛️"
+	DisplayEmojiSuccess    = "✔" // "✅"
+	DisplayEmojiWaiting    = "⟳" // "⏳"
+	DisplayEmojiFailed     = "✘" // "❌"
+	DisplayEmojiQuestion   = "?" // "❓"
+	DisplayEmojiNotStarted = "┅" // "⬛️"
 
-	DisplayEmojiOrchestratorNode = "🌕"
-	DisplayEmojiWorkerNode       = "⚫️"
+	DisplayEmojiOrchestratorNode = "⏼" // "🌕"
+	DisplayEmojiWorkerNode       = " " // "⚫️"
 
 	DisplayEmojiOrchestrator = "🤖"
 	DisplayEmojiSSH          = "🔑"

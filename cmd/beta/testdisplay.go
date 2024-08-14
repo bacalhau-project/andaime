@@ -8,12 +8,11 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/logger"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
-const statusLength = 20
+const statusLength = 30
 
 var words = []string{
 	"apple", "banana", "cherry", "date", "elderberry",
@@ -44,21 +43,21 @@ func GetTestDisplayCmd() *cobra.Command {
 func runTestDisplay() error {
 	m := display.GetGlobalModel()
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	log := logger.Get()
 
 	go func() {
 		totalTasks := 5
 		statuses := make([]*models.Status, totalTasks)
 		for i := 0; i < totalTasks; i++ {
 			statuses[i] = &models.Status{
-				Name:     fmt.Sprintf("test%d", i+1),
-				Type:     models.UpdateStatusResourceType("test"),
-				Location: "us-west-2",
-				Status:   getRandomWords(3),
-				Progress: 0,
-				SSH:      models.DisplayEmojiNotStarted,
-				Docker:   models.DisplayEmojiNotStarted,
-				Bacalhau: models.DisplayEmojiNotStarted,
+				Name:         fmt.Sprintf("test%d", i+1),
+				Type:         models.UpdateStatusResourceType("test"),
+				Location:     "us-west-2",
+				Status:       getRandomWords(3),
+				Progress:     0,
+				Orchestrator: true,
+				SSH:          models.DisplayEmojiFailed,
+				Docker:       models.DisplayEmojiSuccess,
+				Bacalhau:     models.DisplayEmojiWaiting,
 			}
 			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
@@ -80,17 +79,17 @@ func runTestDisplay() error {
 					}
 					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
 					p.Send(models.StatusUpdateMsg{Status: statuses[i]})
-					
+
 					// Log the length of each status string
-					log.Infof("Task %d status length: %d", i+1, len(statuses[i].Status))
+					// log.Infof("Task %d status length: %d", i+1, len(statuses[i].Status))
 				}
-				
+
 				// Log the total width of all statuses
-				totalWidth := statusLength * totalTasks
-				log.Infof("Total width of all statuses: %d", totalWidth)
-				
+				// totalWidth := statusLength * totalTasks
+				// log.Infof("Total width of all statuses: %d", totalWidth)
+
 				// Log a constant value for terminal width (adjust as needed)
-				log.Infof("Assumed terminal width: %d", 80)
+				// log.Infof("Assumed terminal width: %d", 80)
 			case <-timeTicker.C:
 				p.Send(models.TimeUpdateMsg{})
 			}
@@ -101,6 +100,5 @@ func runTestDisplay() error {
 		return err
 	}
 
-	fmt.Println("Test display exited")
 	return nil
 }

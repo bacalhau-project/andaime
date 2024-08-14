@@ -48,12 +48,14 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		var resources []interface{}
 		if allFlag {
-			err = azureProvider.GetClient().ListAllResourcesInSubscription(cmd.Context(),
+			resources, err = azureProvider.GetClient().ListAllResourcesInSubscription(cmd.Context(),
 				getSubscriptionID(),
 				tags)
 		} else {
 			resources, err = azureProvider.GetClient().GetResources(cmd.Context(),
-				resourceGroup)
+				getSubscriptionID(),
+				resourceGroup,
+				tags)
 		}
 
 		_ = resources // TODO: Figure out if this is still necessary

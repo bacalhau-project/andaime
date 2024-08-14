@@ -89,7 +89,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		prog.Quit()
 	}()
 
-	model, err := prog.Run()
+	_, err = prog.Run()
 	if err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
 		return err
@@ -100,11 +100,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return deploymentErr
 	}
 
-	// Print the entire table
-	fmt.Println("\nFinal Deployment Status:")
-	fmt.Println(model.(*display.DisplayModel).View())
-
-	l.Debug("executeCreateDeployment completed")
 	return nil
 }
 
@@ -375,6 +370,10 @@ func ProcessMachinesConfig(
 			thisMachine.StartTime = time.Now()
 			thisMachine.Progress = 0
 			thisMachine.ProgressFinish = 100
+
+			thisMachine.SSH = models.DisplayEmojiNotStarted
+			thisMachine.Docker = models.DisplayEmojiNotStarted
+			thisMachine.Bacalhau = models.DisplayEmojiNotStarted
 
 			allMachines = append(allMachines, thisMachine)
 		}

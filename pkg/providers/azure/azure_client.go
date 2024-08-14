@@ -17,6 +17,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
@@ -61,11 +62,13 @@ type AzureClient interface {
 		ctx context.Context,
 		subscriptionID string,
 		tags map[string]*string,
-	) error
+	) ([]interface{}, error)
 
 	GetResources(
 		ctx context.Context,
+		subscriptionID string,
 		resourceGroupName string,
+		tags map[string]*string,
 	) ([]interface{}, error)
 
 	// New methods for ARM template deployment
@@ -259,16 +262,17 @@ func (c *LiveAzureClient) ListAllResourceGroups(
 func (c *LiveAzureClient) ListAllResourcesInSubscription(
 	ctx context.Context,
 	subscriptionID string,
-	tags map[string]*string) error {
-	return c.UpdateResourceList(ctx, subscriptionID, "", tags)
+	tags map[string]*string) ([]interface{}, error) {
+	return c.GetResources(ctx, subscriptionID, "", tags)
 }
 
-func (c *LiveAzureClient) UpdateResourceList(
+func (c *LiveAzureClient) GetResources(
 	ctx context.Context,
 	subscriptionID string,
 	resourceGroupName string,
-	tags map[string]*string) error {
+	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
+	prog := display.GetGlobalProgram()
 	// Remove the state machine reference
 	// --- START OF MERGED SearchResources functionality ---
 
@@ -288,12 +292,12 @@ func (c *LiveAzureClient) UpdateResourceList(
 
 	res, err := c.resourceGraphClient.Resources(ctx, request, nil)
 	if err != nil {
-		return fmt.Errorf("failed to query resources: %v", err)
+		return nil, fmt.Errorf("failed to query resources: %v", err)
 	}
 
 	if res.Data == nil || len(res.Data.([]interface{})) == 0 {
 		l.Debugf("No resources found")
-		return nil
+		return []interface{}{}, nil
 	}
 
 	l.Debugf("Found %d resources", len(res.Data.([]interface{})))
@@ -313,18 +317,14 @@ func (c *LiveAzureClient) UpdateResourceList(
 			continue
 		}
 
-		// Remove the skipTypes check
-
-		// l.Debugf("CALLING RESOURCE TYPE - 1: %s", resourceType)
-
-		UpdateStatus(&models.Status{
+		prog.UpdateStatus(&models.Status{
 			ID:     name,
 			Type:   models.UpdateStatusResourceType(resourceType),
-			Status: string(state),
+			Status: state,
 		})
 	}
 
-	return nil
+	return res.Data.([]interface{}), nil
 }
 
 func (c *LiveAzureClient) GetVirtualMachine(
@@ -371,10 +371,4 @@ func (c *LiveAzureClient) GetPublicIPAddress(
 		return "", fmt.Errorf("failed to get public IP address: %w", err)
 	}
 	return *publicIPResponse.Properties.IPAddress, nil
-}
-
-func (c *LiveAzureClient) GetResources(
-	ctx context.Context,
-	resourceGroupName string) ([]interface{}, error) {
-	return nil, nil
 }

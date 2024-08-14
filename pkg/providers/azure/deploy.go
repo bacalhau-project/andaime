@@ -383,7 +383,9 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	m := display.GetGlobalModel()
 	resources, err := p.Client.GetResources(
 		ctx,
+		m.Deployment.SubscriptionID,
 		m.Deployment.ResourceGroupName,
+		m.Deployment.Tags,
 	)
 	if err != nil {
 		return nil, err
@@ -391,8 +393,6 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 
 	return resources, nil
 }
-
-// This function is already defined in azure_state_machine.go, so we can remove it from here
 
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(

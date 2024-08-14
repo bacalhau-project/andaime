@@ -5,6 +5,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/bacalhau-project/andaime/cmd/beta"
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,7 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 		rootCmd.AddCommand(betaCmd)
 
 		betaCmd.AddCommand(azure.GetAzureCmd())
+		betaCmd.AddCommand(beta.GetTestDisplayCmd())
 		// betaCmd.AddCommand(azure.GetAwsCmd())
 	})
 	return betaCmd

@@ -93,6 +93,7 @@ lostcancel
 mapstructure
 maxint
 mgmt
+mitchellh
 mockprivatekey
 nakedret
 nanosec

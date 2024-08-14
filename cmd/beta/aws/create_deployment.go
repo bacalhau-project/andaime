@@ -2,26 +2,12 @@ package aws
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-var createCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create AWS resources",
-	Long:  `Create various AWS resources including deployments.`,
-}
-
-func init() {
-	createCmd.AddCommand(createDeploymentCmd)
-}
 
 var createDeploymentCmd = &cobra.Command{
 	Use:   "deployment",
@@ -31,33 +17,17 @@ var createDeploymentCmd = &cobra.Command{
 }
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
-	logger.InitProduction()
 	l := logger.Get()
 
 	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
 	if err != nil {
-		errString := fmt.Sprintf("Failed to initialize AWS provider: %s", err.Error())
-		l.Error(errString)
-		return fmt.Errorf(errString)
+		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
 
-	//nolint:gomnd
-	sigChan := utils.CreateSignalChannel("sigChan", 5)
-
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM) //nolint:sigchanyzer
-
-	defer func() {
-		utils.CloseChannel(sigChan)
-	}()
-
-	err = awsProvider.CreateDeployment(cmd.Context())
-	if err != nil {
-		errString := fmt.Sprintf("Failed to create deployment: %s", err.Error())
-		l.Error(errString)
-		return fmt.Errorf(errString)
+	if err := awsProvider.CreateDeployment(cmd.Context()); err != nil {
+		return fmt.Errorf("failed to create deployment: %w", err)
 	}
 
-	// TODO: Implement resource status updates when AWS provider supports it
 	l.Info("AWS deployment created successfully")
 	return nil
 }
