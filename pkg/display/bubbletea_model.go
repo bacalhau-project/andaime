@@ -278,7 +278,7 @@ func (m *DisplayModel) View() string {
 				rowStr += renderedCell
 			}
 		}
-		tableStr += rowStr + "\n"
+		tableStr += strings.TrimRight(rowStr, " ") + "\n"
 	}
 
 	lastUpdated := m.LastUpdate.Format("15:04:05")
