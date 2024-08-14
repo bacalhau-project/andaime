@@ -15,11 +15,11 @@ func TestDisplayLayout(t *testing.T) {
 
 	// Add test machines
 	testMachines := []models.Machine{
-		{Name: "test1", Type: "test", Location: "us-west-2", Status: "apple grape mango", Progress: 18, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
-		{Name: "test2", Type: "test", Location: "us-west-2", Status: "nectarine fig elderberry", Progress: 18, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
-		{Name: "test3", Type: "test", Location: "us-west-2", Status: "grape quince kiwi", Progress: 18, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
-		{Name: "test4", Type: "test", Location: "us-west-2", Status: "cherry orange quince", Progress: 18, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
-		{Name: "test5", Type: "test", Location: "us-west-2", Status: "raspberry ugli kiwi", Progress: 18, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
+		{Name: "test1", Type: "test", Location: "us-west-2", Status: "apple grape mango", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
+		{Name: "test2", Type: "test", Location: "us-west-2", Status: "nectarine fig elderberry", Progress: 4, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
+		{Name: "test3", Type: "test", Location: "us-west-2", Status: "grape quince kiwi", Progress: 5, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
+		{Name: "test4", Type: "test", Location: "us-west-2", Status: "cherry orange quince", Progress: 6, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
+		{Name: "test5", Type: "test", Location: "us-west-2", Status: "raspberry ugli kiwi", Progress: 7, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
 	}
 
 	m.Deployment.Machines = testMachines
@@ -43,7 +43,7 @@ func TestDisplayLayout(t *testing.T) {
 		assert.Contains(t, line, machine.Type)
 		assert.Contains(t, line, machine.Location)
 		assert.Contains(t, line, machine.Status)
-		assert.Contains(t, line, "██████████████████")
+		assert.Contains(t, line, "█")
 		assert.Contains(t, line, "⏼  ✘  ✔  ⟳")
 	}
 

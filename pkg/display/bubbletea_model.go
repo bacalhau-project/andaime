@@ -420,11 +420,17 @@ func (m *DisplayModel) updateLogCmd() tea.Cmd {
 type logLinesMsg []string
 
 func renderProgressBar(progress, total, width int) string {
-	if total == 0 {
+	if total == 0 || width <= 0 {
 		return ""
 	}
 	filledWidth := progress * width / total
+	if filledWidth < 0 {
+		filledWidth = 0
+	}
 	emptyWidth := width - filledWidth
+	if emptyWidth < 0 {
+		emptyWidth = 0
+	}
 
 	filled := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42")).
