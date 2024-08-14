@@ -304,6 +304,8 @@ func (m *DisplayModel) View() string {
 }
 
 func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
+	l := logger.Get()
+	l.Debugf("Status: %s", status)
 	style = style.Bold(true).Align(lipgloss.Center)
 	switch status {
 	case models.DisplayEmojiSuccess:
