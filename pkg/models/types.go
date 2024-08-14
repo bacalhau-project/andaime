@@ -28,6 +28,7 @@ type Status struct {
 	PrivateIP       string
 	HighlightCycles int
 	Name            string
+	Progress        int
 }
 
 // Remove these duplicate declarations as they are already defined in deployment.go
@@ -52,10 +53,19 @@ const (
 	DisplayPrefixNIC  = "NIC "
 	DisplayPrefixUNK  = "UNK "
 
-	DisplayEmojiSuccess  = "✅"
-	DisplayEmojiWaiting  = "⏳"
-	DisplayEmojiFailed   = "❌"
-	DisplayEmojiQuestion = "❓"
+	DisplayEmojiSuccess    = "✅"
+	DisplayEmojiWaiting    = "⏳"
+	DisplayEmojiFailed     = "❌"
+	DisplayEmojiQuestion   = "❓"
+	DisplayEmojiNotStarted = "⬛️"
+
+	DisplayEmojiOrchestratorNode = "🌕"
+	DisplayEmojiWorkerNode       = "⚫️"
+
+	DisplayEmojiOrchestrator = "🤖"
+	DisplayEmojiSSH          = "🔑"
+	DisplayEmojiDocker       = "🐳"
+	DisplayEmojiBacalhau     = "🐟"
 )
 
 type UpdateStatusResourceType string
