@@ -209,12 +209,15 @@ func (m *DisplayModel) View() string {
 		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
 		if col.EmojiColumn {
 			style = style.Align(lipgloss.Center)
-		}
-		renderedTitle := style.Render(col.Title)
-		if m.DebugMode {
-			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
-		} else {
+			renderedTitle := style.Render(col.Title)
 			headerRow += renderedTitle
+		} else {
+			renderedTitle := style.Render(col.Title)
+			if m.DebugMode {
+				headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
+			} else {
+				headerRow += renderedTitle
+			}
 		}
 	}
 	tableStr += headerRow + "\n"
