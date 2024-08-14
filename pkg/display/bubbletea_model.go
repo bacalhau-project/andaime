@@ -92,8 +92,11 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.Quitting = true
-			fmt.Println(m.RenderFinalTable())
-			return m, tea.Quit
+			return m, tea.Sequence(
+				tea.ClearScreen,
+				tea.Printf(m.RenderFinalTable()),
+				tea.Quit,
+			)
 		}
 	case tickMsg:
 		if m.Quitting {
