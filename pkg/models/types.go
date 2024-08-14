@@ -132,9 +132,60 @@ func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]Displ
 	return statuses, nil
 }
 
-// GetMachinesInLocation is a placeholder function
-// You'll need to implement this based on your actual data structure
-func GetMachinesInLocation(location string) ([]Machine, error) {
-	// Implementation depends on how you store and retrieve machine information
-	return nil, fmt.Errorf("GetMachinesInLocation not implemented")
+func GetMachinesInLocation(location string) ([]string, error) {
+	// This is a mock implementation. In a real scenario, you'd query your infrastructure
+	// to get the actual list of machines in the given location.
+	allIDs := []string{
+		"centralus-nsg", "centralus-vnet", "ddhtzx-vm-ip", "eastus-nsg", "eastus-vnet",
+		"eastus2-nsg", "eastus2-vnet", "fj369e-vm", "fj369e-vm-ip", "fj369e-vm-nic",
+		"fj369e-vm_OsDisk_1_b9cca35bff6d4cb1b476c720e0b4c2b5", "jv2m3q-vm", "jv2m3q-vm-ip",
+		"jv2m3q-vm-nic", "jv2m3q-vm_OsDisk_1_426c3e7af41d410db984ebe67d0308b1", "zf8o9i-vm",
+		"zf8o9i-vm-ip", "zf8o9i-vm-nic", "zf8o9i-vm_OsDisk_1_700ecbdcd8bd4dfcae6efeaebda28d51",
+	}
+
+	var machinesInLocation []string
+	for _, id := range allIDs {
+		if strings.HasPrefix(id, location) && isMachine(id) {
+			machinesInLocation = append(machinesInLocation, id)
+		}
+	}
+
+	return machinesInLocation, nil
+}
+func isLocation(id string) bool {
+	return strings.HasSuffix(id, "-nsg") || strings.HasSuffix(id, "-vnet")
+}
+
+func isMachine(id string) bool {
+	return strings.Contains(id, "-vm") || strings.Contains(id, "-vm-")
+}
+
+func createStatus(resourceID, resourceType, state string) Status {
+	var resourceTypeEnum UpdateStatusResourceType
+	var emoji string
+
+	switch {
+	case strings.Contains(resourceID, "-vm"):
+		resourceTypeEnum = UpdateStatusResourceTypeVM
+		emoji = DisplayEmojiWaiting
+	case strings.Contains(resourceID, "-nsg"):
+		resourceTypeEnum = UpdateStatusResourceTypeNSG
+		emoji = DisplayEmojiWaiting
+	case strings.Contains(resourceID, "-vnet"):
+		resourceTypeEnum = UpdateStatusResourceTypeVNET
+		emoji = DisplayEmojiWaiting
+	default:
+		resourceTypeEnum = UpdateStatusResourceTypeUNK
+		emoji = DisplayEmojiQuestion
+	}
+
+	statusCode, _ := ConvertFromStringToResourceState(state)
+	statusMessage := fmt.Sprintf("%s %s - %s of %s", resourceTypeEnum, emoji, statusCode, resourceID)
+
+	return Status{
+		ID:     resourceID,
+		Type:   resourceTypeEnum,
+		Status: statusMessage,
+		State:  statusCode,
+	}
 }
