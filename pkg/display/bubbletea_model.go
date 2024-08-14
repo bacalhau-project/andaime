@@ -87,17 +87,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Quitting {
 			return m, nil
 		}
-		allFinished := true
-		for _, machine := range m.Deployment.Machines {
-			if machine.Status != "Successfully Deployed" && machine.Status != "Failed" {
-				allFinished = false
-				break
-			}
-		}
-		if allFinished {
-			m.Quitting = true
-			return m, tea.Quit
-		}
 		return m, tea.Batch(
 			tickCmd(),
 			m.updateLogCmd(),

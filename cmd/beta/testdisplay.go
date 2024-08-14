@@ -54,14 +54,12 @@ func runTestDisplay() error {
 			p.Send(models.StatusUpdateMsg{Status: status})
 		}
 
-		time.Sleep(3 * time.Second)
-		p.Quit()
 	}()
 
 	if _, err := p.Run(); err != nil {
 		return err
 	}
 
-	fmt.Println("Test display completed successfully")
+	fmt.Println("Test display exited")
 	return nil
 }
