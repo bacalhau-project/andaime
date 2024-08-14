@@ -85,9 +85,8 @@ func runTestDisplay() error {
 				}
 				log.Infof("Total width of all statuses: %d", totalWidth)
 				
-				// Log the current terminal width
-				width, _, _ := m.Size()
-				log.Infof("Current terminal width: %d", width)
+				// Log a constant value for terminal width (adjust as needed)
+				log.Infof("Assumed terminal width: %d", 80)
 			case <-timeTicker.C:
 				p.Send(models.TimeUpdateMsg{})
 			}
