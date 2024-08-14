@@ -52,6 +52,9 @@ func runTestDisplay() error {
 				Location: "us-west-2",
 				Status:   getRandomWords(3),
 				Progress: 0,
+				SSH:      models.DisplayEmojiNotStarted,
+				Docker:   models.DisplayEmojiNotStarted,
+				Bacalhau: models.DisplayEmojiNotStarted,
 			}
 			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
