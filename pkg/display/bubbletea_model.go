@@ -202,8 +202,8 @@ func (m *DisplayModel) View() string {
 			elapsedTime = time.Since(machine.StartTime).Truncate(time.Second).String()
 		}
 		progressBar := renderProgressBar(
-			machine.Progress/float64(AzureTotalSteps),
-			machine.ProgressFinish,
+			int(float64(machine.Progress)/float64(AzureTotalSteps)*100),
+			100,
 			DisplayColumns[4].Width-2,
 		)
 
@@ -272,7 +272,7 @@ func renderProgressBar(progress, total, width int) string {
 	if total == 0 {
 		return ""
 	}
-	filledWidth := int(float64(progress) / float64(total) * float64(width))
+	filledWidth := progress * width / total
 	emptyWidth := width - filledWidth
 
 	filled := lipgloss.NewStyle().
