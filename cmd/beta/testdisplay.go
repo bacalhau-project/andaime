@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const statusLength = 20
+
 var words = []string{
 	"apple", "banana", "cherry", "date", "elderberry",
 	"fig", "grape", "honeydew", "kiwi", "lemon",
@@ -70,7 +72,12 @@ func runTestDisplay() error {
 			select {
 			case <-wordTicker.C:
 				for i := 0; i < totalTasks; i++ {
-					statuses[i].Status = getRandomWords(3)
+					rawStatus := getRandomWords(3)
+					if len(rawStatus) > statusLength {
+						statuses[i].Status = rawStatus[:statusLength]
+					} else {
+						statuses[i].Status = fmt.Sprintf("%-*s", statusLength, rawStatus)
+					}
 					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
 					p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 					
@@ -79,10 +86,7 @@ func runTestDisplay() error {
 				}
 				
 				// Log the total width of all statuses
-				totalWidth := 0
-				for _, status := range statuses {
-					totalWidth += len(status.Status)
-				}
+				totalWidth := statusLength * totalTasks
 				log.Infof("Total width of all statuses: %d", totalWidth)
 				
 				// Log a constant value for terminal width (adjust as needed)
