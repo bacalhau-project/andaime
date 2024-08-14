@@ -2,7 +2,6 @@ package models
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -16,7 +15,7 @@ const (
 	ProviderAbbreviationUnknown ProviderAbbreviation = "UNK"
 )
 
-type Status struct {
+type DisplayStatus struct {
 	ID              string
 	Type            UpdateStatusResourceType
 	Location        string
@@ -34,12 +33,16 @@ type Status struct {
 	SSH             string
 	Docker          string
 	Bacalhau        string
-	State           StatusCode
 }
 
-type TimeUpdateMsg struct{}
+const (
+	StatusCodeSucceeded  StatusCode = "Succeeded"
+	StatusCodeFailed     StatusCode = "Failed"
+	StatusCodeInProgress StatusCode = "InProgress"
+	StatusCodeUnknown    StatusCode = "Unknown"
+)
 
-// Remove these duplicate declarations as they are already defined in deployment.go
+type TimeUpdateMsg struct{}
 
 type AzureEvent struct {
 	Type       string
@@ -101,20 +104,15 @@ func CreateStateMessage(
 }
 
 func ConvertFromStringToResourceState(state string) (StatusCode, error) {
-	// This is a placeholder implementation. Adjust according to your actual status codes.
-	switch state {
-	case "Succeeded":
-		return StatusCodeSucceeded, nil
-	case "Failed":
-		return StatusCodeFailed, nil
-	case "InProgress":
-		return StatusCodeInProgress, nil
+	switch StatusCode(state) {
+	case StatusCodeSucceeded, StatusCodeFailed, StatusCodeInProgress:
+		return StatusCode(state), nil
 	default:
 		return StatusCodeUnknown, fmt.Errorf("unknown state: %s", state)
 	}
 }
 
-func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]Status, error) {
+func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]DisplayStatus, error) {
 	state, err := ConvertFromStringToResourceState(resourceMap["provisioningState"].(string))
 	if err != nil {
 		return nil, err
@@ -124,38 +122,12 @@ func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]Statu
 	resourceType := resourceMap["type"].(string)
 	resourceStatus := resourceMap["status"].(string)
 
-	var statuses []Status
+	var statuses []DisplayStatus
 
-	if strings.Contains(resourceID, "-vm") {
-		// This is a VM resource
-		status := Status{
-			ID:     resourceID,
-			Type:   UpdateStatusResourceTypeVM,
-			Status: resourceStatus,
-			State:  state,
-		}
-		statuses = append(statuses, status)
-	} else if strings.Contains(resourceID, "-nsg") {
-		// This is an NSG resource, create a status for each machine in the location
-		location := strings.Split(resourceID, "-")[0]
-		// Assuming we have a function to get all machines in a location
-		machines, err := GetMachinesInLocation(location)
-		if err != nil {
-			return nil, err
-		}
-		for _, machine := range machines {
-			status := Status{
-				ID:     machine.ID,
-				Type:   UpdateStatusResourceTypeNSG,
-				Status: resourceStatus,
-				State:  state,
-			}
-			statuses = append(statuses, status)
-		}
-	} else {
-		// Unknown resource type
-		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
-	}
+	// If the ID is a location (such as "centralus-nsg" or "centralus-vnet"), we will create a status
+	// update for every machine in the location.
+
+	// Else if the ID is a machine (such as "UNIQID-vm-ip" or "UNIQID-vm"), we will create a status
 
 	return statuses, nil
 }
