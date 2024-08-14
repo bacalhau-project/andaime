@@ -107,15 +107,18 @@ func (m *MockAzureClient) ListAllResourcesInSubscription(
 	ctx context.Context,
 	subscriptionID string,
 	tags map[string]*string,
-) error {
+) ([]interface{}, error) {
 	args := m.Called(ctx, subscriptionID, tags)
-	return args.Error(0)
+	return args.Get(0).([]interface{}), args.Error(1)
 }
 
 func (m *MockAzureClient) GetResources(
 	ctx context.Context,
-	resourceGroupName string) ([]interface{}, error) {
-	args := m.Called(ctx, resourceGroupName)
+	subscriptionID string,
+	resourceGroupName string,
+	tags map[string]*string,
+) ([]interface{}, error) {
+	args := m.Called(ctx, subscriptionID, resourceGroupName, tags)
 
 	// Get the first argument as []armresources.GenericResource
 	genericResources, ok := args.Get(0).([]armresources.GenericResource)
@@ -204,9 +207,9 @@ func TestAzureProvider_ListAllResourcesInSubscription_ReturnsEmptySlice(t *testi
 		nil,
 	)
 
-	err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
-
+	resources, err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.NoError(t, err)
+	assert.Equal(t, []interface{}{}, resources)
 	mockClient.AssertExpectations(t)
 }
 
@@ -224,8 +227,9 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 		nil,
 	)
 
-	err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
+	resources, err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.NoError(t, err)
+	assert.Equal(t, []interface{}{}, resources)
 
 	mockClient.AssertExpectations(t)
 }
