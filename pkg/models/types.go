@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type Status struct {
 	SSH             string
 	Docker          string
 	Bacalhau        string
+	State           StatusCode
 }
 
 type TimeUpdateMsg struct{}
@@ -96,6 +98,20 @@ func CreateStateMessage(
 	machineName string,
 ) string {
 	return fmt.Sprintf("%s %s - %s", resourceName, stateString, machineName)
+}
+
+func ConvertFromStringToResourceState(state string) (StatusCode, error) {
+	// This is a placeholder implementation. Adjust according to your actual status codes.
+	switch state {
+	case "Succeeded":
+		return StatusCodeSucceeded, nil
+	case "Failed":
+		return StatusCodeFailed, nil
+	case "InProgress":
+		return StatusCodeInProgress, nil
+	default:
+		return StatusCodeUnknown, fmt.Errorf("unknown state: %s", state)
+	}
 }
 
 func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]Status, error) {
