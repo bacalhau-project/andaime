@@ -92,7 +92,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.Quitting = true
 			return m, tea.Sequence(
-				tea.ExitAltScreen,
+				printFinalTableCmd(m),
 				tea.Quit,
 			)
 		}
@@ -115,6 +115,13 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+func printFinalTableCmd(m *DisplayModel) tea.Cmd {
+	return func() tea.Msg {
+		fmt.Print("\n" + m.RenderFinalTable() + "\n")
+		return nil
+	}
 }
 
 func (m *DisplayModel) RenderFinalTable() string {
