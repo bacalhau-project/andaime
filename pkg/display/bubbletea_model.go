@@ -186,10 +186,11 @@ func (m *DisplayModel) View() string {
 		}
 
 		var rowStr string
-		elapsedTime := machine.ElapsedTime.Truncate(time.Second).String()
-		if elapsedTime == "0s" {
-			elapsedTime = time.Since(machine.StartTime).Truncate(time.Second).String()
+		elapsedTime := machine.ElapsedTime.Truncate(100 * time.Millisecond)
+		if elapsedTime == 0 {
+			elapsedTime = time.Since(machine.StartTime).Truncate(100 * time.Millisecond)
 		}
+		elapsedTimeStr := fmt.Sprintf("%7s", formatElapsedTime(elapsedTime))
 		progressBar := renderProgressBar(
 			machine.Progress,
 			AzureTotalSteps,
@@ -206,7 +207,7 @@ func (m *DisplayModel) View() string {
 			machine.Location,
 			machine.Status,
 			progressBar,
-			elapsedTime,
+			elapsedTimeStr,
 			machine.PublicIP,
 			machine.PrivateIP,
 			orchString,
@@ -277,7 +278,18 @@ func renderProgressBar(progress, total, width int) string {
 type tickMsg time.Time
 
 func tickCmd() tea.Cmd {
-	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func formatElapsedTime(d time.Duration) string {
+	minutes := int(d.Minutes())
+	seconds := int(d.Seconds()) % 60
+	milliseconds := int(d.Milliseconds()) % 1000
+
+	if minutes > 0 {
+		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, milliseconds/100)
+	}
+	return fmt.Sprintf("%d.%ds", seconds, milliseconds/100)
 }

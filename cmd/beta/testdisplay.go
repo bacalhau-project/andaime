@@ -56,7 +56,7 @@ func runTestDisplay() error {
 			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
 
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 
 		for {
