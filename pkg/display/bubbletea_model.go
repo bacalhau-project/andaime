@@ -20,6 +20,7 @@ var (
 
 	AzureTotalSteps = 7
 	StatusLength    = 20
+	MinTerminalWidth = 120
 )
 
 type DisplayColumn struct {
@@ -29,18 +30,18 @@ type DisplayColumn struct {
 }
 
 var DisplayColumns = []DisplayColumn{
-	{Title: "Name", Width: 10, EmojiColumn: false},
-	{Title: "Type", Width: 8, EmojiColumn: false},
-	{Title: "Location", Width: 12, EmojiColumn: false},
+	{Title: "Name", Width: 15, EmojiColumn: false},
+	{Title: "Type", Width: 10, EmojiColumn: false},
+	{Title: "Location", Width: 15, EmojiColumn: false},
 	{Title: "Status", Width: StatusLength, EmojiColumn: false},
-	{Title: "Progress", Width: 24, EmojiColumn: false},
+	{Title: "Progress", Width: 20, EmojiColumn: false},
 	{Title: "Time", Width: 10, EmojiColumn: false},
-	{Title: "Pub IP", Width: 18, EmojiColumn: false},
-	{Title: "Priv IP", Width: 18, EmojiColumn: false},
-	{Title: models.DisplayEmojiOrchestrator, EmojiColumn: true},
-	{Title: models.DisplayEmojiSSH, EmojiColumn: true},
-	{Title: models.DisplayEmojiDocker, EmojiColumn: true},
-	{Title: models.DisplayEmojiBacalhau, EmojiColumn: true},
+	{Title: "Pub IP", Width: 15, EmojiColumn: false},
+	{Title: "Priv IP", Width: 15, EmojiColumn: false},
+	{Title: models.DisplayEmojiOrchestrator, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiSSH, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiDocker, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiBacalhau, Width: 3, EmojiColumn: true},
 }
 
 type DisplayModel struct {
@@ -175,9 +176,15 @@ func (m *DisplayModel) View() string {
 		tableWidth += col.Width
 	}
 
+	// Ensure the terminal width is at least MinTerminalWidth
+	if tableWidth < MinTerminalWidth {
+		tableWidth = MinTerminalWidth
+	}
+
 	tableStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240"))
+		BorderForeground(lipgloss.Color("240")).
+		Width(tableWidth)
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("39")).
