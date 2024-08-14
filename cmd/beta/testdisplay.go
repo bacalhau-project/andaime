@@ -44,15 +44,16 @@ func runTestDisplay() error {
 
 	go func() {
 		totalTasks := 5
+		statuses := make([]*models.Status, totalTasks)
 		for i := 0; i < totalTasks; i++ {
-			status := &models.Status{
+			statuses[i] = &models.Status{
 				Name:     fmt.Sprintf("test%d", i+1),
 				Type:     models.UpdateStatusResourceType("test"),
 				Location: "us-west-2",
 				Status:   getRandomWords(3),
 				Progress: 0,
 			}
-			p.Send(models.StatusUpdateMsg{Status: status})
+			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
 
 		ticker := time.NewTicker(1 * time.Second)
@@ -62,14 +63,9 @@ func runTestDisplay() error {
 			select {
 			case <-ticker.C:
 				for i := 0; i < totalTasks; i++ {
-					status := &models.Status{
-						Name:     fmt.Sprintf("test%d", i+1),
-						Type:     models.UpdateStatusResourceType("test"),
-						Location: "us-west-2",
-						Status:   getRandomWords(3),
-						Progress: (status.Progress + 1) % display.AzureTotalSteps,
-					}
-					p.Send(models.StatusUpdateMsg{Status: status})
+					statuses[i].Status = getRandomWords(3)
+					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
+					p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 				}
 			}
 		}
