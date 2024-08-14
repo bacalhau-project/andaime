@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTestDisplayCmd() *cobra.Command {
+func GetTestDisplayCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "testDisplay",
 		Short: "Test the display functionality",
@@ -28,13 +28,13 @@ func runTestDisplay() error {
 
 	go func() {
 		totalTasks := 5
-		for i := 0; i < totalTasks; i++ {
+		for i := 0; i < display.AzureTotalSteps; i++ {
 			status := &models.Status{
 				Name:     fmt.Sprintf("test%d", i+1),
 				Type:     models.UpdateStatusResourceType("test"),
 				Location: "us-west-2",
 				Status:   "Running",
-				Progress: float64((i + 1) * display.AzureTotalSteps / totalTasks),
+				Progress: i,
 			}
 			p.Send(models.StatusUpdateMsg{Status: status})
 			time.Sleep(2 * time.Second)
@@ -43,12 +43,12 @@ func runTestDisplay() error {
 		// Set final status for all machines
 		for i := 0; i < totalTasks; i++ {
 			status := &models.Status{
-				Name:     fmt.Sprintf("test%d", i+1),
-				Type:     models.UpdateStatusResourceType("test"),
-				Location: "us-west-2",
-				Status:   "Successfully Deployed",
-				Progress: float64(display.AzureTotalSteps),
-				PublicIP: fmt.Sprintf("192.0.2.%d", i+1),
+				Name:      fmt.Sprintf("test%d", i+1),
+				Type:      models.UpdateStatusResourceType("test"),
+				Location:  "us-west-2",
+				Status:    "Successfully Deployed",
+				Progress:  display.AzureTotalSteps,
+				PublicIP:  fmt.Sprintf("192.0.2.%d", i+1),
 				PrivateIP: fmt.Sprintf("10.0.0.%d", i+1),
 			}
 			p.Send(models.StatusUpdateMsg{Status: status})
