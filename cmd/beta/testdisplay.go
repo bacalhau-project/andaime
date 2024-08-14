@@ -8,6 +8,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
@@ -41,6 +42,7 @@ func GetTestDisplayCmd() *cobra.Command {
 func runTestDisplay() error {
 	m := display.GetGlobalModel()
 	p := tea.NewProgram(m, tea.WithAltScreen())
+	log := logger.Get()
 
 	go func() {
 		totalTasks := 5
@@ -71,7 +73,21 @@ func runTestDisplay() error {
 					statuses[i].Status = getRandomWords(3)
 					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
 					p.Send(models.StatusUpdateMsg{Status: statuses[i]})
+					
+					// Log the length of each status string
+					log.Infof("Task %d status length: %d", i+1, len(statuses[i].Status))
 				}
+				
+				// Log the total width of all statuses
+				totalWidth := 0
+				for _, status := range statuses {
+					totalWidth += len(status.Status)
+				}
+				log.Infof("Total width of all statuses: %d", totalWidth)
+				
+				// Log the current terminal width
+				width, _, _ := m.Size()
+				log.Infof("Current terminal width: %d", width)
 			case <-timeTicker.C:
 				p.Send(models.TimeUpdateMsg{})
 			}
