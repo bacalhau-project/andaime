@@ -207,9 +207,9 @@ func TestAzureProvider_ListAllResourcesInSubscription_ReturnsEmptySlice(t *testi
 	subscriptionID := "subscriptionID"
 	tags := map[string]*string{"tag1": to.Ptr("value1")}
 
-	// Update this line to match the actual method signature
+	// Mock the client to return nil resources and no error
 	mockClient.On("ListAllResourcesInSubscription", mock.Anything, subscriptionID, tags).Return(
-		nil,
+		nil, nil,
 	)
 
 	resources, err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
