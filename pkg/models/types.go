@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -166,7 +167,7 @@ func isMachine(id string) bool {
 	return strings.Contains(id, "-vm") || strings.Contains(id, "-vm-")
 }
 
-func createStatus(resourceID, resourceType, state string) Status {
+func createStatus(resourceID, resourceType, state string) DisplayStatus {
 	var resourceTypeEnum UpdateStatusResourceType
 	var emoji string
 
@@ -188,7 +189,7 @@ func createStatus(resourceID, resourceType, state string) Status {
 	statusCode, _ := ConvertFromStringToResourceState(state)
 	statusMessage := fmt.Sprintf("%s %s - %s of %s", resourceTypeEnum, emoji, statusCode, resourceID)
 
-	return Status{
+	return DisplayStatus{
 		ID:     resourceID,
 		Type:   resourceTypeEnum,
 		Status: statusMessage,
