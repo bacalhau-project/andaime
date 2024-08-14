@@ -113,21 +113,27 @@ func ConvertFromStringToResourceState(state string) (StatusCode, error) {
 }
 
 func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]DisplayStatus, error) {
-	state, err := ConvertFromStringToResourceState(resourceMap["provisioningState"].(string))
-	if err != nil {
-		return nil, err
-	}
-
 	resourceID := resourceMap["id"].(string)
 	resourceType := resourceMap["type"].(string)
-	resourceStatus := resourceMap["status"].(string)
+	resourceState := resourceMap["provisioningState"].(string)
 
 	var statuses []DisplayStatus
 
-	// If the ID is a location (such as "centralus-nsg" or "centralus-vnet"), we will create a status
-	// update for every machine in the location.
-
-	// Else if the ID is a machine (such as "UNIQID-vm-ip" or "UNIQID-vm"), we will create a status
+	if isLocation(resourceID) {
+		machines, err := GetMachinesInLocation(resourceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, machine := range machines {
+			status := createStatus(machine, resourceType, resourceState)
+			statuses = append(statuses, status)
+		}
+	} else if isMachine(resourceID) {
+		status := createStatus(resourceID, resourceType, resourceState)
+		statuses = append(statuses, status)
+	} else {
+		return nil, fmt.Errorf("unknown resource ID format: %s", resourceID)
+	}
 
 	return statuses, nil
 }
