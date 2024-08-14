@@ -92,6 +92,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.Quitting = true
+			fmt.Println(m.RenderFinalTable())
 			return m, tea.Quit
 		}
 	case tickMsg:
@@ -113,6 +114,89 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m *DisplayModel) RenderFinalTable() string {
+	tableStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	
+	return tableStyle.Render(m.renderTable())
+}
+
+func (m *DisplayModel) renderTable() string {
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Padding(0, 1)
+	cellStyle := lipgloss.NewStyle().
+		PaddingLeft(1)
+
+	var tableStr string
+
+	// Render headers
+	var headerRow string
+	for _, col := range DisplayColumns {
+		style := headerStyle.
+			Width(col.Width).
+			MaxWidth(col.Width)
+
+		if col.EmojiColumn {
+			style = style.Align(lipgloss.Center).Inline(true)
+		}
+
+		headerRow += style.Render(col.Title)
+	}
+	tableStr += strings.TrimRight(headerRow, " ") + "\n"
+
+	// Render rows
+	for _, machine := range m.Deployment.Machines {
+		if machine.Name == "" || machine.Type == "" {
+			continue // Skip invalid entries
+		}
+
+		var rowStr string
+		elapsedTime := time.Since(machine.StartTime).Truncate(TickerInterval)
+		elapsedTimeStr := fmt.Sprintf("%7s", formatElapsedTime(elapsedTime))
+		progressBar := renderProgressBar(
+			machine.Progress,
+			AzureTotalSteps,
+			DisplayColumns[4].Width-ProgressBarPadding,
+		)
+
+		orchString := models.DisplayEmojiWorkerNode
+		if machine.Orchestrator {
+			orchString = models.DisplayEmojiOrchestratorNode
+		}
+		rowData := []string{
+			machine.Name,
+			machine.Type,
+			machine.Location,
+			machine.Status,
+			progressBar,
+			elapsedTimeStr,
+			machine.PublicIP,
+			machine.PrivateIP,
+			orchString,
+			machine.SSH,
+			machine.Docker,
+			machine.Bacalhau,
+		}
+
+		for i, cell := range rowData {
+			style := cellStyle.
+				Width(DisplayColumns[i].Width).
+				MaxWidth(DisplayColumns[i].Width)
+			if DisplayColumns[i].EmojiColumn {
+				style = renderStyleByColumn(cell, style)
+			}
+
+			rowStr += style.Render(cell)
+		}
+		tableStr += strings.TrimRight(rowStr, " ") + "\n"
+	}
+
+	return tableStr
 }
 
 func (m *DisplayModel) updateStatus(status *models.Status) {
