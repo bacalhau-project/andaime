@@ -18,9 +18,9 @@ var (
 	globalModelInstance *DisplayModel
 	globalModelOnce     sync.Once
 
-	AzureTotalSteps = 7
-	StatusLength    = 20
-	MinTerminalWidth = 120
+	AzureTotalSteps  = 7
+	StatusLength     = 30
+	MinTerminalWidth = 140
 )
 
 type DisplayColumn struct {
@@ -30,8 +30,8 @@ type DisplayColumn struct {
 }
 
 var DisplayColumns = []DisplayColumn{
-	{Title: "Name", Width: 15, EmojiColumn: false},
-	{Title: "Type", Width: 10, EmojiColumn: false},
+	{Title: "Name", Width: 10, EmojiColumn: false},
+	{Title: "Type", Width: 6, EmojiColumn: false},
 	{Title: "Location", Width: 15, EmojiColumn: false},
 	{Title: "Status", Width: StatusLength, EmojiColumn: false},
 	{Title: "Progress", Width: 20, EmojiColumn: false},
