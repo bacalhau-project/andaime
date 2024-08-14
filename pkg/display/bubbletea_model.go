@@ -82,7 +82,6 @@ func InitialModel() *DisplayModel {
 func (m *DisplayModel) Init() tea.Cmd {
 	return tea.Batch(
 		tickCmd(),
-		tea.ClearScreen,
 	)
 }
 
@@ -93,7 +92,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.Quitting = true
 			return m, tea.Sequence(
-				tea.ClearScreen,
 				tea.Printf(m.RenderFinalTable()),
 				tea.Quit,
 			)
@@ -123,7 +121,7 @@ func (m *DisplayModel) RenderFinalTable() string {
 	tableStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
-	
+
 	return tableStyle.Render(m.renderTable())
 }
 
