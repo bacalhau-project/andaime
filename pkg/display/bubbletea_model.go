@@ -174,16 +174,21 @@ func (m *DisplayModel) View() string {
 
 	var tableStr string
 
-	// Render headers
+	// Render headers with debug info
 	var headerRow string
 	for _, col := range DisplayColumns {
 		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
 		if col.EmojiColumn {
 			style = style.UnsetPadding()
 		}
-		headerRow += style.Render(col.Title)
+		renderedTitle := style.Render(col.Title)
+		headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
 	}
 	tableStr += headerRow + "\n"
+
+	// Add a ruler for easier width measurement
+	ruler := strings.Repeat("-", tableWidth)
+	tableStr += ruler + "\n"
 
 	// Render rows
 	for _, machine := range m.Deployment.Machines {
@@ -227,7 +232,8 @@ func (m *DisplayModel) View() string {
 				style = style.UnsetPadding()
 				style = style.UnsetMargins()
 			}
-			rowStr += style.Render(cell)
+			renderedCell := style.Render(cell)
+			rowStr += fmt.Sprintf("%s[%d]", renderedCell, len(renderedCell))
 		}
 		tableStr += rowStr + "\n"
 	}
