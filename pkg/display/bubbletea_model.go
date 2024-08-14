@@ -198,7 +198,7 @@ func (m *DisplayModel) View() string {
 
 	// Render headers
 	var headerRow string
-	for _, col := range DisplayColumns {
+	for i, col := range DisplayColumns {
 		style := headerStyle.
 			Width(col.Width).
 			MaxWidth(col.Width)
@@ -209,14 +209,19 @@ func (m *DisplayModel) View() string {
 		
 		renderedTitle := style.Render(col.Title)
 		
+		l.Debugf("Header Cell %d: Content='%s', Length=%d, Width=%d", i, col.Title, len(renderedTitle), col.Width)
+		
 		if m.DebugMode {
 			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
 		} else {
 			headerRow += renderedTitle
 		}
+		
+		l.Debugf("Header Row (partial): %s", headerRow)
 	}
-	l.Debugf("Header Row: %s", headerRow)
+	l.Debugf("Final Header Row: %s", headerRow)
 	tableStr += strings.TrimRight(headerRow, " ") + "\n"
+	l.Debugf("Table String after header: %s", tableStr)
 
 	if m.DebugMode {
 		// Add a ruler for easier width measurement
