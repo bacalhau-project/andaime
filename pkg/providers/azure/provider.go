@@ -113,20 +113,20 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 // Updates the deployment with the latest resource state
 func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	subscriptionID string,
-	tags map[string]*string) error {
+	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
 
-	err := p.Client.ListAllResourcesInSubscription(ctx,
+	resources, err := p.Client.ListAllResourcesInSubscription(ctx,
 		subscriptionID,
 		tags)
 	if err != nil {
 		l.Errorf("Failed to query Azure resources: %v", err)
-		return fmt.Errorf("failed to query resources: %v", err)
+		return nil, fmt.Errorf("failed to query resources: %v", err)
 	}
 
 	l.Debugf("Azure Resource Graph response - done listing resources.")
 
-	return nil
+	return resources, nil
 }
 
 func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- struct{}) {
@@ -142,7 +142,6 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 			if err, _ := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
-			p.updateStatusMessage()
 		case <-ctx.Done():
 			l.Debug("Context done, exiting resource polling")
 			close(done)
@@ -151,36 +150,16 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 	}
 }
 
-func (p *AzureProvider) updateStatusMessage() {
-	l := logger.Get()
-	totalMachines := len(p.Deployment.Machines)
-	runningMachines := 0
-	var statusLines []string
-
-	for _, machine := range p.Deployment.Machines {
-		if machine.Status == "Succeeded" {
-			runningMachines++
-		}
-		statusLines = append(statusLines, formatMachineStatus(machine))
-	}
-
-	headerStyle := lipgloss.NewStyle().Bold(true)
-	header := headerStyle.Render(fmt.Sprintf("Machines: %d/%d running", runningMachines, totalMachines))
-	
-	statusMsg := lipgloss.JoinVertical(lipgloss.Left, append([]string{header}, statusLines...)...)
-	
-	// Clear the screen and move cursor to top-left corner
-	fmt.Print("\033[2J\033[H")
-	
-	// Print the status message
-	l.Infof("\n%s\n", statusMsg)
-}
-
 func (p *AzureProvider) GetResources(
 	ctx context.Context,
 	resourceGroupName string,
 ) ([]interface{}, error) {
-	return p.Client.GetResources(ctx, resourceGroupName)
+	return p.Client.GetResources(
+		ctx,
+		p.Deployment.SubscriptionID,
+		p.Deployment.ResourceGroupName,
+		p.Deployment.Tags,
+	)
 }
 
 // PollAndUpdateResources is now defined in pkg/providers/azure/deploy.go
