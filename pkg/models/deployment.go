@@ -21,6 +21,7 @@ type Machine struct {
 	Parameters           Parameters
 	PublicIP             string
 	PrivateIP            string
+	StartTime            time.Time
 	InstanceID           string
 	NetworkSecurityGroup string
 	NIC                  string

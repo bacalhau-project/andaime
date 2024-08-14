@@ -138,10 +138,11 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 	}
 	if !found && status.Name != "" && string(status.Type) != "" {
 		m.Deployment.Machines = append(m.Deployment.Machines, models.Machine{
-			Name:     status.Name,
-			Type:     string(status.Type),
-			Location: status.Location,
-			Status:   status.Status,
+			Name:      status.Name,
+			Type:      string(status.Type),
+			Location:  status.Location,
+			Status:    status.Status,
+			StartTime: time.Now(),
 		})
 	}
 }
@@ -191,7 +192,7 @@ func (m *DisplayModel) View() string {
 		}
 
 		var rowStr string
-		elapsedTime := time.Since(m.LastUpdate).Truncate(100 * time.Millisecond)
+		elapsedTime := time.Since(machine.StartTime).Truncate(100 * time.Millisecond)
 		elapsedTimeStr := fmt.Sprintf("%7s", formatElapsedTime(elapsedTime))
 		progressBar := renderProgressBar(
 			machine.Progress,
