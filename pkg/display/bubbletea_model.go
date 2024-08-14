@@ -38,10 +38,10 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 10, EmojiColumn: false},
 	{Title: "Pub IP", Width: 15, EmojiColumn: false},
 	{Title: "Priv IP", Width: 15, EmojiColumn: false},
-	{Title: models.DisplayEmojiOrchestrator, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiSSH, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiDocker, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiBacalhau, Width: 3, EmojiColumn: true},
+	{Title: string(models.DisplayEmojiOrchestrator), Width: 3, EmojiColumn: true},
+	{Title: string(models.DisplayEmojiSSH), Width: 3, EmojiColumn: true},
+	{Title: string(models.DisplayEmojiDocker), Width: 3, EmojiColumn: true},
+	{Title: string(models.DisplayEmojiBacalhau), Width: 3, EmojiColumn: true},
 }
 
 type DisplayModel struct {
@@ -199,10 +199,17 @@ func (m *DisplayModel) View() string {
 	// Render headers
 	var headerRow string
 	for _, col := range DisplayColumns {
-		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
-		renderedTitle := style.Render(col.Title)
+		renderedTitle := ""
 		if col.EmojiColumn {
-			renderedTitle = lipgloss.NewStyle().Align(lipgloss.Center).Width(col.Width).Render(col.Title)
+			renderedTitle = headerStyle.
+				Align(lipgloss.Center).
+				Width(col.Width).
+				Render(col.Title)
+		} else {
+			renderedTitle = headerStyle.
+				Width(col.Width).
+				MaxWidth(col.Width).
+				Render(col.Title)
 		}
 		if m.DebugMode {
 			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
