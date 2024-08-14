@@ -312,7 +312,7 @@ func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
 	case models.DisplayEmojiNotStarted:
 		style = style.Foreground(lipgloss.Color("#2e2d2d"))
 	case models.DisplayEmojiFailed:
-		style = style.Foreground(lipgloss.Color("#a83632"))
+		style = style.Foreground(lipgloss.Color("#ff0000")) // Bright red color
 	}
 	return style
 }
