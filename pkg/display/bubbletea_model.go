@@ -19,6 +19,7 @@ var (
 	globalModelOnce     sync.Once
 
 	AzureTotalSteps = 7
+	StatusLength    = 20
 )
 
 type DisplayColumn struct {
@@ -31,7 +32,7 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Name", Width: 10, EmojiColumn: false},
 	{Title: "Type", Width: 8, EmojiColumn: false},
 	{Title: "Location", Width: 12, EmojiColumn: false},
-	{Title: "Status", Width: 40, EmojiColumn: false},
+	{Title: "Status", Width: StatusLength, EmojiColumn: false},
 	{Title: "Progress", Width: 24, EmojiColumn: false},
 	{Title: "Time", Width: 10, EmojiColumn: false},
 	{Title: "Pub IP", Width: 18, EmojiColumn: false},
@@ -120,7 +121,11 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 	for i, machine := range m.Deployment.Machines {
 		if machine.Name == status.Name {
 			if status.Status != "" {
-				m.Deployment.Machines[i].Status = status.Status
+				if len(status.Status) > StatusLength {
+					m.Deployment.Machines[i].Status = status.Status[:StatusLength]
+				} else {
+					m.Deployment.Machines[i].Status = fmt.Sprintf("%-*s", StatusLength, status.Status)
+				}
 			}
 			if status.Location != "" {
 				m.Deployment.Machines[i].Location = status.Location
