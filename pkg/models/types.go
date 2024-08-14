@@ -97,3 +97,56 @@ func CreateStateMessage(
 ) string {
 	return fmt.Sprintf("%s %s - %s", resourceName, stateString, machineName)
 }
+
+func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]Status, error) {
+	state, err := ConvertFromStringToResourceState(resourceMap["provisioningState"].(string))
+	if err != nil {
+		return nil, err
+	}
+
+	resourceID := resourceMap["id"].(string)
+	resourceType := resourceMap["type"].(string)
+	resourceStatus := resourceMap["status"].(string)
+
+	var statuses []Status
+
+	if strings.Contains(resourceID, "-vm") {
+		// This is a VM resource
+		status := Status{
+			ID:     resourceID,
+			Type:   UpdateStatusResourceTypeVM,
+			Status: resourceStatus,
+			State:  state,
+		}
+		statuses = append(statuses, status)
+	} else if strings.Contains(resourceID, "-nsg") {
+		// This is an NSG resource, create a status for each machine in the location
+		location := strings.Split(resourceID, "-")[0]
+		// Assuming we have a function to get all machines in a location
+		machines, err := GetMachinesInLocation(location)
+		if err != nil {
+			return nil, err
+		}
+		for _, machine := range machines {
+			status := Status{
+				ID:     machine.ID,
+				Type:   UpdateStatusResourceTypeNSG,
+				Status: resourceStatus,
+				State:  state,
+			}
+			statuses = append(statuses, status)
+		}
+	} else {
+		// Unknown resource type
+		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
+	}
+
+	return statuses, nil
+}
+
+// GetMachinesInLocation is a placeholder function
+// You'll need to implement this based on your actual data structure
+func GetMachinesInLocation(location string) ([]Machine, error) {
+	// Implementation depends on how you store and retrieve machine information
+	return nil, fmt.Errorf("GetMachinesInLocation not implemented")
+}
