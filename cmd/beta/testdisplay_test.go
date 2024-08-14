@@ -1,6 +1,7 @@
 package beta
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
