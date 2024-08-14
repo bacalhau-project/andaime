@@ -199,18 +199,16 @@ func (m *DisplayModel) View() string {
 	// Render headers
 	var headerRow string
 	for _, col := range DisplayColumns {
-		renderedTitle := ""
+		style := headerStyle.
+			Width(col.Width).
+			MaxWidth(col.Width)
+		
 		if col.EmojiColumn {
-			renderedTitle = headerStyle.
-				Align(lipgloss.Center).
-				Width(col.Width).
-				Render(col.Title)
-		} else {
-			renderedTitle = headerStyle.
-				Width(col.Width).
-				MaxWidth(col.Width).
-				Render(col.Title)
+			style = style.Align(lipgloss.Center)
 		}
+		
+		renderedTitle := style.Render(col.Title)
+		
 		if m.DebugMode {
 			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
 		} else {
@@ -218,7 +216,7 @@ func (m *DisplayModel) View() string {
 		}
 	}
 	l.Debugf("Header Row: %s", headerRow)
-	tableStr += headerRow + "\n"
+	tableStr += strings.TrimRight(headerRow, " ") + "\n"
 
 	if m.DebugMode {
 		// Add a ruler for easier width measurement
