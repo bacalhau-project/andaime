@@ -23,22 +23,38 @@ func newTestDisplayCmd() *cobra.Command {
 }
 
 func runTestDisplay() error {
-	m := display.InitialModel()
-	p := tea.NewProgram(m)
+	m := display.GetGlobalModel()
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	go func() {
 		totalTasks := 5
 		for i := 0; i < totalTasks; i++ {
 			status := &models.Status{
-				ID:        fmt.Sprintf("test%d", i+1),
-				Type:      models.UpdateStatusResourceType("test"),
-				Location:  "us-west-2",
-				Status:    "Running",
-				StartTime: time.Now(),
+				Name:     fmt.Sprintf("test%d", i+1),
+				Type:     models.UpdateStatusResourceType("test"),
+				Location: "us-west-2",
+				Status:   "Running",
+				Progress: float64((i + 1) * display.AzureTotalSteps / totalTasks),
 			}
-			m.Deployment.UpdateStatus(status)
-			time.Sleep(1 * time.Second)
+			p.Send(models.StatusUpdateMsg{Status: status})
+			time.Sleep(2 * time.Second)
 		}
+
+		// Set final status for all machines
+		for i := 0; i < totalTasks; i++ {
+			status := &models.Status{
+				Name:     fmt.Sprintf("test%d", i+1),
+				Type:     models.UpdateStatusResourceType("test"),
+				Location: "us-west-2",
+				Status:   "Successfully Deployed",
+				Progress: float64(display.AzureTotalSteps),
+				PublicIP: fmt.Sprintf("192.0.2.%d", i+1),
+				PrivateIP: fmt.Sprintf("10.0.0.%d", i+1),
+			}
+			p.Send(models.StatusUpdateMsg{Status: status})
+		}
+
+		time.Sleep(3 * time.Second)
 		p.Quit()
 	}()
 

@@ -16,7 +16,7 @@ var (
 	globalModelInstance *DisplayModel
 	globalModelOnce     sync.Once
 
-	azureTotalSteps = 7
+	AzureTotalSteps = 7
 )
 
 type DisplayColumn struct {
