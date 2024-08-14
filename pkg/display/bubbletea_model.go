@@ -17,10 +17,12 @@ var (
 	globalModelInstance *DisplayModel
 	globalModelOnce     sync.Once
 
-	LogLines        = 10
-	AzureTotalSteps = 7
-	StatusLength    = 30
-	TickerInterval  = 100 * time.Millisecond
+	TableWidth         = 120
+	LogLines           = 10
+	AzureTotalSteps    = 7
+	StatusLength       = 30
+	TickerInterval     = 250 * time.Millisecond
+	ProgressBarPadding = 2
 )
 
 type DisplayColumn struct {
@@ -114,6 +116,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *DisplayModel) updateStatus(status *models.Status) {
+	l := logger.Get()
 	if status == nil || status.Name == "" {
 		return // Ignore invalid status updates
 	}
@@ -122,10 +125,12 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 	for i, machine := range m.Deployment.Machines {
 		if machine.Name == status.Name {
 			if status.Status != "" {
-				if len(status.Status) > StatusLength-3 {
-					m.Deployment.Machines[i].Status = status.Status[:StatusLength-3] + "..."
+				trimmedStatus := strings.TrimSpace(status.Status)
+				if len(trimmedStatus) > StatusLength-3 {
+					l.Debugf("Status too long, truncating: '%s'", trimmedStatus)
+					m.Deployment.Machines[i].Status = trimmedStatus[:StatusLength-3] + "…"
 				} else {
-					m.Deployment.Machines[i].Status = fmt.Sprintf("%-*s", StatusLength, status.Status)
+					m.Deployment.Machines[i].Status = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
 				}
 			}
 			if status.Location != "" {
@@ -217,7 +222,7 @@ func (m *DisplayModel) View() string {
 
 	if m.DebugMode {
 		// Add a ruler for easier width measurement
-		ruler := strings.Repeat("-", 120)
+		ruler := strings.Repeat("-", TableWidth)
 		tableStr += ruler + "\n"
 	}
 
@@ -233,7 +238,7 @@ func (m *DisplayModel) View() string {
 		progressBar := renderProgressBar(
 			machine.Progress,
 			AzureTotalSteps,
-			DisplayColumns[4].Width-2,
+			DisplayColumns[4].Width-ProgressBarPadding,
 		)
 
 		orchString := models.DisplayEmojiWorkerNode
@@ -341,15 +346,15 @@ func renderProgressBar(progress, total, width int) string {
 type tickMsg time.Time
 
 func tickCmd() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
 
 func formatElapsedTime(d time.Duration) string {
 	minutes := int(d.Minutes())
-	seconds := int(d.Seconds()) % 60
-	tenths := int(d.Milliseconds()/100) % 10
+	seconds := int(d.Seconds()) % 60         //nolint:gomnd
+	tenths := int(d.Milliseconds()/100) % 10 //nolint:gomnd
 
 	if minutes > 0 {
 		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, tenths)
