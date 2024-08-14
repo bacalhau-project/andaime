@@ -126,6 +126,10 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 
 	l.Debugf("Azure Resource Graph response - done listing resources.")
 
+	if resources == nil {
+		return []interface{}{}, nil
+	}
+
 	return resources, nil
 }
 
