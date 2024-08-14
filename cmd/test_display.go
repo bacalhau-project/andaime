@@ -2,13 +2,12 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	rand "math/rand/v2"
-	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/testutils"
 )
 
 var totalTasks = 20
@@ -16,12 +15,12 @@ var totalTasks = 20
 func generateEvents(ctx context.Context, logChan chan<- string) {
 	log := logger.Get()
 
-	statuses := make(map[string]*models.Status)
+	statuses := make(map[string]*models.DisplayStatus)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for i := 0; i < totalTasks; i++ {
-		newStatus := createRandomStatus()
+		newStatus := testutils.CreateRandomStatus()
 		statuses[newStatus.ID] = newStatus
 	}
 
@@ -31,11 +30,11 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 	for {
 		select {
 		case <-ticker.C:
-			if status := getRandomStatus(statuses); status != nil {
+			if status := testutils.GetRandomStatus(statuses); status != nil {
 				updateRandomStatus(status)
 			}
 		case <-logTicker.C:
-			logEntry := generateRandomLogEntry()
+			logEntry := testutils.GenerateRandomLogEntry()
 			log.Infof(logEntry)
 			select {
 			case logChan <- logEntry:
@@ -47,124 +46,10 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 		}
 	}
 }
-func updateRandomStatus(status *models.Status) bool {
+func updateRandomStatus(status *models.DisplayStatus) bool {
 	oldStatus := *status
 	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second
-	status.Status = randomStatus()
-	status.DetailedStatus = randomDetailedStatus(status.Status)
+	status.Status = testutils.RandomStatus()
+	status.DetailedStatus = testutils.GetRandomDetailedStatus(status.Status)
 	return oldStatus != *status // Return true if there's a change
-}
-
-func generateRandomLogEntry() string {
-	words := []string{
-		"Deploying", "Configuring", "Initializing", "Updating", "Processing",
-		"Resource", "Network", "Storage", "Compute", "Database",
-		"Server", "Cloud", "Virtual", "Container", "Cluster",
-		"Scaling", "Balancing", "Routing", "Firewall", "Gateway",
-		"Backup", "Recovery", "Monitoring", "Logging", "Analytics",
-		"API", "Microservice", "Function", "Queue", "Cache",
-		"Encryption", "Authentication", "Authorization", "Endpoint", "Protocol",
-		"Bandwidth", "Latency", "Throughput", "Packet", "Payload",
-		"Instance", "Volume", "Snapshot", "Image", "Template",
-		"Orchestration", "Provisioning", "Deprovisioning", "Allocation", "Deallocation",
-		"Replication", "Synchronization", "Failover", "Redundancy", "Resilience",
-		"Optimization", "Compression", "Indexing", "Partitioning", "Sharding",
-		"Namespace", "Repository", "Registry", "Artifact", "Pipeline",
-		"Webhook", "Trigger", "Event", "Stream", "Batch",
-		"Scheduler", "Cron", "Task", "Job", "Workflow",
-		"Module", "Package", "Library", "Framework", "SDK",
-		"Compiler", "Interpreter", "Runtime", "Debugger", "Profiler",
-		"Algorithm", "Hashing", "Encryption", "Decryption", "Encoding",
-		"Socket", "Port", "Interface", "Bridge", "Tunnel",
-		"Proxy", "Reverse-proxy", "Load-balancer", "CDN", "DNS",
-		"Certificate", "Key", "Token", "Session", "Cookie",
-		"Thread", "Process", "Daemon", "Service", "Middleware",
-	}
-
-	numWords := rand.IntN(5) + 3 //nolint:gomnd,gosec
-	var logWords []string
-	for i := 0; i < numWords; i++ {
-		logWords = append(logWords, words[rand.IntN(len(words))]) //nolint:gomnd,gosec
-	}
-
-	return strings.Join(logWords, " ")
-}
-
-func createRandomStatus() *models.Status {
-	id := fmt.Sprintf("i-%06d", rand.IntN(1000000)) //nolint:gomnd,gosec
-	return &models.Status{
-		ID:             id,
-		Type:           "EC2",
-		Location:       randomZone(),
-		Status:         "Initializing",
-		DetailedStatus: "Starting",
-		ElapsedTime:    0,
-		InstanceID:     id,
-		PublicIP:       randomIP(),
-		PrivateIP:      randomIP(),
-	}
-}
-
-func getRandomStatus(statuses map[string]*models.Status) *models.Status {
-	if len(statuses) == 0 {
-		return nil
-	}
-	i := rand.IntN(len(statuses)) //nolint:gomnd,gosec
-	for _, status := range statuses {
-		if i == 0 {
-			return status
-		}
-		i--
-	}
-	return nil
-}
-
-func randomRegion() string {
-	regions := []string{
-		"us-west-1",
-		"us-west-2",
-		"us-east-1",
-		"us-east-2",
-		"eu-west-1",
-		"eu-central-1",
-		"ap-southeast-1",
-		"ap-northeast-1",
-	}
-	return regions[rand.IntN(len(regions))] //nolint:gomnd,gosec
-}
-
-func randomZone() string {
-	return "zone-" + string(rune('a'+rand.IntN(3))) //nolint:gomnd,gosec
-}
-
-func randomStatus() string {
-	statuses := []string{"Pending", "Running", "Stopping", "Stopped", "Terminated"}
-	return statuses[rand.IntN(len(statuses))] //nolint:gomnd,gosec
-}
-
-func randomDetailedStatus(status string) string {
-	switch status {
-	case "Pending":
-		return "Launching"
-	case "Running":
-		return "Healthy"
-	case "Stopping":
-		return "Shutting down"
-	case "Stopped":
-		return "Powered off"
-	case "Terminated":
-		return "Deleted"
-	default:
-		return "Unknown"
-	}
-}
-
-func randomIP() string {
-	return fmt.Sprintf(
-		"%d.%d.%d.%d",
-		rand.IntN(256), //nolint:gomnd,gosec
-		rand.IntN(256), //nolint:gomnd,gosec
-		rand.IntN(256), //nolint:gomnd,gosec
-		rand.IntN(256), //nolint:gomnd,gosec
-	)
 }

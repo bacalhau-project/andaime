@@ -8,6 +8,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/testutils"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
@@ -46,19 +47,21 @@ func runTestDisplay() error {
 
 	go func() {
 		totalTasks := 5
-		statuses := make([]*models.Status, totalTasks)
+		statuses := make([]*models.DisplayStatus, totalTasks)
 		for i := 0; i < totalTasks; i++ {
-			statuses[i] = &models.Status{
-				Name:         fmt.Sprintf("test%d", i+1),
-				Type:         models.UpdateStatusResourceType("test"),
-				Location:     "us-west-2",
-				Status:       getRandomWords(3),
-				Progress:     0,
-				Orchestrator: true,
-				SSH:          models.DisplayEmojiFailed,
-				Docker:       models.DisplayEmojiSuccess,
-				Bacalhau:     models.DisplayEmojiWaiting,
-			}
+			newDisplayStatus := models.NewDisplayStatus(
+				fmt.Sprintf("test%d", i+1),
+				models.AzureResourceTypeVM,
+				models.AzureResourceStateNotStarted,
+			)
+			newDisplayStatus.Location = testutils.RandomRegion()
+			newDisplayStatus.Status = "Initializing"
+			newDisplayStatus.DetailedStatus = "Starting"
+			newDisplayStatus.ElapsedTime = 0
+			newDisplayStatus.InstanceID = fmt.Sprintf("test%d", i+1)
+			newDisplayStatus.PublicIP = testutils.RandomIP()
+			newDisplayStatus.PrivateIP = testutils.RandomIP()
+			statuses[i] = newDisplayStatus
 			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
 

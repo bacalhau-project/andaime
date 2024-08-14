@@ -9,7 +9,10 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
-func UpdateOnlyChangedStatus(status *models.Status, newStatus *models.Status) *models.Status {
+func UpdateOnlyChangedStatus(
+	status *models.DisplayStatus,
+	newStatus *models.DisplayStatus,
+) *models.DisplayStatus {
 	if newStatus.Status != "" {
 		status.Status = newStatus.Status
 	}

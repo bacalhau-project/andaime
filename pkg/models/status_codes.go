@@ -20,11 +20,11 @@ type StatusString string
 
 // Constants for each full status string
 const (
-	StatusStringSucceeded StatusString = "succeeded"
-	StatusStringFailed    StatusString = "failed"
-	StatusStringCreating  StatusString = "creating"
-	StatusStringUpdating  StatusString = "updating"
-	StatusStringDeleting  StatusString = "deleting"
+	StatusStringSucceeded StatusString = "Succeeded"
+	StatusStringFailed    StatusString = "Failed"
+	StatusStringCreating  StatusString = "Creating"
+	StatusStringUpdating  StatusString = "Updating"
+	StatusStringDeleting  StatusString = "Deleting"
 )
 
 func (s *StatusString) GetLowered() StatusString {

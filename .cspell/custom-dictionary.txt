@@ -150,6 +150,7 @@ testpassword
 TESTRGNAME
 testuser
 testutil
+testutils
 tmpl
 tostring
 tview
@@ -157,6 +158,7 @@ typecheck
 uksouth
 unbuffered
 unconvert
+UNIQID
 unmarshaling
 unmarshalling
 unpadded

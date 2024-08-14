@@ -107,9 +107,9 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
 				prog.UpdateStatus(
-					&models.Status{
+					&models.DisplayStatus{
 						Name:   goRoutineMachine.Name,
-						Type:   models.UpdateStatusResourceTypeVM,
+						Type:   models.AzureResourceTypeVM,
 						Status: "Failed",
 					},
 				)
@@ -130,9 +130,9 @@ func (p *AzureProvider) deployMachine(
 ) error {
 	prog := display.GetGlobalProgram()
 	prog.UpdateStatus(
-		&models.Status{
+		&models.DisplayStatus{
 			Name:   machine.Name,
-			Type:   models.UpdateStatusResourceTypeVM,
+			Type:   models.AzureResourceTypeVM,
 			Status: "Provisioning",
 		},
 	)
@@ -221,9 +221,13 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	prog.UpdateStatus(
-		&models.Status{
-			Name:   machine.Name,
-			Status: models.CreateStateMessage("VM", models.StatusCreating, machine.Name),
+		&models.DisplayStatus{
+			Name: machine.Name,
+			Status: models.CreateStateMessage(
+				models.AzureResourceTypeVM,
+				models.AzureResourceStateNotStarted,
+				machine.Name,
+			),
 		},
 	)
 
@@ -268,9 +272,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				),
 			}
 			prog.UpdateStatus(
-				&models.Status{
+				&models.DisplayStatus{
 					Name:   machine.Name,
-					Type:   models.UpdateStatusResourceTypeVM,
+					Type:   models.AzureResourceTypeVM,
 					Status: fmt.Sprintf("DNS Conflict - Retrying... %d/%d", retry+1, maxRetries),
 				},
 			)
@@ -278,9 +282,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			continue
 		} else if err != nil {
 			prog.UpdateStatus(
-				&models.Status{
+				&models.DisplayStatus{
 					Name:   machine.Name,
-					Type:   models.UpdateStatusResourceTypeVM,
+					Type:   models.AzureResourceTypeVM,
 					Status: fmt.Sprintf("Failed: %v", err),
 				},
 			)
@@ -294,9 +298,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	if dnsFailed {
 		prog.UpdateStatus(
-			&models.Status{
+			&models.DisplayStatus{
 				Name:   machine.Name,
-				Type:   models.UpdateStatusResourceTypeVM,
+				Type:   models.AzureResourceTypeVM,
 				Status: "Failed to deploy due to DNS conflict.",
 			},
 		)
@@ -312,9 +316,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				}
 				time.Sleep(timeBetweenIPRetries)
 				prog.UpdateStatus(
-					&models.Status{
+					&models.DisplayStatus{
 						Name:      machine.Name,
-						Type:      models.UpdateStatusResourceTypeVM,
+						Type:      models.AzureResourceTypeVM,
 						Status:    "Waiting for IP addresses",
 						PublicIP:  fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
 						PrivateIP: fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
@@ -330,9 +334,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				m.Deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
 			}
 			prog.UpdateStatus(
-				&models.Status{
+				&models.DisplayStatus{
 					ID:          machine.Name,
-					Type:        models.UpdateStatusResourceTypeVM,
+					Type:        models.AzureResourceTypeVM,
 					Status:      "Testing SSH",
 					PublicIP:    publicIP,
 					PrivateIP:   privateIP,
@@ -355,9 +359,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				m.Deployment.Machines[machineIndex].Status = "Failed"
 				m.Deployment.Machines[machineIndex].SSH = "❌"
 				prog.UpdateStatus(
-					&models.Status{
+					&models.DisplayStatus{
 						ID:     machine.Name,
-						Type:   models.UpdateStatusResourceTypeVM,
+						Type:   models.AzureResourceTypeVM,
 						Status: "Failed",
 					},
 				)
@@ -365,9 +369,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				m.Deployment.Machines[machineIndex].Status = "Successfully Deployed"
 				m.Deployment.Machines[machineIndex].SSH = "✅"
 				prog.UpdateStatus(
-					&models.Status{
+					&models.DisplayStatus{
 						ID:     machine.Name,
-						Type:   models.UpdateStatusResourceTypeVM,
+						Type:   models.AzureResourceTypeVM,
 						Status: "Successfully Deployed",
 					},
 				)
@@ -493,9 +497,9 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	for _, machine := range m.Deployment.Machines {
 		prog.UpdateStatus(
-			&models.Status{
+			&models.DisplayStatus{
 				Name:   machine.Name,
-				Type:   models.UpdateStatusResourceTypeVM,
+				Type:   models.AzureResourceTypeVM,
 				Status: "Provisioning",
 			},
 		)
@@ -514,15 +518,11 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	for _, machine := range m.Deployment.Machines {
 		prog.UpdateStatus(
-			&models.Status{
-				Name: machine.Name,
-				Type: models.UpdateStatusResourceTypeVM,
-				Status: models.CreateStateMessage(
-					models.UpdateStatusResourceTypeVM,
-					models.StatusCreating,
-					machine.Name,
-				),
-			},
+			models.NewDisplayStatus(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStateNotStarted,
+			),
 		)
 	}
 

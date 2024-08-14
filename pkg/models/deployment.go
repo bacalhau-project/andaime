@@ -12,29 +12,141 @@ import (
 )
 
 type Machine struct {
-	ID                   string
-	Name                 string
-	Type                 string
-	Location             string
-	Status               string
-	DetailedStatus       string
-	Parameters           Parameters
-	PublicIP             string
-	PrivateIP            string
-	StartTime            time.Time
-	InstanceID           string
-	NetworkSecurityGroup string
-	NIC                  string
-	VMSize               string
-	DiskSizeGB           int32 `default:"30"`
-	ComputerName         string
-	ElapsedTime          time.Duration
-	Orchestrator         bool
-	Docker               string
-	Bacalhau             string
-	SSH                  string
-	Progress             int
-	ProgressFinish       int
+	ID         string
+	Name       string
+	Type       AzureResourceTypes
+	Location   string
+	Status     string
+	Parameters Parameters
+	PublicIP   string
+	PrivateIP  string
+	StartTime  time.Time
+
+	VNet                 MachineResource
+	Subnet               MachineResource
+	NetworkSecurityGroup MachineResource
+	NIC                  MachineResource
+	IP                   MachineResource
+	Disk                 MachineResource
+
+	VMSize         string
+	DiskSizeGB     int32 `default:"30"`
+	ComputerName   string
+	ElapsedTime    time.Duration
+	Orchestrator   bool
+	Docker         string
+	Bacalhau       string
+	SSH            string
+	Progress       int
+	ProgressFinish int
+}
+
+type AzureResourceTypes struct {
+	ResourceString    string
+	ShortResourceName string
+}
+
+var AzureResourceTypeNIC = AzureResourceTypes{
+	ResourceString:    "Microsoft.Network/networkInterfaces",
+	ShortResourceName: "NIC",
+}
+
+var AzureResourceTypeVNET = AzureResourceTypes{
+	ResourceString:    "Microsoft.Network/virtualNetworks",
+	ShortResourceName: "VNET",
+}
+
+var AzureResourceTypeSNET = AzureResourceTypes{
+	ResourceString:    "Microsoft.Network/subnets",
+	ShortResourceName: "SNET",
+}
+
+var AzureResourceTypeNSG = AzureResourceTypes{
+	ResourceString:    "Microsoft.Network/networkSecurityGroups",
+	ShortResourceName: "NSG",
+}
+
+var AzureResourceTypeVM = AzureResourceTypes{
+	ResourceString:    "Microsoft.Compute/virtualMachines",
+	ShortResourceName: "VM",
+}
+
+var AzureResourceTypeDISK = AzureResourceTypes{
+	ResourceString:    "Microsoft.Compute/disks",
+	ShortResourceName: "DISK",
+}
+
+var AzureResourceTypeIP = AzureResourceTypes{
+	ResourceString:    "Microsoft.Network/publicIPAddresses",
+	ShortResourceName: "IP",
+}
+
+func (a *AzureResourceTypes) GetResourceString() string {
+	return a.ResourceString
+}
+
+func (a *AzureResourceTypes) GetShortResourceName() string {
+	return a.ShortResourceName
+}
+
+func GetAzureResourceType(resource string) AzureResourceTypes {
+	for _, r := range GetAllAzureResources() {
+		if strings.EqualFold(r.ResourceString, resource) {
+			return r
+		}
+	}
+	return AzureResourceTypes{}
+}
+
+func GetAllAzureResources() []AzureResourceTypes {
+	return []AzureResourceTypes{
+		AzureResourceTypeNIC,
+		AzureResourceTypeVNET,
+		AzureResourceTypeSNET,
+		AzureResourceTypeNSG,
+		AzureResourceTypeVM,
+		AzureResourceTypeDISK,
+		AzureResourceTypeIP,
+	}
+}
+
+func IsValidResource(resource string) bool {
+	return GetAzureResourceType(resource).ResourceString != ""
+}
+
+type AzureResourceState int
+
+const (
+	AzureResourceStateNotStarted AzureResourceState = iota
+	AzureResourceStatePending
+	AzureResourceStateRunning
+	AzureResourceStateFailed
+	AzureResourceStateSucceeded
+	AzureResourceStateUnknown
+)
+
+func ConvertFromStringToAzureResourceState(s string) AzureResourceState {
+	switch s {
+	case "Not Started":
+		return AzureResourceStateNotStarted
+	case "Pending":
+		return AzureResourceStatePending
+	case "Running":
+		return AzureResourceStateRunning
+	case "Failed":
+		return AzureResourceStateFailed
+	case "Succeeded":
+		return AzureResourceStateSucceeded
+	default:
+		return AzureResourceStateUnknown
+	}
+}
+
+type MachineResource struct {
+	ResourceName  string
+	ResourceType  string
+	ResourceState string
+	ResourceValue string
 }
 
 type Parameters struct {
@@ -79,14 +191,6 @@ type Disk struct {
 	ID     string
 	SizeGB int32
 	State  armcompute.DiskState
-}
-
-type AndaimeGenericResource struct {
-	MachineID string
-	Name      string
-	Type      UpdateStatusResourceType
-	ID        string
-	Status    string
 }
 
 func NewDeployment() *Deployment {
@@ -144,80 +248,6 @@ func (d *Deployment) SetSubnet(location string, subnets ...*armnetwork.Subnet) {
 	d.SubnetSlices[location] = append(d.SubnetSlices[location], subnets...)
 }
 
-func (d *Deployment) GetAllResources() ([]AndaimeGenericResource, error) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	resources := []AndaimeGenericResource{}
-	for _, vm := range d.Machines {
-		resources = append(resources, AndaimeGenericResource{
-			MachineID: vm.Name,
-			Name:      vm.Name,
-			Type:      UpdateStatusResourceTypeVM,
-			ID:        vm.InstanceID,
-			Status:    vm.Status,
-		})
-	}
-	for _, disk := range d.Disks {
-		machineName := strings.TrimSuffix(disk.Name, "-disk")
-		resources = append(resources, AndaimeGenericResource{
-			MachineID: machineName,
-			Name:      disk.Name,
-			Type:      UpdateStatusResourceTypeDISK,
-			ID:        disk.ID,
-			Status:    string(disk.State),
-		})
-	}
-	for _, nsg := range d.NetworkSecurityGroups {
-		machineName := strings.TrimSuffix(*nsg.Name, "-nsg")
-		resources = append(resources, AndaimeGenericResource{
-			MachineID: machineName,
-			Name:      *nsg.Name,
-			Type:      UpdateStatusResourceTypeNSG,
-			ID:        *nsg.ID,
-			Status:    string(*nsg.Properties.ProvisioningState),
-		})
-	}
-	for _, vnet := range d.VNet {
-		machineName := strings.TrimSuffix(*vnet.Name, "-vnet")
-		resources = append(resources, AndaimeGenericResource{
-			MachineID: machineName,
-			Name:      *vnet.Name,
-			Type:      UpdateStatusResourceTypeVNET,
-			ID:        *vnet.ID,
-			Status:    string(*vnet.Properties.ProvisioningState),
-		})
-	}
-	for _, subnets := range d.SubnetSlices {
-		for _, subnet := range subnets {
-			machineName := strings.TrimSuffix(*subnet.Name, "-subnet")
-			resources = append(resources, AndaimeGenericResource{
-				MachineID: machineName,
-				Name:      *subnet.Name,
-				Type:      UpdateStatusResourceTypeSNET,
-				ID:        *subnet.ID,
-				Status:    string(*subnet.Properties.ProvisioningState),
-			})
-		}
-	}
-
-	return resources, nil
-}
-
-func (d *Deployment) UpdateStatus(status *Status) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for i, machine := range d.Machines {
-		if machine.ID == status.ID {
-			d.Machines[i].Status = status.Status
-			d.Machines[i].DetailedStatus = status.DetailedStatus
-			d.Machines[i].PublicIP = status.PublicIP
-			d.Machines[i].PrivateIP = status.PrivateIP
-			d.Machines[i].ElapsedTime = status.ElapsedTime
-			break
-		}
-	}
-}
-
 type StatusUpdateMsg struct {
-	Status *Status
+	Status *DisplayStatus
 }

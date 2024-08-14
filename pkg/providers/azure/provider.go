@@ -19,8 +19,7 @@ type AzureProviderer interface {
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 
-	StartResourcePolling(ctx context.Context, done chan<- struct{})
-	GetResources(ctx context.Context, resourceGroupName string) ([]interface{}, error)
+	StartResourcePolling(ctx context.Context)
 	DeployResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
@@ -133,7 +132,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	return resources, nil
 }
 
-func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- struct{}) {
+func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	l.Debug("Starting StartResourcePolling")
 
@@ -143,29 +142,14 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context, done chan<- st
 	for {
 		select {
 		case <-resourceTicker.C:
-			if err, _ := p.PollAndUpdateResources(ctx); err != nil {
+			if _, err := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
 		case <-ctx.Done():
 			l.Debug("Context done, exiting resource polling")
-			close(done)
 			return
 		}
 	}
 }
-
-func (p *AzureProvider) GetResources(
-	ctx context.Context,
-	resourceGroupName string,
-) ([]interface{}, error) {
-	return p.Client.GetResources(
-		ctx,
-		p.Deployment.SubscriptionID,
-		p.Deployment.ResourceGroupName,
-		p.Deployment.Tags,
-	)
-}
-
-// PollAndUpdateResources is now defined in pkg/providers/azure/deploy.go
 
 var _ AzureProviderer = &AzureProvider{}

@@ -27,15 +27,15 @@ type Status struct {
 var allStatuses sync.Map
 
 // UpdateAllStatuses updates the global allStatuses map in a thread-safe manner
-func UpdateAllStatuses(status *models.Status) {
+func UpdateAllStatuses(status *models.DisplayStatus) {
 	allStatuses.Store(status.ID, status)
 }
 
 // GetAllStatuses retrieves all statuses from the allStatuses map
-func GetAllStatuses() map[string]*models.Status {
-	result := make(map[string]*models.Status)
+func GetAllStatuses() map[string]*models.DisplayStatus {
+	result := make(map[string]*models.DisplayStatus)
 	allStatuses.Range(func(key, value interface{}) bool {
-		result[key.(string)] = value.(*models.Status)
+		result[key.(string)] = value.(*models.DisplayStatus)
 		return true
 	})
 	return result

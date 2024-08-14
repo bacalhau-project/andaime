@@ -273,6 +273,7 @@ func (c *LiveAzureClient) GetResources(
 	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
 	prog := display.GetGlobalProgram()
+	m := display.GetGlobalModel()
 	// Remove the state machine reference
 	// --- START OF MERGED SearchResources functionality ---
 
@@ -304,24 +305,16 @@ func (c *LiveAzureClient) GetResources(
 
 	for _, resource := range res.Data.([]interface{}) {
 		resourceMap := resource.(map[string]interface{})
-		name := resourceMap["name"].(string)
-		state, err := ConvertFromStringToResourceState(resourceMap["provisioningState"].(string))
+		statuses, err := models.ConvertFromRawResourceToStatus(resourceMap, m.Deployment.Machines)
 		if err != nil {
-			l.Errorf("Failed to convert provisioning state to resource state: %v", err)
-			continue
-		}
-		resourceType := resourceMap["type"].(string)
-
-		if resourceType == "" {
-			l.Debugf("Resource type is empty for resource %s", name)
+			l.Errorf("Failed to convert resource to status: %v", err)
 			continue
 		}
 
-		prog.UpdateStatus(&models.Status{
-			ID:     name,
-			Type:   models.UpdateStatusResourceType(resourceType),
-			Status: state,
-		})
+		for _, status := range statuses {
+			internalStatus := status
+			prog.UpdateStatus(&internalStatus)
+		}
 	}
 
 	return res.Data.([]interface{}), nil

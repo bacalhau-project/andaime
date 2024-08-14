@@ -69,6 +69,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	m.Deployment = deployment
 	prog.InitProgram(m)
 
+	go func() {
+		// Start Resource Polling
+		go p.StartResourcePolling(ctx)
+	}()
+
 	var deploymentErr error
 	go func() {
 		if err := p.DeployResources(ctx); err != nil {
@@ -340,7 +345,7 @@ func ProcessMachinesConfig(
 
 	for _, rawMachine := range rawMachines {
 		var thisMachine models.Machine
-		thisMachine.Type = string(models.UpdateStatusResourceTypeVM)
+		thisMachine.Type = models.AzureResourceTypeVM
 		thisMachine.DiskSizeGB = int32(defaultDiskSize)
 		thisMachine.VMSize = defaultType
 		thisMachine.Location = rawMachine.Location
@@ -355,7 +360,7 @@ func ProcessMachinesConfig(
 			if orchestratorNode != nil || rawMachine.Parameters.Count > 1 {
 				return nil, nil, nil, fmt.Errorf("multiple orchestrator nodes found")
 			}
-			thisMachine.Parameters.Orchestrator = rawMachine.Parameters.Orchestrator
+			thisMachine.Orchestrator = rawMachine.Parameters.Orchestrator
 			orchestratorNode = &thisMachine
 		}
 

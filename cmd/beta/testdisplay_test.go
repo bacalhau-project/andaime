@@ -17,11 +17,66 @@ func TestDisplayLayout(t *testing.T) {
 
 	// Add test machines
 	testMachines := []models.Machine{
-		{Name: "test1", Type: "test", Location: "us-west-2", Status: "apple grape mango", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting, StartTime: time.Now().Add(-29 * time.Second)},
-		{Name: "test2", Type: "test", Location: "us-west-2", Status: "nectarine fig elderberry", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting, StartTime: time.Now().Add(-29 * time.Second)},
-		{Name: "test3", Type: "test", Location: "us-west-2", Status: "grape quince kiwi", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting, StartTime: time.Now().Add(-29 * time.Second)},
-		{Name: "test4", Type: "test", Location: "us-west-2", Status: "cherry orange quince", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting, StartTime: time.Now().Add(-29 * time.Second)},
-		{Name: "test5", Type: "test", Location: "us-west-2", Status: "raspberry ugli kiwi", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting, StartTime: time.Now().Add(-29 * time.Second)},
+		{
+			Name:         "test1",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "apple grape mango",
+			Progress:     3,
+			Orchestrator: true,
+			SSH:          models.DisplayEmojiFailed,
+			Docker:       models.DisplayEmojiSuccess,
+			Bacalhau:     models.DisplayEmojiWaiting,
+			StartTime:    time.Now().Add(-29 * time.Second),
+		},
+		{
+			Name:         "test2",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "nectarine fig elderberry",
+			Progress:     3,
+			Orchestrator: true,
+			SSH:          models.DisplayEmojiFailed,
+			Docker:       models.DisplayEmojiSuccess,
+			Bacalhau:     models.DisplayEmojiWaiting,
+			StartTime:    time.Now().Add(-29 * time.Second),
+		},
+		{
+			Name:         "test3",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "grape quince kiwi",
+			Progress:     3,
+			Orchestrator: true,
+			SSH:          models.DisplayEmojiFailed,
+			Docker:       models.DisplayEmojiSuccess,
+			Bacalhau:     models.DisplayEmojiWaiting,
+			StartTime:    time.Now().Add(-29 * time.Second),
+		},
+		{
+			Name:         "test4",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "cherry orange quince",
+			Progress:     3,
+			Orchestrator: true,
+			SSH:          models.DisplayEmojiFailed,
+			Docker:       models.DisplayEmojiSuccess,
+			Bacalhau:     models.DisplayEmojiWaiting,
+			StartTime:    time.Now().Add(-29 * time.Second),
+		},
+		{
+			Name:         "test5",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "raspberry ugli kiwi",
+			Progress:     3,
+			Orchestrator: true,
+			SSH:          models.DisplayEmojiFailed,
+			Docker:       models.DisplayEmojiSuccess,
+			Bacalhau:     models.DisplayEmojiWaiting,
+			StartTime:    time.Now().Add(-29 * time.Second),
+		},
 	}
 
 	m.Deployment.Machines = testMachines
@@ -42,11 +97,27 @@ func TestDisplayLayout(t *testing.T) {
 	// Test each machine row
 	for i, machine := range testMachines {
 		line := lines[i+2]
-		expectedLine := fmt.Sprintf("│ %-9s %-5s %-14s %-30s %-20s %-9s %-14s %-14s %-2s %-2s %-2s %-2s │",
-			machine.Name, machine.Type, machine.Location, machine.Status,
-			"██████████████████", "29.0s", "", "",
-			"⏼", "✘", "✔", "⟳")
-		assert.Equal(t, expectedLine, line, fmt.Sprintf("Machine line %d should match expected format", i+1))
+		expectedLine := fmt.Sprintf(
+			"│ %-9s %-5s %-14s %-30s %-20s %-9s %-14s %-14s %-2s %-2s %-2s %-2s │",
+			machine.Name,
+			machine.Type,
+			machine.Location,
+			machine.Status,
+			"██████████████████",
+			"29.0s",
+			"",
+			"",
+			"⏼",
+			"✘",
+			"✔",
+			"⟳",
+		)
+		assert.Equal(
+			t,
+			expectedLine,
+			line,
+			fmt.Sprintf("Machine line %d should match expected format", i+1),
+		)
 	}
 
 	// Test the spacing
@@ -84,14 +155,26 @@ func TestColumnWidths(t *testing.T) {
 		}
 		end := start + width
 		column := lines[1][start:end]
-		assert.Equal(t, width, len(column), fmt.Sprintf("Column %d should have width %d", i+1, width))
+		assert.Equal(
+			t,
+			width,
+			len(column),
+			fmt.Sprintf("Column %d should have width %d", i+1, width),
+		)
 	}
 }
 
 func TestProgressBar(t *testing.T) {
 	m := display.GetGlobalModel()
 	m.Deployment.Machines = []models.Machine{
-		{Name: "test", Type: "test", Location: "us-west-2", Status: "test", Progress: 3, Orchestrator: true},
+		{
+			Name:         "test",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "test",
+			Progress:     3,
+			Orchestrator: true,
+		},
 	}
 	renderedTable := m.RenderFinalTable()
 	lines := strings.Split(renderedTable, "\n")
@@ -106,7 +189,15 @@ func TestProgressBar(t *testing.T) {
 func TestTimeFormat(t *testing.T) {
 	m := display.GetGlobalModel()
 	m.Deployment.Machines = []models.Machine{
-		{Name: "test", Type: "test", Location: "us-west-2", Status: "test", Progress: 3, Orchestrator: true, StartTime: time.Now().Add(-29 * time.Second)},
+		{
+			Name:         "test",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "test",
+			Progress:     3,
+			Orchestrator: true,
+			StartTime:    time.Now().Add(-29 * time.Second),
+		},
 	}
 	renderedTable := m.RenderFinalTable()
 	lines := strings.Split(renderedTable, "\n")
@@ -121,7 +212,17 @@ func TestTimeFormat(t *testing.T) {
 func TestEmojiColumns(t *testing.T) {
 	m := display.GetGlobalModel()
 	m.Deployment.Machines = []models.Machine{
-		{Name: "test", Type: "test", Location: "us-west-2", Status: "test", Progress: 3, Orchestrator: true, SSH: models.DisplayEmojiFailed, Docker: models.DisplayEmojiSuccess, Bacalhau: models.DisplayEmojiWaiting},
+		{
+			Name:         "test",
+			Type:         models.AzureResourceTypeVM,
+			Location:     "us-west-2",
+			Status:       "test",
+			Progress:     3,
+			Orchestrator: true,
+			SSH:          models.DisplayEmojiFailed,
+			Docker:       models.DisplayEmojiSuccess,
+			Bacalhau:     models.DisplayEmojiWaiting,
+		},
 	}
 	renderedTable := m.RenderFinalTable()
 	lines := strings.Split(renderedTable, "\n")

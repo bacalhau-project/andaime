@@ -18,7 +18,7 @@ const (
 
 type DisplayStatus struct {
 	ID              string
-	Type            UpdateStatusResourceType
+	Type            AzureResourceTypes
 	Location        string
 	Status          string
 	DetailedStatus  string
@@ -36,7 +36,25 @@ type DisplayStatus struct {
 	Bacalhau        string
 }
 
+func NewDisplayStatus(
+	resourceID string,
+	resourceType AzureResourceTypes,
+	state AzureResourceState,
+) *DisplayStatus {
+	return &DisplayStatus{
+		ID:   resourceID,
+		Name: resourceID,
+		Type: resourceType,
+		Status: CreateStateMessage(
+			resourceType,
+			state,
+			resourceID,
+		),
+	}
+}
+
 const (
+	StatusCodeNotStarted StatusCode = "NotStarted"
 	StatusCodeSucceeded  StatusCode = "Succeeded"
 	StatusCodeFailed     StatusCode = "Failed"
 	StatusCodeInProgress StatusCode = "InProgress"
@@ -52,19 +70,6 @@ type AzureEvent struct {
 }
 
 const (
-	DisplayPrefixRG   = "RG  "
-	DisplayPrefixVNET = "VNET"
-	DisplayPrefixSNET = "SNET"
-	DisplayPrefixNSG  = "NSG "
-	DisplayPrefixVM   = "VM  "
-	DisplayPrefixVMEX = "VMEX"
-	DisplayPrefixDISK = "DISK"
-	DisplayPrefixIP   = "IP  "
-	DisplayPrefixPBIP = "PBIP"
-	DisplayPrefixPVIP = "PVIP"
-	DisplayPrefixNIC  = "NIC "
-	DisplayPrefixUNK  = "UNK "
-
 	DisplayEmojiSuccess    = "✔" // "✅"
 	DisplayEmojiWaiting    = "⟳" // "⏳"
 	DisplayEmojiFailed     = "✘" // "❌"
@@ -80,85 +85,79 @@ const (
 	DisplayEmojiBacalhau     = "🐟"
 )
 
-type UpdateStatusResourceType string
-
-const (
-	UpdateStatusResourceTypeVM   UpdateStatusResourceType = "VM"
-	UpdateStatusResourceTypeVMEX UpdateStatusResourceType = "VMEX"
-	UpdateStatusResourceTypePBIP UpdateStatusResourceType = "PBIP"
-	UpdateStatusResourceTypePVIP UpdateStatusResourceType = "PVIP"
-	UpdateStatusResourceTypeNIC  UpdateStatusResourceType = "NIC"
-	UpdateStatusResourceTypeNSG  UpdateStatusResourceType = "NSG"
-	UpdateStatusResourceTypeVNET UpdateStatusResourceType = "VNET"
-	UpdateStatusResourceTypeSNET UpdateStatusResourceType = "SNET"
-	UpdateStatusResourceTypeDISK UpdateStatusResourceType = "DISK"
-	UpdateStatusResourceTypeIP   UpdateStatusResourceType = "IP"
-	UpdateStatusResourceTypeUNK  UpdateStatusResourceType = "UNK"
-)
-
 func CreateStateMessage(
-	resourceName UpdateStatusResourceType,
-	stateString StatusCode,
-	machineName string,
+	resource AzureResourceTypes,
+	resourceState AzureResourceState,
+	resourceName string,
 ) string {
-	return fmt.Sprintf("%s %s - %s", resourceName, stateString, machineName)
-}
-
-func ConvertFromStringToResourceState(state string) (StatusCode, error) {
-	switch StatusCode(state) {
-	case StatusCodeSucceeded, StatusCodeFailed, StatusCodeInProgress:
-		return StatusCode(state), nil
-	default:
-		return StatusCodeUnknown, fmt.Errorf("unknown state: %s", state)
+	stateEmoji := ""
+	stateString := ""
+	switch resourceState {
+	case AzureResourceStateNotStarted:
+		stateEmoji = DisplayEmojiNotStarted
+		stateString = string(StatusCodeNotStarted)
+	case AzureResourceStatePending:
+		stateEmoji = DisplayEmojiWaiting
+		stateString = string(StatusCodeInProgress)
+	case AzureResourceStateRunning:
+		stateEmoji = DisplayEmojiSuccess
+		stateString = string(StatusCodeSucceeded)
+	case AzureResourceStateFailed:
+		stateEmoji = DisplayEmojiFailed
+		stateString = string(StatusCodeFailed)
+	case AzureResourceStateSucceeded:
+		stateEmoji = DisplayEmojiSuccess
+		stateString = string(StatusCodeSucceeded)
+	case AzureResourceStateUnknown:
+		stateEmoji = DisplayEmojiQuestion
+		stateString = string(StatusCodeUnknown)
 	}
+	return fmt.Sprintf(
+		"%s %s - %s %s",
+		resource.ShortResourceName,
+		stateEmoji,
+		resourceName,
+		stateString,
+	)
 }
 
-func ConvertFromRawResourceToStatus(resourceMap map[string]interface{}) ([]DisplayStatus, error) {
-	resourceID := resourceMap["id"].(string)
+func ConvertFromRawResourceToStatus(
+	resourceMap map[string]interface{},
+	machines []Machine,
+) ([]DisplayStatus, error) {
+	resourceName := resourceMap["name"].(string)
 	resourceType := resourceMap["type"].(string)
 	resourceState := resourceMap["provisioningState"].(string)
 
 	var statuses []DisplayStatus
 
-	if isLocation(resourceID) {
-		machines, err := GetMachinesInLocation(resourceID)
+	if isLocation(resourceName) {
+		machinesNames, err := GetMachinesInLocation(resourceName, machines)
 		if err != nil {
 			return nil, err
 		}
-		for _, machine := range machines {
-			status := createStatus(machine, resourceType, resourceState)
+		for _, machineName := range machinesNames {
+			machine, err := GetMachineByName(machineName, machines)
+			if err != nil {
+				return nil, err
+			}
+			status := createStatus(machine.Name, resourceName, resourceType, resourceState)
 			statuses = append(statuses, status)
 		}
-	} else if isMachine(resourceID) {
-		status := createStatus(resourceID, resourceType, resourceState)
+	} else if isMachine(resourceName) {
+		machine, err := GetMachineByName(resourceName, machines)
+		if err != nil {
+			return nil, err
+		}
+		status := createStatus(machine.Name, resourceName, resourceType, resourceState)
 		statuses = append(statuses, status)
 	} else {
-		return nil, fmt.Errorf("unknown resource ID format: %s", resourceID)
+		return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
 	}
 
 	return statuses, nil
 }
 
-func GetMachinesInLocation(location string) ([]string, error) {
-	// This is a mock implementation. In a real scenario, you'd query your infrastructure
-	// to get the actual list of machines in the given location.
-	allIDs := []string{
-		"centralus-nsg", "centralus-vnet", "ddhtzx-vm-ip", "eastus-nsg", "eastus-vnet",
-		"eastus2-nsg", "eastus2-vnet", "fj369e-vm", "fj369e-vm-ip", "fj369e-vm-nic",
-		"fj369e-vm_OsDisk_1_b9cca35bff6d4cb1b476c720e0b4c2b5", "jv2m3q-vm", "jv2m3q-vm-ip",
-		"jv2m3q-vm-nic", "jv2m3q-vm_OsDisk_1_426c3e7af41d410db984ebe67d0308b1", "zf8o9i-vm",
-		"zf8o9i-vm-ip", "zf8o9i-vm-nic", "zf8o9i-vm_OsDisk_1_700ecbdcd8bd4dfcae6efeaebda28d51",
-	}
-
-	var machinesInLocation []string
-	for _, id := range allIDs {
-		if strings.HasPrefix(id, location) && isMachine(id) {
-			machinesInLocation = append(machinesInLocation, id)
-		}
-	}
-
-	return machinesInLocation, nil
-}
 func isLocation(id string) bool {
 	return strings.HasSuffix(id, "-nsg") || strings.HasSuffix(id, "-vnet")
 }
@@ -167,32 +166,44 @@ func isMachine(id string) bool {
 	return strings.Contains(id, "-vm") || strings.Contains(id, "-vm-")
 }
 
-func createStatus(resourceID, resourceType, state string) DisplayStatus {
-	var resourceTypeEnum UpdateStatusResourceType
-	var emoji string
+func GetMachinesInLocation(resourceName string, machines []Machine) ([]string, error) {
+	location := strings.Split(resourceName, "-")[0]
 
-	switch {
-	case strings.Contains(resourceID, "-vm"):
-		resourceTypeEnum = UpdateStatusResourceTypeVM
-		emoji = DisplayEmojiWaiting
-	case strings.Contains(resourceID, "-nsg"):
-		resourceTypeEnum = UpdateStatusResourceTypeNSG
-		emoji = DisplayEmojiWaiting
-	case strings.Contains(resourceID, "-vnet"):
-		resourceTypeEnum = UpdateStatusResourceTypeVNET
-		emoji = DisplayEmojiWaiting
-	default:
-		resourceTypeEnum = UpdateStatusResourceTypeUNK
-		emoji = DisplayEmojiQuestion
+	if location == "" {
+		return nil, fmt.Errorf("location is empty")
 	}
 
-	statusCode, _ := ConvertFromStringToResourceState(state)
-	statusMessage := fmt.Sprintf("%s %s - %s of %s", resourceTypeEnum, emoji, statusCode, resourceID)
+	var machinesInLocation []string
+
+	for _, machine := range machines {
+		if machine.Location == location {
+			machinesInLocation = append(machinesInLocation, machine.Name)
+		}
+	}
+
+	return machinesInLocation, nil
+}
+
+func GetMachineByName(name string, machines []Machine) (Machine, error) {
+	for _, machine := range machines {
+		if machine.Name == name {
+			return machine, nil
+		}
+	}
+	return Machine{}, fmt.Errorf("machine not found: %s", name)
+}
+
+func createStatus(machineID, resourceID, resourceType, state string) DisplayStatus {
+	azureResourceType := GetAzureResourceType(resourceType)
+	stateType := ConvertFromStringToAzureResourceState(state)
 
 	return DisplayStatus{
-		ID:     resourceID,
-		Type:   resourceTypeEnum,
-		Status: statusMessage,
-		State:  statusCode,
+		ID:   machineID,
+		Type: azureResourceType,
+		Status: CreateStateMessage(
+			azureResourceType,
+			stateType,
+			resourceID,
+		),
 	}
 }

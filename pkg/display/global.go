@@ -37,7 +37,7 @@ func (gp *GlobalProgram) GetProgram() *GlobalProgram {
 }
 
 // UpdateStatus updates the status of a deployment or machine
-func (gp *GlobalProgram) UpdateStatus(status *models.Status) {
+func (gp *GlobalProgram) UpdateStatus(status *models.DisplayStatus) {
 	if gp.program != nil {
 		gp.program.Send(models.StatusUpdateMsg{Status: status})
 	}
