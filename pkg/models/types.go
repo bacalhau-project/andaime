@@ -31,6 +31,8 @@ type Status struct {
 	Progress        int
 }
 
+type TimeUpdateMsg struct{}
+
 // Remove these duplicate declarations as they are already defined in deployment.go
 
 type AzureEvent struct {
