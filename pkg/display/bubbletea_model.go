@@ -44,6 +44,7 @@ type DisplayModel struct {
 	Deployment *models.Deployment
 	TextBox    []string
 	Quitting   bool
+	LastUpdate time.Time
 }
 
 // GetGlobalProgram returns the singleton instance of GlobalProgram
@@ -65,6 +66,7 @@ func InitialModel() *DisplayModel {
 	return &DisplayModel{
 		Deployment: models.NewDeployment(),
 		TextBox:    []string{"Resource Status Monitor"},
+		LastUpdate: time.Now(),
 	}
 }
 
@@ -93,6 +95,9 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 	case models.StatusUpdateMsg:
 		m.updateStatus(msg.Status)
+		return m, nil
+	case models.TimeUpdateMsg:
+		m.LastUpdate = time.Now()
 		return m, nil
 	case logLinesMsg:
 		m.TextBox = []string(msg)
@@ -186,10 +191,7 @@ func (m *DisplayModel) View() string {
 		}
 
 		var rowStr string
-		elapsedTime := machine.ElapsedTime.Truncate(100 * time.Millisecond)
-		if elapsedTime == 0 {
-			elapsedTime = time.Since(machine.StartTime).Truncate(100 * time.Millisecond)
-		}
+		elapsedTime := time.Since(m.LastUpdate).Truncate(100 * time.Millisecond)
 		elapsedTimeStr := fmt.Sprintf("%7s", formatElapsedTime(elapsedTime))
 		progressBar := renderProgressBar(
 			machine.Progress,
@@ -229,7 +231,7 @@ func (m *DisplayModel) View() string {
 		tableStr += rowStr + "\n"
 	}
 
-	lastUpdated := time.Now().Format("15:04:05")
+	lastUpdated := m.LastUpdate.Format("15:04:05")
 	infoText := infoStyle.Render(
 		fmt.Sprintf("Press 'q' or Ctrl+C to quit (Last Updated: %s)", lastUpdated),
 	)
@@ -286,10 +288,10 @@ func tickCmd() tea.Cmd {
 func formatElapsedTime(d time.Duration) string {
 	minutes := int(d.Minutes())
 	seconds := int(d.Seconds()) % 60
-	milliseconds := int(d.Milliseconds()) % 1000
+	tenths := int(d.Milliseconds() / 100) % 10
 
 	if minutes > 0 {
-		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, milliseconds/100)
+		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, tenths)
 	}
-	return fmt.Sprintf("%d.%ds", seconds, milliseconds/100)
+	return fmt.Sprintf("%2d.%ds", seconds, tenths)
 }

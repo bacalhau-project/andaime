@@ -56,17 +56,21 @@ func runTestDisplay() error {
 			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
 
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
+		wordTicker := time.NewTicker(1 * time.Second)
+		timeTicker := time.NewTicker(100 * time.Millisecond)
+		defer wordTicker.Stop()
+		defer timeTicker.Stop()
 
 		for {
 			select {
-			case <-ticker.C:
+			case <-wordTicker.C:
 				for i := 0; i < totalTasks; i++ {
 					statuses[i].Status = getRandomWords(3)
 					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
 					p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 				}
+			case <-timeTicker.C:
+				p.Send(models.TimeUpdateMsg{})
 			}
 		}
 	}()
