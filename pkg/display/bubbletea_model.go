@@ -200,17 +200,14 @@ func (m *DisplayModel) View() string {
 	var headerRow string
 	for _, col := range DisplayColumns {
 		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
+		renderedTitle := style.Render(col.Title)
 		if col.EmojiColumn {
-			style = style.Align(lipgloss.Center)
-			renderedTitle := style.Render(col.Title)
-			headerRow += renderedTitle
+			renderedTitle = lipgloss.NewStyle().Align(lipgloss.Center).Width(col.Width).Render(col.Title)
+		}
+		if m.DebugMode {
+			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
 		} else {
-			renderedTitle := style.Render(col.Title)
-			if m.DebugMode {
-				headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
-			} else {
-				headerRow += renderedTitle
-			}
+			headerRow += renderedTitle
 		}
 	}
 	l.Debugf("Header Row: %s", headerRow)
