@@ -202,7 +202,7 @@ func (m *DisplayModel) View() string {
 			elapsedTime = time.Since(machine.StartTime).Truncate(time.Second).String()
 		}
 		progressBar := renderProgressBar(
-			machine.Progress/azureTotalSteps,
+			machine.Progress/float64(AzureTotalSteps),
 			machine.ProgressFinish,
 			DisplayColumns[4].Width-2,
 		)
