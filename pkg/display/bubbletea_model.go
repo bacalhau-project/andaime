@@ -20,23 +20,24 @@ var (
 )
 
 type DisplayColumn struct {
-	Title string
-	Width int
+	Title       string
+	Width       int
+	EmojiColumn bool
 }
 
 var DisplayColumns = []DisplayColumn{
-	{Title: "Name", Width: 10},
-	{Title: "Type", Width: 6},
-	{Title: "Location", Width: 15},
-	{Title: "Status", Width: 40},
-	{Title: "Progress", Width: 24},
-	{Title: "Time", Width: 15},
-	{Title: "Pub IP", Width: 18},
-	{Title: "Priv IP", Width: 18},
-	{Title: models.DisplayEmojiOrchestrator, Width: 3},
-	{Title: models.DisplayEmojiSSH, Width: 3},
-	{Title: models.DisplayEmojiDocker, Width: 3},
-	{Title: models.DisplayEmojiBacalhau, Width: 3},
+	{Title: "Name", Width: 10, EmojiColumn: false},
+	{Title: "Type", Width: 8, EmojiColumn: false},
+	{Title: "Location", Width: 12, EmojiColumn: false},
+	{Title: "Status", Width: 40, EmojiColumn: false},
+	{Title: "Progress", Width: 24, EmojiColumn: false},
+	{Title: "Time", Width: 10, EmojiColumn: false},
+	{Title: "Pub IP", Width: 18, EmojiColumn: false},
+	{Title: "Priv IP", Width: 18, EmojiColumn: false},
+	{Title: models.DisplayEmojiOrchestrator, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiSSH, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiDocker, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiBacalhau, Width: 3, EmojiColumn: true},
 }
 
 type DisplayModel struct {
@@ -162,7 +163,8 @@ func (m *DisplayModel) View() string {
 		BorderForeground(lipgloss.Color("240"))
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39"))
+		Foreground(lipgloss.Color("39")).
+		PaddingLeft(1)
 	cellStyle := lipgloss.NewStyle().
 		PaddingLeft(1)
 	textBoxStyle := lipgloss.NewStyle().
@@ -180,7 +182,11 @@ func (m *DisplayModel) View() string {
 	// Render headers
 	var headerRow string
 	for _, col := range DisplayColumns {
-		headerRow += headerStyle.Width(col.Width).MaxWidth(col.Width).Render(col.Title)
+		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
+		if col.EmojiColumn {
+			style = style.UnsetPadding()
+		}
+		headerRow += style.Render(col.Title)
 	}
 	tableStr += headerRow + "\n"
 
@@ -221,10 +227,14 @@ func (m *DisplayModel) View() string {
 		}
 
 		for i, cell := range rowData {
-			rowStr += cellStyle.
+			style := cellStyle.
 				Width(DisplayColumns[i].Width).
-				MaxWidth(DisplayColumns[i].Width).
-				Render(cell)
+				MaxWidth(DisplayColumns[i].Width)
+			if DisplayColumns[i].EmojiColumn {
+				style = style.UnsetPadding()
+				style = style.UnsetMargins()
+			}
+			rowStr += style.Render(cell)
 		}
 		tableStr += rowStr + "\n"
 	}
