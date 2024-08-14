@@ -93,8 +93,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Quitting = true
 			return m, tea.Sequence(
 				tea.ExitAltScreen,
-				tea.Println("\nFinal Table:"),
-				tea.Printf(m.RenderFinalTable()),
 				tea.Quit,
 			)
 		}
@@ -382,21 +380,18 @@ func (m *DisplayModel) View() string {
 		lipgloss.Left,
 		tableStyle.Render(tableStr),
 		"",
-		infoText,
-		"",
 		textBoxStyle.Render(textBoxContent),
+		infoText,
 	)
 
 	return output
 }
 
 func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
-	l := logger.Get()
-	l.Debugf("Status: %s", status)
 	style = style.Bold(true).Align(lipgloss.Center)
 	switch status {
 	case models.DisplayEmojiSuccess:
-		style = style.Foreground(lipgloss.Color("#07590f"))
+		style = style.Foreground(lipgloss.Color("#00c413"))
 	case models.DisplayEmojiWaiting:
 		style = style.Foreground(lipgloss.Color("#69acdb"))
 	case models.DisplayEmojiNotStarted:
