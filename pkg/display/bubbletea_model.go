@@ -2,7 +2,6 @@ package display
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -18,9 +17,10 @@ var (
 	globalModelInstance *DisplayModel
 	globalModelOnce     sync.Once
 
-	AzureTotalSteps  = 7
-	StatusLength     = 30
-	MinTerminalWidth = 140
+	LogLines        = 10
+	AzureTotalSteps = 7
+	StatusLength    = 30
+	TickerInterval  = 100 * time.Millisecond
 )
 
 type DisplayColumn struct {
@@ -38,10 +38,10 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 10, EmojiColumn: false},
 	{Title: "Pub IP", Width: 15, EmojiColumn: false},
 	{Title: "Priv IP", Width: 15, EmojiColumn: false},
-	{Title: string(models.DisplayEmojiOrchestrator), Width: 3, EmojiColumn: true},
-	{Title: string(models.DisplayEmojiSSH), Width: 3, EmojiColumn: true},
-	{Title: string(models.DisplayEmojiDocker), Width: 3, EmojiColumn: true},
-	{Title: string(models.DisplayEmojiBacalhau), Width: 3, EmojiColumn: true},
+	{Title: "O", Width: 3, EmojiColumn: true},
+	{Title: "S", Width: 3, EmojiColumn: true},
+	{Title: "D", Width: 3, EmojiColumn: true},
+	{Title: "B", Width: 3, EmojiColumn: true},
 }
 
 type DisplayModel struct {
@@ -171,13 +171,12 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 }
 
 func (m *DisplayModel) View() string {
-	l := logger.Get()
-	tableWidth := 160
+	// l := logger.Get()
 
+	// l.Debugf("Table Width: %d", tableWidth)
 	tableStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Width(tableWidth)
+		BorderForeground(lipgloss.Color("240"))
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("39")).
@@ -188,8 +187,7 @@ func (m *DisplayModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
 		Padding(1).
-		Height(10).
-		Width(tableWidth)
+		Height(LogLines)
 	infoStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Italic(true)
@@ -198,34 +196,28 @@ func (m *DisplayModel) View() string {
 
 	// Render headers
 	var headerRow string
-	for i, col := range DisplayColumns {
+	for _, col := range DisplayColumns {
 		style := headerStyle.
 			Width(col.Width).
 			MaxWidth(col.Width)
-		
+
 		if col.EmojiColumn {
-			style = style.Align(lipgloss.Center)
+			style = style.Align(lipgloss.Center).Inline(true)
 		}
-		
+
 		renderedTitle := style.Render(col.Title)
-		
-		l.Debugf("Header Cell %d: Content='%s', Length=%d, Width=%d", i, col.Title, len(renderedTitle), col.Width)
-		
+
 		if m.DebugMode {
 			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
 		} else {
 			headerRow += renderedTitle
 		}
-		
-		l.Debugf("Header Row (partial): %s", headerRow)
 	}
-	l.Debugf("Final Header Row: %s", headerRow)
 	tableStr += strings.TrimRight(headerRow, " ") + "\n"
-	l.Debugf("Table String after header: %s", tableStr)
 
 	if m.DebugMode {
 		// Add a ruler for easier width measurement
-		ruler := strings.Repeat("-", tableWidth)
+		ruler := strings.Repeat("-", 120)
 		tableStr += ruler + "\n"
 	}
 
@@ -236,7 +228,7 @@ func (m *DisplayModel) View() string {
 		}
 
 		var rowStr string
-		elapsedTime := time.Since(machine.StartTime).Truncate(100 * time.Millisecond)
+		elapsedTime := time.Since(machine.StartTime).Truncate(TickerInterval)
 		elapsedTimeStr := fmt.Sprintf("%7s", formatElapsedTime(elapsedTime))
 		progressBar := renderProgressBar(
 			machine.Progress,
@@ -248,7 +240,6 @@ func (m *DisplayModel) View() string {
 		if machine.Orchestrator {
 			orchString = models.DisplayEmojiOrchestratorNode
 		}
-		// orchString := "-"
 		rowData := []string{
 			machine.Name,
 			machine.Type,
@@ -266,15 +257,17 @@ func (m *DisplayModel) View() string {
 
 		for i, cell := range rowData {
 			//nolint:gosec
-			randomColor := lipgloss.Color(fmt.Sprintf("#%06x", rand.Intn(0xFFFFFF)))
+			// randomColor := lipgloss.Color(fmt.Sprintf("#%06x", rand.Intn(0xFFFFFF)))
 			style := cellStyle.
 				Width(DisplayColumns[i].Width).
 				MaxWidth(DisplayColumns[i].Width).
-				Background(randomColor)
+				Background(lipgloss.Color("235"))
 			if DisplayColumns[i].EmojiColumn {
-				style = style.Align(lipgloss.Center)
+				style = renderStyleByColumn(cell, style)
 			}
+
 			renderedCell := style.Render(cell)
+			// l.Debugf("Cell Value: %v", style.Value())
 			if m.DebugMode {
 				rowStr += fmt.Sprintf("%s[%d]", renderedCell, len(renderedCell))
 			} else {
@@ -289,7 +282,7 @@ func (m *DisplayModel) View() string {
 		fmt.Sprintf("Press 'q' or Ctrl+C to quit (Last Updated: %s)", lastUpdated),
 	)
 
-	logLines := logger.GetLastLines(8)
+	logLines := logger.GetLastLines(LogLines)
 	textBoxContent := strings.Join(logLines, "\n")
 
 	output := lipgloss.JoinVertical(
@@ -304,9 +297,24 @@ func (m *DisplayModel) View() string {
 	return output
 }
 
+func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
+	style = style.Bold(true).Align(lipgloss.Center)
+	switch status {
+	case models.DisplayEmojiSuccess:
+		style = style.Foreground(lipgloss.Color("#07590f"))
+	case models.DisplayEmojiWaiting:
+		style = style.Foreground(lipgloss.Color("#69acdb"))
+	case models.DisplayEmojiNotStarted:
+		style = style.Foreground(lipgloss.Color("#2e2d2d"))
+	case models.DisplayEmojiFailed:
+		style = style.Foreground(lipgloss.Color("#a83632"))
+	}
+	return style
+}
+
 func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	return func() tea.Msg {
-		logLines := logger.GetLastLines(8)
+		logLines := logger.GetLastLines(LogLines)
 		return logLinesMsg(logLines)
 	}
 }
