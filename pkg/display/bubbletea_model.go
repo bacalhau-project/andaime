@@ -2,6 +2,7 @@ package display
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -35,10 +36,10 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 10, EmojiColumn: false},
 	{Title: "Pub IP", Width: 18, EmojiColumn: false},
 	{Title: "Priv IP", Width: 18, EmojiColumn: false},
-	{Title: models.DisplayEmojiOrchestrator, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiSSH, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiDocker, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiBacalhau, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiOrchestrator, EmojiColumn: true},
+	{Title: models.DisplayEmojiSSH, EmojiColumn: true},
+	{Title: models.DisplayEmojiDocker, EmojiColumn: true},
+	{Title: models.DisplayEmojiBacalhau, EmojiColumn: true},
 }
 
 type DisplayModel struct {
@@ -136,6 +137,18 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 			if status.ElapsedTime > 0 {
 				m.Deployment.Machines[i].ElapsedTime = status.ElapsedTime
 			}
+			if status.Orchestrator {
+				m.Deployment.Machines[i].Orchestrator = status.Orchestrator
+			}
+			if status.SSH != "" {
+				m.Deployment.Machines[i].SSH = status.SSH
+			}
+			if status.Docker != "" {
+				m.Deployment.Machines[i].Docker = status.Docker
+			}
+			if status.Bacalhau != "" {
+				m.Deployment.Machines[i].Bacalhau = status.Bacalhau
+			}
 			found = true
 			break
 		}
@@ -163,7 +176,7 @@ func (m *DisplayModel) View() string {
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("39")).
-		PaddingLeft(1)
+		Padding(0, 1)
 	cellStyle := lipgloss.NewStyle().
 		PaddingLeft(1)
 	textBoxStyle := lipgloss.NewStyle().
@@ -183,7 +196,7 @@ func (m *DisplayModel) View() string {
 	for _, col := range DisplayColumns {
 		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
 		if col.EmojiColumn {
-			style = style.UnsetPadding()
+			style = style.Align(lipgloss.Center)
 		}
 		renderedTitle := style.Render(col.Title)
 		if m.DebugMode {
@@ -219,6 +232,7 @@ func (m *DisplayModel) View() string {
 		if machine.Orchestrator {
 			orchString = models.DisplayEmojiOrchestratorNode
 		}
+		// orchString := "-"
 		rowData := []string{
 			machine.Name,
 			machine.Type,
@@ -235,12 +249,14 @@ func (m *DisplayModel) View() string {
 		}
 
 		for i, cell := range rowData {
+			//nolint:gosec
+			randomColor := lipgloss.Color(fmt.Sprintf("#%06x", rand.Intn(0xFFFFFF)))
 			style := cellStyle.
 				Width(DisplayColumns[i].Width).
-				MaxWidth(DisplayColumns[i].Width)
+				MaxWidth(DisplayColumns[i].Width).
+				Background(randomColor)
 			if DisplayColumns[i].EmojiColumn {
-				style = style.UnsetPadding()
-				style = style.UnsetMargins()
+				style = style.Align(lipgloss.Center)
 			}
 			renderedCell := style.Render(cell)
 			if m.DebugMode {
@@ -309,7 +325,7 @@ func tickCmd() tea.Cmd {
 func formatElapsedTime(d time.Duration) string {
 	minutes := int(d.Minutes())
 	seconds := int(d.Seconds()) % 60
-	tenths := int(d.Milliseconds() / 100) % 10
+	tenths := int(d.Milliseconds()/100) % 10
 
 	if minutes > 0 {
 		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, tenths)
