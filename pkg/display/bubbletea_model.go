@@ -2,6 +2,7 @@ package display
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,7 @@ type DisplayModel struct {
 	TextBox    []string
 	Quitting   bool
 	LastUpdate time.Time
+	DebugMode  bool
 }
 
 // GetGlobalProgram returns the singleton instance of GlobalProgram
@@ -63,10 +65,12 @@ func SetGlobalModel(m *DisplayModel) {
 }
 
 func InitialModel() *DisplayModel {
+	debugMode := os.Getenv("DEBUG_DISPLAY") == "1"
 	return &DisplayModel{
 		Deployment: models.NewDeployment(),
 		TextBox:    []string{"Resource Status Monitor"},
 		LastUpdate: time.Now(),
+		DebugMode:  debugMode,
 	}
 }
 
@@ -174,7 +178,7 @@ func (m *DisplayModel) View() string {
 
 	var tableStr string
 
-	// Render headers with debug info
+	// Render headers
 	var headerRow string
 	for _, col := range DisplayColumns {
 		style := headerStyle.Width(col.Width).MaxWidth(col.Width)
@@ -182,13 +186,19 @@ func (m *DisplayModel) View() string {
 			style = style.UnsetPadding()
 		}
 		renderedTitle := style.Render(col.Title)
-		headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
+		if m.DebugMode {
+			headerRow += fmt.Sprintf("%s[%d]", renderedTitle, len(renderedTitle))
+		} else {
+			headerRow += renderedTitle
+		}
 	}
 	tableStr += headerRow + "\n"
 
-	// Add a ruler for easier width measurement
-	ruler := strings.Repeat("-", tableWidth)
-	tableStr += ruler + "\n"
+	if m.DebugMode {
+		// Add a ruler for easier width measurement
+		ruler := strings.Repeat("-", tableWidth)
+		tableStr += ruler + "\n"
+	}
 
 	// Render rows
 	for _, machine := range m.Deployment.Machines {
@@ -233,7 +243,11 @@ func (m *DisplayModel) View() string {
 				style = style.UnsetMargins()
 			}
 			renderedCell := style.Render(cell)
-			rowStr += fmt.Sprintf("%s[%d]", renderedCell, len(renderedCell))
+			if m.DebugMode {
+				rowStr += fmt.Sprintf("%s[%d]", renderedCell, len(renderedCell))
+			} else {
+				rowStr += renderedCell
+			}
 		}
 		tableStr += rowStr + "\n"
 	}
