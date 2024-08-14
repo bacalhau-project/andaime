@@ -92,6 +92,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.Quitting = true
 			return m, tea.Sequence(
+				tea.ExitAltScreen,
 				tea.Println("\nFinal Table:"),
 				tea.Printf(m.RenderFinalTable()),
 				tea.Quit,
