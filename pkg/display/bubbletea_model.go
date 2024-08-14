@@ -171,15 +171,8 @@ func (m *DisplayModel) updateStatus(status *models.Status) {
 }
 
 func (m *DisplayModel) View() string {
-	tableWidth := 0
-	for _, col := range DisplayColumns {
-		tableWidth += col.Width
-	}
-
-	// Ensure the terminal width is at least MinTerminalWidth
-	if tableWidth < MinTerminalWidth {
-		tableWidth = MinTerminalWidth
-	}
+	l := logger.Get()
+	tableWidth := 160
 
 	tableStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
@@ -220,6 +213,7 @@ func (m *DisplayModel) View() string {
 			}
 		}
 	}
+	l.Debugf("Header Row: %s", headerRow)
 	tableStr += headerRow + "\n"
 
 	if m.DebugMode {
