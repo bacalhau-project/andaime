@@ -4,6 +4,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -32,6 +33,10 @@ func IsValidVMSize(vmSize string) bool {
 		}
 	}
 	return false
+}
+
+var skippedTypes = []string{
+	"microsoft.compute/virtualmachines/extensions",
 }
 
 type AzureClient interface {
@@ -305,6 +310,12 @@ func (c *LiveAzureClient) GetResources(
 
 	for _, resource := range res.Data.([]interface{}) {
 		resourceMap := resource.(map[string]interface{})
+		if slices.ContainsFunc(skippedTypes, func(t string) bool {
+			return strings.EqualFold(resourceMap["type"].(string), t)
+		}) {
+			continue
+		}
+
 		statuses, err := models.ConvertFromRawResourceToStatus(resourceMap, m.Deployment.Machines)
 		if err != nil {
 			l.Errorf("Failed to convert resource to status: %v", err)

@@ -20,7 +20,7 @@ type DisplayStatus struct {
 	ID              string
 	Type            AzureResourceTypes
 	Location        string
-	Status          string
+	StatusMessage   string
 	DetailedStatus  string
 	ElapsedTime     time.Duration
 	StartTime       time.Time
@@ -36,6 +36,25 @@ type DisplayStatus struct {
 	Bacalhau        string
 }
 
+func NewDisplayStatusWithText(
+	resourceID string,
+	resourceType AzureResourceTypes,
+	state AzureResourceState,
+	text string,
+) *DisplayStatus {
+	return &DisplayStatus{
+		ID:   resourceID,
+		Name: resourceID,
+		Type: resourceType,
+		StatusMessage: CreateStateMessageWithText(
+			resourceType,
+			state,
+			resourceID,
+			text,
+		),
+	}
+}
+
 func NewDisplayStatus(
 	resourceID string,
 	resourceType AzureResourceTypes,
@@ -45,7 +64,7 @@ func NewDisplayStatus(
 		ID:   resourceID,
 		Name: resourceID,
 		Type: resourceType,
-		Status: CreateStateMessage(
+		StatusMessage: CreateStateMessage(
 			resourceType,
 			state,
 			resourceID,
@@ -79,11 +98,20 @@ const (
 	DisplayEmojiOrchestratorNode = "⏼" // "🌕"
 	DisplayEmojiWorkerNode       = " " // "⚫️"
 
-	DisplayEmojiOrchestrator = "🤖"
-	DisplayEmojiSSH          = "🔑"
-	DisplayEmojiDocker       = "🐳"
-	DisplayEmojiBacalhau     = "🐟"
+	DisplayEmojiOrchestrator = "O" // "🤖"
+	DisplayEmojiSSH          = "S" // "🔑"
+	DisplayEmojiDocker       = "D" // "🐳"
+	DisplayEmojiBacalhau     = "B" // "🐟"
 )
+
+func CreateStateMessageWithText(
+	resource AzureResourceTypes,
+	resourceState AzureResourceState,
+	resourceName string,
+	text string,
+) string {
+	return CreateStateMessage(resource, resourceState, resourceName) + " " + text
+}
 
 func CreateStateMessage(
 	resource AzureResourceTypes,
@@ -91,33 +119,25 @@ func CreateStateMessage(
 	resourceName string,
 ) string {
 	stateEmoji := ""
-	stateString := ""
 	switch resourceState {
 	case AzureResourceStateNotStarted:
 		stateEmoji = DisplayEmojiNotStarted
-		stateString = string(StatusCodeNotStarted)
 	case AzureResourceStatePending:
 		stateEmoji = DisplayEmojiWaiting
-		stateString = string(StatusCodeInProgress)
 	case AzureResourceStateRunning:
 		stateEmoji = DisplayEmojiSuccess
-		stateString = string(StatusCodeSucceeded)
 	case AzureResourceStateFailed:
 		stateEmoji = DisplayEmojiFailed
-		stateString = string(StatusCodeFailed)
 	case AzureResourceStateSucceeded:
 		stateEmoji = DisplayEmojiSuccess
-		stateString = string(StatusCodeSucceeded)
 	case AzureResourceStateUnknown:
 		stateEmoji = DisplayEmojiQuestion
-		stateString = string(StatusCodeUnknown)
 	}
 	return fmt.Sprintf(
-		"%s %s - %s %s",
+		"%s %s - %s",
 		resource.ShortResourceName,
 		stateEmoji,
 		resourceName,
-		stateString,
 	)
 }
 
@@ -131,8 +151,8 @@ func ConvertFromRawResourceToStatus(
 
 	var statuses []DisplayStatus
 
-	if isLocation(resourceName) {
-		machinesNames, err := GetMachinesInLocation(resourceName, machines)
+	if location, ok := isLocation(resourceName); ok {
+		machinesNames, err := GetMachinesInLocation(location, machines)
 		if err != nil {
 			return nil, err
 		}
@@ -144,12 +164,8 @@ func ConvertFromRawResourceToStatus(
 			status := createStatus(machine.Name, resourceName, resourceType, resourceState)
 			statuses = append(statuses, status)
 		}
-	} else if isMachine(resourceName) {
-		machine, err := GetMachineByName(resourceName, machines)
-		if err != nil {
-			return nil, err
-		}
-		status := createStatus(machine.Name, resourceName, resourceType, resourceState)
+	} else if machineName, ok := isMachine(resourceName); ok {
+		status := createStatus(machineName, resourceName, resourceType, resourceState)
 		statuses = append(statuses, status)
 	} else {
 		return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
@@ -158,12 +174,18 @@ func ConvertFromRawResourceToStatus(
 	return statuses, nil
 }
 
-func isLocation(id string) bool {
-	return strings.HasSuffix(id, "-nsg") || strings.HasSuffix(id, "-vnet")
+func isLocation(id string) (string, bool) {
+	if strings.HasSuffix(id, "-nsg") || strings.HasSuffix(id, "-vnet") {
+		return strings.Split(id, "-")[0], true
+	}
+	return "", false
 }
 
-func isMachine(id string) bool {
-	return strings.Contains(id, "-vm") || strings.Contains(id, "-vm-")
+func isMachine(id string) (string, bool) {
+	if strings.Contains(id, "-vm") || strings.Contains(id, "-vm-") {
+		return fmt.Sprintf("%s-vm", strings.Split(id, "-")[0]), true
+	}
+	return "", false
 }
 
 func GetMachinesInLocation(resourceName string, machines []Machine) ([]string, error) {
@@ -200,7 +222,7 @@ func createStatus(machineID, resourceID, resourceType, state string) DisplayStat
 	return DisplayStatus{
 		ID:   machineID,
 		Type: azureResourceType,
-		Status: CreateStateMessage(
+		StatusMessage: CreateStateMessage(
 			azureResourceType,
 			stateType,
 			resourceID,

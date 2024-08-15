@@ -12,15 +12,15 @@ import (
 )
 
 type Machine struct {
-	ID         string
-	Name       string
-	Type       AzureResourceTypes
-	Location   string
-	Status     string
-	Parameters Parameters
-	PublicIP   string
-	PrivateIP  string
-	StartTime  time.Time
+	ID            string
+	Name          string
+	Type          AzureResourceTypes
+	Location      string
+	StatusMessage string
+	Parameters    Parameters
+	PublicIP      string
+	PrivateIP     string
+	StartTime     time.Time
 
 	VNet                 MachineResource
 	Subnet               MachineResource

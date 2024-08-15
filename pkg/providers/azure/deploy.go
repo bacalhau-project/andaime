@@ -107,11 +107,11 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
 				prog.UpdateStatus(
-					&models.DisplayStatus{
-						Name:   goRoutineMachine.Name,
-						Type:   models.AzureResourceTypeVM,
-						Status: "Failed",
-					},
+					models.NewDisplayStatus(
+						goRoutineMachine.Name,
+						models.AzureResourceTypeVM,
+						models.AzureResourceStateFailed,
+					),
 				)
 			}
 		}(&internalMachine)
@@ -130,11 +130,11 @@ func (p *AzureProvider) deployMachine(
 ) error {
 	prog := display.GetGlobalProgram()
 	prog.UpdateStatus(
-		&models.DisplayStatus{
-			Name:   machine.Name,
-			Type:   models.AzureResourceTypeVM,
-			Status: "Provisioning",
-		},
+		models.NewDisplayStatus(
+			machine.Name,
+			models.AzureResourceTypeVM,
+			models.AzureResourceStateNotStarted,
+		),
 	)
 
 	params := p.prepareDeploymentParams(machine)
@@ -221,14 +221,11 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	prog.UpdateStatus(
-		&models.DisplayStatus{
-			Name: machine.Name,
-			Status: models.CreateStateMessage(
-				models.AzureResourceTypeVM,
-				models.AzureResourceStateNotStarted,
-				machine.Name,
-			),
-		},
+		models.NewDisplayStatus(
+			machine.Name,
+			models.AzureResourceTypeVM,
+			models.AzureResourceStatePending,
+		),
 	)
 
 	dnsFailed := false
@@ -271,22 +268,27 @@ func (p *AzureProvider) deployTemplateWithRetry(
 					utils.GenerateUniqueID()[:6],
 				),
 			}
-			prog.UpdateStatus(
-				&models.DisplayStatus{
-					Name:   machine.Name,
-					Type:   models.AzureResourceTypeVM,
-					Status: fmt.Sprintf("DNS Conflict - Retrying... %d/%d", retry+1, maxRetries),
-				},
+			dispStatus := models.NewDisplayStatus(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStatePending,
 			)
+			dispStatus.StatusMessage = fmt.Sprintf(
+				"DNS Conflict - Retrying... %d/%d",
+				retry+1,
+				maxRetries,
+			)
+			prog.UpdateStatus(dispStatus)
 			dnsFailed = true
 			continue
 		} else if err != nil {
 			prog.UpdateStatus(
-				&models.DisplayStatus{
-					Name:   machine.Name,
-					Type:   models.AzureResourceTypeVM,
-					Status: fmt.Sprintf("Failed: %v", err),
-				},
+				models.NewDisplayStatusWithText(
+					machine.Name,
+					models.AzureResourceTypeVM,
+					models.AzureResourceStateFailed,
+					err.Error(),
+				),
 			)
 			return fmt.Errorf("error deploying template: %v", err)
 		}
@@ -298,88 +300,95 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	if dnsFailed {
 		prog.UpdateStatus(
-			&models.DisplayStatus{
-				Name:   machine.Name,
-				Type:   models.AzureResourceTypeVM,
-				Status: "Failed to deploy due to DNS conflict.",
-			},
+			models.NewDisplayStatusWithText(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStateFailed,
+				"Failed to deploy due to DNS conflict.",
+			),
 		)
-		m.Deployment.Machines[machineIndex].Status = "Failed to deploy due to DNS conflict"
+		m.Deployment.Machines[machineIndex].StatusMessage = "Failed to deploy due to DNS conflict"
 	} else {
 		for i := 0; i < ipRetries; i++ {
 			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, m.Deployment.ResourceGroupName, machine.Name)
 			if err != nil {
 				if i == ipRetries-1 {
 					l.Errorf("Failed to get IP addresses for VM %s after %d retries: %v", machine.Name, ipRetries, err)
-					m.Deployment.Machines[machineIndex].Status = "Failed to get IP addresses"
+					m.Deployment.Machines[machineIndex].StatusMessage = "Failed to get IP addresses"
 					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
 				}
 				time.Sleep(timeBetweenIPRetries)
+				displayStatus := models.NewDisplayStatusWithText(
+					machine.Name,
+					models.AzureResourceTypeVM,
+					models.AzureResourceStatePending,
+					"Waiting for IP addresses",
+				)
+				displayStatus.PublicIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
+				displayStatus.PrivateIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
 				prog.UpdateStatus(
-					&models.DisplayStatus{
-						Name:      machine.Name,
-						Type:      models.AzureResourceTypeVM,
-						Status:    "Waiting for IP addresses",
-						PublicIP:  fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
-						PrivateIP: fmt.Sprintf("Retry: %d/%d", i+1, ipRetries),
-					},
+					displayStatus,
 				)
 				continue
 			}
 
 			m.Deployment.Machines[machineIndex].PublicIP = publicIP
 			m.Deployment.Machines[machineIndex].PrivateIP = privateIP
-			m.Deployment.Machines[machineIndex].Status = "Testing SSH"
+			m.Deployment.Machines[machineIndex].StatusMessage = "Testing SSH"
+
 			if m.Deployment.Machines[machineIndex].ElapsedTime == 0 {
 				m.Deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
 			}
-			prog.UpdateStatus(
-				&models.DisplayStatus{
-					ID:          machine.Name,
-					Type:        models.AzureResourceTypeVM,
-					Status:      "Testing SSH",
-					PublicIP:    publicIP,
-					PrivateIP:   privateIP,
-					ElapsedTime: m.Deployment.Machines[machineIndex].ElapsedTime,
-				},
+			displayStatus := models.NewDisplayStatusWithText(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStatePending,
+				"Testing SSH",
 			)
-
-			// Test SSH connectivity
-			sshConfig := &sshutils.SSHConfig{
-				Host:               publicIP,
-				User:               "azureuser",
-				PrivateKeyMaterial: m.Deployment.SSHPrivateKeyMaterial,
-				Port:               22,
-			}
-
-			sshWaiter := sshutils.NewSSHWaiter(nil)
-			sshErr := sshWaiter.WaitForSSH(sshConfig)
-
-			if sshErr != nil {
-				m.Deployment.Machines[machineIndex].Status = "Failed"
-				m.Deployment.Machines[machineIndex].SSH = "❌"
-				prog.UpdateStatus(
-					&models.DisplayStatus{
-						ID:     machine.Name,
-						Type:   models.AzureResourceTypeVM,
-						Status: "Failed",
-					},
-				)
-			} else {
-				m.Deployment.Machines[machineIndex].Status = "Successfully Deployed"
-				m.Deployment.Machines[machineIndex].SSH = "✅"
-				prog.UpdateStatus(
-					&models.DisplayStatus{
-						ID:     machine.Name,
-						Type:   models.AzureResourceTypeVM,
-						Status: "Successfully Deployed",
-					},
-				)
-			}
+			displayStatus.PublicIP = publicIP
+			displayStatus.PrivateIP = privateIP
+			displayStatus.ElapsedTime = m.Deployment.Machines[machineIndex].ElapsedTime
+			prog.UpdateStatus(
+				displayStatus,
+			)
 			break
 		}
 	}
 
+	// Test SSH connectivity
+	sshConfig := &sshutils.SSHConfig{
+		Host:               m.Deployment.Machines[machineIndex].PublicIP,
+		User:               "azureuser",
+		PrivateKeyMaterial: m.Deployment.SSHPrivateKeyMaterial,
+		Port:               22,
+	}
+
+	sshWaiter := sshutils.NewSSHWaiter(nil)
+	sshErr := sshWaiter.WaitForSSH(sshConfig)
+
+	if sshErr != nil {
+		m.Deployment.Machines[machineIndex].SSH = models.DisplayEmojiFailed
+		m.Deployment.Machines[machineIndex].StatusMessage = "Permanently failed deploying SSH"
+		prog.UpdateStatus(
+			models.NewDisplayStatusWithText(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStateFailed,
+				m.Deployment.Machines[machineIndex].StatusMessage,
+			),
+		)
+	} else {
+		m.Deployment.Machines[machineIndex].StatusMessage = "Successfully Deployed"
+		m.Deployment.Machines[machineIndex].SSH = models.DisplayEmojiSuccess
+		prog.UpdateStatus(
+			models.NewDisplayStatusWithText(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStateSucceeded,
+				"Successfully Deployed",
+			),
+		)
+	}
 	return nil
 }
 
@@ -497,11 +506,11 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	for _, machine := range m.Deployment.Machines {
 		prog.UpdateStatus(
-			&models.DisplayStatus{
-				Name:   machine.Name,
-				Type:   models.AzureResourceTypeVM,
-				Status: "Provisioning",
-			},
+			models.NewDisplayStatus(
+				machine.Name,
+				models.AzureResourceTypeVM,
+				models.AzureResourceStatePending,
+			),
 		)
 	}
 

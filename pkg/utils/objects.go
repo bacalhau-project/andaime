@@ -13,8 +13,8 @@ func UpdateOnlyChangedStatus(
 	status *models.DisplayStatus,
 	newStatus *models.DisplayStatus,
 ) *models.DisplayStatus {
-	if newStatus.Status != "" {
-		status.Status = newStatus.Status
+	if newStatus.StatusMessage != "" {
+		status.StatusMessage = newStatus.StatusMessage
 	}
 
 	if newStatus.DetailedStatus != "" {

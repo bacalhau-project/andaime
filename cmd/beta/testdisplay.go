@@ -55,10 +55,22 @@ func runTestDisplay() error {
 				models.AzureResourceStateNotStarted,
 			)
 			newDisplayStatus.Location = testutils.RandomRegion()
-			newDisplayStatus.Status = "Initializing"
+			newDisplayStatus.StatusMessage = "Initializing"
 			newDisplayStatus.DetailedStatus = "Starting"
 			newDisplayStatus.ElapsedTime = 0
 			newDisplayStatus.InstanceID = fmt.Sprintf("test%d", i+1)
+
+			if i%2 == 0 {
+				newDisplayStatus.Orchestrator = false
+				newDisplayStatus.SSH = models.DisplayEmojiSuccess
+				newDisplayStatus.Docker = models.DisplayEmojiFailed
+				newDisplayStatus.Bacalhau = models.DisplayEmojiSuccess
+			} else {
+				newDisplayStatus.Orchestrator = true
+				newDisplayStatus.SSH = models.DisplayEmojiFailed
+				newDisplayStatus.Docker = models.DisplayEmojiSuccess
+				newDisplayStatus.Bacalhau = models.DisplayEmojiFailed
+			}
 			newDisplayStatus.PublicIP = testutils.RandomIP()
 			newDisplayStatus.PrivateIP = testutils.RandomIP()
 			statuses[i] = newDisplayStatus
@@ -76,9 +88,9 @@ func runTestDisplay() error {
 				for i := 0; i < totalTasks; i++ {
 					rawStatus := getRandomWords(3)
 					if len(rawStatus) > statusLength {
-						statuses[i].Status = rawStatus[:statusLength]
+						statuses[i].StatusMessage = rawStatus[:statusLength]
 					} else {
-						statuses[i].Status = fmt.Sprintf("%-*s", statusLength, rawStatus)
+						statuses[i].StatusMessage = fmt.Sprintf("%-*s", statusLength, rawStatus)
 					}
 					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
 					p.Send(models.StatusUpdateMsg{Status: statuses[i]})

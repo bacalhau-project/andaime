@@ -49,7 +49,7 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 func updateRandomStatus(status *models.DisplayStatus) bool {
 	oldStatus := *status
 	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second
-	status.Status = testutils.RandomStatus()
-	status.DetailedStatus = testutils.GetRandomDetailedStatus(status.Status)
+	status.StatusMessage = testutils.RandomStatus()
+	status.DetailedStatus = testutils.GetRandomDetailedStatus(status.StatusMessage)
 	return oldStatus != *status // Return true if there's a change
 }

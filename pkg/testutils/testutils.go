@@ -51,7 +51,7 @@ func CreateRandomStatus() *models.DisplayStatus {
 		models.AzureResourceStateNotStarted,
 	)
 	newDisplayStatus.Location = RandomZone()
-	newDisplayStatus.Status = "Initializing"
+	newDisplayStatus.StatusMessage = "Initializing"
 	newDisplayStatus.DetailedStatus = "Starting"
 	newDisplayStatus.ElapsedTime = 0
 	newDisplayStatus.InstanceID = id

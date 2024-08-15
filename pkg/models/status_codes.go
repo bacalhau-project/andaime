@@ -7,12 +7,12 @@ type StatusCode string
 
 // Constants for each status code
 const (
-	StatusSucceeded StatusCode = " ✅ "
-	StatusFailed    StatusCode = " ❌ "
-	StatusCreating  StatusCode = " 🕕 "
-	StatusUpdating  StatusCode = " 🆙 "
-	StatusDeleting  StatusCode = " ␡ "
-	StatusUnknown   StatusCode = " ❓ "
+	StatusSucceeded StatusCode = "✅"
+	StatusFailed    StatusCode = "❌"
+	StatusCreating  StatusCode = "🕕"
+	StatusUpdating  StatusCode = "🆙"
+	StatusDeleting  StatusCode = "␡"
+	StatusUnknown   StatusCode = "❓"
 )
 
 // StatusString represents the full status strings

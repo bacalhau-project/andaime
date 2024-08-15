@@ -40,11 +40,11 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 8},
 	{Title: "Pub IP", Width: 17},
 	{Title: "Priv IP", Width: 17},
-	{Title: "O", Width: 3, EmojiColumn: true},
-	{Title: "S", Width: 3, EmojiColumn: true},
-	{Title: "D", Width: 3, EmojiColumn: true},
-	{Title: "B", Width: 3, EmojiColumn: true},
-	{Title: "", Width: 3},
+	{Title: models.DisplayEmojiOrchestrator, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiSSH, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiDocker, Width: 3, EmojiColumn: true},
+	{Title: models.DisplayEmojiBacalhau, Width: 3, EmojiColumn: true},
+	{Title: "", Width: 2},
 }
 
 // DisplayModel represents the main display model
@@ -63,10 +63,16 @@ var (
 
 // GetGlobalModel returns the singleton instance of DisplayModel
 func GetGlobalModel() *DisplayModel {
-	globalModelOnce.Do(func() {
-		globalModelInstance = InitialModel()
-	})
+	if globalModelInstance == nil {
+		globalModelOnce.Do(func() {
+			globalModelInstance = InitialModel()
+		})
+	}
 	return globalModelInstance
+}
+
+func SetGlobalModel(m *DisplayModel) {
+	globalModelInstance = m
 }
 
 // InitialModel creates and returns a new DisplayModel
@@ -232,7 +238,7 @@ func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 		machine.Name,
 		machine.Type.ShortResourceName,
 		machine.Location,
-		machine.Status,
+		machine.StatusMessage,
 		progressBar,
 		formatElapsedTime(elapsedTime),
 		machine.PublicIP,
@@ -253,11 +259,11 @@ func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*model
 
 	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
 		newMachine := models.Machine{
-			Name:      status.Name,
-			Type:      status.Type,
-			Location:  status.Location,
-			Status:    status.Status,
-			StartTime: time.Now(),
+			Name:          status.Name,
+			Type:          status.Type,
+			Location:      status.Location,
+			StatusMessage: status.StatusMessage,
+			StartTime:     time.Now(),
 		}
 		m.Deployment.Machines = append(m.Deployment.Machines, newMachine)
 		return &m.Deployment.Machines[len(m.Deployment.Machines)-1], false
@@ -268,13 +274,13 @@ func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*model
 
 func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *models.DisplayStatus) {
 	l := logger.Get()
-	if status.Status != "" {
-		trimmedStatus := strings.TrimSpace(status.Status)
+	if status.StatusMessage != "" {
+		trimmedStatus := strings.TrimSpace(status.StatusMessage)
 		if len(trimmedStatus) > StatusLength-3 {
 			l.Debugf("Status too long, truncating: '%s'", trimmedStatus)
-			machine.Status = trimmedStatus[:StatusLength-3] + "…"
+			machine.StatusMessage = trimmedStatus[:StatusLength-3] + "…"
 		} else {
-			machine.Status = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
+			machine.StatusMessage = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
 		}
 	}
 
@@ -372,14 +378,4 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
-}
-
-// Deprecated functions
-
-// SetGlobalModel is deprecated and will be removed in future versions
-// Use GetGlobalModel() instead
-func SetGlobalModel(m *DisplayModel) {
-	logger.Get().
-		Warnf("SetGlobalModel is deprecated and will be removed in future versions. Use GetGlobalModel() instead.")
-	globalModelInstance = m
 }
