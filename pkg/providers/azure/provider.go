@@ -153,3 +153,26 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 }
 
 var _ AzureProviderer = &AzureProvider{}
+func (p *AzureProvider) generateDeploymentSummary() string {
+	summary := fmt.Sprintf("\nDeployment Summary for Resource Group: %s\n", p.Deployment.ResourceGroupName)
+	summary += fmt.Sprintf("Location: %s\n\n", p.Deployment.ResourceGroupLocation)
+
+	summary += "Virtual Machines:\n"
+	for _, machine := range p.Deployment.Machines {
+		summary += fmt.Sprintf("- %s (Status: %s)\n", machine.Name, machine.Status)
+	}
+
+	summary += "\nVirtual Networks:\n"
+	for name, vnet := range p.Deployment.VNet {
+		summary += fmt.Sprintf("- %s (%s)\n", name, *vnet.ID)
+	}
+
+	summary += "\nSubnets:\n"
+	for vnetName, subnets := range p.Deployment.SubnetSlices {
+		for _, subnet := range subnets {
+			summary += fmt.Sprintf("- %s (%s)\n", *subnet.Name, vnetName)
+		}
+	}
+
+	return summary
+}
