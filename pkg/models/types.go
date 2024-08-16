@@ -35,6 +35,7 @@ type DisplayStatus struct {
 	Orchestrator    bool
 	SSH             ServiceState
 	Docker          ServiceState
+	CorePackages    ServiceState
 	Bacalhau        ServiceState
 }
 

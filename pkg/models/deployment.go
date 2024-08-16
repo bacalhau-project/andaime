@@ -40,6 +40,7 @@ type Machine struct {
 	ElapsedTime  time.Duration
 	Orchestrator bool
 	Docker       ServiceState
+	CorePackages ServiceState
 	Bacalhau     ServiceState
 	SSH          ServiceState
 }
