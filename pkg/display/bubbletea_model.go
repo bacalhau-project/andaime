@@ -280,7 +280,7 @@ func (m *DisplayModel) renderRow(data interface{}, baseStyle lipgloss.Style, isH
 			rowStr += renderedCell
 		}
 	}
-	return strings.TrimRight(rowStr, " ") + " \n"
+	return strings.TrimRight(rowStr, " ") + "\n"
 }
 
 func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
