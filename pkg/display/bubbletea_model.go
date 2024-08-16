@@ -73,6 +73,7 @@ type DisplayMachine struct {
 	Orchestrator  bool
 	SSH           models.ServiceState
 	Docker        models.ServiceState
+	CorePackages  models.ServiceState
 	Bacalhau      models.ServiceState
 }
 
@@ -135,23 +136,45 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.TextBox = []string(msg)
 	}
 
-	// Check if all machines have completed their deployment
+	// Check if all machines have completed their deployment and Docker/Core Packages installation
 	allCompleted := true
+	allDockerAndCorePackagesInstalled := true
 	for _, machine := range m.Deployment.Machines {
 		progress, total := machine.ResourcesComplete()
 		if progress != total || machine.SSH != models.ServiceStateSucceeded {
 			allCompleted = false
 			break
 		}
+		if machine.Docker != models.ServiceStateSucceeded || machine.CorePackages != models.ServiceStateSucceeded {
+			allDockerAndCorePackagesInstalled = false
+		}
 	}
 
-	// If all machines are completed, we'll still keep updating the view
-	// but won't process any more status updates
-	if allCompleted {
-		return m, tea.Batch(tickCmd(), m.updateLogCmd())
+	// If all machines are completed and Docker/Core Packages are installed, install Bacalhau
+	if allCompleted && allDockerAndCorePackagesInstalled {
+		orchestratorInstalled := false
+		for i, machine := range m.Deployment.Machines {
+			if machine.Orchestrator && machine.Bacalhau != models.ServiceStateSucceeded {
+				m.Deployment.Machines[i].Bacalhau = models.ServiceStateUpdating
+				// TODO: Implement Bacalhau orchestrator installation
+				m.Deployment.Machines[i].Bacalhau = models.ServiceStateSucceeded
+				orchestratorInstalled = true
+				break
+			}
+		}
+
+		if orchestratorInstalled {
+			for i, machine := range m.Deployment.Machines {
+				if !machine.Orchestrator && machine.Bacalhau != models.ServiceStateSucceeded {
+					m.Deployment.Machines[i].Bacalhau = models.ServiceStateUpdating
+					// TODO: Implement Bacalhau worker installation
+					m.Deployment.Machines[i].Bacalhau = models.ServiceStateSucceeded
+				}
+			}
+		}
 	}
 
-	return m, nil
+	return m, tea.Batch(tickCmd(), m.updateLogCmd())
 }
 
 // View renders the DisplayModel
@@ -337,13 +360,37 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	}
 	if status.SSH != models.ServiceStateUnknown {
 		machine.SSH = status.SSH
+		if status.SSH == models.ServiceStateSucceeded {
+			go m.installDockerAndCorePackages(machine)
+		}
 	}
 	if status.Docker != models.ServiceStateUnknown {
 		machine.Docker = status.Docker
 	}
+	if status.CorePackages != models.ServiceStateUnknown {
+		machine.CorePackages = status.CorePackages
+	}
 	if status.Bacalhau != models.ServiceStateUnknown {
 		machine.Bacalhau = status.Bacalhau
 	}
+}
+
+func (m *DisplayModel) installDockerAndCorePackages(machine *models.Machine) {
+	// Install Docker
+	machine.Docker = models.ServiceStateUpdating
+	// TODO: Implement Docker installation using embedded scripts
+	// If successful:
+	machine.Docker = models.ServiceStateSucceeded
+	// If failed:
+	// machine.Docker = models.ServiceStateFailed
+
+	// Install Core Packages
+	machine.CorePackages = models.ServiceStateUpdating
+	// TODO: Implement Core Packages installation using embedded scripts
+	// If successful:
+	machine.CorePackages = models.ServiceStateSucceeded
+	// If failed:
+	// machine.CorePackages = models.ServiceStateFailed
 }
 
 func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
