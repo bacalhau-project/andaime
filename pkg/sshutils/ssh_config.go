@@ -14,7 +14,8 @@ type SSHConfig struct {
 	Host                  string
 	Port                  int
 	User                  string
-	PrivateKeyMaterial    string
+	PublicKeyPath         string
+	PrivateKeyPath        string
 	Timeout               time.Duration
 	Logger                *logger.Logger
 	SSHDialer             SSHDialer
@@ -33,21 +34,18 @@ type SSHConfiger interface {
 	RestartService(client SSHClienter, serviceName string) error
 }
 
-func NewSSHConfig(host string, port int,
+func NewSSHConfig(
+	host string,
+	port int,
 	user string,
 	dialer SSHDialer,
 	sshPrivateKeyPath string) (*SSHConfig, error) {
-	// TODO: Implement GetSSHKeysFromPath function
-	sshPrivateKey, err := os.ReadFile(sshPrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SSH key: %w", err)
-	}
 
 	return &SSHConfig{
 		Host:                  host,
 		Port:                  port,
 		User:                  user,
-		PrivateKeyMaterial:    string(sshPrivateKey),
+		PrivateKeyPath:        sshPrivateKeyPath,
 		Timeout:               SSHTimeOut,
 		Logger:                logger.Get(),
 		SSHDialer:             dialer,
@@ -58,7 +56,23 @@ func NewSSHConfig(host string, port int,
 func (c *SSHConfig) Connect() (SSHClienter, error) {
 	c.Logger.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
 
-	key, err := ssh.ParsePrivateKey([]byte(c.PrivateKeyMaterial))
+	// Confirm that the private key path exists
+	if _, err := os.Stat(c.PrivateKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("private key path does not exist: %s", c.PrivateKeyPath)
+	}
+
+	// Open the private key file
+	privateKeyFile, err := os.Open(c.PrivateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open private key file: %w", err)
+	}
+	privateKeyBytes, err := io.ReadAll(privateKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key file: %w", err)
+	}
+	defer privateKeyFile.Close()
+
+	key, err := ssh.ParsePrivateKey(privateKeyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
@@ -164,7 +178,10 @@ func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) e
 	return nil
 }
 
-func (c *SSHConfig) InstallSystemdService(client SSHClienter, serviceName, serviceContent string) error {
+func (c *SSHConfig) InstallSystemdService(
+	client SSHClienter,
+	serviceName, serviceContent string,
+) error {
 	c.Logger.Infof("Installing systemd service: %s", serviceName)
 	remoteServicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
 

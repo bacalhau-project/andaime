@@ -91,7 +91,7 @@ func TestInitializeDeployment(t *testing.T) {
 			euwestCount++
 			assert.True(
 				t,
-				machine.Parameters.Orchestrator,
+				machine.Orchestrator,
 				"Expected euwest machine to be orchestrator",
 			)
 		case "asiawest":
@@ -109,7 +109,7 @@ func TestInitializeDeployment(t *testing.T) {
 	// Verify that only one orchestrator exists
 	orchestratorCount := 0
 	for _, machine := range deployment.Machines {
-		if machine.Parameters.Orchestrator {
+		if machine.Orchestrator {
 			orchestratorCount++
 		}
 	}

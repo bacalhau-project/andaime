@@ -16,7 +16,7 @@ import (
 
 // Constants
 const (
-	TableWidth         = 120
+	TableWidth         = 140
 	LogLines           = 10
 	AzureTotalSteps    = 7
 	StatusLength       = 30
@@ -60,8 +60,8 @@ type DisplayModel struct {
 	DebugMode  bool
 }
 
-// Machine represents a single machine in the deployment
-type Machine struct {
+// DisplayMachine represents a single machine in the deployment
+type DisplayMachine struct {
 	Name          string
 	Type          models.AzureResourceTypes
 	Location      string
@@ -74,7 +74,6 @@ type Machine struct {
 	SSH           models.ServiceState
 	Docker        models.ServiceState
 	Bacalhau      models.ServiceState
-	TimerStopped  bool
 }
 
 var (
@@ -119,8 +118,8 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Quitting = true
 			return m, tea.Sequence(
 				tea.ExitAltScreen,
-				m.printFinalTableCmd(),
 				tea.Quit,
+				m.printFinalTableCmd(),
 			)
 		}
 	case tickMsg:
@@ -330,7 +329,7 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	if status.PrivateIP != "" {
 		machine.PrivateIP = status.PrivateIP
 	}
-	if status.ElapsedTime > 0 && !machine.TimerStopped {
+	if status.ElapsedTime > 0 && !machine.Complete() {
 		machine.ElapsedTime = status.ElapsedTime
 	}
 	if status.Orchestrator {
@@ -344,15 +343,6 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	}
 	if status.Bacalhau != models.ServiceStateUnknown {
 		machine.Bacalhau = status.Bacalhau
-	}
-
-	// Check if all resources are deployed and SSH is correct
-	if !machine.TimerStopped {
-		progress, total := machine.ResourcesComplete()
-		if progress == total && machine.SSH == models.ServiceStateSucceeded {
-			machine.TimerStopped = true
-			l.Infof("Timer stopped for machine: %s", machine.Name)
-		}
 	}
 }
 

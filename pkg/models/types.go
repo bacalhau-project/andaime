@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 type ProviderAbbreviation string
@@ -31,9 +33,9 @@ type DisplayStatus struct {
 	Name            string
 	Progress        int
 	Orchestrator    bool
-	SSH             string
-	Docker          string
-	Bacalhau        string
+	SSH             ServiceState
+	Docker          ServiceState
+	Bacalhau        ServiceState
 }
 
 func NewDisplayStatusWithText(
@@ -52,17 +54,39 @@ func NewDisplayStatusWithText(
 			resourceID,
 			text,
 		),
+		SSH:      ServiceStateUnknown,
+		Docker:   ServiceStateUnknown,
+		Bacalhau: ServiceStateUnknown,
 	}
 }
 
+// NewDisplayVMStatus creates a new DisplayStatus for a VM
+// - machineName is the name of the machine (the start of the row - should be unique, something like ABCDEF-vm)
+// - resourceType is the type of the resource (e.g. AzureResourceTypeNIC)
+// - state is the state of the resource (e.g. AzureResourceStateSucceeded)
+func NewDisplayVMStatus(
+	machineName string,
+	state AzureResourceState,
+) *DisplayStatus {
+	return NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
+}
+
+// NewDisplayStatus creates a new DisplayStatus
+// - machineName is the name of the machine (the start of the row - should be unique, something like ABCDEF-vm)
+// - resourceID is the name of the resource (the end of the row - should be unique, something like ABCDEF-vm-nic or centralus-vnet)
+// - resourceType is the type of the resource (e.g. AzureResourceTypeNIC)
+// - state is the state of the resource (e.g. AzureResourceStateSucceeded)
+//
+//nolint:lll
 func NewDisplayStatus(
+	machineName string,
 	resourceID string,
 	resourceType AzureResourceTypes,
 	state AzureResourceState,
 ) *DisplayStatus {
 	return &DisplayStatus{
-		ID:   resourceID,
-		Name: resourceID,
+		ID:   machineName,
+		Name: machineName,
 		Type: resourceType,
 		StatusMessage: CreateStateMessage(
 			resourceType,
@@ -89,19 +113,36 @@ type AzureEvent struct {
 }
 
 const (
-	DisplayEmojiSuccess    = "✔" // "✅"
-	DisplayEmojiWaiting    = "⟳" // "⏳"
-	DisplayEmojiFailed     = "✘" // "❌"
-	DisplayEmojiQuestion   = "?" // "❓"
-	DisplayEmojiNotStarted = "┅" // "⬛️"
+	DisplayTextSuccess    = "✔"
+	DisplayTextFailed     = "✘"
+	DisplayTextInProgress = "↻"
+	DisplayTextWaiting    = "↻"
+	DisplayTextCreating   = "⌃"
+	DisplayTextUnknown    = "?"
+	DisplayTextNotStarted = "┅"
 
-	DisplayEmojiOrchestratorNode = "⏼" // "🌕"
-	DisplayEmojiWorkerNode       = " " // "⚫️"
+	DisplayEmojiSuccess    = "✅"
+	DisplayEmojiWaiting    = "⏳"
+	DisplayEmojiCreating   = "⬆️"
+	DisplayEmojiFailed     = "❌"
+	DisplayEmojiQuestion   = "❓"
+	DisplayEmojiNotStarted = "⬛️"
 
-	DisplayEmojiOrchestrator = "O" // "🤖"
-	DisplayEmojiSSH          = "S" // "🔑"
-	DisplayEmojiDocker       = "D" // "🐳"
-	DisplayEmojiBacalhau     = "B" // "🐟"
+	DisplayEmojiOrchestratorNode = "🌕"
+	DisplayEmojiWorkerNode       = "⚫️"
+
+	DisplayTextOrchestratorNode = "⏼"
+	DisplayTextWorkerNode       = " "
+
+	DisplayEmojiOrchestrator = "🤖"
+	DisplayEmojiSSH          = "🔑"
+	DisplayEmojiDocker       = "🐳"
+	DisplayEmojiBacalhau     = "🐟"
+
+	DisplayTextOrchestrator = "O"
+	DisplayTextSSH          = "S"
+	DisplayTextDocker       = "D"
+	DisplayTextBacalhau     = "B"
 )
 
 func CreateStateMessageWithText(
@@ -118,6 +159,7 @@ func CreateStateMessage(
 	resourceState AzureResourceState,
 	resourceName string,
 ) string {
+	l := logger.Get()
 	stateEmoji := ""
 	switch resourceState {
 	case AzureResourceStateNotStarted:
@@ -131,6 +173,9 @@ func CreateStateMessage(
 	case AzureResourceStateSucceeded:
 		stateEmoji = DisplayEmojiSuccess
 	case AzureResourceStateUnknown:
+		l.Debugf("Resource: %s", resource)
+		l.Debugf("Resource Name: %s", resourceName)
+		l.Debugf("Resource State: %d", resourceState)
 		stateEmoji = DisplayEmojiQuestion
 	}
 	return fmt.Sprintf(
@@ -143,7 +188,7 @@ func CreateStateMessage(
 
 func ConvertFromRawResourceToStatus(
 	resourceMap map[string]interface{},
-	machines []Machine,
+	deployment *Deployment,
 ) ([]DisplayStatus, error) {
 	resourceName := resourceMap["name"].(string)
 	resourceType := resourceMap["type"].(string)
@@ -151,22 +196,40 @@ func ConvertFromRawResourceToStatus(
 
 	var statuses []DisplayStatus
 
-	if location, ok := isLocation(resourceName); ok {
-		machinesNames, err := GetMachinesInLocation(location, machines)
+	if location := GetLocationFromResourceName(resourceName); location != "" {
+		machinesNames, err := GetMachinesInLocation(location, deployment.Machines)
 		if err != nil {
 			return nil, err
 		}
 		for _, machineName := range machinesNames {
-			machine, err := GetMachineByName(machineName, machines)
+			machineIndex, err := GetMachineIndexByName(machineName, deployment.Machines)
 			if err != nil {
 				return nil, err
 			}
-			status := createStatus(machine.Name, resourceName, resourceType, resourceState)
+			if machineNeedsUpdating(
+				deployment,
+				machineIndex,
+				resourceType,
+				resourceState,
+			) {
+				status := createStatus(machineName, resourceName, resourceType, resourceState)
+				statuses = append(statuses, status)
+			}
+		}
+	} else if machineName := GetMachineNameFromResourceName(resourceName); machineName != "" {
+		machineIndex, err := GetMachineIndexByName(machineName, deployment.Machines)
+		if err != nil {
+			return nil, fmt.Errorf("machine not found by resourceName: %s", resourceName)
+		}
+		if machineNeedsUpdating(
+			deployment,
+			machineIndex,
+			resourceType,
+			resourceState,
+		) {
+			status := createStatus(resourceName, resourceName, resourceType, resourceState)
 			statuses = append(statuses, status)
 		}
-	} else if machineName, ok := isMachine(resourceName); ok {
-		status := createStatus(machineName, resourceName, resourceType, resourceState)
-		statuses = append(statuses, status)
 	} else {
 		return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
 	}
@@ -174,18 +237,42 @@ func ConvertFromRawResourceToStatus(
 	return statuses, nil
 }
 
-func isLocation(id string) (string, bool) {
+func GetLocationFromResourceName(id string) string {
 	if strings.HasSuffix(id, "-nsg") || strings.HasSuffix(id, "-vnet") {
-		return strings.Split(id, "-")[0], true
+		return strings.Split(id, "-")[0]
 	}
-	return "", false
+	return ""
 }
 
-func isMachine(id string) (string, bool) {
+// Tests to see if the resource name is a machine ID. Returns the machine ID if it is.
+func GetMachineNameFromResourceName(id string) string {
 	if strings.Contains(id, "-vm") || strings.Contains(id, "-vm-") {
-		return fmt.Sprintf("%s-vm", strings.Split(id, "-")[0]), true
+		return fmt.Sprintf("%s-vm", strings.Split(id, "-")[0])
 	}
-	return "", false
+	return ""
+}
+
+func machineNeedsUpdating(
+	deployment *Deployment,
+	machineIndex int,
+	resourceType string,
+	resourceState string,
+) bool {
+	l := logger.Get()
+	l.Debugf(
+		"machineNeedsUpdating: %s, %s, %s",
+		deployment.Machines[machineIndex].Name,
+		resourceType,
+		resourceState,
+	)
+	currentState := ConvertFromStringToAzureResourceState(resourceState)
+
+	needsUpdate := 0
+	if deployment.Machines[machineIndex].GetResource(resourceType).ResourceState < currentState {
+		deployment.Machines[machineIndex].SetResource(resourceType, currentState)
+		needsUpdate++
+	}
+	return needsUpdate > 0
 }
 
 func GetMachinesInLocation(resourceName string, machines []Machine) ([]string, error) {
@@ -206,26 +293,25 @@ func GetMachinesInLocation(resourceName string, machines []Machine) ([]string, e
 	return machinesInLocation, nil
 }
 
-func GetMachineByName(name string, machines []Machine) (Machine, error) {
-	for _, machine := range machines {
+func GetMachineIndexByName(name string, machines []Machine) (int, error) {
+	for i, machine := range machines {
 		if machine.Name == name {
-			return machine, nil
+			return i, nil
 		}
 	}
-	return Machine{}, fmt.Errorf("machine not found: %s", name)
+	return -1, fmt.Errorf("machine not found in index: %s", name)
 }
 
-func createStatus(machineID, resourceID, resourceType, state string) DisplayStatus {
+// createStatus creates a new DisplayStatus
+// - machineName is the name of the machine (the start of the row - should be unique, something like ABCDEF-vm)
+// - resourceID is the name of the resource (the end of the row - should be unique, something like ABCDEF-vm-nic or centralus-vnet)
+// - resourceType is the type of the resource (e.g. AzureResourceTypeNIC)
+// - state is the state of the resource (e.g. AzureResourceStateSucceeded)
+//
+//nolint:lll
+func createStatus(machineName, resourceID, resourceType, state string) DisplayStatus {
 	azureResourceType := GetAzureResourceType(resourceType)
 	stateType := ConvertFromStringToAzureResourceState(state)
 
-	return DisplayStatus{
-		ID:   machineID,
-		Type: azureResourceType,
-		StatusMessage: CreateStateMessage(
-			azureResourceType,
-			stateType,
-			resourceID,
-		),
-	}
+	return *NewDisplayStatus(machineName, resourceID, azureResourceType, stateType)
 }

@@ -106,10 +106,11 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 			err := p.deployMachine(ctx, goRoutineMachine, tags)
 			if err != nil {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
+
+				// Uses the machine name for the resource name because this is the VM
 				prog.UpdateStatus(
-					models.NewDisplayStatus(
+					models.NewDisplayVMStatus(
 						goRoutineMachine.Name,
-						models.AzureResourceTypeVM,
 						models.AzureResourceStateFailed,
 					),
 				)
@@ -129,8 +130,10 @@ func (p *AzureProvider) deployMachine(
 	tags map[string]*string,
 ) error {
 	prog := display.GetGlobalProgram()
+
 	prog.UpdateStatus(
 		models.NewDisplayStatus(
+			machine.Name,
 			machine.Name,
 			models.AzureResourceTypeVM,
 			models.AzureResourceStateNotStarted,
@@ -221,9 +224,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	prog.UpdateStatus(
-		models.NewDisplayStatus(
+		models.NewDisplayVMStatus(
 			machine.Name,
-			models.AzureResourceTypeVM,
 			models.AzureResourceStatePending,
 		),
 	)
@@ -268,9 +270,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 					utils.GenerateUniqueID()[:6],
 				),
 			}
-			dispStatus := models.NewDisplayStatus(
+			dispStatus := models.NewDisplayVMStatus(
 				machine.Name,
-				models.AzureResourceTypeVM,
 				models.AzureResourceStatePending,
 			)
 			dispStatus.StatusMessage = fmt.Sprintf(
@@ -357,17 +358,16 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	// Test SSH connectivity
 	sshConfig := &sshutils.SSHConfig{
-		Host:               m.Deployment.Machines[machineIndex].PublicIP,
-		User:               "azureuser",
-		PrivateKeyMaterial: m.Deployment.SSHPrivateKeyMaterial,
-		Port:               22,
+		Host:           m.Deployment.Machines[machineIndex].PublicIP,
+		User:           "azureuser",
+		PrivateKeyPath: m.Deployment.SSHPrivateKeyPath,
+		PublicKeyPath:  m.Deployment.SSHPublicKeyPath,
+		Port:           22,
 	}
 
-	sshWaiter := sshutils.NewSSHWaiter(nil)
-	sshErr := sshWaiter.WaitForSSH(sshConfig)
-
+	sshErr := sshutils.WaitForSSHToBeLive(sshConfig, 3, time.Second*10)
 	if sshErr != nil {
-		m.Deployment.Machines[machineIndex].SSH = models.DisplayEmojiFailed
+		m.Deployment.Machines[machineIndex].SSH = models.ServiceStateFailed
 		m.Deployment.Machines[machineIndex].StatusMessage = "Permanently failed deploying SSH"
 		prog.UpdateStatus(
 			models.NewDisplayStatusWithText(
@@ -379,7 +379,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		)
 	} else {
 		m.Deployment.Machines[machineIndex].StatusMessage = "Successfully Deployed"
-		m.Deployment.Machines[machineIndex].SSH = models.DisplayEmojiSuccess
+		m.Deployment.Machines[machineIndex].SSH = models.ServiceStateSucceeded
 		prog.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
@@ -423,24 +423,8 @@ func (p *AzureProvider) FinalizeDeployment(
 	// Log successful completion
 	l.Info("Azure deployment completed successfully")
 
-	// Print summary of deployed resources
-	summaryMsg := fmt.Sprintf(
-		"\nDeployment Summary for Resource Group: %s\n",
-		m.Deployment.ResourceGroupName,
-	)
-	summaryMsg += fmt.Sprintf("Location: %s\n", m.Deployment.ResourceGroupLocation)
-	l.Info(summaryMsg)
-
-	startTime := m.Deployment.StartTime
-	if startTime.IsZero() {
-		startTime = time.Now() // Fallback if start time wasn't set
-	}
-
-	// Use the existing View method to generate the table
-	tableOutput := m.View()
-
-	fmt.Println("\nDeployment completed. Full list of deployed machines:")
-	fmt.Print(tableOutput)
+	finalTable := m.RenderFinalTable()
+	fmt.Print("\n" + finalTable + "\n")
 
 	// Ensure all configurations are saved
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
@@ -506,9 +490,8 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	for _, machine := range m.Deployment.Machines {
 		prog.UpdateStatus(
-			models.NewDisplayStatus(
+			models.NewDisplayVMStatus(
 				machine.Name,
-				models.AzureResourceTypeVM,
 				models.AzureResourceStatePending,
 			),
 		)
@@ -527,9 +510,8 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 
 	for _, machine := range m.Deployment.Machines {
 		prog.UpdateStatus(
-			models.NewDisplayStatus(
+			models.NewDisplayVMStatus(
 				machine.Name,
-				models.AzureResourceTypeVM,
 				models.AzureResourceStateNotStarted,
 			),
 		)

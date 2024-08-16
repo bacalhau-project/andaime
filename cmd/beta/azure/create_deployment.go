@@ -170,7 +170,12 @@ func PrepareDeployment(
 	deployment.SubscriptionID = getSubscriptionID()
 
 	// Extract SSH keys
-	sshPublicKeyPath, sshPrivateKeyPath, sshPublicKeyData, err := ExtractSSHKeyPaths()
+	var err error
+	deployment.SSHPublicKeyPath,
+		deployment.SSHPrivateKeyPath,
+		deployment.SSHPublicKeyMaterial,
+		deployment.SSHPrivateKeyMaterial,
+		err = ExtractSSHKeyPaths()
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
 	}
@@ -178,8 +183,8 @@ func PrepareDeployment(
 	// Ensure tags
 	tags := utils.EnsureAzureTags(make(map[string]*string), projectID, uniqueID)
 
-	// Validate SSH keys
-	if err := sshutils.ValidateSSHKeysFromPath(sshPublicKeyPath, sshPrivateKeyPath); err != nil {
+	// Validate SSH keys - do this early so we can fail fast
+	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
 		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
 	}
 
@@ -193,7 +198,6 @@ func PrepareDeployment(
 	deployment.UniqueID = uniqueID
 	deployment.ResourceGroupLocation = resourceGroupLocation
 	deployment.Tags = tags
-	deployment.SSHPublicKeyMaterial = sshPublicKeyData
 
 	// Set ResourceGroupName only if it's not already set
 	if deployment.ResourceGroupName == "" {
@@ -248,26 +252,37 @@ func PrepareDeployment(
 //   - string: The file path of the SSH public key.
 //   - string: The file path of the SSH private key.
 //   - string: The content of the SSH public key file, trimmed of newline characters.
+//   - string: The content of the SSH private key file, trimmed of newline characters.
 //   - error: An error if any step in the process fails, such as extracting key paths or reading the public key file.
-func ExtractSSHKeyPaths() (string, string, string, error) {
+func ExtractSSHKeyPaths() (string, string, string, string, error) {
 	publicKeyPath, err := extractSSHKeyPath("general.ssh_public_key_path")
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to extract public key material: %w", err)
+		return "", "", "", "", fmt.Errorf("failed to extract public key material: %w", err)
 	}
 
 	privateKeyPath, err := extractSSHKeyPath("general.ssh_private_key_path")
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to extract private key material: %w", err)
+		return "", "", "", "", fmt.Errorf("failed to extract private key material: %w", err)
 	}
 
 	publicKeyData, err := os.ReadFile(publicKeyPath)
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to read public key file: %w", err)
+		return "", "", "", "", fmt.Errorf("failed to read public key file: %w", err)
 	}
 
 	returnPublicKeyData := strings.TrimSpace(string(publicKeyData))
 
-	return publicKeyPath, privateKeyPath, returnPublicKeyData, nil
+	privateKeyData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("failed to read private key file: %w", err)
+	}
+	returnPrivateKeyData := strings.TrimSpace(string(privateKeyData))
+
+	return publicKeyPath,
+		privateKeyPath,
+		returnPublicKeyData,
+		returnPrivateKeyData,
+		nil
 }
 
 func extractSSHKeyPath(configKeyString string) (string, error) {
@@ -373,12 +388,10 @@ func ProcessMachinesConfig(
 			thisMachine.Name = fmt.Sprintf("%s-vm", thisMachine.ID)
 			thisMachine.ComputerName = fmt.Sprintf("%s-vm", thisMachine.ID)
 			thisMachine.StartTime = time.Now()
-			thisMachine.Progress = 0
-			thisMachine.ProgressFinish = 100
 
-			thisMachine.SSH = models.DisplayEmojiNotStarted
-			thisMachine.Docker = models.DisplayEmojiNotStarted
-			thisMachine.Bacalhau = models.DisplayEmojiNotStarted
+			thisMachine.SSH = models.ServiceStateNotStarted
+			thisMachine.Docker = models.ServiceStateNotStarted
+			thisMachine.Bacalhau = models.ServiceStateNotStarted
 
 			allMachines = append(allMachines, thisMachine)
 		}

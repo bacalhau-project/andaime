@@ -2,6 +2,8 @@ package sshutils
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -37,13 +39,26 @@ func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) err
 	l.Debugf("Starting SSH connection check to %s:%d", config.Host, config.Port)
 	l.Debug("Entering waitForSSH")
 	l.Debugf(
-		"publicIP: %s, username: %s, privateKey length: %d\n",
+		"publicIP: %s, username: %s, privateKeyPath: %s\n",
 		config.Host,
 		config.User,
-		len(config.PrivateKeyMaterial),
+		config.PrivateKeyPath,
 	)
 
-	signer, err := ssh.ParsePrivateKey([]byte(config.PrivateKeyMaterial))
+	// Open the private key file
+	privateKey, err := os.Open(config.PrivateKeyPath)
+	if err != nil {
+		return err
+	}
+	defer privateKey.Close()
+
+	// Get the private key
+	privateKeyBytes, err := io.ReadAll(privateKey)
+	if err != nil {
+		return err
+	}
+
+	signer, err := ssh.ParsePrivateKey(privateKeyBytes)
 	if err != nil {
 		err = fmt.Errorf("failed to parse private key in waitForSSH: %v", err)
 		l.Error(err.Error())
@@ -59,13 +74,30 @@ func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) err
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
 		Timeout:         SSHTimeOut,
 	}
+	dialer := NewSSHDial(config.Host, config.Port, sshClientConfig)
+	andaimeSSHClientConfig, err := NewSSHConfig(
+		config.Host,
+		config.Port,
+		config.User,
+		dialer,
+		config.PrivateKeyPath,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to create SSH client config: %v", err)
+		l.Error(err.Error())
+		return err
+	}
 	l.Debug("SSH client config created")
 
 	for i := 0; i < SSHRetryAttempts; i++ {
 		l.Debugf("Attempt %d to connect via SSH\n", i+1)
-		dialer := NewSSHDial(config.Host, config.Port, sshClientConfig)
-		client := NewSSHClientFunc(sshClientConfig, dialer)
-
+		client, err := andaimeSSHClientConfig.Connect()
+		if err != nil {
+			err = fmt.Errorf("failed to connect to SSH: %v", err)
+			l.Error(err.Error())
+			time.Sleep(SSHRetryDelay)
+			continue
+		}
 		session, err := client.NewSession()
 		if err != nil {
 			err = fmt.Errorf("failed to create SSH session: %v", err)

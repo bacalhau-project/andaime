@@ -45,9 +45,8 @@ func GenerateRandomLogEntry() string {
 
 func CreateRandomStatus() *models.DisplayStatus {
 	id := fmt.Sprintf("i-%06d", rand.IntN(1000000)) //nolint:gomnd,gosec
-	newDisplayStatus := models.NewDisplayStatus(
+	newDisplayStatus := models.NewDisplayVMStatus(
 		id,
-		models.AzureResourceTypeVM,
 		models.AzureResourceStateNotStarted,
 	)
 	newDisplayStatus.Location = RandomZone()

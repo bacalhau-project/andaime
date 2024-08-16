@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +27,7 @@ func TestNewSSHConfig(t *testing.T) {
 	assert.Equal(t, host, config.Host)
 	assert.Equal(t, port, config.Port)
 	assert.Equal(t, user, config.User)
-	assert.NotEmpty(t, config.PrivateKeyMaterial)
+	assert.NotEmpty(t, config.PrivateKeyPath)
 	assert.IsType(t, &logger.Logger{}, config.Logger)
 	assert.Equal(t, mockDialer, config.SSHDialer)
 }
@@ -36,18 +35,21 @@ func TestNewSSHConfig(t *testing.T) {
 func TestConnect(t *testing.T) {
 	mockDialer := NewMockSSHDialer()
 	mockClient, _ := NewMockSSHClient(mockDialer)
+	_, _, testSSHPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	defer cleanupPrivateKey()
 
 	config := &SSHConfig{
-		Host:               "example.com",
-		Port:               22,
-		User:               "testuser",
-		PrivateKeyMaterial: testdata.TestPrivateSSHKeyMaterial,
-		SSHDialer:          mockDialer,
-		Logger:             logger.Get(),
+		Host:           "example.com",
+		Port:           22,
+		User:           "testuser",
+		PrivateKeyPath: testSSHPrivateKeyPath,
+		SSHDialer:      mockDialer,
+		Logger:         logger.Get(),
 	}
 
 	// Set up the mock expectation
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
+		Return(mockClient, nil)
 
 	client, err := config.Connect()
 	assert.NoError(t, err)
@@ -67,7 +69,8 @@ func TestConnectFailure(t *testing.T) {
 	config.InsecureIgnoreHostKey = true
 
 	expectedError := fmt.Errorf("connection error")
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(nil, expectedError)
+	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
+		Return(nil, expectedError)
 
 	client, err := config.Connect()
 
@@ -246,7 +249,8 @@ func GetMockClient(t *testing.T) (SSHClienter, *SSHConfig) {
 		assert.Fail(t, "failed to create SSH config: %v", err)
 	}
 	mockClient := &MockSSHClient{}
-	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).Return(mockClient, nil)
+	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
+		Return(mockClient, nil)
 	return mockClient, config
 }
 

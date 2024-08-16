@@ -316,7 +316,7 @@ func (c *LiveAzureClient) GetResources(
 			continue
 		}
 
-		statuses, err := models.ConvertFromRawResourceToStatus(resourceMap, m.Deployment.Machines)
+		statuses, err := models.ConvertFromRawResourceToStatus(resourceMap, m.Deployment)
 		if err != nil {
 			l.Errorf("Failed to convert resource to status: %v", err)
 			continue

@@ -49,9 +49,8 @@ func runTestDisplay() error {
 		totalTasks := 5
 		statuses := make([]*models.DisplayStatus, totalTasks)
 		for i := 0; i < totalTasks; i++ {
-			newDisplayStatus := models.NewDisplayStatus(
-				fmt.Sprintf("test%d", i+1),
-				models.AzureResourceTypeVM,
+			newDisplayStatus := models.NewDisplayVMStatus(
+				fmt.Sprintf("testVM%d", i+1),
 				models.AzureResourceStateNotStarted,
 			)
 			newDisplayStatus.Location = testutils.RandomRegion()
@@ -62,14 +61,14 @@ func runTestDisplay() error {
 
 			if i%2 == 0 {
 				newDisplayStatus.Orchestrator = false
-				newDisplayStatus.SSH = models.DisplayEmojiSuccess
-				newDisplayStatus.Docker = models.DisplayEmojiFailed
-				newDisplayStatus.Bacalhau = models.DisplayEmojiSuccess
+				newDisplayStatus.SSH = models.ServiceStateSucceeded
+				newDisplayStatus.Docker = models.ServiceStateFailed
+				newDisplayStatus.Bacalhau = models.ServiceStateSucceeded
 			} else {
 				newDisplayStatus.Orchestrator = true
-				newDisplayStatus.SSH = models.DisplayEmojiFailed
-				newDisplayStatus.Docker = models.DisplayEmojiSuccess
-				newDisplayStatus.Bacalhau = models.DisplayEmojiFailed
+				newDisplayStatus.SSH = models.ServiceStateFailed
+				newDisplayStatus.Docker = models.ServiceStateSucceeded
+				newDisplayStatus.Bacalhau = models.ServiceStateFailed
 			}
 			newDisplayStatus.PublicIP = testutils.RandomIP()
 			newDisplayStatus.PrivateIP = testutils.RandomIP()

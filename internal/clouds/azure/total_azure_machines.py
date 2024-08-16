@@ -2,8 +2,6 @@ import json
 import subprocess
 from collections import defaultdict
 
-from tabulate import tabulate
-
 
 def run_azure_cli_command(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)

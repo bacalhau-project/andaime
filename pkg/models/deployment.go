@@ -7,8 +7,18 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/spf13/viper"
+)
+
+type ServiceState int
+
+const (
+	ServiceStateNotStarted ServiceState = iota
+	ServiceStateCreated
+	ServiceStateUpdating
+	ServiceStateSucceeded
+	ServiceStateFailed
+	ServiceStateUnknown
 )
 
 type Machine struct {
@@ -22,23 +32,86 @@ type Machine struct {
 	PrivateIP     string
 	StartTime     time.Time
 
-	VNet                 MachineResource
-	Subnet               MachineResource
-	NetworkSecurityGroup MachineResource
-	NIC                  MachineResource
-	IP                   MachineResource
-	Disk                 MachineResource
+	machineResources map[string]MachineResource
 
-	VMSize         string
-	DiskSizeGB     int32 `default:"30"`
-	ComputerName   string
-	ElapsedTime    time.Duration
-	Orchestrator   bool
-	Docker         string
-	Bacalhau       string
-	SSH            string
-	Progress       int
-	ProgressFinish int
+	VMSize       string
+	DiskSizeGB   int32 `default:"30"`
+	ComputerName string
+	ElapsedTime  time.Duration
+	Orchestrator bool
+	Docker       ServiceState
+	Bacalhau     ServiceState
+	SSH          ServiceState
+}
+
+func (m *Machine) IsOrchestrator() bool {
+	return m.Orchestrator
+}
+
+func (m *Machine) SSHEnabled() bool {
+	return m.SSH == ServiceStateSucceeded
+}
+
+func (m *Machine) DockerEnabled() bool {
+	return m.Docker == ServiceStateSucceeded
+}
+
+func (m *Machine) BacalhauEnabled() bool {
+	return m.Bacalhau == ServiceStateSucceeded
+}
+
+func (m *Machine) GetResource(resourceType string) MachineResource {
+	if m.machineResources == nil {
+		m.machineResources = make(map[string]MachineResource)
+	}
+	if resource, ok := m.machineResources[resourceType]; ok {
+		return resource
+	}
+	return MachineResource{}
+}
+
+func (m *Machine) SetResource(resourceType string, resourceState AzureResourceState) {
+	if m.machineResources == nil {
+		m.machineResources = make(map[string]MachineResource)
+	}
+	m.machineResources[resourceType] = MachineResource{
+		ResourceName:  resourceType,
+		ResourceType:  GetAzureResourceType(resourceType),
+		ResourceState: resourceState,
+		ResourceValue: "",
+	}
+}
+
+func (m *Machine) ResourcesComplete() (int, int) {
+	// Below is the list of resources that are required to be created for a machine
+	allResources := []MachineResource{
+		m.machineResources[AzureResourceTypeVNET.ResourceString],
+		m.machineResources[AzureResourceTypeNIC.ResourceString],
+		m.machineResources[AzureResourceTypeNSG.ResourceString],
+		m.machineResources[AzureResourceTypeIP.ResourceString],
+		m.machineResources[AzureResourceTypeDISK.ResourceString],
+		m.machineResources[AzureResourceTypeSNET.ResourceString],
+		m.machineResources[AzureResourceTypeVM.ResourceString],
+	}
+
+	totalResources := len(allResources)
+	completedResources := 0
+
+	for _, resource := range m.machineResources {
+		if resource.ResourceState == AzureResourceStateSucceeded {
+			completedResources++
+		}
+	}
+	return completedResources, totalResources
+}
+
+func (m *Machine) Complete() bool {
+	pending, total := m.ResourcesComplete()
+	return pending == total &&
+		pending > 0 &&
+		m.SSH >= ServiceStateSucceeded &&
+		m.Docker >= ServiceStateSucceeded &&
+		m.Bacalhau >= ServiceStateSucceeded
 }
 
 type AzureResourceTypes struct {
@@ -117,12 +190,12 @@ func IsValidResource(resource string) bool {
 type AzureResourceState int
 
 const (
-	AzureResourceStateNotStarted AzureResourceState = iota
+	AzureResourceStateUnknown AzureResourceState = iota
+	AzureResourceStateNotStarted
 	AzureResourceStatePending
 	AzureResourceStateRunning
 	AzureResourceStateFailed
 	AzureResourceStateSucceeded
-	AzureResourceStateUnknown
 )
 
 func ConvertFromStringToAzureResourceState(s string) AzureResourceState {
@@ -144,8 +217,8 @@ func ConvertFromStringToAzureResourceState(s string) AzureResourceState {
 
 type MachineResource struct {
 	ResourceName  string
-	ResourceType  string
-	ResourceState string
+	ResourceType  AzureResourceTypes
+	ResourceState AzureResourceState
 	ResourceValue string
 }
 
@@ -163,12 +236,6 @@ type Deployment struct {
 	Locations             []string
 	OrchestratorNode      *Machine
 	Machines              []Machine
-	VNet                  map[string]*armnetwork.VirtualNetwork
-	SubnetSlices          map[string][]*armnetwork.Subnet
-	NetworkSecurityGroups map[string]*armnetwork.SecurityGroup
-	Disks                 map[string]*Disk
-	NetworkWatchers       map[string]*armnetwork.Watcher
-	VMExtensionsStatus    map[string]StatusCode
 	ProjectID             string
 	UniqueID              string
 	Tags                  map[string]*string
@@ -195,13 +262,7 @@ type Disk struct {
 
 func NewDeployment() *Deployment {
 	return &Deployment{
-		VNet:                  make(map[string]*armnetwork.VirtualNetwork),
-		SubnetSlices:          make(map[string][]*armnetwork.Subnet),
-		NetworkSecurityGroups: make(map[string]*armnetwork.SecurityGroup),
-		Disks:                 make(map[string]*Disk),
-		NetworkWatchers:       make(map[string]*armnetwork.Watcher),
-		VMExtensionsStatus:    make(map[string]StatusCode),
-		Tags:                  make(map[string]*string),
+		Tags: make(map[string]*string),
 	}
 }
 
@@ -213,7 +274,6 @@ func (d *Deployment) ToMap() map[string]interface{} {
 		"ResourceGroupLocation": d.ResourceGroupLocation,
 		"OrchestratorNode":      d.OrchestratorNode,
 		"Machines":              d.Machines,
-		"VNet":                  d.SubnetSlices,
 		"ProjectID":             d.ProjectID,
 		"UniqueID":              d.UniqueID,
 		"Tags":                  d.Tags,
@@ -237,15 +297,6 @@ func (d *Deployment) UpdateViperConfig() error {
 
 	v.Set(deploymentPath, viperMachines)
 	return v.WriteConfig()
-}
-
-func (d *Deployment) SetSubnet(location string, subnets ...*armnetwork.Subnet) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.SubnetSlices == nil {
-		d.SubnetSlices = make(map[string][]*armnetwork.Subnet)
-	}
-	d.SubnetSlices[location] = append(d.SubnetSlices[location], subnets...)
 }
 
 type StatusUpdateMsg struct {
