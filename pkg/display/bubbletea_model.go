@@ -2,6 +2,7 @@ package display
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -27,10 +28,13 @@ const (
 type DisplayColumn struct {
 	Title       string
 	Width       int
+	Height      int
 	EmojiColumn bool
 }
 
 // DisplayColumns defines the structure of the display table
+//
+//nolint:gomnd
 var DisplayColumns = []DisplayColumn{
 	{Title: "Name", Width: 10},
 	{Title: "Type", Width: 6},
@@ -38,13 +42,13 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Status", Width: StatusLength},
 	{Title: "Progress", Width: 20},
 	{Title: "Time", Width: 8},
-	{Title: "Pub IP", Width: 17},
-	{Title: "Priv IP", Width: 17},
-	{Title: models.DisplayEmojiOrchestrator, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiSSH, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiDocker, Width: 3, EmojiColumn: true},
-	{Title: models.DisplayEmojiBacalhau, Width: 3, EmojiColumn: true},
-	{Title: "", Width: 2},
+	{Title: "Pub IP", Width: 19},
+	{Title: "Priv IP", Width: 19},
+	{Title: models.DisplayTextOrchestrator, Width: 2, EmojiColumn: true},
+	{Title: models.DisplayTextSSH, Width: 2, EmojiColumn: true},
+	{Title: models.DisplayTextDocker, Width: 2, EmojiColumn: true},
+	{Title: models.DisplayTextBacalhau, Width: 2, EmojiColumn: true},
+	{Title: "", Width: 1},
 }
 
 // DisplayModel represents the main display model
@@ -127,7 +131,8 @@ func (m *DisplayModel) View() string {
 		Foreground(lipgloss.Color("39")).
 		Padding(0, 1)
 	cellStyle := lipgloss.NewStyle().
-		PaddingLeft(1)
+		PaddingLeft(1).
+		AlignVertical(lipgloss.Center)
 	textBoxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
@@ -200,13 +205,13 @@ func (m *DisplayModel) renderRow(data interface{}, baseStyle lipgloss.Style, isH
 	}
 
 	for i, cell := range cellData {
-		style := baseStyle.Copy().
+		style := baseStyle.
 			Width(DisplayColumns[i].Width).
 			MaxWidth(DisplayColumns[i].Width)
 
 		if DisplayColumns[i].EmojiColumn {
 			if isHeader {
-				style = style.Align(lipgloss.Center).Inline(true)
+				style = style.Align(lipgloss.Center)
 			} else {
 				style = renderStyleByColumn(cell, style)
 			}
@@ -219,20 +224,17 @@ func (m *DisplayModel) renderRow(data interface{}, baseStyle lipgloss.Style, isH
 			rowStr += renderedCell
 		}
 	}
-	return strings.TrimRight(rowStr, " ") + "\n"
+	return rowStr + "\n"
 }
 
 func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 	elapsedTime := time.Since(machine.StartTime).Truncate(TickerInterval)
+	progress, total := machine.ResourcesComplete()
 	progressBar := renderProgressBar(
-		machine.Progress,
-		AzureTotalSteps,
+		progress,
+		total,
 		DisplayColumns[4].Width-ProgressBarPadding,
 	)
-	orchString := models.DisplayEmojiWorkerNode
-	if machine.Orchestrator {
-		orchString = models.DisplayEmojiOrchestratorNode
-	}
 
 	return []string{
 		machine.Name,
@@ -243,10 +245,11 @@ func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 		formatElapsedTime(elapsedTime),
 		machine.PublicIP,
 		machine.PrivateIP,
-		orchString,
-		machine.SSH,
-		machine.Docker,
-		machine.Bacalhau,
+		ConvertOrchestratorToEmoji(machine.Orchestrator),
+		ConvertStateToEmoji(machine.SSH),
+		ConvertStateToEmoji(machine.Docker),
+		ConvertStateToEmoji(machine.Bacalhau),
+		"",
 	}
 }
 
@@ -293,22 +296,19 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	if status.PrivateIP != "" {
 		machine.PrivateIP = status.PrivateIP
 	}
-	if status.Progress != 0 {
-		machine.Progress = status.Progress
-	}
 	if status.ElapsedTime > 0 {
 		machine.ElapsedTime = status.ElapsedTime
 	}
 	if status.Orchestrator {
 		machine.Orchestrator = status.Orchestrator
 	}
-	if status.SSH != "" {
+	if status.SSH != models.ServiceStateUnknown {
 		machine.SSH = status.SSH
 	}
-	if status.Docker != "" {
+	if status.Docker != models.ServiceStateUnknown {
 		machine.Docker = status.Docker
 	}
-	if status.Bacalhau != "" {
+	if status.Bacalhau != models.ServiceStateUnknown {
 		machine.Bacalhau = status.Bacalhau
 	}
 }
@@ -316,13 +316,13 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
 	style = style.Bold(true).Align(lipgloss.Center)
 	switch status {
-	case models.DisplayEmojiSuccess:
+	case models.DisplayTextSuccess:
 		style = style.Foreground(lipgloss.Color("#00c413"))
-	case models.DisplayEmojiWaiting:
+	case models.DisplayTextWaiting:
 		style = style.Foreground(lipgloss.Color("#69acdb"))
-	case models.DisplayEmojiNotStarted:
+	case models.DisplayTextNotStarted:
 		style = style.Foreground(lipgloss.Color("#2e2d2d"))
-	case models.DisplayEmojiFailed:
+	case models.DisplayTextFailed:
 		style = style.Foreground(lipgloss.Color("#ff0000"))
 	}
 	return style
@@ -332,8 +332,11 @@ func renderProgressBar(progress, total, width int) string {
 	if total == 0 {
 		return ""
 	}
-	filledWidth := progress * width / total
+	filledWidth := int(math.Ceil(float64(progress) * float64(width) / float64(total)))
 	emptyWidth := width - filledWidth
+	if emptyWidth < 0 {
+		emptyWidth = 0
+	}
 
 	filled := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42")).
@@ -378,4 +381,28 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func ConvertOrchestratorToEmoji(orchestrator bool) string {
+	orchString := models.DisplayTextWorkerNode
+	if orchestrator {
+		orchString = models.DisplayTextOrchestratorNode
+	}
+	return orchString
+}
+
+func ConvertStateToEmoji(state models.ServiceState) string {
+	switch state {
+	case models.ServiceStateNotStarted:
+		return models.DisplayTextNotStarted
+	case models.ServiceStateSucceeded:
+		return models.DisplayTextSuccess
+	case models.ServiceStateUpdating:
+		return models.DisplayTextWaiting
+	case models.ServiceStateCreated:
+		return models.DisplayTextCreating
+	case models.ServiceStateFailed:
+		return models.DisplayTextFailed
+	}
+	return models.DisplayTextWaiting
 }
