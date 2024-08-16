@@ -60,6 +60,23 @@ type DisplayModel struct {
 	DebugMode  bool
 }
 
+// Machine represents a single machine in the deployment
+type Machine struct {
+	Name          string
+	Type          models.AzureResourceTypes
+	Location      string
+	StatusMessage string
+	StartTime     time.Time
+	ElapsedTime   time.Duration
+	PublicIP      string
+	PrivateIP     string
+	Orchestrator  bool
+	SSH           models.ServiceState
+	Docker        models.ServiceState
+	Bacalhau      models.ServiceState
+	TimerStopped  bool
+}
+
 var (
 	globalModelInstance *DisplayModel
 	globalModelOnce     sync.Once
