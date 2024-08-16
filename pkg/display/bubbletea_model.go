@@ -118,6 +118,23 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logLinesMsg:
 		m.TextBox = []string(msg)
 	}
+
+	// Check if all machines have completed their deployment
+	allCompleted := true
+	for _, machine := range m.Deployment.Machines {
+		progress, total := machine.ResourcesComplete()
+		if progress != total || machine.SSH != models.ServiceStateSucceeded {
+			allCompleted = false
+			break
+		}
+	}
+
+	// If all machines are completed, we'll still keep updating the view
+	// but won't process any more status updates
+	if allCompleted {
+		return m, tea.Batch(tickCmd(), m.updateLogCmd())
+	}
+
 	return m, nil
 }
 
@@ -296,7 +313,7 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	if status.PrivateIP != "" {
 		machine.PrivateIP = status.PrivateIP
 	}
-	if status.ElapsedTime > 0 {
+	if status.ElapsedTime > 0 && !machine.TimerStopped {
 		machine.ElapsedTime = status.ElapsedTime
 	}
 	if status.Orchestrator {
@@ -310,6 +327,15 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	}
 	if status.Bacalhau != models.ServiceStateUnknown {
 		machine.Bacalhau = status.Bacalhau
+	}
+
+	// Check if all resources are deployed and SSH is correct
+	if !machine.TimerStopped {
+		progress, total := machine.ResourcesComplete()
+		if progress == total && machine.SSH == models.ServiceStateSucceeded {
+			machine.TimerStopped = true
+			l.Infof("Timer stopped for machine: %s", machine.Name)
+		}
 	}
 }
 
