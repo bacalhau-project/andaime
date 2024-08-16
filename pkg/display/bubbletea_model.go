@@ -16,7 +16,6 @@ import (
 
 // Constants
 const (
-	TableWidth         = 140
 	LogLines           = 10
 	AzureTotalSteps    = 7
 	StatusLength       = 30
@@ -49,6 +48,14 @@ var DisplayColumns = []DisplayColumn{
 	{Title: models.DisplayTextDocker, Width: 2, EmojiColumn: true},
 	{Title: models.DisplayTextBacalhau, Width: 2, EmojiColumn: true},
 	{Title: "", Width: 1},
+}
+
+func AggregateColumnWidths() int {
+	width := 0
+	for _, column := range DisplayColumns {
+		width += column.Width
+	}
+	return width
 }
 
 // DisplayModel represents the main display model
@@ -145,7 +152,8 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			allCompleted = false
 			break
 		}
-		if machine.Docker != models.ServiceStateSucceeded || machine.CorePackages != models.ServiceStateSucceeded {
+		if machine.Docker != models.ServiceStateSucceeded ||
+			machine.CorePackages != models.ServiceStateSucceeded {
 			allDockerAndCorePackagesInstalled = false
 		}
 	}
@@ -194,7 +202,7 @@ func (m *DisplayModel) View() string {
 		BorderForeground(lipgloss.Color("63")).
 		Padding(1).
 		Height(LogLines).
-		Width(TableWidth)
+		Width(AggregateColumnWidths())
 	infoStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Italic(true)
@@ -238,7 +246,7 @@ func (m *DisplayModel) renderTable(headerStyle, cellStyle lipgloss.Style) string
 	var tableStr string
 	tableStr += m.renderRow(DisplayColumns, headerStyle, true)
 	if m.DebugMode {
-		tableStr += strings.Repeat("-", TableWidth) + "\n"
+		tableStr += strings.Repeat("-", AggregateColumnWidths()) + "\n"
 	}
 	for _, machine := range m.Deployment.Machines {
 		if machine.Name != "" {
@@ -280,7 +288,7 @@ func (m *DisplayModel) renderRow(data interface{}, baseStyle lipgloss.Style, isH
 			rowStr += renderedCell
 		}
 	}
-	return strings.TrimRight(rowStr, " ") + "\n"
+	return rowStr + "\n"
 }
 
 func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
