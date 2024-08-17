@@ -15,6 +15,11 @@ type MockSSHClient struct {
 	Dialer         SSHDialer
 }
 
+func (m *MockSSHClient) PushFile(content []byte, remotePath string, executable bool) error {
+	args := m.Called(content, remotePath, executable)
+	return args.Error(0)
+}
+
 func MockSSHClientCreator(
 	c SSHClienter,
 ) func(config *ssh.ClientConfig, dialer SSHDialer) SSHClienter {
