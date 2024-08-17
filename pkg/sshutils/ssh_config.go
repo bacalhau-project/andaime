@@ -28,7 +28,7 @@ type SSHConfig struct {
 type SSHConfiger interface {
 	Connect() (SSHClienter, error)
 	ExecuteCommand(command string) (string, error)
-	PushFile(localPath, remotePath string) error
+	PushFile(content []byte, remotePath string, executable bool) error
 	InstallSystemdService(serviceName, serviceContent string) error
 	StartService(serviceName string) error
 	RestartService(serviceName string) error
