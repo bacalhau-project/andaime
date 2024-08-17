@@ -138,7 +138,9 @@ func TestPushFile(t *testing.T) {
 	mockSession.On("Close").Return(nil)
 
 	// Test successful file push
-	err = sshConfig.PushFile(localPath, "/remote/path")
+	content, err := os.ReadFile(localPath)
+	assert.NoError(t, err)
+	err = sshConfig.PushFile(content, "/remote/path", false)
 	assert.NoError(t, err)
 
 	// Verify expectations
