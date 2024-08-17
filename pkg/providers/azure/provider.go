@@ -169,14 +169,34 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	for {
 		select {
 		case <-resourceTicker.C:
+			start := time.Now()
 			if _, err := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
+			l.Debugf("PollAndUpdateResources took %v", time.Since(start))
 		case <-ctx.Done():
-			l.Debug("Context done, exiting resource polling")
+			l.Debug("Context done received, exiting resource polling")
 			return
 		}
 	}
+}
+
+func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) (bool, error) {
+	l := logger.Get()
+	start := time.Now()
+	defer func() {
+		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+	}()
+
+	select {
+	case <-ctx.Done():
+		l.Debug("Cancel command received in PollAndUpdateResources")
+		return false, ctx.Err()
+	default:
+		// Continue with the function if no cancellation
+	}
+
+	// Rest of the function...
 }
 
 var _ AzureProviderer = &AzureProvider{}
