@@ -31,6 +31,8 @@ type AzureProvider struct {
 	Deployment *models.Deployment
 	SSHUser    string
 	SSHPort    int
+	lastResourceQuery time.Time
+	cachedResources   []interface{}
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -129,19 +131,30 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
 
+	// Check if we can use cached results
+	if time.Since(p.lastResourceQuery) < 30*time.Second {
+		l.Debug("Using cached resources")
+		return p.cachedResources, nil
+	}
+
+	start := time.Now()
 	resources, err := p.Client.ListAllResourcesInSubscription(ctx,
 		subscriptionID,
 		tags)
+	l.Debugf("ListAllResourcesInSubscription took %v", time.Since(start))
+
 	if err != nil {
 		l.Errorf("Failed to query Azure resources: %v", err)
 		return nil, fmt.Errorf("failed to query resources: %v", err)
 	}
 
-	l.Debugf("Azure Resource Graph response - done listing resources.")
-
 	if resources == nil {
-		return []interface{}{}, nil
+		resources = []interface{}{}
 	}
+
+	// Update cache
+	p.cachedResources = resources
+	p.lastResourceQuery = time.Now()
 
 	return resources, nil
 }
@@ -150,7 +163,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	l.Debug("Starting StartResourcePolling")
 
-	resourceTicker := time.NewTicker(1 * time.Second)
+	resourceTicker := time.NewTicker(30 * time.Second)
 	defer resourceTicker.Stop()
 
 	for {
