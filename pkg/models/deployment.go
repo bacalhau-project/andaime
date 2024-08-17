@@ -43,6 +43,11 @@ type Machine struct {
 	CorePackages ServiceState
 	Bacalhau     ServiceState
 	SSH          ServiceState
+
+	// New SSH-related fields
+	SSHUser           string
+	SSHPrivateKeyPath string
+	SSHPort           int
 }
 
 func (m *Machine) IsOrchestrator() bool {

@@ -29,6 +29,8 @@ type AzureProvider struct {
 	Client     AzureClient
 	Config     *viper.Viper
 	Deployment *models.Deployment
+	SSHUser    string
+	SSHPort    int
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -82,10 +84,22 @@ func NewAzureProvider() (AzureProviderer, error) {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
 
+	sshUser := config.GetString("azure.ssh_user")
+	if sshUser == "" {
+		sshUser = "azureuser" // Default SSH user for Azure VMs
+	}
+
+	sshPort := config.GetInt("azure.ssh_port")
+	if sshPort == 0 {
+		sshPort = 22 // Default SSH port
+	}
+
 	return &AzureProvider{
 		Client:     client,
 		Config:     config,
 		Deployment: models.NewDeployment(),
+		SSHUser:    sshUser,
+		SSHPort:    sshPort,
 	}, nil
 }
 
