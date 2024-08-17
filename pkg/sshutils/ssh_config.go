@@ -129,8 +129,8 @@ func (c *SSHConfig) ExecuteCommand(command string) (string, error) {
 	return output, err
 }
 
-func (c *SSHConfig) PushFile(localPath, remotePath string) error {
-	c.Logger.Infof("Pushing file: %s to %s", localPath, remotePath)
+func (c *SSHConfig) PushFile(content []byte, remotePath string, executable bool) error {
+	c.Logger.Infof("Pushing file to: %s", remotePath)
 
 	session, err := c.NewSession()
 	if err != nil {
@@ -139,6 +139,10 @@ func (c *SSHConfig) PushFile(localPath, remotePath string) error {
 	defer session.Close()
 
 	remoteCmd := fmt.Sprintf("cat > %s", remotePath)
+	if executable {
+		remoteCmd += " && chmod +x " + remotePath
+	}
+
 	// Create a pipe for the session's stdin
 	stdin, err := session.StdinPipe()
 	if err != nil {
@@ -152,17 +156,10 @@ func (c *SSHConfig) PushFile(localPath, remotePath string) error {
 		return fmt.Errorf("failed to start remote command: %w", err)
 	}
 
-	// Open the local file
-	localFile, err := os.Open(localPath)
+	// Copy the content to the remote command's stdin
+	_, err = stdin.Write(content)
 	if err != nil {
-		return fmt.Errorf("failed to open local file: %w", err)
-	}
-	defer localFile.Close()
-
-	// Copy the local file contents to the remote command's stdin
-	_, err = io.Copy(stdin, localFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy file contents: %w", err)
+		return fmt.Errorf("failed to write file contents: %w", err)
 	}
 
 	// Close the stdin pipe to signal end of input
