@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 )
 
@@ -118,6 +120,45 @@ func (m *Machine) Complete() bool {
 		m.SSH >= ServiceStateSucceeded &&
 		m.Docker >= ServiceStateSucceeded &&
 		m.Bacalhau >= ServiceStateSucceeded
+}
+
+func (m *Machine) InstallDockerAndCorePackages() error {
+	l := logger.Get()
+	// Install Docker
+	m.Docker = ServiceStateUpdating
+
+	sshConfig, err := sshutils.NewSSHConfig(
+		m.PublicIP,
+		m.SSHPort,
+		m.SSHUser,
+		m.SSHPrivateKeyPath,
+	)
+	if err != nil {
+		l.Errorf("Error creating SSH config: %v", err)
+		return err
+	}
+
+	out, err := sshConfig.ExecuteCommand("ls -l")
+	if err != nil {
+		return err
+	}
+
+	_ = out
+
+	// TODO: Implement Docker installation using embedded scripts
+	// If successful:
+	m.Docker = ServiceStateSucceeded
+	// If failed:
+	// machine.Docker = models.ServiceStateFailed
+
+	// Install Core Packages
+	m.CorePackages = ServiceStateUpdating
+	// TODO: Implement Core Packages installation using embedded scripts
+	// If successful:
+	m.CorePackages = ServiceStateSucceeded
+	// If failed:
+	// machine.CorePackages = models.ServiceStateFailed
+	return fmt.Errorf("NOT IMPLEMENTED")
 }
 
 type AzureResourceTypes struct {

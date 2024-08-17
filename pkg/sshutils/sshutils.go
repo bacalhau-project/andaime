@@ -56,8 +56,8 @@ func getHostKey(host string) (ssh.PublicKey, error) {
 	return hostKey, nil
 }
 
-func (c *SSHConfig) getHostKeyCallback() (ssh.HostKeyCallback, error) {
-	hostKey, err := getHostKey(c.Host)
+func GetHostKeyCallback(host string) (ssh.HostKeyCallback, error) {
+	hostKey, err := getHostKey(host)
 	if err != nil {
 		return nil, err
 	}

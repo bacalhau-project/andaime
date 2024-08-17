@@ -27,42 +27,25 @@ type SSHConfig struct {
 
 type SSHConfiger interface {
 	Connect() (SSHClienter, error)
-	ExecuteCommand(client SSHClienter, command string) (string, error)
-	PushFile(client SSHClienter, localPath, remotePath string) error
-	InstallSystemdService(client SSHClienter, serviceName, serviceContent string) error
-	StartService(client SSHClienter, serviceName string) error
-	RestartService(client SSHClienter, serviceName string) error
+	ExecuteCommand(command string) (string, error)
+	PushFile(localPath, remotePath string) error
+	InstallSystemdService(serviceName, serviceContent string) error
+	StartService(serviceName string) error
+	RestartService(serviceName string) error
 }
 
 func NewSSHConfig(
 	host string,
 	port int,
 	user string,
-	dialer SSHDialer,
 	sshPrivateKeyPath string) (*SSHConfig, error) {
-
-	return &SSHConfig{
-		Host:                  host,
-		Port:                  port,
-		User:                  user,
-		PrivateKeyPath:        sshPrivateKeyPath,
-		Timeout:               SSHTimeOut,
-		Logger:                logger.Get(),
-		SSHDialer:             dialer,
-		InsecureIgnoreHostKey: false,
-	}, nil
-}
-
-func (c *SSHConfig) Connect() (SSHClienter, error) {
-	c.Logger.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
-
 	// Confirm that the private key path exists
-	if _, err := os.Stat(c.PrivateKeyPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("private key path does not exist: %s", c.PrivateKeyPath)
+	if _, err := os.Stat(sshPrivateKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("private key path does not exist: %s", sshPrivateKeyPath)
 	}
 
 	// Open the private key file
-	privateKeyFile, err := os.Open(c.PrivateKeyPath)
+	privateKeyFile, err := os.Open(sshPrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open private key file: %w", err)
 	}
@@ -77,27 +60,40 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	var hostKeyCallback ssh.HostKeyCallback
-	if c.InsecureIgnoreHostKey {
-		hostKeyCallback = ssh.InsecureIgnoreHostKey() //nolint:gosec
-	} else {
-		hostKeyCallback, err = c.getHostKeyCallback()
-		if err != nil {
-			c.Logger.Warnf("Unable to get host key, falling back to insecure ignore: %v", err)
-			//nolint: gosec
-			hostKeyCallback = ssh.InsecureIgnoreHostKey()
-		}
+	hostKeyCallback, err := GetHostKeyCallback(host)
+	if err != nil {
+		//nolint: gosec
+		hostKeyCallback = ssh.InsecureIgnoreHostKey()
 	}
-	sshConfig := &ssh.ClientConfig{
-		User: c.User,
+
+	sshClientConfig := &ssh.ClientConfig{
+		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(key),
 		},
 		HostKeyCallback: hostKeyCallback,
-		Timeout:         c.Timeout,
+		Timeout:         SSHTimeOut,
 	}
 
-	client, err := c.SSHDialer.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), sshConfig)
+	dialer := NewSSHDial(host, port, sshClientConfig)
+
+	return &SSHConfig{
+		Host:                  host,
+		Port:                  port,
+		User:                  user,
+		PrivateKeyPath:        sshPrivateKeyPath,
+		Timeout:               SSHTimeOut,
+		Logger:                logger.Get(),
+		ClientConfig:          sshClientConfig,
+		SSHDialer:             dialer,
+		InsecureIgnoreHostKey: false,
+	}, nil
+}
+
+func (c *SSHConfig) Connect() (SSHClienter, error) {
+	c.Logger.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
+
+	client, err := c.SSHDialer.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SSH server: %w", err)
 	}
@@ -105,12 +101,18 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 	return client, nil
 }
 
-func (c *SSHConfig) ExecuteCommand(client SSHClienter, command string) (string, error) {
+func (c *SSHConfig) NewSession() (SSHSessioner, error) {
+	client := NewSSHClientFunc(c.ClientConfig, c.SSHDialer)
+
+	return client.NewSession()
+}
+
+func (c *SSHConfig) ExecuteCommand(command string) (string, error) {
 	c.Logger.Infof("Executing command: %s", command)
 
 	var output string
 	err := retry(NumberOfSSHRetries, TimeInBetweenSSHRetries, func() error {
-		session, err := client.NewSession()
+		session, err := c.NewSession()
 		if err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
@@ -127,10 +129,10 @@ func (c *SSHConfig) ExecuteCommand(client SSHClienter, command string) (string, 
 	return output, err
 }
 
-func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) error {
+func (c *SSHConfig) PushFile(localPath, remotePath string) error {
 	c.Logger.Infof("Pushing file: %s to %s", localPath, remotePath)
 
-	session, err := client.NewSession()
+	session, err := c.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -179,13 +181,12 @@ func (c *SSHConfig) PushFile(client SSHClienter, localPath, remotePath string) e
 }
 
 func (c *SSHConfig) InstallSystemdService(
-	client SSHClienter,
 	serviceName, serviceContent string,
 ) error {
 	c.Logger.Infof("Installing systemd service: %s", serviceName)
 	remoteServicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
 
-	session, err := client.NewSession()
+	session, err := c.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -200,17 +201,17 @@ func (c *SSHConfig) InstallSystemdService(
 	return nil
 }
 
-func (c *SSHConfig) StartService(client SSHClienter, serviceName string) error {
-	return c.manageService(client, serviceName, "start")
+func (c *SSHConfig) StartService(serviceName string) error {
+	return c.manageService(serviceName, "start")
 }
 
-func (c *SSHConfig) RestartService(client SSHClienter, serviceName string) error {
-	return c.manageService(client, serviceName, "restart")
+func (c *SSHConfig) RestartService(serviceName string) error {
+	return c.manageService(serviceName, "restart")
 }
 
-func (c *SSHConfig) manageService(client SSHClienter, serviceName, action string) error {
+func (c *SSHConfig) manageService(serviceName, action string) error {
 	c.Logger.Infof("Managing service: %s %s", serviceName, action)
-	session, err := client.NewSession()
+	session, err := c.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}

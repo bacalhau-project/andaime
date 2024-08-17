@@ -20,7 +20,8 @@ func TestNewSSHConfig(t *testing.T) {
 	port := 22
 	user := "testuser"
 	mockDialer := &MockSSHDialer{}
-	config, err := NewSSHConfig(host, port, user, mockDialer, testSSHPrivateKeyPath)
+	config, err := NewSSHConfig(host, port, user, testSSHPrivateKeyPath)
+	config.SSHDialer = mockDialer
 
 	assert.NoError(t, err)
 	assert.NotNil(t, config)
@@ -65,7 +66,8 @@ func TestConnectFailure(t *testing.T) {
 	defer cleanupPrivateKey()
 
 	mockDialer := NewMockSSHDialer()
-	config, _ := NewSSHConfig("example.com", 22, "testuser", mockDialer, testSSHPrivateKeyPath)
+	config, _ := NewSSHConfig("example.com", 22, "testuser", testSSHPrivateKeyPath)
+	config.SSHDialer = mockDialer
 	config.InsecureIgnoreHostKey = true
 
 	expectedError := fmt.Errorf("connection error")
@@ -86,13 +88,14 @@ func TestExecuteCommand(t *testing.T) {
 
 	mockSSHClient, sshConfig := GetTypedMockClient(t, log)
 	mockSSHClient.On("NewSession").Return(mockSSHSession, nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockSSHClient)
 
 	expectedOutput := []byte("command output")
 	mockSSHSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil)
 	mockSSHSession.On("Close").Return(nil)
 
 	// Execute
-	actualResult, err := sshConfig.ExecuteCommand(mockSSHClient, "ls -l")
+	actualResult, err := sshConfig.ExecuteCommand("ls -l")
 
 	// Assert
 	assert.NoError(t, err)
@@ -122,6 +125,7 @@ func TestPushFile(t *testing.T) {
 	mockSession := &MockSSHSession{}
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 	mockClient.On("NewSession").Return(mockSession, nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
 	// Mock session behavior for file push
 	remoteCmd := fmt.Sprintf("cat > %s", "/remote/path")
@@ -134,7 +138,7 @@ func TestPushFile(t *testing.T) {
 	mockSession.On("Close").Return(nil)
 
 	// Test successful file push
-	err = sshConfig.PushFile(mockClient, localPath, "/remote/path")
+	err = sshConfig.PushFile(localPath, "/remote/path")
 	assert.NoError(t, err)
 
 	// Verify expectations
@@ -152,8 +156,9 @@ func TestInstallSystemdServiceSuccess(t *testing.T) {
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockSession.On("Run", mock.AnythingOfType("string")).Return(assert.AnError)
 	mockSession.On("Close").Return(nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
-	err := sshConfig.InstallSystemdService(mockClient, "service_name", "service_content")
+	err := sshConfig.InstallSystemdService("service_name", "service_content")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -168,8 +173,9 @@ func TestInstallSystemdServiceFailure(t *testing.T) {
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockSession.On("Run", mock.AnythingOfType("string")).Return(assert.AnError)
 	mockSession.On("Close").Return(nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
-	err := sshConfig.InstallSystemdService(mockClient, "service_name", "service_content")
+	err := sshConfig.InstallSystemdService("service_name", "service_content")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -185,8 +191,9 @@ func TestStartServiceSuccess(t *testing.T) {
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockSession.On("Run", "sudo systemctl start service_name").Return(nil)
 	mockSession.On("Close").Return(nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
-	err := sshConfig.StartService(mockClient, "service_name")
+	err := sshConfig.StartService("service_name")
 	assert.NoError(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -201,8 +208,9 @@ func TestStartServiceFailure(t *testing.T) {
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockSession.On("Run", "sudo systemctl start service_name").Return(assert.AnError)
 	mockSession.On("Close").Return(nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
-	err := sshConfig.StartService(mockClient, "service_name")
+	err := sshConfig.StartService("service_name")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -218,8 +226,9 @@ func TestRestartServiceSuccess(t *testing.T) {
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockSession.On("Run", "sudo systemctl restart service_name").Return(nil)
 	mockSession.On("Close").Return(nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
-	err := sshConfig.RestartService(mockClient, "service_name")
+	err := sshConfig.RestartService("service_name")
 	assert.NoError(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -234,8 +243,9 @@ func TestRestartServiceFailure(t *testing.T) {
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockSession.On("Run", "sudo systemctl restart service_name").Return(assert.AnError)
 	mockSession.On("Close").Return(nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
 
-	err := sshConfig.RestartService(mockClient, "service_name")
+	err := sshConfig.RestartService("service_name")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -244,10 +254,12 @@ func TestRestartServiceFailure(t *testing.T) {
 
 func GetMockClient(t *testing.T) (SSHClienter, *SSHConfig) {
 	mockDialer := &MockSSHDialer{}
-	config, err := NewSSHConfig("example.com", 22, "testuser", mockDialer, "test-key-path")
+	config, err := NewSSHConfig("example.com", 22, "testuser", "test-key-path")
 	if err != nil {
 		assert.Fail(t, "failed to create SSH config: %v", err)
 	}
+	config.SSHDialer = mockDialer
+
 	mockClient := &MockSSHClient{}
 	mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
 		Return(mockClient, nil)

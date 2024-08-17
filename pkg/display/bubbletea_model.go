@@ -50,6 +50,86 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "", Width: 1},
 }
 
+// Commands and messages
+func (m *DisplayModel) printFinalTableCmd() tea.Cmd {
+	return func() tea.Msg {
+		fmt.Print("\n" + m.RenderFinalTable() + "\n")
+		return nil
+	}
+}
+
+func (m *DisplayModel) updateLogCmd() tea.Cmd {
+	return func() tea.Msg {
+		return logLinesMsg(logger.GetLastLines(LogLines))
+	}
+}
+
+func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *models.DisplayStatus) {
+	l := logger.Get()
+	if status.StatusMessage != "" {
+		trimmedStatus := strings.TrimSpace(status.StatusMessage)
+		if len(trimmedStatus) > StatusLength-3 {
+			l.Debugf("Status too long, truncating: '%s'", trimmedStatus)
+			machine.StatusMessage = trimmedStatus[:StatusLength-3] + "…"
+		} else {
+			machine.StatusMessage = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
+		}
+	}
+
+	if status.Location != "" {
+		machine.Location = status.Location
+	}
+	if status.PublicIP != "" {
+		machine.PublicIP = status.PublicIP
+	}
+	if status.PrivateIP != "" {
+		machine.PrivateIP = status.PrivateIP
+	}
+	if status.ElapsedTime > 0 && !machine.Complete() {
+		machine.ElapsedTime = status.ElapsedTime
+	}
+	if status.Orchestrator {
+		machine.Orchestrator = status.Orchestrator
+	}
+	if status.SSH != models.ServiceStateUnknown {
+		machine.SSH = status.SSH
+		if status.SSH == models.ServiceStateSucceeded {
+			go machine.InstallDockerAndCorePackages()
+		}
+	}
+	if status.Docker != models.ServiceStateUnknown {
+		machine.Docker = status.Docker
+	}
+	if status.CorePackages != models.ServiceStateUnknown {
+		machine.CorePackages = status.CorePackages
+	}
+	if status.Bacalhau != models.ServiceStateUnknown {
+		machine.Bacalhau = status.Bacalhau
+	}
+}
+
+func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*models.Machine, bool) {
+	for i, machine := range m.Deployment.Machines {
+		if machine.Name == status.Name {
+			return &m.Deployment.Machines[i], true
+		}
+	}
+
+	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
+		newMachine := models.Machine{
+			Name:          status.Name,
+			Type:          status.Type,
+			Location:      status.Location,
+			StatusMessage: status.StatusMessage,
+			StartTime:     time.Now(),
+		}
+		m.Deployment.Machines = append(m.Deployment.Machines, newMachine)
+		return &m.Deployment.Machines[len(m.Deployment.Machines)-1], false
+	}
+
+	return nil, false
+}
+
 func AggregateColumnWidths() int {
 	width := 0
 	for _, column := range DisplayColumns {
@@ -120,6 +200,8 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	l := logger.Get()
+	l.Debugf("Update called with msg: %v", msg)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
@@ -317,90 +399,6 @@ func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 	}
 }
 
-func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*models.Machine, bool) {
-	for i, machine := range m.Deployment.Machines {
-		if machine.Name == status.Name {
-			return &m.Deployment.Machines[i], true
-		}
-	}
-
-	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
-		newMachine := models.Machine{
-			Name:          status.Name,
-			Type:          status.Type,
-			Location:      status.Location,
-			StatusMessage: status.StatusMessage,
-			StartTime:     time.Now(),
-		}
-		m.Deployment.Machines = append(m.Deployment.Machines, newMachine)
-		return &m.Deployment.Machines[len(m.Deployment.Machines)-1], false
-	}
-
-	return nil, false
-}
-
-func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *models.DisplayStatus) {
-	l := logger.Get()
-	if status.StatusMessage != "" {
-		trimmedStatus := strings.TrimSpace(status.StatusMessage)
-		if len(trimmedStatus) > StatusLength-3 {
-			l.Debugf("Status too long, truncating: '%s'", trimmedStatus)
-			machine.StatusMessage = trimmedStatus[:StatusLength-3] + "…"
-		} else {
-			machine.StatusMessage = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
-		}
-	}
-
-	if status.Location != "" {
-		machine.Location = status.Location
-	}
-	if status.PublicIP != "" {
-		machine.PublicIP = status.PublicIP
-	}
-	if status.PrivateIP != "" {
-		machine.PrivateIP = status.PrivateIP
-	}
-	if status.ElapsedTime > 0 && !machine.Complete() {
-		machine.ElapsedTime = status.ElapsedTime
-	}
-	if status.Orchestrator {
-		machine.Orchestrator = status.Orchestrator
-	}
-	if status.SSH != models.ServiceStateUnknown {
-		machine.SSH = status.SSH
-		if status.SSH == models.ServiceStateSucceeded {
-			go m.installDockerAndCorePackages(machine)
-		}
-	}
-	if status.Docker != models.ServiceStateUnknown {
-		machine.Docker = status.Docker
-	}
-	if status.CorePackages != models.ServiceStateUnknown {
-		machine.CorePackages = status.CorePackages
-	}
-	if status.Bacalhau != models.ServiceStateUnknown {
-		machine.Bacalhau = status.Bacalhau
-	}
-}
-
-func (m *DisplayModel) installDockerAndCorePackages(machine *models.Machine) {
-	// Install Docker
-	machine.Docker = models.ServiceStateUpdating
-	// TODO: Implement Docker installation using embedded scripts
-	// If successful:
-	machine.Docker = models.ServiceStateSucceeded
-	// If failed:
-	// machine.Docker = models.ServiceStateFailed
-
-	// Install Core Packages
-	machine.CorePackages = models.ServiceStateUpdating
-	// TODO: Implement Core Packages installation using embedded scripts
-	// If successful:
-	machine.CorePackages = models.ServiceStateSucceeded
-	// If failed:
-	// machine.CorePackages = models.ServiceStateFailed
-}
-
 func renderStyleByColumn(status string, style lipgloss.Style) lipgloss.Style {
 	style = style.Bold(true).Align(lipgloss.Center)
 	switch status {
@@ -445,21 +443,6 @@ func formatElapsedTime(d time.Duration) string {
 		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, tenths)
 	}
 	return fmt.Sprintf("%2d.%ds", seconds, tenths)
-}
-
-// Commands and messages
-
-func (m *DisplayModel) printFinalTableCmd() tea.Cmd {
-	return func() tea.Msg {
-		fmt.Print("\n" + m.RenderFinalTable() + "\n")
-		return nil
-	}
-}
-
-func (m *DisplayModel) updateLogCmd() tea.Cmd {
-	return func() tea.Msg {
-		return logLinesMsg(logger.GetLastLines(LogLines))
-	}
 }
 
 type tickMsg time.Time

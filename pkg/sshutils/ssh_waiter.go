@@ -2,12 +2,9 @@ package sshutils
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"golang.org/x/crypto/ssh"
 )
 
 type SSHWaiter interface {
@@ -45,48 +42,17 @@ func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) err
 		config.PrivateKeyPath,
 	)
 
-	// Open the private key file
-	privateKey, err := os.Open(config.PrivateKeyPath)
-	if err != nil {
-		return err
-	}
-	defer privateKey.Close()
-
-	// Get the private key
-	privateKeyBytes, err := io.ReadAll(privateKey)
-	if err != nil {
-		return err
-	}
-
-	signer, err := ssh.ParsePrivateKey(privateKeyBytes)
-	if err != nil {
-		err = fmt.Errorf("failed to parse private key in waitForSSH: %v", err)
-		l.Error(err.Error())
-		return err
-	}
-	l.Debug("Private key parsed successfully")
-
-	sshClientConfig := &ssh.ClientConfig{
-		User: config.User,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
-		Timeout:         SSHTimeOut,
-	}
-	dialer := NewSSHDial(config.Host, config.Port, sshClientConfig)
 	andaimeSSHClientConfig, err := NewSSHConfig(
 		config.Host,
 		config.Port,
 		config.User,
-		dialer,
 		config.PrivateKeyPath,
 	)
 	if err != nil {
-		err = fmt.Errorf("failed to create SSH client config: %v", err)
-		l.Error(err.Error())
+		l.Errorf("error creating client: %v", err)
 		return err
 	}
+
 	l.Debug("SSH client config created")
 
 	for i := 0; i < SSHRetryAttempts; i++ {

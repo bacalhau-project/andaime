@@ -59,10 +59,12 @@ func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, *SSHConfig) {
 	defer cleanupPrivateKey()
 
 	mockDialer := &MockSSHDialer{}
-	config, err := NewSSHConfig("example.com", 22, "testuser", mockDialer, testSSHPrivateKeyPath) //nolint:gomnd
+	config, err := NewSSHConfig("example.com", 22, "testuser", testSSHPrivateKeyPath) //nolint:gomnd
 	if err != nil {
 		panic(err)
 	}
+	config.SSHDialer = mockDialer
+
 	mockClient := &MockSSHClient{}
 	return mockClient, config
 }
