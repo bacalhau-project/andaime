@@ -73,7 +73,6 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
-	prog := display.GetGlobalProgram()
 	m := display.GetGlobalModel()
 	// Remove the state machine reference
 
@@ -129,7 +128,7 @@ func (p *AzureProvider) deployMachine(
 	machine *models.Machine,
 	tags map[string]*string,
 ) error {
-	prog := display.GetGlobalProgram()
+	m := display.GetGlobalModel()
 
 	m.UpdateStatus(
 		models.NewDisplayStatus(
@@ -208,7 +207,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 ) error {
 	l := logger.Get()
 	maxRetries := 3
-	prog := display.GetGlobalProgram()
 	m := display.GetGlobalModel()
 
 	machineIndex := -1
