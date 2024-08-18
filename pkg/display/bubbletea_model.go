@@ -273,6 +273,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tickMsg:
+		if m.Quitting {
+			return m, nil
+		}
+
 		// l.Debug("Processing tick message")
 		return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
@@ -285,12 +289,24 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 	case models.TimeUpdateMsg:
+		if m.Quitting {
+			return m, nil
+		}
+
 		// l.Debug("Processing time update message")
 		m.LastUpdate = time.Now()
 	case logLinesMsg:
+		if m.Quitting {
+			return m, nil
+		}
+
 		// l.Debug("Processing log lines message")
 		m.TextBox = []string(msg)
 	case batchedUpdatesAppliedMsg:
+		if m.Quitting {
+			return m, nil
+		}
+
 		// l.Debug("Batched updates applied")
 		m.BatchUpdateTimer = nil
 	}
@@ -346,6 +362,7 @@ func (m *DisplayModel) applyBatchedUpdates() {
 		if machine.Docker != models.ServiceStateSucceeded ||
 			machine.CorePackages != models.ServiceStateSucceeded {
 			allDockerAndCorePackagesInstalled = false
+			break
 		}
 	}
 

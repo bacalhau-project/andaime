@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -232,7 +233,9 @@ func ConvertFromRawResourceToStatus(
 			statuses = append(statuses, status)
 		}
 	} else {
-		return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
+		if !slices.Contains(SkippedResourceTypes, resourceType) {
+			return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
+		}
 	}
 
 	return statuses, nil

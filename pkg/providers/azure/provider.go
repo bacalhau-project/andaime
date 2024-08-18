@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/mitchellh/go-homedir"
@@ -164,6 +165,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 
 func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
+	m := display.GetGlobalModel()
 	l.Debug("Starting StartResourcePolling")
 	writeToDebugLog("Starting StartResourcePolling")
 
@@ -182,6 +184,9 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 		for {
 			select {
 			case <-resourceTicker.C:
+				if m.Quitting {
+					return
+				}
 				pollCount++
 				start := time.Now()
 				writeToDebugLog(fmt.Sprintf("Starting poll #%d", pollCount))
@@ -290,7 +295,7 @@ func (p *AzureProvider) logDeploymentStatus() {
 var _ AzureProviderer = &AzureProvider{}
 
 func writeToDebugLog(message string) {
-	debugFilePath := "/tmp/andaime.log"
+	debugFilePath := "/tmp/andaime-debug.log"
 	debugFile, err := os.OpenFile(debugFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening debug log file %s: %v\n", debugFilePath, err)

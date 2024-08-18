@@ -34,6 +34,11 @@ var RequiredResources = []AzureResourceTypes{
 	AzureResourceTypeVM,
 }
 
+var SkippedResourceTypes = []string{
+	"GuestAttestation",
+	"GuestConfiguration",
+}
+
 type Machine struct {
 	ID            string
 	Name          string
@@ -106,7 +111,9 @@ func (m *Machine) GetResource(resourceType string) MachineResource {
 	if m.MachineResources == nil {
 		m.MachineResources = make(map[string]MachineResource)
 	}
-	if resource, ok := m.MachineResources[resourceType]; ok {
+
+	resourceTypeLower := strings.ToLower(resourceType)
+	if resource, ok := m.MachineResources[resourceTypeLower]; ok {
 		return resource
 	} else {
 		return MachineResource{}
@@ -117,7 +124,8 @@ func (m *Machine) SetResource(resourceType string, resourceState AzureResourceSt
 	if m.MachineResources == nil {
 		m.MachineResources = make(map[string]MachineResource)
 	}
-	m.MachineResources[resourceType] = MachineResource{
+	resourceTypeLower := strings.ToLower(resourceType)
+	m.MachineResources[resourceTypeLower] = MachineResource{
 		ResourceName:  resourceType,
 		ResourceType:  GetAzureResourceType(resourceType),
 		ResourceState: resourceState,
@@ -130,7 +138,7 @@ func (m *Machine) ResourcesComplete() (int, int) {
 	completedResources := 0
 
 	for _, requiredResource := range RequiredResources {
-		if resource, exists := m.MachineResources[requiredResource.ResourceString]; exists {
+		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
 			if resource.ResourceState == AzureResourceStateSucceeded {
 				completedResources++
 			}
@@ -205,6 +213,10 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 type AzureResourceTypes struct {
 	ResourceString    string
 	ShortResourceName string
+}
+
+func (a *AzureResourceTypes) GetResourceLowerString() string {
+	return strings.ToLower(a.ResourceString)
 }
 
 var AzureResourceTypeNIC = AzureResourceTypes{
