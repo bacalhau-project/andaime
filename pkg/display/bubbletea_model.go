@@ -492,7 +492,7 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 	if found || (status.Name != "" && status.Type == models.AzureResourceTypeVM) {
 		m.updateMachineStatus(machine, status)
 	}
-	// Remove the Send call, we'll update the view in the tickCmd
+	// The model is now directly updated, no need for a Send call
 }
 
 // Helper functions
