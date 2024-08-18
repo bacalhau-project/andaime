@@ -123,7 +123,11 @@ func InitProduction() {
 			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 			var err error
-			GlobalLogFile, err = os.OpenFile(GlobalLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			GlobalLogFile, err = os.OpenFile(
+				GlobalLogPath,
+				os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+				0666,
+			)
 			if err == nil {
 				fileCore := zapcore.NewCore(
 					zapcore.NewConsoleEncoder(fileEncoderConfig),
@@ -414,7 +418,7 @@ func GetLastLines(n int) []string {
 }
 
 func writeToDebugLog(message string) {
-	debugFilePath := "/tmp/andaime.log"
+	debugFilePath := "/tmp/andaime-debug.log"
 	debugFile, err := os.OpenFile(debugFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening debug log file %s: %v\n", debugFilePath, err)

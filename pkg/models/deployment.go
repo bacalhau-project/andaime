@@ -35,7 +35,7 @@ type Machine struct {
 	PrivateIP     string
 	StartTime     time.Time
 
-	machineResources map[string]MachineResource
+	MachineResources map[string]MachineResource
 
 	VMSize       string
 	DiskSizeGB   int32 `default:"30"`
@@ -48,9 +48,9 @@ type Machine struct {
 	SSH          ServiceState
 
 	// New SSH-related fields
-	SSHUser           string
-	SSHPrivateKeyPath string
-	SSHPort           int
+	SSHUser               string
+	SSHPrivateKeyMaterial []byte
+	SSHPort               int
 }
 
 func (m *Machine) IsOrchestrator() bool {
@@ -70,20 +70,20 @@ func (m *Machine) BacalhauEnabled() bool {
 }
 
 func (m *Machine) GetResource(resourceType string) MachineResource {
-	if m.machineResources == nil {
-		m.machineResources = make(map[string]MachineResource)
+	if m.MachineResources == nil {
+		m.MachineResources = make(map[string]MachineResource)
 	}
-	if resource, ok := m.machineResources[resourceType]; ok {
+	if resource, ok := m.MachineResources[resourceType]; ok {
 		return resource
 	}
 	return MachineResource{}
 }
 
 func (m *Machine) SetResource(resourceType string, resourceState AzureResourceState) {
-	if m.machineResources == nil {
-		m.machineResources = make(map[string]MachineResource)
+	if m.MachineResources == nil {
+		m.MachineResources = make(map[string]MachineResource)
 	}
-	m.machineResources[resourceType] = MachineResource{
+	m.MachineResources[resourceType] = MachineResource{
 		ResourceName:  resourceType,
 		ResourceType:  GetAzureResourceType(resourceType),
 		ResourceState: resourceState,
@@ -94,19 +94,19 @@ func (m *Machine) SetResource(resourceType string, resourceState AzureResourceSt
 func (m *Machine) ResourcesComplete() (int, int) {
 	// Below is the list of resources that are required to be created for a machine
 	allResources := []MachineResource{
-		m.machineResources[AzureResourceTypeVNET.ResourceString],
-		m.machineResources[AzureResourceTypeNIC.ResourceString],
-		m.machineResources[AzureResourceTypeNSG.ResourceString],
-		m.machineResources[AzureResourceTypeIP.ResourceString],
-		m.machineResources[AzureResourceTypeDISK.ResourceString],
-		m.machineResources[AzureResourceTypeSNET.ResourceString],
-		m.machineResources[AzureResourceTypeVM.ResourceString],
+		m.MachineResources[AzureResourceTypeVNET.ResourceString],
+		m.MachineResources[AzureResourceTypeNIC.ResourceString],
+		m.MachineResources[AzureResourceTypeNSG.ResourceString],
+		m.MachineResources[AzureResourceTypeIP.ResourceString],
+		m.MachineResources[AzureResourceTypeDISK.ResourceString],
+		m.MachineResources[AzureResourceTypeSNET.ResourceString],
+		m.MachineResources[AzureResourceTypeVM.ResourceString],
 	}
 
 	totalResources := len(allResources)
 	completedResources := 0
 
-	for _, resource := range m.machineResources {
+	for _, resource := range m.MachineResources {
 		if resource.ResourceState == AzureResourceStateSucceeded {
 			completedResources++
 		}
@@ -132,7 +132,7 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 		m.PublicIP,
 		m.SSHPort,
 		m.SSHUser,
-		m.SSHPrivateKeyPath,
+		m.SSHPrivateKeyMaterial,
 	)
 	if err != nil {
 		l.Errorf("Error creating SSH config: %v", err)
@@ -303,6 +303,7 @@ type Deployment struct {
 	UniqueID              string
 	Tags                  map[string]*string
 	AllowedPorts          []int
+	SSHUser               string
 	SSHPort               int
 	SSHPublicKeyPath      string
 	SSHPrivateKeyPath     string
