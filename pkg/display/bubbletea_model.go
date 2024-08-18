@@ -280,7 +280,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.BatchedUpdates = append(m.BatchedUpdates, msg)
 		if m.BatchUpdateTimer == nil {
 			m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
-				l.Debug("Applying batched updates")
+				// l.Debug("Applying batched updates")
 				m.applyBatchedUpdates()
 			})
 		}
@@ -291,7 +291,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// l.Debug("Processing log lines message")
 		m.TextBox = []string(msg)
 	case batchedUpdatesAppliedMsg:
-		l.Debug("Batched updates applied")
+		// l.Debug("Batched updates applied")
 		m.BatchUpdateTimer = nil
 	}
 
