@@ -24,6 +24,16 @@ const (
 	ServiceStateUnknown
 )
 
+var RequiredResources = []AzureResourceTypes{
+	AzureResourceTypeVNET,
+	AzureResourceTypeNIC,
+	AzureResourceTypeNSG,
+	AzureResourceTypeIP,
+	AzureResourceTypeDISK,
+	AzureResourceTypeSNET,
+	AzureResourceTypeVM,
+}
+
 type Machine struct {
 	ID            string
 	Name          string
@@ -67,8 +77,12 @@ func (m *Machine) LogTimingInfo(logger *logger.Logger) {
 	logger.Info(fmt.Sprintf("Machine %s timing information:", m.Name))
 	logger.Info(fmt.Sprintf("  Creation time: %v", m.CreationEndTime.Sub(m.CreationStartTime)))
 	logger.Info(fmt.Sprintf("  SSH setup time: %v", m.SSHEndTime.Sub(m.SSHStartTime)))
-	logger.Info(fmt.Sprintf("  Docker installation time: %v", m.DockerEndTime.Sub(m.DockerStartTime)))
-	logger.Info(fmt.Sprintf("  Bacalhau setup time: %v", m.BacalhauEndTime.Sub(m.BacalhauStartTime)))
+	logger.Info(
+		fmt.Sprintf("  Docker installation time: %v", m.DockerEndTime.Sub(m.DockerStartTime)),
+	)
+	logger.Info(
+		fmt.Sprintf("  Bacalhau setup time: %v", m.BacalhauEndTime.Sub(m.BacalhauStartTime)),
+	)
 	logger.Info(fmt.Sprintf("  Total time: %v", m.BacalhauEndTime.Sub(m.CreationStartTime)))
 }
 
@@ -112,15 +126,7 @@ func (m *Machine) SetResource(resourceType string, resourceState AzureResourceSt
 
 func (m *Machine) ResourcesComplete() (int, int) {
 	// Below is the list of resources that are required to be created for a machine
-	allResources := []MachineResource{
-		m.MachineResources[AzureResourceTypeVNET.ResourceString],
-		m.MachineResources[AzureResourceTypeNIC.ResourceString],
-		m.MachineResources[AzureResourceTypeNSG.ResourceString],
-		m.MachineResources[AzureResourceTypeIP.ResourceString],
-		m.MachineResources[AzureResourceTypeDISK.ResourceString],
-		m.MachineResources[AzureResourceTypeSNET.ResourceString],
-		m.MachineResources[AzureResourceTypeVM.ResourceString],
-	}
+	allResources := RequiredResources
 
 	totalResources := len(allResources)
 	completedResources := 0
