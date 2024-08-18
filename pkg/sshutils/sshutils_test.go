@@ -2,7 +2,6 @@ package sshutils
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
