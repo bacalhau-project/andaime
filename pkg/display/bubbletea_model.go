@@ -249,27 +249,34 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updateDuration := time.Since(updateStart)
 		m.UpdateTimes[m.UpdateTimesIndex] = updateDuration
 		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % m.UpdateTimesSize
+		l.Debugf("Update duration: %v", updateDuration)
 	}()
 
 	switch msg := msg.(type) {
 	case tickMsg:
 		if !m.Quitting {
+			l.Debug("Processing tick message")
 			return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 		}
 	case models.StatusUpdateMsg:
 		if !m.Quitting {
+			l.Debug("Processing status update message")
 			m.BatchedUpdates = append(m.BatchedUpdates, msg)
 			if m.BatchUpdateTimer == nil {
 				m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
+					l.Debug("Applying batched updates")
 					m.applyBatchedUpdates()
 				})
 			}
 		}
 	case models.TimeUpdateMsg:
+		l.Debug("Processing time update message")
 		m.LastUpdate = time.Now()
 	case logLinesMsg:
+		l.Debug("Processing log lines message")
 		m.TextBox = []string(msg)
 	case batchedUpdatesAppliedMsg:
+		l.Debug("Batched updates applied")
 		m.BatchUpdateTimer = nil
 	}
 
@@ -279,10 +286,12 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		runtime.ReadMemStats(&memStats)
 		m.MemoryUsage = memStats.Alloc
 		m.CPUUsage = getCPUUsage()
+		l.Debugf("CPU Usage: %.2f%%, Memory Usage: %d MB", m.CPUUsage, m.MemoryUsage/1024/1024)
 
 		return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
 	}
 
+	l.Info("Exiting Update function")
 	return m, tea.Quit
 }
 
