@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -138,27 +139,42 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 		return err
 	}
 
-	out, err := sshConfig.ExecuteCommand("ls -l")
+	installDockerScriptPath := "/tmp/install-docker.sh"
+	dockerScript, err := internal.InstallDockerScript.ReadFile("install-docker.sh")
+	if err != nil {
+		return err
+	}
+	err = sshConfig.PushFile(dockerScript, installDockerScriptPath, true)
 	if err != nil {
 		return err
 	}
 
-	_ = out
+	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installDockerScriptPath))
+	if err != nil {
+		m.Docker = ServiceStateFailed
+		return err
+	}
 
-	// TODO: Implement Docker installation using embedded scripts
-	// If successful:
 	m.Docker = ServiceStateSucceeded
-	// If failed:
-	// machine.Docker = models.ServiceStateFailed
 
-	// Install Core Packages
-	m.CorePackages = ServiceStateUpdating
-	// TODO: Implement Core Packages installation using embedded scripts
-	// If successful:
+	installCorePackagesScriptPath := "/tmp/install-core-packages.sh"
+	corePackagesScript, err := internal.InstallCorePackages.ReadFile("install-core-packages.sh")
+	if err != nil {
+		return err
+	}
+	err = sshConfig.PushFile(corePackagesScript, installCorePackagesScriptPath, true)
+	if err != nil {
+		return err
+	}
+
+	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installCorePackagesScriptPath))
+	if err != nil {
+		m.CorePackages = ServiceStateFailed
+		return err
+	}
+
 	m.CorePackages = ServiceStateSucceeded
-	// If failed:
-	// machine.CorePackages = models.ServiceStateFailed
-	return fmt.Errorf("NOT IMPLEMENTED")
+	return nil
 }
 
 type AzureResourceTypes struct {
