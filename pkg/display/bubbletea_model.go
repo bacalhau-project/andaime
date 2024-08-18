@@ -118,11 +118,19 @@ func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*model
 
 	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
 		newMachine := models.Machine{
-			Name:          status.Name,
-			Type:          status.Type,
-			Location:      status.Location,
-			StatusMessage: status.StatusMessage,
-			StartTime:     time.Now(),
+			StartTime: time.Now(),
+		}
+		if status.Name != "" {
+			newMachine.Name = status.Name
+		}
+		if status.Type != models.AzureResourceTypes{} {
+			newMachine.Type = status.Type
+		}
+		if status.Location != "" {
+			newMachine.Location = status.Location
+		}
+		if status.StatusMessage != "" {
+			newMachine.StatusMessage = status.StatusMessage
 		}
 		m.Deployment.Machines = append(m.Deployment.Machines, newMachine)
 		return &m.Deployment.Machines[len(m.Deployment.Machines)-1], false
