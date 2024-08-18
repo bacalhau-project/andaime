@@ -223,7 +223,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		l.Infof("Key pressed at %s: %s", keyPressTime.Format(time.RFC3339Nano), keyMsg.String())
 		if keyMsg.String() == "q" || keyMsg.String() == "ctrl+c" {
 			m.Quitting = true
-			l.Infof("Quit command received (q or ctrl+c) at %s", keyPressTime.Format(time.RFC3339Nano))
+			l.Infof(
+				"Quit command received (q or ctrl+c) at %s",
+				keyPressTime.Format(time.RFC3339Nano),
+			)
 			close(m.quitChan) // Signal all goroutines to stop
 			l.Info("Quit channel closed")
 			return m, tea.Quit
@@ -235,7 +238,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case <-m.quitChan:
 		if !m.Quitting {
 			m.Quitting = true
-			l.Infof("Quit signal received at %s, exiting immediately...", time.Now().Format(time.RFC3339Nano))
+			l.Infof(
+				"Quit signal received at %s, exiting immediately...",
+				time.Now().Format(time.RFC3339Nano),
+			)
 		}
 		return m, tea.Quit
 	default:
@@ -256,7 +262,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tickMsg:
-		l.Debug("Processing tick message")
+		// l.Debug("Processing tick message")
 		return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
 		l.Debug("Processing status update message")
@@ -268,10 +274,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 	case models.TimeUpdateMsg:
-		l.Debug("Processing time update message")
+		// l.Debug("Processing time update message")
 		m.LastUpdate = time.Now()
 	case logLinesMsg:
-		l.Debug("Processing log lines message")
+		// l.Debug("Processing log lines message")
 		m.TextBox = []string(msg)
 	case batchedUpdatesAppliedMsg:
 		l.Debug("Batched updates applied")
