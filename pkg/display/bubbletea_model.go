@@ -212,10 +212,6 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.Quitting {
-		return m, tea.Quit
-	}
-
 	updateStart := time.Now()
 	defer func() {
 		updateDuration := time.Since(updateStart)
@@ -230,11 +226,16 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logger.Get().Info("Quit command received (q or ctrl+c)")
 			close(m.quitChan) // Signal all goroutines to stop
 			return m, tea.Sequence(
-				tea.ExitAltScreen,
 				m.printFinalTableCmd(),
 				tea.Quit,
 			)
 		}
+	}
+
+	if m.Quitting {
+		logger.Get().Info("Quitting in progress...")
+		return m, tea.Quit
+	}
 	case tickMsg:
 		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
@@ -263,6 +264,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 	return func() tea.Msg {
+		if m.Quitting {
+			logger.Get().Info("Quitting, skipping batch updates")
+			return tea.Quit
+		}
 		select {
 		case <-m.quitChan:
 			logger.Get().Info("Quit signal received, stopping batch updates")
