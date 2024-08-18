@@ -12,6 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"runtime"
 )
 
 // Constants
@@ -137,11 +138,15 @@ func AggregateColumnWidths() int {
 
 // DisplayModel represents the main display model
 type DisplayModel struct {
-	Deployment *models.Deployment
-	TextBox    []string
-	Quitting   bool
-	LastUpdate time.Time
-	DebugMode  bool
+	Deployment       *models.Deployment
+	TextBox          []string
+	Quitting         bool
+	LastUpdate       time.Time
+	DebugMode        bool
+	UpdateTimes      []time.Duration
+	LastUpdateStart  time.Time
+	CPUUsage         float64
+	MemoryUsage      uint64
 }
 
 // DisplayMachine represents a single machine in the deployment
@@ -197,8 +202,15 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// l := logger.Get()
-	// l.Debugf("Update called with msg: %v", msg)
+	updateStart := time.Now()
+	defer func() {
+		updateDuration := time.Since(updateStart)
+		m.UpdateTimes = append(m.UpdateTimes, updateDuration)
+		if len(m.UpdateTimes) > 100 {
+			m.UpdateTimes = m.UpdateTimes[1:]
+		}
+	}()
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
@@ -221,6 +233,12 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logLinesMsg:
 		m.TextBox = []string(msg)
 	}
+
+	// Update CPU and memory usage
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	m.MemoryUsage = memStats.Alloc
+	m.CPUUsage = getCPUUsage()
 
 	// Check if all machines have completed their deployment and Docker/Core Packages installation
 	allCompleted := true
@@ -264,6 +282,39 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(tickCmd(), m.updateLogCmd())
 }
 
+func getCPUUsage() float64 {
+	var startTime time.Time
+	var startUsage float64
+	startTime = time.Now()
+	startUsage, _ = getCPUTime()
+	time.Sleep(100 * time.Millisecond)
+	endTime := time.Now()
+	endUsage, _ := getCPUTime()
+	
+	cpuUsage := (endUsage - startUsage) / endTime.Sub(startTime).Seconds()
+	return cpuUsage * 100 // Return as percentage
+}
+
+func getCPUTime() (float64, error) {
+	contents, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.Split(string(contents), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if fields[0] == "cpu" {
+			var total float64
+			for _, field := range fields[1:] {
+				val, _ := strconv.ParseFloat(field, 64)
+				total += val
+			}
+			return total, nil
+		}
+	}
+	return 0, fmt.Errorf("CPU info not found")
+}
+
 // View renders the DisplayModel
 func (m *DisplayModel) View() string {
 	tableStyle := lipgloss.NewStyle().
@@ -293,12 +344,29 @@ func (m *DisplayModel) View() string {
 		m.LastUpdate.Format("15:04:05"),
 	)
 
+	var avgUpdateTime time.Duration
+	if len(m.UpdateTimes) > 0 {
+		sum := int64(0)
+		for _, d := range m.UpdateTimes {
+			sum += d.Nanoseconds()
+		}
+		avgUpdateTime = time.Duration(sum / int64(len(m.UpdateTimes)))
+	}
+
+	performanceInfo := fmt.Sprintf(
+		"Avg Update Time: %v, CPU Usage: %.2f%%, Memory Usage: %d MB",
+		avgUpdateTime,
+		m.CPUUsage,
+		m.MemoryUsage/1024/1024,
+	)
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		tableStyle.Render(tableStr),
 		"",
 		textBoxStyle.Render(logContent),
 		infoStyle.Render(infoText),
+		infoStyle.Render(performanceInfo),
 	)
 }
 
