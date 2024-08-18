@@ -229,7 +229,9 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 	}
 
 	// Test case 1: Return nil resources
-	mockClient.On("ListAllResourcesInSubscription", ctx, subscriptionID, tags).Return(nil, nil).Once()
+	mockClient.On("ListAllResourcesInSubscription", ctx, subscriptionID, tags).
+		Return(nil, nil).
+		Once()
 
 	resources, err := provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.NoError(t, err)
@@ -237,7 +239,9 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 
 	// Test case 2: Return error
 	expectedError := fmt.Errorf("some error")
-	mockClient.On("ListAllResourcesInSubscription", ctx, subscriptionID, tags).Return(nil, expectedError).Once()
+	mockClient.On("ListAllResourcesInSubscription", ctx, subscriptionID, tags).
+		Return(nil, expectedError).
+		Once()
 
 	resources, err = provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.Error(t, err)
