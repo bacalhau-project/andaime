@@ -208,7 +208,7 @@ func InitialModel() *DisplayModel {
 
 // Init initializes the DisplayModel
 func (m *DisplayModel) Init() tea.Cmd {
-	return tickCmd()
+	return m.tickCmd()
 }
 
 // Update handles updates to the DisplayModel
