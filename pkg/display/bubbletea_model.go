@@ -239,13 +239,17 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tickMsg:
-		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
+		if !m.Quitting {
+			return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
+		}
 	case models.StatusUpdateMsg:
-		m.BatchedUpdates = append(m.BatchedUpdates, msg)
-		if m.BatchUpdateTimer == nil {
-			m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
-				m.applyBatchedUpdates()
-			})
+		if !m.Quitting {
+			m.BatchedUpdates = append(m.BatchedUpdates, msg)
+			if m.BatchUpdateTimer == nil {
+				m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
+					m.applyBatchedUpdates()
+				})
+			}
 		}
 	case models.TimeUpdateMsg:
 		m.LastUpdate = time.Now()
@@ -255,13 +259,17 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.BatchUpdateTimer = nil
 	}
 
-	// Update CPU and memory usage
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	m.MemoryUsage = memStats.Alloc
-	m.CPUUsage = getCPUUsage()
+	if !m.Quitting {
+		// Update CPU and memory usage
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		m.MemoryUsage = memStats.Alloc
+		m.CPUUsage = getCPUUsage()
 
-	return m, tea.Batch(tickCmd(), m.updateLogCmd())
+		return m, tea.Batch(tickCmd(), m.updateLogCmd())
+	}
+
+	return m, tea.Quit
 }
 
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
