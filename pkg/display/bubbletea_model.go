@@ -214,12 +214,11 @@ func (m *DisplayModel) Init() tea.Cmd {
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
-	l.Debug("Update function called")
+	// l.Debug("Update function called")
 
 	if m.Quitting {
 		l.Info("Quitting in progress, flushing output and exiting immediately...")
-		fmt.Print(m.View()) // Flush the final view
-		os.Stdout.Sync()    // Ensure output is flushed
+		os.Stdout.Sync() // Ensure output is flushed
 		return m, tea.Quit
 	}
 
