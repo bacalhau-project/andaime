@@ -33,31 +33,10 @@ func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) err
 		l.Error(err.Error())
 		return err
 	}
-	l.Debugf("Starting SSH connection check to %s:%d", config.Host, config.Port)
-	l.Debug("Entering waitForSSH")
-	l.Debugf(
-		"publicIP: %s, username: %s, privateKeyPath: %s\n",
-		config.Host,
-		config.User,
-		config.PrivateKeyPath,
-	)
-
-	andaimeSSHClientConfig, err := NewSSHConfig(
-		config.Host,
-		config.Port,
-		config.User,
-		config.PrivateKeyPath,
-	)
-	if err != nil {
-		l.Errorf("error creating client: %v", err)
-		return err
-	}
-
-	l.Debug("SSH client config created")
 
 	for i := 0; i < SSHRetryAttempts; i++ {
 		l.Debugf("Attempt %d to connect via SSH\n", i+1)
-		client, err := andaimeSSHClientConfig.Connect()
+		client, err := config.Connect()
 		if err != nil {
 			err = fmt.Errorf("failed to connect to SSH: %v", err)
 			l.Error(err.Error())
@@ -93,7 +72,7 @@ func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) err
 		return nil
 	}
 
-	err = fmt.Errorf("failed to establish SSH connection after multiple attempts")
+	err := fmt.Errorf("failed to establish SSH connection after multiple attempts")
 	l.Error(err.Error())
 	return err
 }

@@ -242,6 +242,7 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 	mockClient.On("ListAllResourcesInSubscription", ctx, subscriptionID, tags).
 		Return(nil, expectedError).
 		Once()
+	provider = &AzureProvider{Client: mockClient}
 
 	resources, err = provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.Error(t, err)

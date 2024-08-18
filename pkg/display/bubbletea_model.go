@@ -268,7 +268,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updateDuration := time.Since(updateStart)
 		m.UpdateTimes[m.UpdateTimesIndex] = updateDuration
 		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % m.UpdateTimesSize
-		l.Debugf("Update duration: %v", updateDuration)
+		//l.Debugf("Update duration: %v", updateDuration)
 	}()
 
 	switch msg := msg.(type) {
@@ -300,7 +300,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	runtime.ReadMemStats(&memStats)
 	m.MemoryUsage = memStats.Alloc
 	m.CPUUsage = getCPUUsage()
-	l.Debugf("CPU Usage: %.2f%%, Memory Usage: %d MB", m.CPUUsage, m.MemoryUsage/1024/1024)
+	// l.Debugf("CPU Usage: %.2f%%, Memory Usage: %d MB", m.CPUUsage, m.MemoryUsage/1024/1024)
 
 	return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
 }
@@ -311,7 +311,7 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 		defer atomic.AddInt64(&m.goroutineCount, -1)
 
 		if m.Quitting {
-			logger.Get().Info("Quitting, skipping batch updates")
+			// logger.Get().Info("Quitting, skipping batch updates")
 			return tea.Quit
 		}
 		select {
@@ -463,8 +463,8 @@ func (m *DisplayModel) View() string {
 
 	logger.WriteProfileInfo(performanceInfo)
 
-	profileFilePath := logger.GetProfileFilePath()
-	profileFileInfo := fmt.Sprintf("Profile information written to: %s", profileFilePath)
+	// profileFilePath := logger.GetProfileFilePath()
+	// profileFileInfo := fmt.Sprintf("Profile information written to: %s", profileFilePath)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

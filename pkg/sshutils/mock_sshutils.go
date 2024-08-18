@@ -6,7 +6,6 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
-	"golang.org/x/crypto/ssh"
 )
 
 type MockSSHClient struct {
@@ -18,12 +17,6 @@ type MockSSHClient struct {
 func (m *MockSSHClient) PushFile(content []byte, remotePath string, executable bool) error {
 	args := m.Called(content, remotePath, executable)
 	return args.Error(0)
-}
-
-func MockSSHClientCreator(
-	c SSHClienter,
-) func(config *ssh.ClientConfig, dialer SSHDialer) SSHClienter {
-	return func(config *ssh.ClientConfig, dialer SSHDialer) SSHClienter { return c }
 }
 
 func (m *MockSSHClient) WaitForSSH(host, user, privateKey string) error {

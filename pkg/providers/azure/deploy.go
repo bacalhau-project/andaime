@@ -467,9 +467,6 @@ func (p *AzureProvider) FinalizeDeployment(
 	// Log successful completion
 	l.Info("Azure deployment completed successfully")
 
-	finalTable := m.RenderFinalTable()
-	fmt.Print("\n" + finalTable + "\n")
-
 	// Ensure all configurations are saved
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
 		l.Errorf("Failed to save final configuration: %v", err)

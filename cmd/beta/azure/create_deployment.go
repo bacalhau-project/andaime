@@ -4,6 +4,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -100,6 +102,11 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Clear the screen
+	fmt.Print("\033[H\033[2J")
+
+	fmt.Println(m.RenderFinalTable())
+
 	if deploymentErr != nil {
 		l.Error(deploymentErr.Error())
 		return deploymentErr
@@ -118,12 +125,21 @@ func InitializeDeployment(
 		return nil, fmt.Errorf("deployment cancelled before starting: %w", err)
 	}
 
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	} else {
+		logLevel = strings.ToLower(logLevel)
+	}
+
 	// Set default values for all configuration items
 	viper.SetDefault("general.project_id", "default-project")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
-	viper.SetDefault("general.log_level", "info")
+	viper.SetDefault("general.log_level", logLevel)
 	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
+	viper.SetDefault("general.ssh_user", "azureuser")
+	viper.SetDefault("general.ssh_port", 22)
 	viper.SetDefault("azure.resource_group_name", "andaime-rg")
 	viper.SetDefault("azure.resource_group_location", "eastus")
 	viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
@@ -161,6 +177,8 @@ func PrepareDeployment(
 	l := logger.Get()
 
 	deployment := &models.Deployment{}
+	deployment.SSHUser = viper.GetString("general.ssh_user")
+	deployment.SSHPort = viper.GetInt("general.ssh_port")
 	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")
 	deployment.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 	deployment.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
@@ -358,6 +376,29 @@ func ProcessMachinesConfig(
 	defaultType := viper.GetString("azure.default_machine_type")
 	defaultDiskSize := viper.GetInt("azure.disk_size_gb")
 
+	if _, err := os.Stat(deployment.SSHPrivateKeyPath); os.IsNotExist(err) {
+		return nil, nil, nil, fmt.Errorf(
+			"private key path does not exist: %s",
+			deployment.SSHPrivateKeyPath,
+		)
+	}
+
+	// Open the private key file
+	privateKeyFile, err := os.Open(deployment.SSHPrivateKeyPath)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to open private key file: %w", err)
+	}
+	privateKeyBytes, err := io.ReadAll(privateKeyFile)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read private key file: %w", err)
+	}
+	defer privateKeyFile.Close()
+
+	_, err = ssh.ParsePrivateKey(privateKeyBytes)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
 	for _, rawMachine := range rawMachines {
 		var thisMachine models.Machine
 		thisMachine.Type = models.AzureResourceTypeVM
@@ -392,6 +433,10 @@ func ProcessMachinesConfig(
 			thisMachine.SSH = models.ServiceStateNotStarted
 			thisMachine.Docker = models.ServiceStateNotStarted
 			thisMachine.Bacalhau = models.ServiceStateNotStarted
+
+			thisMachine.SSHUser = "azureuser"
+			thisMachine.SSHPort = deployment.SSHPort
+			thisMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 			allMachines = append(allMachines, thisMachine)
 		}

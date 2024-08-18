@@ -108,8 +108,9 @@ func (m *Machine) GetResource(resourceType string) MachineResource {
 	}
 	if resource, ok := m.MachineResources[resourceType]; ok {
 		return resource
+	} else {
+		return MachineResource{}
 	}
-	return MachineResource{}
 }
 
 func (m *Machine) SetResource(resourceType string, resourceState AzureResourceState) {
@@ -163,17 +164,17 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 		return err
 	}
 
-	installDockerScriptPath := "/tmp/install-docker.sh"
-	dockerScript, err := internal.InstallDockerScript.ReadFile("install-docker.sh")
+	installDockerScriptRemotePath := "/tmp/install-docker.sh"
+	installDockerScriptBytes, err := internal.GetInstallDockerScript()
 	if err != nil {
 		return err
 	}
-	err = sshConfig.PushFile(dockerScript, installDockerScriptPath, true)
+	err = sshConfig.PushFile(installDockerScriptBytes, installDockerScriptRemotePath, true)
 	if err != nil {
 		return err
 	}
 
-	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installDockerScriptPath))
+	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installDockerScriptRemotePath))
 	if err != nil {
 		m.Docker = ServiceStateFailed
 		return err
@@ -182,11 +183,11 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 	m.Docker = ServiceStateSucceeded
 
 	installCorePackagesScriptPath := "/tmp/install-core-packages.sh"
-	corePackagesScript, err := internal.InstallCorePackages.ReadFile("install-core-packages.sh")
+	corePackagesScriptBytes, err := internal.GetInstallCorePackagesScript()
 	if err != nil {
 		return err
 	}
-	err = sshConfig.PushFile(corePackagesScript, installCorePackagesScriptPath, true)
+	err = sshConfig.PushFile(corePackagesScriptBytes, installCorePackagesScriptPath, true)
 	if err != nil {
 		return err
 	}

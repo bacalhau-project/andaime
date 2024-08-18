@@ -259,17 +259,18 @@ func machineNeedsUpdating(
 	resourceType string,
 	resourceState string,
 ) bool {
-	l := logger.Get()
-	l.Debugf(
-		"machineNeedsUpdating: %s, %s, %s",
-		deployment.Machines[machineIndex].Name,
-		resourceType,
-		resourceState,
-	)
+	// l := logger.Get()
+	// l.Debugf(
+	// 	"machineNeedsUpdating: %s, %s, %s",
+	// 	deployment.Machines[machineIndex].Name,
+	// 	resourceType,
+	// 	resourceState,
+	// )
 	currentState := ConvertFromStringToAzureResourceState(resourceState)
 
 	needsUpdate := 0
-	if deployment.Machines[machineIndex].GetResource(resourceType).ResourceState < currentState {
+	if (deployment.Machines[machineIndex].GetResource(resourceType) == MachineResource{}) ||
+		(deployment.Machines[machineIndex].GetResource(resourceType).ResourceState < currentState) {
 		deployment.Machines[machineIndex].SetResource(resourceType, currentState)
 		needsUpdate++
 	}

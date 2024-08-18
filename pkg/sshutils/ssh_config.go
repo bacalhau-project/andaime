@@ -2,8 +2,6 @@ package sshutils
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -11,14 +9,16 @@ import (
 )
 
 type SSHConfig struct {
-	Host                  string
-	Port                  int
-	User                  string
-	PublicKeyPath         string
-	PrivateKeyPath        string
-	Timeout               time.Duration
-	Logger                *logger.Logger
-	SSHDialer             SSHDialer
+	Host               string
+	Port               int
+	User               string
+	PrivateKeyMaterial []byte
+	Timeout            time.Duration
+	Logger             *logger.Logger
+
+	SSHClient SSHClienter
+	SSHDial   SSHDialer
+
 	SSHPrivateKeyReader   func(path string) ([]byte, error)
 	SSHPublicKeyReader    func(path string) ([]byte, error)
 	ClientConfig          *ssh.ClientConfig
@@ -26,6 +26,7 @@ type SSHConfig struct {
 }
 
 type SSHConfiger interface {
+	SetSSHClient(client SSHClienter)
 	Connect() (SSHClienter, error)
 	ExecuteCommand(command string) (string, error)
 	PushFile(content []byte, remotePath string, executable bool) error
@@ -38,26 +39,10 @@ func NewSSHConfig(
 	host string,
 	port int,
 	user string,
-	sshPrivateKeyPath string) (*SSHConfig, error) {
-	// Confirm that the private key path exists
-	if _, err := os.Stat(sshPrivateKeyPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("private key path does not exist: %s", sshPrivateKeyPath)
-	}
-
-	// Open the private key file
-	privateKeyFile, err := os.Open(sshPrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open private key file: %w", err)
-	}
-	privateKeyBytes, err := io.ReadAll(privateKeyFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read private key file: %w", err)
-	}
-	defer privateKeyFile.Close()
-
-	key, err := ssh.ParsePrivateKey(privateKeyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	sshPrivateKeyMaterial []byte,
+) (*SSHConfig, error) {
+	if len(sshPrivateKeyMaterial) == 0 {
+		return nil, fmt.Errorf("private key material is empty")
 	}
 
 	hostKeyCallback, err := GetHostKeyCallback(host)
@@ -66,10 +51,15 @@ func NewSSHConfig(
 		hostKeyCallback = ssh.InsecureIgnoreHostKey()
 	}
 
+	signer, err := ssh.ParsePrivateKey(sshPrivateKeyMaterial)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
 	sshClientConfig := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(key),
+			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: hostKeyCallback,
 		Timeout:         SSHTimeOut,
@@ -81,34 +71,52 @@ func NewSSHConfig(
 		Host:                  host,
 		Port:                  port,
 		User:                  user,
-		PrivateKeyPath:        sshPrivateKeyPath,
+		PrivateKeyMaterial:    sshPrivateKeyMaterial,
 		Timeout:               SSHTimeOut,
 		Logger:                logger.Get(),
 		ClientConfig:          sshClientConfig,
-		SSHDialer:             dialer,
+		SSHDial:               dialer,
 		InsecureIgnoreHostKey: false,
 	}, nil
 }
 
-func (c *SSHConfig) Connect() (SSHClienter, error) {
-	c.Logger.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
+func (c *SSHConfig) SetSSHClient(client SSHClienter) {
+	c.SSHClient = client
+}
 
-	client, err := c.SSHDialer.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
+func (c *SSHConfig) Connect() (SSHClienter, error) {
+	l := logger.Get()
+	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
+
+	client, err := c.SSHDial.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SSH server: %w", err)
 	}
+
+	c.SSHClient = client
 
 	return client, nil
 }
 
 func (c *SSHConfig) NewSession() (SSHSessioner, error) {
-	client := NewSSHClientFunc(c.ClientConfig, c.SSHDialer)
+	if c.SSHClient == nil {
+		sshClient, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SSH client: %w", err)
+		}
+		c.SSHClient = &SSHClientWrapper{Client: sshClient}
+	}
 
-	return client.NewSession()
+	return c.SSHClient.NewSession()
 }
 
+// ExecuteCommand runs a command on the remote server over SSH.
+// It takes the command as a string argument.
+// It retries the execution a configurable number of times if it fails.
+// It returns the output of the command as a string and any error encountered.
 func (c *SSHConfig) ExecuteCommand(command string) (string, error) {
-	c.Logger.Infof("Executing command: %s", command)
+	l := logger.Get()
+	l.Infof("Executing command: %s", command)
 
 	var output string
 	err := retry(NumberOfSSHRetries, TimeInBetweenSSHRetries, func() error {
@@ -129,8 +137,13 @@ func (c *SSHConfig) ExecuteCommand(command string) (string, error) {
 	return output, err
 }
 
+// PushFile copies a local file to the remote server.
+// It takes the local file path and the remote file path as arguments.
+// The file is copied over an SSH session using the stdin pipe.
+// It returns an error if any step of the process fails.
 func (c *SSHConfig) PushFile(content []byte, remotePath string, executable bool) error {
-	c.Logger.Infof("Pushing file to: %s", remotePath)
+	l := logger.Get()
+	l.Infof("Pushing file to: %s", remotePath)
 
 	session, err := c.NewSession()
 	if err != nil {
@@ -180,7 +193,8 @@ func (c *SSHConfig) PushFile(content []byte, remotePath string, executable bool)
 func (c *SSHConfig) InstallSystemdService(
 	serviceName, serviceContent string,
 ) error {
-	c.Logger.Infof("Installing systemd service: %s", serviceName)
+	l := logger.Get()
+	l.Infof("Installing systemd service: %s", serviceName)
 	remoteServicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
 
 	session, err := c.NewSession()
@@ -207,7 +221,8 @@ func (c *SSHConfig) RestartService(serviceName string) error {
 }
 
 func (c *SSHConfig) manageService(serviceName, action string) error {
-	c.Logger.Infof("Managing service: %s %s", serviceName, action)
+	l := logger.Get()
+	l.Infof("Managing service: %s %s", serviceName, action)
 	session, err := c.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
