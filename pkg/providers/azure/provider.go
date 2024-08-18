@@ -165,6 +165,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	l.Debug("Starting StartResourcePolling")
+	writeToDebugLog("Starting StartResourcePolling")
 
 	resourceTicker := time.NewTicker(30 * time.Second)
 	defer resourceTicker.Stop()
@@ -177,16 +178,30 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 
 	done := make(chan bool)
 	go func() {
+		pollCount := 0
 		for {
 			select {
 			case <-resourceTicker.C:
+				pollCount++
 				start := time.Now()
-				if _, err := p.PollAndUpdateResources(ctx); err != nil {
+				writeToDebugLog(fmt.Sprintf("Starting poll #%d", pollCount))
+				
+				resources, err := p.PollAndUpdateResources(ctx)
+				if err != nil {
 					l.Errorf("Failed to poll and update resources: %v", err)
+					writeToDebugLog(fmt.Sprintf("Failed to poll and update resources: %v", err))
+				} else {
+					writeToDebugLog(fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)))
+					for _, resource := range resources {
+						writeToDebugLog(fmt.Sprintf("Resource: %+v", resource))
+					}
 				}
+				
 				elapsed := time.Since(start)
-				l.Debugf("PollAndUpdateResources took %v", elapsed)
-				writeToDebugLog(fmt.Sprintf("PollAndUpdateResources took %v", elapsed))
+				l.Debugf("PollAndUpdateResources #%d took %v", pollCount, elapsed)
+				writeToDebugLog(fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed))
+				
+				p.logDeploymentStatus()
 			case <-quit:
 				l.Debug("Quit signal received, exiting resource polling")
 				writeToDebugLog("Quit signal received, exiting resource polling")
@@ -203,6 +218,28 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	case <-done:
 		l.Debug("Resource polling completed normally")
 		writeToDebugLog("Resource polling completed normally")
+	}
+}
+
+func (p *AzureProvider) logDeploymentStatus() {
+	if p.Deployment == nil {
+		writeToDebugLog("Deployment is nil")
+		return
+	}
+
+	writeToDebugLog(fmt.Sprintf("Deployment Status - Name: %s, ResourceGroup: %s", p.Deployment.Name, p.Deployment.ResourceGroupName))
+	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(p.Deployment.Machines)))
+
+	for i, machine := range p.Deployment.Machines {
+		writeToDebugLog(fmt.Sprintf("Machine %d - Name: %s, PublicIP: %s, PrivateIP: %s", i+1, machine.Name, machine.PublicIP, machine.PrivateIP))
+		writeToDebugLog(fmt.Sprintf("Machine %d - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v", i+1, machine.Docker, machine.CorePackages, machine.Bacalhau, machine.SSH))
+		
+		completedResources, totalResources := machine.ResourcesComplete()
+		writeToDebugLog(fmt.Sprintf("Machine %d - Resources: %d/%d complete", i+1, completedResources, totalResources))
+		
+		for resourceType, resource := range machine.machineResources {
+			writeToDebugLog(fmt.Sprintf("Machine %d - Resource %s: State: %v, Value: %s", i+1, resourceType, resource.ResourceState, resource.ResourceValue))
+		}
 	}
 }
 
