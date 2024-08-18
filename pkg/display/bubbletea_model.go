@@ -273,8 +273,11 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 			logger.Get().Info("Quit signal received, stopping batch updates")
 			return tea.Quit
 		default:
-			m.applyBatchedUpdates()
-			return batchedUpdatesAppliedMsg{}
+			if !m.Quitting {
+				m.applyBatchedUpdates()
+				return batchedUpdatesAppliedMsg{}
+			}
+			return tea.Quit
 		}
 	}
 }
