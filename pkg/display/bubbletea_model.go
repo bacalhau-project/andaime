@@ -473,7 +473,6 @@ func (m *DisplayModel) View() string {
 		textBoxStyle.Render(logContent),
 		infoStyle.Render(infoText),
 		infoStyle.Render(performanceInfo),
-		infoStyle.Render(profileFileInfo),
 	)
 }
 
