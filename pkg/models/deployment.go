@@ -125,15 +125,14 @@ func (m *Machine) SetResource(resourceType string, resourceState AzureResourceSt
 }
 
 func (m *Machine) ResourcesComplete() (int, int) {
-	// Below is the list of resources that are required to be created for a machine
-	allResources := RequiredResources
-
-	totalResources := len(allResources)
+	totalResources := len(RequiredResources)
 	completedResources := 0
 
-	for _, resource := range m.MachineResources {
-		if resource.ResourceState == AzureResourceStateSucceeded {
-			completedResources++
+	for _, requiredResource := range RequiredResources {
+		if resource, exists := m.MachineResources[requiredResource.ResourceString]; exists {
+			if resource.ResourceState == AzureResourceStateSucceeded {
+				completedResources++
+			}
 		}
 	}
 	return completedResources, totalResources
