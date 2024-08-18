@@ -361,6 +361,11 @@ func (m *DisplayModel) View() string {
 		m.MemoryUsage/1024/1024,
 	)
 
+	logger.WriteProfileInfo(performanceInfo)
+
+	profileFilePath := logger.GetProfileFilePath()
+	profileFileInfo := fmt.Sprintf("Profile information written to: %s", profileFilePath)
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		tableStyle.Render(tableStr),
@@ -368,6 +373,7 @@ func (m *DisplayModel) View() string {
 		textBoxStyle.Render(logContent),
 		infoStyle.Render(infoText),
 		infoStyle.Render(performanceInfo),
+		infoStyle.Render(profileFileInfo),
 	)
 }
 

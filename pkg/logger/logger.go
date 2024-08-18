@@ -17,6 +17,10 @@ import (
 )
 
 var (
+	profileFilePath string
+)
+
+var (
 	globalLogger *zap.Logger
 	once         sync.Once
 	outputFormat string        = "text"
@@ -429,6 +433,30 @@ func writeToDebugLog(message string) {
 
 func WriteToDebugLog(message string) {
 	writeToDebugLog(message)
+}
+
+func WriteProfileInfo(info string) {
+	if profileFilePath == "" {
+		timestamp := time.Now().Format("20060102-150405")
+		profileFilePath = fmt.Sprintf("/tmp/andaime-profile-%s.log", timestamp)
+	}
+
+	file, err := os.OpenFile(profileFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening profile log file %s: %v\n", profileFilePath, err)
+		return
+	}
+	defer file.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	_, err = fmt.Fprintf(file, "[%s] %s\n", timestamp, info)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing to profile log file: %v\n", err)
+	}
+}
+
+func GetProfileFilePath() string {
+	return profileFilePath
 }
 func getZapLevel(level string) zapcore.Level {
 	switch level {
