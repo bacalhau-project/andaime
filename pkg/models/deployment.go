@@ -51,6 +51,25 @@ type Machine struct {
 	SSHUser               string
 	SSHPrivateKeyMaterial []byte
 	SSHPort               int
+
+	// Timing information
+	CreationStartTime time.Time
+	CreationEndTime   time.Time
+	SSHStartTime      time.Time
+	SSHEndTime        time.Time
+	DockerStartTime   time.Time
+	DockerEndTime     time.Time
+	BacalhauStartTime time.Time
+	BacalhauEndTime   time.Time
+}
+
+func (m *Machine) LogTimingInfo(logger *logger.Logger) {
+	logger.Info(fmt.Sprintf("Machine %s timing information:", m.Name))
+	logger.Info(fmt.Sprintf("  Creation time: %v", m.CreationEndTime.Sub(m.CreationStartTime)))
+	logger.Info(fmt.Sprintf("  SSH setup time: %v", m.SSHEndTime.Sub(m.SSHStartTime)))
+	logger.Info(fmt.Sprintf("  Docker installation time: %v", m.DockerEndTime.Sub(m.DockerStartTime)))
+	logger.Info(fmt.Sprintf("  Bacalhau setup time: %v", m.BacalhauEndTime.Sub(m.BacalhauStartTime)))
+	logger.Info(fmt.Sprintf("  Total time: %v", m.BacalhauEndTime.Sub(m.CreationStartTime)))
 }
 
 func (m *Machine) IsOrchestrator() bool {

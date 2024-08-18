@@ -225,34 +225,28 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 }
 
 func (l *Logger) Debug(msg string) {
-	l.Logger.Debug(msg)
-	l.syncIfNeeded()
-	if l.verbose {
-		fmt.Println("DEBUG:", msg)
-	}
+	l.log("DEBUG", msg)
 }
 
 func (l *Logger) Info(msg string) {
-	l.Logger.Info(msg)
-	l.syncIfNeeded()
-	if l.verbose {
-		fmt.Println("INFO:", msg)
-	}
+	l.log("INFO", msg)
 }
 
 func (l *Logger) Warn(msg string) {
-	l.Logger.Warn(msg)
-	l.syncIfNeeded()
-	if l.verbose {
-		fmt.Println("WARN:", msg)
-	}
+	l.log("WARN", msg)
 }
 
 func (l *Logger) Error(msg string) {
-	l.Logger.Error(msg)
+	l.log("ERROR", msg)
+}
+
+func (l *Logger) log(level, msg string) {
+	timestamp := time.Now().Format("2006-01-02T15:04:05.000-0700")
+	logMsg := fmt.Sprintf("%s\t%s\t%s", timestamp, level, msg)
+	l.Logger.Info(logMsg)
 	l.syncIfNeeded()
 	if l.verbose {
-		fmt.Println("ERROR:", msg)
+		fmt.Println(logMsg)
 	}
 }
 
