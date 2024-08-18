@@ -154,6 +154,7 @@ type DisplayModel struct {
 	BatchedUpdates   []models.StatusUpdateMsg
 	BatchUpdateTimer *time.Timer
 	quitChan         chan struct{}
+	goroutineCount   int64
 }
 
 // DisplayMachine represents a single machine in the deployment
@@ -288,6 +289,9 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 	return func() tea.Msg {
+		atomic.AddInt64(&m.goroutineCount, 1)
+		defer atomic.AddInt64(&m.goroutineCount, -1)
+
 		if m.Quitting {
 			logger.Get().Info("Quitting, skipping batch updates")
 			return tea.Quit
@@ -431,11 +435,12 @@ func (m *DisplayModel) View() string {
 	}
 
 	performanceInfo := fmt.Sprintf(
-		"Avg Update Time: %v, CPU Usage: %.2f%%, Memory Usage: %d MB, Circular Buffer Size: %d",
+		"Avg Update Time: %v, CPU Usage: %.2f%%, Memory Usage: %d MB, Circular Buffer Size: %d, Goroutines: %d",
 		avgUpdateTime,
 		m.CPUUsage,
 		m.MemoryUsage/1024/1024,
 		m.UpdateTimesSize,
+		atomic.LoadInt64(&m.goroutineCount),
 	)
 
 	logger.WriteProfileInfo(performanceInfo)
