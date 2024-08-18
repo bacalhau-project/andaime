@@ -148,6 +148,8 @@ type DisplayModel struct {
 	LastUpdateStart  time.Time
 	CPUUsage         float64
 	MemoryUsage      uint64
+	BatchedUpdates   []models.StatusUpdateMsg
+	BatchUpdateTimer *time.Timer
 }
 
 // DisplayMachine represents a single machine in the deployment
@@ -226,13 +228,20 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Quitting {
 			return m, nil
 		}
-		return m, tea.Batch(tickCmd(), m.updateLogCmd())
+		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
-		m.UpdateStatus(msg.Status)
+		m.BatchedUpdates = append(m.BatchedUpdates, msg)
+		if m.BatchUpdateTimer == nil {
+			m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
+				m.applyBatchedUpdates()
+			})
+		}
 	case models.TimeUpdateMsg:
 		m.LastUpdate = time.Now()
 	case logLinesMsg:
 		m.TextBox = []string(msg)
+	case batchedUpdatesAppliedMsg:
+		m.BatchUpdateTimer = nil
 	}
 
 	// Update CPU and memory usage
@@ -240,6 +249,22 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	runtime.ReadMemStats(&memStats)
 	m.MemoryUsage = memStats.Alloc
 	m.CPUUsage = getCPUUsage()
+
+	return m, tea.Batch(tickCmd(), m.updateLogCmd())
+}
+
+func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
+	return func() tea.Msg {
+		m.applyBatchedUpdates()
+		return batchedUpdatesAppliedMsg{}
+	}
+}
+
+func (m *DisplayModel) applyBatchedUpdates() {
+	for _, update := range m.BatchedUpdates {
+		m.UpdateStatus(update.Status)
+	}
+	m.BatchedUpdates = nil
 
 	// Check if all machines have completed their deployment and Docker/Core Packages installation
 	allCompleted := true
@@ -279,9 +304,9 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-
-	return m, tea.Batch(tickCmd(), m.updateLogCmd())
 }
+
+type batchedUpdatesAppliedMsg struct{}
 
 func getCPUUsage() float64 {
 	var startTime time.Time
@@ -341,8 +366,9 @@ func (m *DisplayModel) View() string {
 	tableStr := m.renderTable(headerStyle, cellStyle)
 	logContent := strings.Join(logger.GetLastLines(LogLines), "\n")
 	infoText := fmt.Sprintf(
-		"Press 'q' or Ctrl+C to quit (Last Updated: %s)",
+		"Press 'q' or Ctrl+C to quit (Last Updated: %s, Pending Updates: %d)",
 		m.LastUpdate.Format("15:04:05"),
+		len(m.BatchedUpdates),
 	)
 
 	var avgUpdateTime time.Duration
