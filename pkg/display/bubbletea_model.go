@@ -223,10 +223,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			l.Info("Quit command received (q or ctrl+c)")
 			close(m.quitChan) // Signal all goroutines to stop
 			l.Info("Quit channel closed")
-			return m, tea.Sequence(
-				tea.Printf("Quitting...\n"),
-				tea.Quit,
-			)
+			return m, tea.Quit
 		}
 	}
 
