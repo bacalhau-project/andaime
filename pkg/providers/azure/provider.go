@@ -185,7 +185,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				pollCount++
 				start := time.Now()
 				writeToDebugLog(fmt.Sprintf("Starting poll #%d", pollCount))
-				
+
 				resources, err := p.PollAndUpdateResources(ctx)
 				if err != nil {
 					l.Errorf("Failed to poll and update resources: %v", err)
@@ -196,11 +196,13 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 						writeToDebugLog(fmt.Sprintf("Resource: %+v", resource))
 					}
 				}
-				
+
 				elapsed := time.Since(start)
 				l.Debugf("PollAndUpdateResources #%d took %v", pollCount, elapsed)
-				writeToDebugLog(fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed))
-				
+				writeToDebugLog(
+					fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed),
+				)
+
 				p.logDeploymentStatus()
 			case <-quit:
 				l.Debug("Quit signal received, exiting resource polling")
@@ -227,19 +229,57 @@ func (p *AzureProvider) logDeploymentStatus() {
 		return
 	}
 
-	writeToDebugLog(fmt.Sprintf("Deployment Status - Name: %s, ResourceGroup: %s", p.Deployment.Name, p.Deployment.ResourceGroupName))
+	writeToDebugLog(
+		fmt.Sprintf(
+			"Deployment Status - Name: %s, ResourceGroup: %s",
+			p.Deployment.Name,
+			p.Deployment.ResourceGroupName,
+		),
+	)
 	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(p.Deployment.Machines)))
 
 	for i, machine := range p.Deployment.Machines {
-		writeToDebugLog(fmt.Sprintf("Machine %d - Name: %s, PublicIP: %s, PrivateIP: %s", i+1, machine.Name, machine.PublicIP, machine.PrivateIP))
-		writeToDebugLog(fmt.Sprintf("Machine %d - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v", i+1, machine.Docker, machine.CorePackages, machine.Bacalhau, machine.SSH))
-		
+		writeToDebugLog(
+			fmt.Sprintf(
+				"Machine %d - Name: %s, PublicIP: %s, PrivateIP: %s",
+				i+1,
+				machine.Name,
+				machine.PublicIP,
+				machine.PrivateIP,
+			),
+		)
+		writeToDebugLog(
+			fmt.Sprintf(
+				"Machine %d - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v",
+				i+1,
+				machine.Docker,
+				machine.CorePackages,
+				machine.Bacalhau,
+				machine.SSH,
+			),
+		)
+
 		completedResources, totalResources := machine.ResourcesComplete()
-		writeToDebugLog(fmt.Sprintf("Machine %d - Resources: %d/%d complete", i+1, completedResources, totalResources))
-		
-		if machine.machineResources != nil {
-			for resourceType, resource := range machine.machineResources {
-				writeToDebugLog(fmt.Sprintf("Machine %d - Resource %s: State: %v, Value: %s", i+1, resourceType, resource.ResourceState, resource.ResourceValue))
+		writeToDebugLog(
+			fmt.Sprintf(
+				"Machine %d - Resources: %d/%d complete",
+				i+1,
+				completedResources,
+				totalResources,
+			),
+		)
+
+		if machine.MachineResources != nil {
+			for resourceType, resource := range machine.MachineResources {
+				writeToDebugLog(
+					fmt.Sprintf(
+						"Machine %d - Resource %s: State: %v, Value: %s",
+						i+1,
+						resourceType,
+						resource.ResourceState,
+						resource.ResourceValue,
+					),
+				)
 			}
 		} else {
 			writeToDebugLog(fmt.Sprintf("Machine %d - No machine resources", i+1))
