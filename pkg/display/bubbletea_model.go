@@ -214,7 +214,21 @@ func (m *DisplayModel) Init() tea.Cmd {
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
-	// l.Debug("Update function called")
+
+	// Handle key events immediately
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		l.Debugf("Key pressed: %s", keyMsg.String())
+		if keyMsg.String() == "q" || keyMsg.String() == "ctrl+c" {
+			m.Quitting = true
+			l.Info("Quit command received (q or ctrl+c)")
+			close(m.quitChan) // Signal all goroutines to stop
+			l.Info("Quit channel closed")
+			return m, tea.Sequence(
+				tea.Printf("Quitting...\n"),
+				tea.Quit,
+			)
+		}
+	}
 
 	if m.Quitting {
 		l.Info("Quitting in progress, flushing output and exiting immediately...")
@@ -230,18 +244,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}()
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		l.Debugf("Key pressed: %s", msg.String())
-		if msg.String() == "q" || msg.String() == "ctrl+c" {
-			m.Quitting = true
-			l.Info("Quit command received (q or ctrl+c)")
-			close(m.quitChan) // Signal all goroutines to stop
-			l.Info("Quit channel closed")
-			return m, tea.Sequence(
-				tea.Printf("Quitting...\n"),
-				tea.Quit,
-			)
-		}
 	case tickMsg:
 		if !m.Quitting {
 			return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
