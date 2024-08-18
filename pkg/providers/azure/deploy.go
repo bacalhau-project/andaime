@@ -425,7 +425,9 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 			l.Errorf("Failed to convert resource to status: %v", err)
 			continue
 		}
-		statusUpdates = append(statusUpdates, statuses...)
+		for i := range statuses {
+			statusUpdates = append(statusUpdates, &statuses[i])
+		}
 	}
 
 	// Push all changes to the update loop at once
