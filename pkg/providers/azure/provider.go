@@ -26,11 +26,11 @@ type AzureProviderer interface {
 }
 
 type AzureProvider struct {
-	Client     AzureClient
-	Config     *viper.Viper
-	Deployment *models.Deployment
-	SSHUser    string
-	SSHPort    int
+	Client            AzureClient
+	Config            *viper.Viper
+	Deployment        *models.Deployment
+	SSHUser           string
+	SSHPort           int
 	lastResourceQuery time.Time
 	cachedResources   []interface{}
 }
@@ -179,24 +179,6 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 			return
 		}
 	}
-}
-
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) (bool, error) {
-	l := logger.Get()
-	start := time.Now()
-	defer func() {
-		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
-	}()
-
-	select {
-	case <-ctx.Done():
-		l.Debug("Cancel command received in PollAndUpdateResources")
-		return false, ctx.Err()
-	default:
-		// Continue with the function if no cancellation
-	}
-
-	// Rest of the function...
 }
 
 var _ AzureProviderer = &AzureProvider{}
