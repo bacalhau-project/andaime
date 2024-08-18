@@ -114,7 +114,7 @@ func TestExecuteCommandWithRetry(t *testing.T) {
 
 	expectedOutput := []byte("command output")
 	mockSSHSession.On("CombinedOutput", "ls -l").
-		Return(nil, fmt.Errorf("temporary error")).Once().
+		Return([]byte{}, fmt.Errorf("temporary error")).Once().
 		On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
 	mockSSHSession.On("Close").Return(nil)
 

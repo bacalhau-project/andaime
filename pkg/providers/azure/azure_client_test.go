@@ -241,7 +241,7 @@ func TestAzureProvider_ListAllResourcesInSubscription_NonStringTagValues(t *test
 
 	resources, err = provider.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
 	assert.Error(t, err)
-	assert.Equal(t, fmt.Errorf("failed to query resources: %v", expectedError), err)
+	assert.Equal(t, "failed to query resources: some error", err.Error())
 	assert.Empty(t, resources)
 
 	mockClient.AssertExpectations(t)
