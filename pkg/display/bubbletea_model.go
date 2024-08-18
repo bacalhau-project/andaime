@@ -144,12 +144,14 @@ type DisplayModel struct {
 	Quitting         bool
 	LastUpdate       time.Time
 	DebugMode        bool
-	UpdateTimes      []time.Duration
+	UpdateTimes      [100]time.Duration
+	UpdateTimesIndex int
 	LastUpdateStart  time.Time
 	CPUUsage         float64
 	MemoryUsage      uint64
 	BatchedUpdates   []models.StatusUpdateMsg
 	BatchUpdateTimer *time.Timer
+	quitChan         chan struct{}
 }
 
 // DisplayMachine represents a single machine in the deployment
@@ -191,10 +193,13 @@ func SetGlobalModel(m *DisplayModel) {
 // InitialModel creates and returns a new DisplayModel
 func InitialModel() *DisplayModel {
 	return &DisplayModel{
-		Deployment: models.NewDeployment(),
-		TextBox:    []string{"Resource Status Monitor"},
-		LastUpdate: time.Now(),
-		DebugMode:  os.Getenv("DEBUG_DISPLAY") == "1",
+		Deployment:       models.NewDeployment(),
+		TextBox:          []string{"Resource Status Monitor"},
+		LastUpdate:       time.Now(),
+		DebugMode:        os.Getenv("DEBUG_DISPLAY") == "1",
+		UpdateTimes:      [100]time.Duration{},
+		UpdateTimesIndex: 0,
+		quitChan:         make(chan struct{}),
 	}
 }
 
@@ -205,13 +210,15 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.Quitting {
+		return m, tea.Quit
+	}
+
 	updateStart := time.Now()
 	defer func() {
 		updateDuration := time.Since(updateStart)
-		m.UpdateTimes = append(m.UpdateTimes, updateDuration)
-		if len(m.UpdateTimes) > 100 {
-			m.UpdateTimes = m.UpdateTimes[1:]
-		}
+		m.UpdateTimes[m.UpdateTimesIndex] = updateDuration
+		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % 100
 	}()
 
 	switch msg := msg.(type) {
@@ -220,14 +227,11 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Quitting = true
 			return m, tea.Sequence(
 				tea.ExitAltScreen,
-				tea.Quit,
 				m.printFinalTableCmd(),
+				tea.Quit,
 			)
 		}
 	case tickMsg:
-		if m.Quitting {
-			return m, nil
-		}
 		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
 		m.BatchedUpdates = append(m.BatchedUpdates, msg)
@@ -255,8 +259,13 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 	return func() tea.Msg {
-		m.applyBatchedUpdates()
-		return batchedUpdatesAppliedMsg{}
+		select {
+		case <-m.quitChan:
+			return nil
+		default:
+			m.applyBatchedUpdates()
+			return batchedUpdatesAppliedMsg{}
+		}
 	}
 }
 
