@@ -215,32 +215,32 @@ func (m *DisplayModel) Init() tea.Cmd {
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
 
-	// Check for quit signal first
-	select {
-	case <-m.quitChan:
-		m.Quitting = true
-		l.Info("Quit signal received, exiting immediately...")
-		os.Stdout.Sync() // Ensure output is flushed
-		return m, tea.Quit
-	default:
-		// Continue with normal processing
-	}
-
 	// Handle key events immediately
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		l.Debugf("Key pressed: %s", keyMsg.String())
+		keyPressTime := time.Now()
+		l.Infof("Key pressed at %s: %s", keyPressTime.Format(time.RFC3339Nano), keyMsg.String())
 		if keyMsg.String() == "q" || keyMsg.String() == "ctrl+c" {
 			m.Quitting = true
-			l.Info("Quit command received (q or ctrl+c)")
+			l.Infof("Quit command received (q or ctrl+c) at %s", keyPressTime.Format(time.RFC3339Nano))
 			close(m.quitChan) // Signal all goroutines to stop
 			l.Info("Quit channel closed")
 			return m, tea.Quit
 		}
 	}
 
+	// Check for quit signal
+	select {
+	case <-m.quitChan:
+		if !m.Quitting {
+			m.Quitting = true
+			l.Infof("Quit signal received at %s, exiting immediately...", time.Now().Format(time.RFC3339Nano))
+		}
+		return m, tea.Quit
+	default:
+		// Continue with normal processing
+	}
+
 	if m.Quitting {
-		l.Info("Quitting in progress, flushing output and exiting immediately...")
-		os.Stdout.Sync() // Ensure output is flushed
 		return m, tea.Quit
 	}
 
@@ -254,20 +254,16 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tickMsg:
-		if !m.Quitting {
-			l.Debug("Processing tick message")
-			return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
-		}
+		l.Debug("Processing tick message")
+		return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
-		if !m.Quitting {
-			l.Debug("Processing status update message")
-			m.BatchedUpdates = append(m.BatchedUpdates, msg)
-			if m.BatchUpdateTimer == nil {
-				m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
-					l.Debug("Applying batched updates")
-					m.applyBatchedUpdates()
-				})
-			}
+		l.Debug("Processing status update message")
+		m.BatchedUpdates = append(m.BatchedUpdates, msg)
+		if m.BatchUpdateTimer == nil {
+			m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
+				l.Debug("Applying batched updates")
+				m.applyBatchedUpdates()
+			})
 		}
 	case models.TimeUpdateMsg:
 		l.Debug("Processing time update message")
@@ -280,19 +276,14 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.BatchUpdateTimer = nil
 	}
 
-	if !m.Quitting {
-		// Update CPU and memory usage
-		var memStats runtime.MemStats
-		runtime.ReadMemStats(&memStats)
-		m.MemoryUsage = memStats.Alloc
-		m.CPUUsage = getCPUUsage()
-		l.Debugf("CPU Usage: %.2f%%, Memory Usage: %d MB", m.CPUUsage, m.MemoryUsage/1024/1024)
+	// Update CPU and memory usage
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	m.MemoryUsage = memStats.Alloc
+	m.CPUUsage = getCPUUsage()
+	l.Debugf("CPU Usage: %.2f%%, Memory Usage: %d MB", m.CPUUsage, m.MemoryUsage/1024/1024)
 
-		return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
-	}
-
-	l.Info("Exiting Update function")
-	return m, tea.Quit
+	return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
 }
 
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
