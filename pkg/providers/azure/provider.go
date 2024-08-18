@@ -141,10 +141,13 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	resources, err := p.Client.ListAllResourcesInSubscription(ctx,
 		subscriptionID,
 		tags)
-	l.Debugf("ListAllResourcesInSubscription took %v", time.Since(start))
+	elapsed := time.Since(start)
+	l.Debugf("ListAllResourcesInSubscription took %v", elapsed)
+	writeToDebugLog(fmt.Sprintf("ListAllResourcesInSubscription took %v", elapsed))
 
 	if err != nil {
 		l.Errorf("Failed to query Azure resources: %v", err)
+		writeToDebugLog(fmt.Sprintf("Failed to query Azure resources: %v", err))
 		return nil, fmt.Errorf("failed to query resources: %v", err)
 	}
 
