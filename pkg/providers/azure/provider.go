@@ -169,6 +169,12 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	resourceTicker := time.NewTicker(30 * time.Second)
 	defer resourceTicker.Stop()
 
+	quit := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		close(quit)
+	}()
+
 	for {
 		select {
 		case <-resourceTicker.C:
@@ -180,10 +186,10 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 			l.Debugf("PollAndUpdateResources took %v", elapsed)
 			l.Debugf("Writing to debug log: PollAndUpdateResources took %v", elapsed)
 			writeToDebugLog(fmt.Sprintf("PollAndUpdateResources took %v", elapsed))
-		case <-ctx.Done():
-			l.Debug("Context done received, exiting resource polling")
-			l.Debug("Writing to debug log: Context done received, exiting resource polling")
-			writeToDebugLog("Context done received, exiting resource polling")
+		case <-quit:
+			l.Debug("Quit signal received, exiting resource polling")
+			l.Debug("Writing to debug log: Quit signal received, exiting resource polling")
+			writeToDebugLog("Quit signal received, exiting resource polling")
 			return
 		}
 	}
