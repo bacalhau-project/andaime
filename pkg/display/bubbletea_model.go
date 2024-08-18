@@ -144,8 +144,9 @@ type DisplayModel struct {
 	Quitting         bool
 	LastUpdate       time.Time
 	DebugMode        bool
-	UpdateTimes      [100]time.Duration
+	UpdateTimes      []time.Duration
 	UpdateTimesIndex int
+	UpdateTimesSize  int
 	LastUpdateStart  time.Time
 	CPUUsage         float64
 	MemoryUsage      uint64
@@ -197,8 +198,9 @@ func InitialModel() *DisplayModel {
 		TextBox:          []string{"Resource Status Monitor"},
 		LastUpdate:       time.Now(),
 		DebugMode:        os.Getenv("DEBUG_DISPLAY") == "1",
-		UpdateTimes:      [100]time.Duration{},
+		UpdateTimes:      make([]time.Duration, 100),
 		UpdateTimesIndex: 0,
+		UpdateTimesSize:  100,
 		quitChan:         make(chan struct{}),
 	}
 }
@@ -218,7 +220,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	defer func() {
 		updateDuration := time.Since(updateStart)
 		m.UpdateTimes[m.UpdateTimesIndex] = updateDuration
-		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % 100
+		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % m.UpdateTimesSize
 	}()
 
 	switch msg := msg.(type) {
@@ -381,19 +383,24 @@ func (m *DisplayModel) View() string {
 	)
 
 	var avgUpdateTime time.Duration
-	if len(m.UpdateTimes) > 0 {
-		sum := int64(0)
-		for _, d := range m.UpdateTimes {
+	var totalUpdates int
+	sum := int64(0)
+	for _, d := range m.UpdateTimes {
+		if d != 0 {
 			sum += d.Nanoseconds()
+			totalUpdates++
 		}
-		avgUpdateTime = time.Duration(sum / int64(len(m.UpdateTimes)))
+	}
+	if totalUpdates > 0 {
+		avgUpdateTime = time.Duration(sum / int64(totalUpdates))
 	}
 
 	performanceInfo := fmt.Sprintf(
-		"Avg Update Time: %v, CPU Usage: %.2f%%, Memory Usage: %d MB",
+		"Avg Update Time: %v, CPU Usage: %.2f%%, Memory Usage: %d MB, Circular Buffer Size: %d",
 		avgUpdateTime,
 		m.CPUUsage,
 		m.MemoryUsage/1024/1024,
+		m.UpdateTimesSize,
 	)
 
 	logger.WriteProfileInfo(performanceInfo)
