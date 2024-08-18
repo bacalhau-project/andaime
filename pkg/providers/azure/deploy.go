@@ -357,12 +357,14 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	// Test SSH connectivity
-	sshConfig := &sshutils.SSHConfig{
-		Host:           m.Deployment.Machines[machineIndex].PublicIP,
-		User:           "azureuser",
-		PrivateKeyPath: m.Deployment.SSHPrivateKeyPath,
-		PublicKeyPath:  m.Deployment.SSHPublicKeyPath,
-		Port:           22,
+	sshConfig, err := sshutils.NewSSHConfig(
+		m.Deployment.Machines[machineIndex].PublicIP,
+		m.Deployment.Machines[machineIndex].SSHPort,
+		m.Deployment.Machines[machineIndex].SSHUser,
+		[]byte(m.Deployment.SSHPrivateKeyMaterial),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
 	sshErr := sshutils.WaitForSSHToBeLive(sshConfig, 3, time.Second*10)
@@ -389,10 +391,22 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			),
 		)
 	}
+	if m.Deployment.Machines[machineIndex].SSH == models.ServiceStateSucceeded {
+		err := m.Deployment.Machines[machineIndex].InstallDockerAndCorePackages()
+		if err != nil {
+			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machine.Name, err)
+		}
+	}
+
 	return nil
 }
 
 func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
+	l := logger.Get()
+	start := time.Now()
+	defer func() {
+		l.Debugf("PollAndUpdateResources took %v", time.Since(start))
+	}()
 	m := display.GetGlobalModel()
 	resources, err := p.Client.GetResources(
 		ctx,
@@ -404,7 +418,34 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 		return nil, err
 	}
 
-	return resources, nil
+	var statusUpdates []*models.DisplayStatus
+	for _, resource := range resources {
+		statuses, err := models.ConvertFromRawResourceToStatus(resource.(map[string]interface{}), m.Deployment)
+		if err != nil {
+			l.Errorf("Failed to convert resource to status: %v", err)
+			continue
+		}
+		statusUpdates = append(statusUpdates, statuses...)
+	}
+
+	// Push all changes to the update loop at once
+	prog := display.GetGlobalProgram()
+	for _, status := range statusUpdates {
+		prog.UpdateStatus(status)
+	}
+
+	defer func() {
+		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+	}()
+
+	select {
+	case <-ctx.Done():
+		l.Debug("Cancel command received in PollAndUpdateResources")
+		return nil, ctx.Err()
+	default:
+		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+		return resources, nil
+	}
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
