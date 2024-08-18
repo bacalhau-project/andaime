@@ -212,6 +212,11 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.Quitting {
+		logger.Get().Info("Quitting in progress...")
+		return m, tea.Quit
+	}
+
 	updateStart := time.Now()
 	defer func() {
 		updateDuration := time.Since(updateStart)
@@ -230,11 +235,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				tea.Quit,
 			)
 		}
-	}
-
-	if m.Quitting {
-		logger.Get().Info("Quitting in progress...")
-		return m, tea.Quit
 	}
 	case tickMsg:
 		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
