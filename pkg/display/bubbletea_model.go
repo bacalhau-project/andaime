@@ -9,11 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"runtime"
+
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"runtime"
 )
 
 // Constants
@@ -235,10 +236,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				tea.Quit,
 			)
 		}
-	}
-	if m.Quitting {
-		return m, tea.Quit
-	}
 	case tickMsg:
 		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
@@ -341,7 +338,7 @@ func getCPUUsage() float64 {
 	time.Sleep(100 * time.Millisecond)
 	endTime := time.Now()
 	endUsage, _ := getCPUTime()
-	
+
 	cpuUsage := (endUsage - startUsage) / endTime.Sub(startTime).Seconds()
 	return cpuUsage * 100 // Return as percentage
 }
