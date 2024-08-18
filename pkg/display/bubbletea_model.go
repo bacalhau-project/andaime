@@ -123,7 +123,7 @@ func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*model
 		if status.Name != "" {
 			newMachine.Name = status.Name
 		}
-		if status.Type != models.AzureResourceTypes{} {
+		if status.Type != (models.AzureResourceTypes{}) {
 			newMachine.Type = status.Type
 		}
 		if status.Location != "" {
