@@ -237,8 +237,12 @@ func (p *AzureProvider) logDeploymentStatus() {
 		completedResources, totalResources := machine.ResourcesComplete()
 		writeToDebugLog(fmt.Sprintf("Machine %d - Resources: %d/%d complete", i+1, completedResources, totalResources))
 		
-		for resourceType, resource := range machine.machineResources {
-			writeToDebugLog(fmt.Sprintf("Machine %d - Resource %s: State: %v, Value: %s", i+1, resourceType, resource.ResourceState, resource.ResourceValue))
+		if machine.machineResources != nil {
+			for resourceType, resource := range machine.machineResources {
+				writeToDebugLog(fmt.Sprintf("Machine %d - Resource %s: State: %v, Value: %s", i+1, resourceType, resource.ResourceState, resource.ResourceValue))
+			}
+		} else {
+			writeToDebugLog(fmt.Sprintf("Machine %d - No machine resources", i+1))
 		}
 	}
 }
