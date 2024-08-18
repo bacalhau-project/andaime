@@ -173,12 +173,33 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 			if _, err := p.PollAndUpdateResources(ctx); err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 			}
-			l.Debugf("PollAndUpdateResources took %v", time.Since(start))
+			elapsed := time.Since(start)
+			l.Debugf("PollAndUpdateResources took %v", elapsed)
+			l.Debugf("Writing to debug log: PollAndUpdateResources took %v", elapsed)
+			writeToDebugLog(fmt.Sprintf("PollAndUpdateResources took %v", elapsed))
 		case <-ctx.Done():
 			l.Debug("Context done received, exiting resource polling")
+			l.Debug("Writing to debug log: Context done received, exiting resource polling")
+			writeToDebugLog("Context done received, exiting resource polling")
 			return
 		}
 	}
 }
 
 var _ AzureProviderer = &AzureProvider{}
+
+func writeToDebugLog(message string) {
+	debugFilePath := "/tmp/andaime.log"
+	debugFile, err := os.OpenFile(debugFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening debug log file %s: %v\n", debugFilePath, err)
+		return
+	}
+	defer debugFile.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logMessage := fmt.Sprintf("[%s] %s\n", timestamp, message)
+	if _, err := debugFile.WriteString(logMessage); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
+	}
+}
