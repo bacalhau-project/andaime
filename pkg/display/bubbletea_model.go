@@ -22,7 +22,7 @@ const (
 	LogLines           = 10
 	AzureTotalSteps    = 7
 	StatusLength       = 30
-	TickerInterval     = 250 * time.Millisecond
+	TickerInterval     = 100 * time.Millisecond
 	ProgressBarPadding = 2
 )
 
@@ -215,6 +215,17 @@ func (m *DisplayModel) Init() tea.Cmd {
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
 
+	// Check for quit signal first
+	select {
+	case <-m.quitChan:
+		m.Quitting = true
+		l.Info("Quit signal received, exiting immediately...")
+		os.Stdout.Sync() // Ensure output is flushed
+		return m, tea.Quit
+	default:
+		// Continue with normal processing
+	}
+
 	// Handle key events immediately
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		l.Debugf("Key pressed: %s", keyMsg.String())
@@ -243,7 +254,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
 		if !m.Quitting {
-			return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
+			return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 		}
 	case models.StatusUpdateMsg:
 		if !m.Quitting {
@@ -269,7 +280,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.MemoryUsage = memStats.Alloc
 		m.CPUUsage = getCPUUsage()
 
-		return m, tea.Batch(tickCmd(), m.updateLogCmd())
+		return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
 	}
 
 	return m, tea.Quit
@@ -586,9 +597,14 @@ func formatElapsedTime(d time.Duration) string {
 type tickMsg time.Time
 type logLinesMsg []string
 
-func tickCmd() tea.Cmd {
+func (m *DisplayModel) tickCmd() tea.Cmd {
 	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
-		return tickMsg(t)
+		select {
+		case <-m.quitChan:
+			return tea.Quit
+		default:
+			return tickMsg(t)
+		}
 	})
 }
 
