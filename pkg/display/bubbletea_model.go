@@ -217,7 +217,9 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l.Debug("Update function called")
 
 	if m.Quitting {
-		l.Info("Quitting in progress, exiting immediately...")
+		l.Info("Quitting in progress, flushing output and exiting immediately...")
+		fmt.Print(m.View()) // Flush the final view
+		os.Stdout.Sync()    // Ensure output is flushed
 		return m, tea.Quit
 	}
 
@@ -236,7 +238,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			l.Info("Quit command received (q or ctrl+c)")
 			close(m.quitChan) // Signal all goroutines to stop
 			l.Info("Quit channel closed")
-			return m, tea.Quit
+			return m, tea.Sequence(
+				tea.Printf("Quitting...\n"),
+				tea.Quit,
+			)
 		}
 	case tickMsg:
 		if !m.Quitting {
