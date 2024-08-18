@@ -227,6 +227,8 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			m.Quitting = true
+			logger.Get().Info("Quit command received (q or ctrl+c)")
+			close(m.quitChan) // Signal all goroutines to stop
 			return m, tea.Sequence(
 				tea.ExitAltScreen,
 				m.printFinalTableCmd(),
@@ -263,7 +265,8 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case <-m.quitChan:
-			return nil
+			logger.Get().Info("Quit signal received, stopping batch updates")
+			return tea.Quit
 		default:
 			m.applyBatchedUpdates()
 			return batchedUpdatesAppliedMsg{}
