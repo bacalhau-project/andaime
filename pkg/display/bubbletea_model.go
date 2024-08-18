@@ -93,9 +93,6 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	}
 	if status.SSH != models.ServiceStateUnknown {
 		machine.SSH = status.SSH
-		if status.SSH == models.ServiceStateSucceeded {
-			go machine.InstallDockerAndCorePackages()
-		}
 	}
 	if status.Docker != models.ServiceStateUnknown {
 		machine.Docker = status.Docker
@@ -200,8 +197,8 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	l := logger.Get()
-	l.Debugf("Update called with msg: %v", msg)
+	// l := logger.Get()
+	// l.Debugf("Update called with msg: %v", msg)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
