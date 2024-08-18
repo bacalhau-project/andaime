@@ -213,8 +213,11 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	l := logger.Get()
+	l.Debug("Update function called")
+
 	if m.Quitting {
-		logger.Get().Info("Quitting in progress...")
+		l.Info("Quitting in progress, exiting immediately...")
 		return m, tea.Quit
 	}
 
@@ -227,14 +230,13 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		l.Debugf("Key pressed: %s", msg.String())
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			m.Quitting = true
-			logger.Get().Info("Quit command received (q or ctrl+c)")
+			l.Info("Quit command received (q or ctrl+c)")
 			close(m.quitChan) // Signal all goroutines to stop
-			return m, tea.Sequence(
-				m.printFinalTableCmd(),
-				tea.Quit,
-			)
+			l.Info("Quit channel closed")
+			return m, tea.Quit
 		}
 	case tickMsg:
 		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
