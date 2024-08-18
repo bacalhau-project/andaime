@@ -54,14 +54,6 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "", Width: 1},
 }
 
-// Commands and messages
-func (m *DisplayModel) printFinalTableCmd() tea.Cmd {
-	return func() tea.Msg {
-		fmt.Print("\n" + m.RenderFinalTable() + "\n")
-		return nil
-	}
-}
-
 func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	return func() tea.Msg {
 		return logLinesMsg(logger.GetLastLines(LogLines))
