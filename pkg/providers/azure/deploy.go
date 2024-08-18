@@ -108,7 +108,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				l.Errorf("Failed to deploy machine %s: %v", goRoutineMachine.ID, err)
 
 				// Uses the machine name for the resource name because this is the VM
-				prog.UpdateStatus(
+				m.UpdateStatus(
 					models.NewDisplayVMStatus(
 						goRoutineMachine.Name,
 						models.AzureResourceStateFailed,
@@ -131,7 +131,7 @@ func (p *AzureProvider) deployMachine(
 ) error {
 	prog := display.GetGlobalProgram()
 
-	prog.UpdateStatus(
+	m.UpdateStatus(
 		models.NewDisplayStatus(
 			machine.Name,
 			machine.Name,
@@ -223,7 +223,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		return fmt.Errorf("machine %s not found in deployment", machine.ID)
 	}
 
-	prog.UpdateStatus(
+	m.UpdateStatus(
 		models.NewDisplayVMStatus(
 			machine.Name,
 			models.AzureResourceStatePending,
@@ -279,11 +279,11 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				retry+1,
 				maxRetries,
 			)
-			prog.UpdateStatus(dispStatus)
+			m.UpdateStatus(dispStatus)
 			dnsFailed = true
 			continue
 		} else if err != nil {
-			prog.UpdateStatus(
+			m.UpdateStatus(
 				models.NewDisplayStatusWithText(
 					machine.Name,
 					models.AzureResourceTypeVM,
@@ -300,7 +300,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	if dnsFailed {
-		prog.UpdateStatus(
+		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
 				models.AzureResourceTypeVM,
@@ -327,7 +327,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				)
 				displayStatus.PublicIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
 				displayStatus.PrivateIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
-				prog.UpdateStatus(
+				m.UpdateStatus(
 					displayStatus,
 				)
 				continue
@@ -349,7 +349,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			displayStatus.PublicIP = publicIP
 			displayStatus.PrivateIP = privateIP
 			displayStatus.ElapsedTime = m.Deployment.Machines[machineIndex].ElapsedTime
-			prog.UpdateStatus(
+			m.UpdateStatus(
 				displayStatus,
 			)
 			break
@@ -371,7 +371,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	if sshErr != nil {
 		m.Deployment.Machines[machineIndex].SSH = models.ServiceStateFailed
 		m.Deployment.Machines[machineIndex].StatusMessage = "Permanently failed deploying SSH"
-		prog.UpdateStatus(
+		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
 				models.AzureResourceTypeVM,
@@ -382,7 +382,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	} else {
 		m.Deployment.Machines[machineIndex].StatusMessage = "Successfully Deployed"
 		m.Deployment.Machines[machineIndex].SSH = models.ServiceStateSucceeded
-		prog.UpdateStatus(
+		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
 				models.AzureResourceTypeVM,
