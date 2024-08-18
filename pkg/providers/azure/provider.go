@@ -175,23 +175,34 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 		close(quit)
 	}()
 
-	for {
-		select {
-		case <-resourceTicker.C:
-			start := time.Now()
-			if _, err := p.PollAndUpdateResources(ctx); err != nil {
-				l.Errorf("Failed to poll and update resources: %v", err)
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-resourceTicker.C:
+				start := time.Now()
+				if _, err := p.PollAndUpdateResources(ctx); err != nil {
+					l.Errorf("Failed to poll and update resources: %v", err)
+				}
+				elapsed := time.Since(start)
+				l.Debugf("PollAndUpdateResources took %v", elapsed)
+				writeToDebugLog(fmt.Sprintf("PollAndUpdateResources took %v", elapsed))
+			case <-quit:
+				l.Debug("Quit signal received, exiting resource polling")
+				writeToDebugLog("Quit signal received, exiting resource polling")
+				done <- true
+				return
 			}
-			elapsed := time.Since(start)
-			l.Debugf("PollAndUpdateResources took %v", elapsed)
-			l.Debugf("Writing to debug log: PollAndUpdateResources took %v", elapsed)
-			writeToDebugLog(fmt.Sprintf("PollAndUpdateResources took %v", elapsed))
-		case <-quit:
-			l.Debug("Quit signal received, exiting resource polling")
-			l.Debug("Writing to debug log: Quit signal received, exiting resource polling")
-			writeToDebugLog("Quit signal received, exiting resource polling")
-			return
 		}
+	}()
+
+	select {
+	case <-quit:
+		l.Debug("Quit signal received, forcing immediate exit")
+		writeToDebugLog("Quit signal received, forcing immediate exit")
+	case <-done:
+		l.Debug("Resource polling completed normally")
+		writeToDebugLog("Resource polling completed normally")
 	}
 }
 
