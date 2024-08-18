@@ -475,6 +475,7 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 	if found || (status.Name != "" && status.Type == models.AzureResourceTypeVM) {
 		m.updateMachineStatus(machine, status)
 	}
+	// Remove the Send call, we'll update the view in the tickCmd
 }
 
 // Helper functions
@@ -609,6 +610,8 @@ func (m *DisplayModel) tickCmd() tea.Cmd {
 		case <-m.quitChan:
 			return tea.Quit
 		default:
+			// Update the whole table based on the current state of the model
+			m.LastUpdate = time.Now()
 			return tickMsg(t)
 		}
 	})
