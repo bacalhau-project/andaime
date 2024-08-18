@@ -236,6 +236,9 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 	}
+	if m.Quitting {
+		return m, tea.Quit
+	}
 	case tickMsg:
 		return m, tea.Batch(tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case models.StatusUpdateMsg:
