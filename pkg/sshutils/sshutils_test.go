@@ -105,21 +105,38 @@ func TestExecuteCommand(t *testing.T) {
 	mockSSHSession.AssertExpectations(t)
 }
 
+func TestExecuteCommandWithRetry(t *testing.T) {
+	log := logger.Get()
+	mockSSHSession := &MockSSHSession{}
+
+	mockSSHClient, sshConfig := GetTypedMockClient(t, log)
+	mockSSHClient.On("NewSession").Return(mockSSHSession, nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockSSHClient)
+
+	expectedOutput := []byte("command output")
+	mockSSHSession.On("CombinedOutput", "ls -l").
+		Return(nil, fmt.Errorf("temporary error")).Once().
+		On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
+	mockSSHSession.On("Close").Return(nil)
+
+	// Execute
+	actualResult, err := sshConfig.ExecuteCommand("ls -l")
+
+	// Assert
+	assert.NoError(t, err)
+	assert.Equal(t, string(expectedOutput), actualResult)
+
+	mockSSHClient.AssertExpectations(t)
+	mockSSHSession.AssertNumberOfCalls(t, "CombinedOutput", 2)
+	mockSSHSession.AssertExpectations(t)
+}
+
 func TestPushFile(t *testing.T) {
 	log := logger.Get()
 	mockClient, _ := GetTypedMockClient(t, log)
 
-	// Create a temporary local file for testing
-	localFile, err := os.CreateTemp("", "test-local-file")
-	assert.NoError(t, err)
-	defer os.Remove(localFile.Name())
-	localPath := localFile.Name()
-
-	// Write some content to the local file
-	localContent := "test file content"
-	_, err = localFile.WriteString(localContent)
-	assert.NoError(t, err)
-	localFile.Close()
+	// Create test content
+	localContent := []byte("test file content")
 
 	// Mock NewSession to return a mock session
 	mockSession := &MockSSHSession{}
@@ -132,15 +149,46 @@ func TestPushFile(t *testing.T) {
 	mockStdin := &MockWriteCloser{}
 	mockSession.On("StdinPipe").Return(mockStdin, nil)
 	mockSession.On("Start", remoteCmd).Return(nil)
-	mockStdin.On("Write", []byte(localContent)).Return(len(localContent), nil)
+	mockStdin.On("Write", localContent).Return(len(localContent), nil)
 	mockStdin.On("Close").Return(nil)
 	mockSession.On("Wait").Return(nil)
 	mockSession.On("Close").Return(nil)
 
 	// Test successful file push
-	content, err := os.ReadFile(localPath)
+	err := sshConfig.PushFile(localContent, "/remote/path", false)
 	assert.NoError(t, err)
-	err = sshConfig.PushFile(content, "/remote/path", false)
+
+	// Verify expectations
+	mockClient.AssertExpectations(t)
+	mockSession.AssertExpectations(t)
+	mockStdin.AssertExpectations(t)
+}
+
+func TestPushFileExecutable(t *testing.T) {
+	log := logger.Get()
+	mockClient, _ := GetTypedMockClient(t, log)
+
+	// Create test content
+	localContent := []byte("#!/bin/bash\necho 'Hello, World!'")
+
+	// Mock NewSession to return a mock session
+	mockSession := &MockSSHSession{}
+	mockClient, sshConfig := GetTypedMockClient(t, log)
+	mockClient.On("NewSession").Return(mockSession, nil)
+	NewSSHClientFunc = MockSSHClientCreator(mockClient)
+
+	// Mock session behavior for file push
+	remoteCmd := fmt.Sprintf("cat > %s && chmod +x %s", "/remote/path", "/remote/path")
+	mockStdin := &MockWriteCloser{}
+	mockSession.On("StdinPipe").Return(mockStdin, nil)
+	mockSession.On("Start", remoteCmd).Return(nil)
+	mockStdin.On("Write", localContent).Return(len(localContent), nil)
+	mockStdin.On("Close").Return(nil)
+	mockSession.On("Wait").Return(nil)
+	mockSession.On("Close").Return(nil)
+
+	// Test successful file push with executable flag
+	err := sshConfig.PushFile(localContent, "/remote/path", true)
 	assert.NoError(t, err)
 
 	// Verify expectations
