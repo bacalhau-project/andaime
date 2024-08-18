@@ -77,7 +77,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	m := display.GetGlobalModel()
 	// Remove the state machine reference
 
-	l.Debugf("Deploying template for deployment: %v", m.Deployment)
+	// l.Debugf("Deploying template for deployment: %v", m.Deployment)
 
 	tags := utils.EnsureAzureTags(
 		m.Deployment.Tags,
@@ -420,7 +420,10 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 
 	var statusUpdates []*models.DisplayStatus
 	for _, resource := range resources {
-		statuses, err := models.ConvertFromRawResourceToStatus(resource.(map[string]interface{}), m.Deployment)
+		statuses, err := models.ConvertFromRawResourceToStatus(
+			resource.(map[string]interface{}),
+			m.Deployment,
+		)
 		if err != nil {
 			l.Errorf("Failed to convert resource to status: %v", err)
 			continue
