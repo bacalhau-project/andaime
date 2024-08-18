@@ -156,6 +156,7 @@ type DisplayModel struct {
 	BatchUpdateTimer *time.Timer
 	quitChan         chan struct{}
 	goroutineCount   int64
+	keyEventChan     chan tea.KeyMsg
 }
 
 // DisplayMachine represents a single machine in the deployment
@@ -196,7 +197,7 @@ func SetGlobalModel(m *DisplayModel) {
 
 // InitialModel creates and returns a new DisplayModel
 func InitialModel() *DisplayModel {
-	return &DisplayModel{
+	model := &DisplayModel{
 		Deployment:       models.NewDeployment(),
 		TextBox:          []string{"Resource Status Monitor"},
 		LastUpdate:       time.Now(),
@@ -205,6 +206,28 @@ func InitialModel() *DisplayModel {
 		UpdateTimesIndex: 0,
 		UpdateTimesSize:  100,
 		quitChan:         make(chan struct{}),
+		keyEventChan:     make(chan tea.KeyMsg),
+	}
+	go model.handleKeyEvents()
+	return model
+}
+
+func (m *DisplayModel) handleKeyEvents() {
+	for {
+		select {
+		case <-m.quitChan:
+			return
+		case key := <-m.keyEventChan:
+			if key.String() == "q" || key.String() == "ctrl+c" {
+				m.Quitting = true
+				logger.Get().Infof(
+					"Quit command received (q or ctrl+c) at %s",
+					time.Now().Format(time.RFC3339Nano),
+				)
+				close(m.quitChan)
+				logger.Get().Info("Quit channel closed")
+			}
+		}
 	}
 }
 
@@ -217,32 +240,20 @@ func (m *DisplayModel) Init() tea.Cmd {
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
 
-	// Handle key events immediately
+	// Handle key events by sending them to the channel
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		keyPressTime := time.Now()
 		l.Infof("Key pressed at %s: %s", keyPressTime.Format(time.RFC3339Nano), keyMsg.String())
-		if keyMsg.String() == "q" || keyMsg.String() == "ctrl+c" {
-			m.Quitting = true
-			l.Infof(
-				"Quit command received (q or ctrl+c) at %s",
-				keyPressTime.Format(time.RFC3339Nano),
-			)
-			close(m.quitChan) // Signal all goroutines to stop
-			l.Info("Quit channel closed")
-			return m, tea.Quit
+		select {
+		case m.keyEventChan <- keyMsg:
+		default:
+			l.Warn("Key event channel is full, dropping key press")
 		}
 	}
 
 	// Check for quit signal
 	select {
 	case <-m.quitChan:
-		if !m.Quitting {
-			m.Quitting = true
-			l.Infof(
-				"Quit signal received at %s, exiting immediately...",
-				time.Now().Format(time.RFC3339Nano),
-			)
-		}
 		return m, tea.Quit
 	default:
 		// Continue with normal processing
