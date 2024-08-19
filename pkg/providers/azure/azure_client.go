@@ -278,7 +278,7 @@ func (c *LiveAzureClient) GetResources(
 	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
 	prog := display.GetGlobalProgram()
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	// Remove the state machine reference
 	// --- START OF MERGED SearchResources functionality ---
 

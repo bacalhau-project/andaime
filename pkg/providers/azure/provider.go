@@ -180,7 +180,6 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 
 func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
-	m := display.GetGlobalModel()
 	l.Debug("Starting StartResourcePolling")
 	writeToDebugLog("Starting StartResourcePolling")
 
@@ -199,6 +198,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 		for {
 			select {
 			case <-resourceTicker.C:
+				m := display.GetGlobalModelFunc()
 				if m.Quitting {
 					return
 				}

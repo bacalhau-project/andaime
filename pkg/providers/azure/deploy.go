@@ -25,7 +25,7 @@ const timeBetweenIPRetries = 10 * time.Second
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
 	l.Debug("Starting DeployResources")
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 
 	// Set the start time for the deployment
 	m.Deployment.StartTime = time.Now()
@@ -79,7 +79,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
 	l.Debug("Starting DeployARMTemplate")
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	// Remove the state machine reference
 
 	l.Debugf("Deploying template for deployment: %+v", m.Deployment)
@@ -134,7 +134,7 @@ func (p *AzureProvider) deployMachine(
 	machine *models.Machine,
 	tags map[string]*string,
 ) error {
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 
 	m.UpdateStatus(
 		models.NewDisplayStatus(
@@ -183,7 +183,7 @@ func (p *AzureProvider) getAndPrepareTemplate() (map[string]interface{}, error) 
 func (p *AzureProvider) prepareDeploymentParams(
 	machine *models.Machine,
 ) map[string]interface{} {
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	return map[string]interface{}{
 		"vmName":             fmt.Sprintf("%s-vm", machine.ID),
 		"adminUsername":      "azureuser",
@@ -213,7 +213,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 ) error {
 	l := logger.Get()
 	maxRetries := 3
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 
 	machineIndex := -1
 	for i, depMachine := range m.Deployment.Machines {
@@ -415,7 +415,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	defer func() {
 		l.Debugf("PollAndUpdateResources took %v", time.Since(start))
 	}()
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	client := p.GetAzureClient()
 	resources, err := client.GetResources(
 		ctx,
@@ -467,7 +467,7 @@ func (p *AzureProvider) FinalizeDeployment(
 	ctx context.Context,
 ) error {
 	l := logger.Get()
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
@@ -507,7 +507,7 @@ func (p *AzureProvider) FinalizeDeployment(
 func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgram()
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 
 	if m.Deployment == nil {
 		return fmt.Errorf("global deployment object is not initialized")

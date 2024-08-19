@@ -68,11 +68,12 @@ type Machine struct {
 	MachineResources map[string]MachineResource
 	MachineServices  map[string]ServiceType
 
-	VMSize       string
-	DiskSizeGB   int32 `default:"30"`
-	ComputerName string
-	ElapsedTime  time.Duration
-	Orchestrator bool
+	VMSize         string
+	DiskSizeGB     int32 `default:"30"`
+	ComputerName   string
+	ElapsedTime    time.Duration
+	Orchestrator   bool
+	OrchestratorIP string
 
 	// New SSH-related fields
 	SSHUser               string
@@ -146,7 +147,7 @@ func (m *Machine) SetResource(resourceType string, resourceState AzureResourceSt
 }
 
 func (m *Machine) ResourcesComplete() (int, int) {
-	l := logger.Get()
+	// l := logger.Get()
 	totalResources := len(RequiredAzureResources)
 	completedResources := 0
 
@@ -158,25 +159,25 @@ func (m *Machine) ResourcesComplete() (int, int) {
 		}
 	}
 
-	// Print completed and pending resources
-	l.Infof("Completed resources:")
-	for _, requiredResource := range RequiredAzureResources {
-		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
-			if resource.ResourceState == AzureResourceStateSucceeded {
-				l.Infof("  %s", requiredResource.ResourceString)
-			}
-		}
-	}
-	l.Infof("Pending resources:")
-	for _, requiredResource := range RequiredAzureResources {
-		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
-			if resource.ResourceState != AzureResourceStateSucceeded {
-				l.Infof("  %s", requiredResource.ResourceString)
-			}
-		} else {
-			l.Infof("  %s", requiredResource.ResourceString)
-		}
-	}
+	// // Print completed and pending resources
+	// l.Debugf("Completed resources:")
+	// for _, requiredResource := range RequiredAzureResources {
+	// 	if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
+	// 		if resource.ResourceState == AzureResourceStateSucceeded {
+	// 			l.Debugf("  %s", requiredResource.ResourceString)
+	// 		}
+	// 	}
+	// }
+	// l.Infof("Pending resources:")
+	// for _, requiredResource := range RequiredAzureResources {
+	// 	if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
+	// 		if resource.ResourceState != AzureResourceStateSucceeded {
+	// 			l.Infof("  %s", requiredResource.ResourceString)
+	// 		}
+	// 	} else {
+	// 		l.Infof("  %s", requiredResource.ResourceString)
+	// 	}
+	// }
 
 	return completedResources, totalResources
 }
@@ -396,7 +397,9 @@ type Deployment struct {
 	ResourceGroupLocation string
 	Locations             []string
 	OrchestratorNode      *Machine
+	OrchestratorIP        string
 	Machines              []Machine
+	UniqueLocations       []string
 	ProjectID             string
 	UniqueID              string
 	Tags                  map[string]*string

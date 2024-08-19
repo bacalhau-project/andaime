@@ -42,7 +42,7 @@ func GetTestDisplayCmd() *cobra.Command {
 }
 
 func runTestDisplay() error {
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	go func() {

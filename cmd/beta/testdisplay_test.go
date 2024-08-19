@@ -14,7 +14,7 @@ import (
 
 func TestDisplayLayout(t *testing.T) {
 	// Initialize the display model
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 
 	// Add test machines
 	testMachines := []models.Machine{
@@ -198,7 +198,7 @@ func TestDisplayLayout(t *testing.T) {
 }
 
 func TestColumnWidths(t *testing.T) {
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	renderedTable := m.RenderFinalTable()
 	lines := strings.Split(renderedTable, "\n")
 
@@ -224,7 +224,7 @@ func TestColumnWidths(t *testing.T) {
 }
 
 func TestProgressBar(t *testing.T) {
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	m.Deployment.Machines = []models.Machine{
 		{
 			Name:          "test",
@@ -260,7 +260,7 @@ func TestProgressBar(t *testing.T) {
 }
 
 // func TestTimeFormat(t *testing.T) {
-// 	m := display.GetGlobalModel()
+// 	m := display.GetGlobalModelFunc()
 // 	m.Deployment.Machines = []models.Machine{
 // 		{
 // 			Name:          "test",
@@ -279,7 +279,7 @@ func TestProgressBar(t *testing.T) {
 // }
 
 // func TestEmojiColumns(t *testing.T) {
-// 	m := display.GetGlobalModel()
+// 	m := display.GetGlobalModelFunc()
 // 	m.Deployment.Machines = []models.Machine{
 // 		{
 // 			Name:          "test",

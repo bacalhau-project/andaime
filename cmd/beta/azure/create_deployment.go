@@ -209,6 +209,8 @@ func PrepareDeployment(
 	deployment := &models.Deployment{}
 	deployment.SSHUser = viper.GetString("general.ssh_user")
 	deployment.SSHPort = viper.GetInt("general.ssh_port")
+	deployment.OrchestratorIP = viper.GetString("general.orchestrator_ip")
+
 	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")
 	deployment.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 	deployment.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
@@ -273,21 +275,11 @@ func PrepareDeployment(
 	}
 	l.Debugf("Allowed ports: %v", ports)
 
-	// Process machines
-	orchestratorNode, allMachines, locations, err := ProcessMachinesConfig(
-		deployment,
-	)
-	if err != nil {
+	// Process machines, updating the deployment directly
+	if err := ProcessMachinesConfig(deployment); err != nil {
 		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
 	}
 
-	deployment.OrchestratorNode = orchestratorNode
-	deployment.Machines = allMachines
-	deployment.Locations = locations
-
-	for _, machine := range deployment.Machines {
-		_ = machine // TODO: Figure out how to pass around model
-	}
 	return deployment, nil
 }
 
@@ -381,12 +373,9 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 	return absoluteKeyPath, nil
 }
 
-// processMachinesConfig processes the machine configurations
-func ProcessMachinesConfig(
-	deployment *models.Deployment,
-) (*models.Machine, []models.Machine, []string, error) {
+// processMachinesConfig processes the machine configurations, modifying the deployment in-place
+func ProcessMachinesConfig(deployment *models.Deployment) error {
 	var orchestratorNode *models.Machine
-	var allMachines []models.Machine
 	locations := make(map[string]bool)
 
 	type MachineConfig struct {
@@ -399,7 +388,7 @@ func ProcessMachinesConfig(
 	}
 	var rawMachines []MachineConfig
 	if err := viper.UnmarshalKey("azure.machines", &rawMachines); err != nil {
-		return nil, nil, nil, fmt.Errorf("error unmarshaling machines: %w", err)
+		return fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
 	defaultCount := viper.GetInt("azure.default_count_per_zone")
@@ -407,7 +396,7 @@ func ProcessMachinesConfig(
 	defaultDiskSize := viper.GetInt("azure.disk_size_gb")
 
 	if _, err := os.Stat(deployment.SSHPrivateKeyPath); os.IsNotExist(err) {
-		return nil, nil, nil, fmt.Errorf(
+		return fmt.Errorf(
 			"private key path does not exist: %s",
 			deployment.SSHPrivateKeyPath,
 		)
@@ -416,17 +405,17 @@ func ProcessMachinesConfig(
 	// Open the private key file
 	privateKeyFile, err := os.Open(deployment.SSHPrivateKeyPath)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to open private key file: %w", err)
+		return fmt.Errorf("failed to open private key file: %w", err)
 	}
 	privateKeyBytes, err := io.ReadAll(privateKeyFile)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read private key file: %w", err)
+		return fmt.Errorf("failed to read private key file: %w", err)
 	}
 	defer privateKeyFile.Close()
 
 	_, err = ssh.ParsePrivateKey(privateKeyBytes)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse private key: %w", err)
+		return fmt.Errorf("failed to parse private key: %w", err)
 	}
 
 	for _, rawMachine := range rawMachines {
@@ -444,10 +433,23 @@ func ProcessMachinesConfig(
 
 		if rawMachine.Parameters.Orchestrator {
 			if orchestratorNode != nil || rawMachine.Parameters.Count > 1 {
-				return nil, nil, nil, fmt.Errorf("multiple orchestrator nodes found")
+				return fmt.Errorf("multiple orchestrator nodes found")
+			}
+			if deployment.OrchestratorIP != "" {
+				return fmt.Errorf(
+					"orchestrator node and deployment.OrchestratorIP cannot both be set",
+				)
 			}
 			thisMachine.Orchestrator = rawMachine.Parameters.Orchestrator
 			orchestratorNode = &thisMachine
+		}
+
+		if deployment.OrchestratorIP != "" {
+			if orchestratorNode != nil {
+				return fmt.Errorf(
+					"orchestrator node and deployment.OrchestratorIP cannot both be set",
+				)
+			}
 		}
 
 		countOfMachines := rawMachine.Parameters.Count
@@ -472,14 +474,25 @@ func ProcessMachinesConfig(
 			thisMachine.SSHPort = deployment.SSHPort
 			thisMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
-			allMachines = append(allMachines, thisMachine)
+			if deployment.OrchestratorIP != "" {
+				thisMachine.OrchestratorIP = deployment.OrchestratorIP
+			}
+
+			deployment.Machines = append(deployment.Machines, thisMachine)
 		}
+
+		// Track unique locations
+		locations[thisMachine.Location] = true
 	}
 
-	uniqueLocations := make([]string, 0, len(locations))
+	// Populate UniqueLocations in the deployment
+	deployment.UniqueLocations = make([]string, 0, len(locations))
 	for location := range locations {
-		uniqueLocations = append(uniqueLocations, location)
+		deployment.UniqueLocations = append(deployment.UniqueLocations, location)
 	}
 
-	return orchestratorNode, allMachines, uniqueLocations, nil
+	// Set the orchestrator node in the deployment
+	deployment.OrchestratorNode = orchestratorNode
+
+	return nil // Return only error if any
 }

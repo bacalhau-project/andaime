@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -114,4 +115,114 @@ func TestInitializeDeployment(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, orchestratorCount, "Expected exactly one orchestrator machine")
+}
+
+func TestProcessMachinesConfig(t *testing.T) {
+	tempPrivateKey, err := os.CreateTemp("", "dummy_private_key")
+	assert.NoError(t, err, "Failed to create temporary private key file")
+	_, err = tempPrivateKey.Write([]byte(testdata.TestPrivateSSHKeyMaterial))
+	assert.NoError(t, err, "Failed to write to temporary private key file")
+	tempPrivateKey.Close()
+	defer os.Remove(tempPrivateKey.Name())
+
+	tempPublicKey, err := os.CreateTemp("", "dummy_public_key")
+	assert.NoError(t, err, "Failed to create temporary public key file")
+	_, err = tempPublicKey.Write([]byte(testdata.TestPublicSSHKeyMaterial))
+	assert.NoError(t, err, "Failed to write to temporary public key file")
+	tempPublicKey.Close()
+	defer os.Remove(tempPublicKey.Name())
+
+	deployment := &models.Deployment{
+		SSHPrivateKeyPath: tempPrivateKey.Name(),
+		SSHPort:           22,
+	}
+
+	tests := []struct {
+		name           string
+		machinesConfig []map[string]interface{}
+		orchestratorIP string
+		expectError    bool
+		expectedNodes  int
+	}{
+		{
+			name:           "No orchestrator node and no orchestrator IP",
+			machinesConfig: []map[string]interface{}{},
+			expectError:    false,
+			expectedNodes:  0,
+		},
+		{
+			name: "No orchestrator node but orchestrator IP specified",
+			machinesConfig: []map[string]interface{}{
+				{
+					"location":   "eastus",
+					"parameters": map[string]interface{}{"count": 1},
+				},
+			},
+			orchestratorIP: "1.2.3.4",
+			expectError:    false,
+			expectedNodes:  1,
+		},
+		{
+			name: "One orchestrator node, no other machines",
+			machinesConfig: []map[string]interface{}{
+				{"location": "eastus", "parameters": map[string]interface{}{"orchestrator": true}},
+			},
+			expectError:   false,
+			expectedNodes: 1,
+		},
+		{
+			name: "One orchestrator node and many other machines",
+			machinesConfig: []map[string]interface{}{
+				{"location": "eastus", "parameters": map[string]interface{}{"orchestrator": true}},
+				{"location": "westus", "parameters": map[string]interface{}{"count": 3}},
+			},
+			expectError:   false,
+			expectedNodes: 4,
+		},
+		{
+			name: "Multiple orchestrator nodes (should error)",
+			machinesConfig: []map[string]interface{}{
+				{"location": "eastus", "parameters": map[string]interface{}{"orchestrator": true}},
+				{"location": "westus", "parameters": map[string]interface{}{"orchestrator": true}},
+			},
+			expectError:   true,
+			expectedNodes: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset the machines slice for each test
+			deployment.Machines = []models.Machine{}
+
+			// Reset viper config for each test
+			viper.Reset()
+			viper.Set("azure.machines", tt.machinesConfig)
+			viper.Set("azure.default_count_per_zone", 1)
+			viper.Set("azure.default_machine_type", "Standard_D2s_v3")
+			viper.Set("azure.disk_size_gb", 30)
+			viper.Set("general.orchestrator_ip", tt.orchestratorIP)
+
+			err := ProcessMachinesConfig(deployment)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, deployment.Machines, tt.expectedNodes)
+
+				if tt.expectedNodes > 0 {
+					assert.NotEmpty(t, deployment.UniqueLocations)
+				}
+
+				// Check if orchestrator node is set when expected
+				if tt.name == "One orchestrator node, no other machines" || tt.name == "One orchestrator node and many other machines" {
+					assert.NotNil(t, deployment.OrchestratorNode)
+					assert.True(t, deployment.OrchestratorNode.Orchestrator)
+				} else {
+					assert.Nil(t, deployment.OrchestratorNode)
+				}
+			}
+		})
+	}
 }
