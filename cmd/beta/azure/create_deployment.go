@@ -78,41 +78,47 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	var deploymentErr error
 	go func() {
-		if err := p.DeployResources(ctx); err != nil {
-			deploymentErr = fmt.Errorf("failed to deploy resources: %s", err.Error())
-			l.Error(deploymentErr.Error())
-			prog.Quit()
+		select {
+		case <-ctx.Done():
+			l.Debug("Deployment cancelled")
 			return
-		}
-		l.Info("Starting Bacalhau Orchestrator Deployment")
-		if err := p.DeployBacalhauOrchestrator(ctx); err != nil {
-			deploymentErr = fmt.Errorf("failed to deploy Bacalhau orchestrator: %v", err)
-			l.Error(deploymentErr.Error())
-			prog.Quit()
-			return
-		}
-		l.Infof("Bacalhau Orchestrator Deployment completed successfully")
+		default:
+			if err := p.DeployResources(ctx); err != nil {
+				deploymentErr = fmt.Errorf("failed to deploy resources: %s", err.Error())
+				l.Error(deploymentErr.Error())
+				prog.Quit()
+				return
+			}
+			l.Info("Starting Bacalhau Orchestrator Deployment")
+			if err := p.DeployBacalhauOrchestrator(ctx); err != nil {
+				deploymentErr = fmt.Errorf("failed to deploy Bacalhau orchestrator: %v", err)
+				l.Error(deploymentErr.Error())
+				prog.Quit()
+				return
+			}
+			l.Infof("Bacalhau Orchestrator Deployment completed successfully")
 
-		l.Infof("Starting Bacalhau Workers Deployment")
-		if err := p.DeployBacalhauWorkers(ctx); err != nil {
-			deploymentErr = fmt.Errorf("failed to deploy Bacalhau workers: %v", err)
-			l.Error(deploymentErr.Error())
-			prog.Quit()
-			return
-		}
-		l.Infof("Bacalhau Workers Deployment completed successfully")
+			l.Infof("Starting Bacalhau Workers Deployment")
+			if err := p.DeployBacalhauWorkers(ctx); err != nil {
+				deploymentErr = fmt.Errorf("failed to deploy Bacalhau workers: %v", err)
+				l.Error(deploymentErr.Error())
+				prog.Quit()
+				return
+			}
+			l.Infof("Bacalhau Workers Deployment completed successfully")
 
-		l.Info("Azure deployment created successfully")
-		if err := p.FinalizeDeployment(context.Background()); err != nil {
-			deploymentErr = fmt.Errorf("failed to finalize deployment: %v", err)
-			l.Error(deploymentErr.Error())
-			prog.Quit()
-			return
-		}
+			l.Info("Azure deployment created successfully")
+			if err := p.FinalizeDeployment(context.Background()); err != nil {
+				deploymentErr = fmt.Errorf("failed to finalize deployment: %v", err)
+				l.Error(deploymentErr.Error())
+				prog.Quit()
+				return
+			}
 
-		l.Info("Deployment finalized")
-		time.Sleep(2 * time.Second) // Wait for 2 seconds before quitting
-		prog.Quit()
+			l.Info("Deployment finalized")
+			time.Sleep(2 * time.Second) // Wait for 2 seconds before quitting
+			prog.Quit()
+		}
 	}()
 
 	_, err = prog.Run()
