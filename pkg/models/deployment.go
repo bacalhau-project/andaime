@@ -215,7 +215,7 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 	dockerService.State = ServiceStateUpdating
 	m.MachineServices["Docker"] = dockerService
 
-	sshConfig, err := sshutils.NewSSHConfig(
+	sshConfig, err := sshutils.NewSSHConfigFunc(
 		m.PublicIP,
 		m.SSHPort,
 		m.SSHUser,

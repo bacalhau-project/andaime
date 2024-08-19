@@ -362,7 +362,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	}
 
 	// Test SSH connectivity
-	sshConfig, err := sshutils.NewSSHConfig(
+	sshConfig, err := sshutils.NewSSHConfigFunc(
 		m.Deployment.Machines[machineIndex].PublicIP,
 		m.Deployment.Machines[machineIndex].SSHPort,
 		m.Deployment.Machines[machineIndex].SSHUser,

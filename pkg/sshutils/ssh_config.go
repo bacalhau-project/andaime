@@ -35,12 +35,14 @@ type SSHConfiger interface {
 	RestartService(serviceName string) error
 }
 
+var NewSSHConfigFunc = NewSSHConfig
+
 func NewSSHConfig(
 	host string,
 	port int,
 	user string,
 	sshPrivateKeyMaterial []byte,
-) (*SSHConfig, error) {
+) (SSHConfiger, error) {
 	if len(sshPrivateKeyMaterial) == 0 {
 		return nil, fmt.Errorf("private key material is empty")
 	}

@@ -55,7 +55,7 @@ func NewMockSSHDialer() *MockSSHDialer {
 	return &MockSSHDialer{}
 }
 
-func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, *SSHConfig) {
+func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
 	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
@@ -67,15 +67,16 @@ func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, *SSHConfig) {
 	}
 
 	mockDialer := &MockSSHDialer{}
-	config, err := NewSSHConfig(
+	configInterface, err := NewSSHConfigFunc(
 		"example.com",
 		22,
 		"testuser",
-		[]byte(testSSHPrivateKeyMaterial),
+		testSSHPrivateKeyMaterial,
 	) //nolint:gomnd
 	if err != nil {
 		panic(err)
 	}
+	config := configInterface.(*SSHConfig)
 	config.SSHDial = mockDialer
 
 	mockClient := &MockSSHClient{}

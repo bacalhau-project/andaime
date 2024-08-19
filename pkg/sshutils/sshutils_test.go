@@ -25,7 +25,8 @@ func TestNewSSHConfig(t *testing.T) {
 	port := 22
 	user := "testuser"
 	mockDialer := &MockSSHDialer{}
-	config, err := NewSSHConfig(host, port, user, testSSHPrivateKeyMaterial)
+	configInterface, err := NewSSHConfigFunc(host, port, user, testSSHPrivateKeyMaterial)
+	config := configInterface.(*SSHConfig)
 	config.SSHDial = mockDialer
 
 	assert.NoError(t, err)
@@ -81,7 +82,8 @@ func TestConnectFailure(t *testing.T) {
 	}
 
 	mockDialer := NewMockSSHDialer()
-	config, _ := NewSSHConfig("example.com", 22, "testuser", testSSHPrivateKeyMaterial)
+	configInterface, _ := NewSSHConfigFunc("example.com", 22, "testuser", testSSHPrivateKeyMaterial)
+	config := configInterface.(*SSHConfig)
 	config.SSHDial = mockDialer
 	config.InsecureIgnoreHostKey = true
 
@@ -325,10 +327,16 @@ func TestRestartServiceFailure(t *testing.T) {
 
 func GetMockClient(t *testing.T) (SSHClienter, *SSHConfig) {
 	mockDialer := &MockSSHDialer{}
-	config, err := NewSSHConfig("example.com", 22, "testuser", []byte("test-key-material"))
+	configInterface, err := NewSSHConfigFunc(
+		"example.com",
+		22,
+		"testuser",
+		[]byte("test-key-material"),
+	)
 	if err != nil {
 		assert.Fail(t, "failed to create SSH config: %v", err)
 	}
+	config := configInterface.(*SSHConfig)
 	config.SSHDial = mockDialer
 
 	mockClient := &MockSSHClient{}

@@ -26,7 +26,7 @@ func (w *DefaultSSHWaiter) WaitForSSH(config *SSHConfig) error {
 }
 
 // WaitForSSHToBeLive attempts to establish an SSH connection to the VM
-func WaitForSSHToBeLive(config *SSHConfig, retries int, delay time.Duration) error {
+func WaitForSSHToBeLive(config SSHConfiger, retries int, delay time.Duration) error {
 	l := logger.Get()
 	if config == nil {
 		err := fmt.Errorf("SSH config is nil")
