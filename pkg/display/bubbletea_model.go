@@ -154,7 +154,7 @@ type DisplayModel struct {
 	MemoryUsage      uint64
 	BatchedUpdates   []models.StatusUpdateMsg
 	BatchUpdateTimer *time.Timer
-	quitChan         chan struct{}
+	quitChan         chan bool
 	goroutineCount   int64
 	keyEventChan     chan tea.KeyMsg
 }
@@ -205,7 +205,7 @@ func InitialModel() *DisplayModel {
 		UpdateTimes:      make([]time.Duration, 100),
 		UpdateTimesIndex: 0,
 		UpdateTimesSize:  100,
-		quitChan:         make(chan struct{}),
+		quitChan:         make(chan bool),
 		keyEventChan:     make(chan tea.KeyMsg),
 	}
 	go model.handleKeyEvents()
@@ -224,7 +224,6 @@ func (m *DisplayModel) handleKeyEvents() {
 					"Quit command received (q or ctrl+c) at %s",
 					time.Now().Format(time.RFC3339Nano),
 				)
-				close(m.quitChan)
 				logger.Get().Info("Quit channel closed")
 			}
 		}
@@ -508,7 +507,6 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 	if found || (status.Name != "" && status.Type == models.AzureResourceTypeVM) {
 		m.updateMachineStatus(machine, status)
 	}
-	// The model is now directly updated, no need for a Send call
 }
 
 // Helper functions
