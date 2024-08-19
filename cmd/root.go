@@ -52,7 +52,10 @@ func Execute() error {
 	// Initialize the logger
 	logger.InitLoggerOutputs()
 	logger.InitProduction()
+	l := logger.Get()
+	l.Debug("Initializing configuration")
 	initConfig()
+	l.Debug("Configuration initialized")
 
 	// Set up signal handling
 	c := make(chan os.Signal, 1)
@@ -127,6 +130,8 @@ including deploying and managing Bacalhau nodes across multiple cloud providers.
 }
 
 func initConfig() {
+	l := logger.Get()
+	l.Debug("Starting initConfig")
 	// Use a temporary logger for initial debugging
 	debugLog, err := os.OpenFile(
 		"/tmp/andaime-start.log",
@@ -149,8 +154,10 @@ func initConfig() {
 
 	if ConfigFile != "" {
 		tmpLogger.Printf("Debug: Using config file: %s", ConfigFile)
+		l.Debugf("Using config file: %s", ConfigFile)
 		viper.SetConfigFile(ConfigFile)
 	} else {
+		l.Debug("No config file specified, using default paths")
 		tmpLogger.Print("Debug: No config file specified, using default paths")
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -173,11 +180,14 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			tmpLogger.Print("Debug: No config file found")
+			l.Debug("No config file found")
 		} else {
 			tmpLogger.Printf("Error reading config file: %v", err)
+			l.Errorf("Error reading config file: %v", err)
 		}
 	} else {
 		tmpLogger.Printf("Debug: Successfully read config file: %s", viper.ConfigFileUsed())
+		l.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
 	}
 
 	// Ensure output format is set correctly
@@ -199,6 +209,8 @@ func initConfig() {
 	// Set log level based on verbose flag
 	if verboseMode {
 		logger.SetLevel(logger.DEBUG)
+		l := logger.Get()
+		l.Debug("Verbose mode enabled")
 	}
 
 	tmpLogger.Printf(

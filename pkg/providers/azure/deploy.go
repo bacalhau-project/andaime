@@ -24,10 +24,12 @@ const timeBetweenIPRetries = 10 * time.Second
 // Config should be the Azure subsection of the viper config.
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
+	l.Debug("Starting DeployResources")
 	m := display.GetGlobalModel()
 
 	// Set the start time for the deployment
 	m.Deployment.StartTime = time.Now()
+	l.Debugf("Deployment start time: %v", m.Deployment.StartTime)
 
 	// Ensure we have a location set
 	if m.Deployment.ResourceGroupLocation == "" {
@@ -43,11 +45,14 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	}
 
 	// Prepare resource group
+	l.Debug("Preparing resource group")
 	err := p.PrepareResourceGroup(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
+		l.Debug("Resource group preparation error details:", err)
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
+	l.Debug("Resource group prepared successfully")
 
 	if err := m.Deployment.UpdateViperConfig(); err != nil {
 		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
@@ -73,10 +78,11 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
+	l.Debug("Starting DeployARMTemplate")
 	m := display.GetGlobalModel()
 	// Remove the state machine reference
 
-	// l.Debugf("Deploying template for deployment: %v", m.Deployment)
+	l.Debugf("Deploying template for deployment: %+v", m.Deployment)
 
 	tags := utils.EnsureAzureTags(
 		m.Deployment.Tags,

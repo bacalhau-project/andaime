@@ -40,12 +40,14 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	logger.SetLevel(logger.DEBUG)
 	l.Info("Starting executeCreateDeployment")
+	l.Debug("Command arguments:", args)
 
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
 	UniqueID := time.Now().Format("060102150405")
 	l.Infof("Generated UniqueID: %s", UniqueID)
+	l.Debug("Adding UniqueID to context")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, UniqueID)
 
 	l.Debug("Initializing Azure provider")
@@ -57,12 +59,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 	l.Info("Azure provider initialized successfully")
 
+	l.Debug("Initializing deployment")
 	deployment, err := InitializeDeployment(ctx, UniqueID)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to initialize deployment: %s", err.Error())
 		l.Error(errMsg)
+		l.Debug("Deployment initialization error details:", err)
 		return fmt.Errorf(errMsg)
 	}
+	l.Debug("Deployment initialized successfully")
 
 	l.Info("Starting resource deployment")
 
