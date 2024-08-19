@@ -14,10 +14,11 @@ func (p *AzureProvider) DestroyAzureDeployment(
 	resourceGroupName string,
 ) error {
 	l := logger.Get()
-
 	l.Infof("Initiating destruction of Azure deployment (Resource Group: %s)", resourceGroupName)
 
-	err := p.Client.DestroyResourceGroup(ctx, resourceGroupName)
+	client := p.GetAzureClient()
+
+	err := client.DestroyResourceGroup(ctx, resourceGroupName)
 	if err != nil {
 		return fmt.Errorf("failed to initiate resource group deletion: %v", err)
 	}

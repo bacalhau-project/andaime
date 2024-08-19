@@ -84,6 +84,24 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			prog.Quit()
 			return
 		}
+		l.Info("Starting Bacalhau Orchestrator Deployment")
+		if err := p.DeployBacalhauOrchestrator(ctx); err != nil {
+			deploymentErr = fmt.Errorf("failed to deploy Bacalhau orchestrator: %v", err)
+			l.Error(deploymentErr.Error())
+			prog.Quit()
+			return
+		}
+		l.Infof("Bacalhau Orchestrator Deployment completed successfully")
+
+		l.Infof("Starting Bacalhau Workers Deployment")
+		if err := p.DeployBacalhauWorkers(ctx); err != nil {
+			deploymentErr = fmt.Errorf("failed to deploy Bacalhau workers: %v", err)
+			l.Error(deploymentErr.Error())
+			prog.Quit()
+			return
+		}
+		l.Infof("Bacalhau Workers Deployment completed successfully")
+
 		l.Info("Azure deployment created successfully")
 		if err := p.FinalizeDeployment(context.Background()); err != nil {
 			deploymentErr = fmt.Errorf("failed to finalize deployment: %v", err)
@@ -91,6 +109,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			prog.Quit()
 			return
 		}
+
 		l.Info("Deployment finalized")
 		time.Sleep(2 * time.Second) // Wait for 2 seconds before quitting
 		prog.Quit()
@@ -430,9 +449,13 @@ func ProcessMachinesConfig(
 			thisMachine.ComputerName = fmt.Sprintf("%s-vm", thisMachine.ID)
 			thisMachine.StartTime = time.Now()
 
-			thisMachine.SSH = models.ServiceStateNotStarted
-			thisMachine.Docker = models.ServiceStateNotStarted
-			thisMachine.Bacalhau = models.ServiceStateNotStarted
+			if thisMachine.MachineServices == nil {
+				thisMachine.MachineServices = make(map[string]models.ServiceType)
+			}
+
+			for _, service := range models.RequiredServices {
+				thisMachine.MachineServices[service.Name] = service
+			}
 
 			thisMachine.SSHUser = "azureuser"
 			thisMachine.SSHPort = deployment.SSHPort

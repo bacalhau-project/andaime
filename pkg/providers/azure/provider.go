@@ -9,14 +9,16 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
 
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
-	GetClient() AzureClient
-	SetClient(client AzureClient)
+	general.Providerer
+	GetAzureClient() AzureClient
+	SetAzureClient(client AzureClient)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 
@@ -24,10 +26,13 @@ type AzureProviderer interface {
 	DeployResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
+
+	DeployBacalhauOrchestrator(ctx context.Context) error
+	DeployBacalhauWorkers(ctx context.Context) error
 }
 
 type AzureProvider struct {
-	Client            AzureClient
+	Client            interface{}
 	Config            *viper.Viper
 	Deployment        *models.Deployment
 	SSHUser           string
@@ -106,11 +111,19 @@ func NewAzureProvider() (AzureProviderer, error) {
 	}, nil
 }
 
-func (p *AzureProvider) GetClient() AzureClient {
+func (p *AzureProvider) GetClient() interface{} {
 	return p.Client
 }
 
-func (p *AzureProvider) SetClient(client AzureClient) {
+func (p *AzureProvider) SetClient(client interface{}) {
+	p.Client = client
+}
+
+func (p *AzureProvider) GetAzureClient() AzureClient {
+	return p.Client.(AzureClient)
+}
+
+func (p *AzureProvider) SetAzureClient(client AzureClient) {
 	p.Client = client
 }
 
@@ -123,7 +136,8 @@ func (p *AzureProvider) SetConfig(config *viper.Viper) {
 }
 
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
-	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
+	client := p.GetAzureClient()
+	return client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
 // Updates the deployment with the latest resource state
@@ -131,6 +145,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	subscriptionID string,
 	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
+	client := p.GetAzureClient()
 
 	// Check if we can use cached results
 	if time.Since(p.lastResourceQuery) < 30*time.Second {
@@ -139,7 +154,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	}
 
 	start := time.Now()
-	resources, err := p.Client.ListAllResourcesInSubscription(ctx,
+	resources, err := client.ListAllResourcesInSubscription(ctx,
 		subscriptionID,
 		tags)
 	elapsed := time.Since(start)
@@ -169,7 +184,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l.Debug("Starting StartResourcePolling")
 	writeToDebugLog("Starting StartResourcePolling")
 
-	resourceTicker := time.NewTicker(30 * time.Second)
+	resourceTicker := time.NewTicker(5 * time.Second)
 	defer resourceTicker.Stop()
 
 	quit := make(chan struct{})
@@ -257,10 +272,10 @@ func (p *AzureProvider) logDeploymentStatus() {
 			fmt.Sprintf(
 				"Machine %d - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v",
 				i+1,
-				machine.Docker,
-				machine.CorePackages,
-				machine.Bacalhau,
-				machine.SSH,
+				machine.MachineServices["Docker"].State,
+				machine.MachineServices["CorePackages"].State,
+				machine.MachineServices["Bacalhau"].State,
+				machine.MachineServices["SSH"].State,
 			),
 		)
 

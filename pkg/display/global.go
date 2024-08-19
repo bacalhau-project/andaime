@@ -45,6 +45,11 @@ func (gp *GlobalProgram) UpdateStatus(status *models.DisplayStatus) {
 }
 
 func (gp *GlobalProgram) Quit() {
+	m := GetGlobalModel()
+	if m != nil {
+		m.quitChan <- true
+	}
+
 	gp.program.Quit()
 }
 

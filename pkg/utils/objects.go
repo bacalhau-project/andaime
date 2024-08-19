@@ -3,44 +3,9 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/bacalhau-project/andaime/pkg/models"
 )
-
-func UpdateOnlyChangedStatus(
-	status *models.DisplayStatus,
-	newStatus *models.DisplayStatus,
-) *models.DisplayStatus {
-	if newStatus.StatusMessage != "" {
-		status.StatusMessage = newStatus.StatusMessage
-	}
-
-	if newStatus.DetailedStatus != "" {
-		status.DetailedStatus = newStatus.DetailedStatus
-	}
-	if newStatus.PublicIP != "" {
-		status.PublicIP = newStatus.PublicIP
-	}
-	if newStatus.PrivateIP != "" {
-		status.PrivateIP = newStatus.PrivateIP
-	}
-	if newStatus.InstanceID != "" {
-		status.InstanceID = newStatus.InstanceID
-	}
-	if newStatus.Location != "" {
-		status.Location = newStatus.Location
-	}
-
-	if status.StartTime.IsZero() {
-		status.StartTime = time.Now()
-	}
-
-	status.ElapsedTime = newStatus.ElapsedTime
-
-	return status
-}
 
 func EnsureAzureTags(tags map[string]*string, projectID, uniqueID string) map[string]*string {
 	if tags == nil {

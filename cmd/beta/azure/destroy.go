@@ -137,14 +137,15 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			l.Errorf("Failed to create Azure provider: %v", err)
 			return fmt.Errorf("failed to create Azure provider: %v", err)
 		}
-		resourceGroups, err := azureProvider.GetClient().ListAllResourceGroups(cmd.Context())
+		resourceGroups, err := azureProvider.GetAzureClient().ListAllResourceGroups(cmd.Context())
 		if err != nil {
 			l.Errorf("Failed to get resource groups: %v", err)
 			return fmt.Errorf("failed to get resource groups: %v", err)
 		}
 
 		for rgName, rgLocation := range resourceGroups {
-			rg, err := azureProvider.GetClient().GetResourceGroup(cmd.Context(), rgLocation, rgName)
+			rg, err := azureProvider.GetAzureClient().
+				GetResourceGroup(cmd.Context(), rgLocation, rgName)
 			if err != nil {
 				l.Errorf("Failed to get resource group %s: %v", rgName, err)
 				continue

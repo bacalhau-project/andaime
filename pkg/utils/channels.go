@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/pulumi/pulumi-azure-native-sdk/compute"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 )
@@ -140,11 +139,6 @@ func CreateBoolChannel(name string, capacity int) chan bool {
 func CreateVMChannel(name string, capacity int) chan *compute.VirtualMachine {
 	return CreateAndRegisterChannel(reflect.TypeOf((*chan *compute.VirtualMachine)(nil)).Elem(),
 		name, capacity).(chan *compute.VirtualMachine)
-}
-
-func CreateMachineChannel(name string, capacity int) chan *models.Machine {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan *models.Machine)(nil)).Elem(),
-		name, capacity).(chan *models.Machine)
 }
 
 // CloseChannel closes a specific channel

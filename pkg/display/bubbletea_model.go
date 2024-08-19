@@ -87,17 +87,26 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	if status.Orchestrator {
 		machine.Orchestrator = status.Orchestrator
 	}
+
 	if status.SSH != models.ServiceStateUnknown {
-		machine.SSH = status.SSH
+		sshService := machine.MachineServices["SSH"]
+		sshService.State = status.SSH
+		machine.MachineServices["SSH"] = sshService
 	}
 	if status.Docker != models.ServiceStateUnknown {
-		machine.Docker = status.Docker
+		dockerService := machine.MachineServices["Docker"]
+		dockerService.State = status.Docker
+		machine.MachineServices["Docker"] = dockerService
 	}
 	if status.CorePackages != models.ServiceStateUnknown {
-		machine.CorePackages = status.CorePackages
+		corePackagesService := machine.MachineServices["CorePackages"]
+		corePackagesService.State = status.CorePackages
+		machine.MachineServices["CorePackages"] = corePackagesService
 	}
 	if status.Bacalhau != models.ServiceStateUnknown {
-		machine.Bacalhau = status.Bacalhau
+		bacalhauService := machine.MachineServices["Bacalhau"]
+		bacalhauService.State = status.Bacalhau
+		machine.MachineServices["Bacalhau"] = bacalhauService
 	}
 }
 
@@ -346,12 +355,13 @@ func (m *DisplayModel) applyBatchedUpdates() {
 	allDockerAndCorePackagesInstalled := true
 	for _, machine := range m.Deployment.Machines {
 		progress, total := machine.ResourcesComplete()
-		if progress != total || machine.SSH != models.ServiceStateSucceeded {
+		if progress != total ||
+			machine.MachineServices["SSH"].State != models.ServiceStateSucceeded {
 			allCompleted = false
 			break
 		}
-		if machine.Docker != models.ServiceStateSucceeded ||
-			machine.CorePackages != models.ServiceStateSucceeded {
+		if machine.MachineServices["Docker"].State != models.ServiceStateSucceeded ||
+			machine.MachineServices["CorePackages"].State != models.ServiceStateSucceeded {
 			allDockerAndCorePackagesInstalled = false
 			break
 		}
@@ -360,22 +370,32 @@ func (m *DisplayModel) applyBatchedUpdates() {
 	// If all machines are completed and Docker/Core Packages are installed, install Bacalhau
 	if allCompleted && allDockerAndCorePackagesInstalled {
 		orchestratorInstalled := false
-		for i, machine := range m.Deployment.Machines {
-			if machine.Orchestrator && machine.Bacalhau != models.ServiceStateSucceeded {
-				m.Deployment.Machines[i].Bacalhau = models.ServiceStateUpdating
+		for _, machine := range m.Deployment.Machines {
+			if machine.Orchestrator &&
+				machine.MachineServices["Bacalhau"].State != models.ServiceStateSucceeded {
+				bacalhauService := machine.MachineServices["Bacalhau"]
+				bacalhauService.State = models.ServiceStateUpdating
+				machine.MachineServices["Bacalhau"] = bacalhauService
+
 				// TODO: Implement Bacalhau orchestrator installation
-				m.Deployment.Machines[i].Bacalhau = models.ServiceStateSucceeded
+
+				bacalhauService.State = models.ServiceStateSucceeded
+				machine.MachineServices["Bacalhau"] = bacalhauService
 				orchestratorInstalled = true
 				break
 			}
 		}
 
 		if orchestratorInstalled {
-			for i, machine := range m.Deployment.Machines {
-				if !machine.Orchestrator && machine.Bacalhau != models.ServiceStateSucceeded {
-					m.Deployment.Machines[i].Bacalhau = models.ServiceStateUpdating
+			for _, machine := range m.Deployment.Machines {
+				if !machine.Orchestrator &&
+					machine.MachineServices["Bacalhau"].State != models.ServiceStateSucceeded {
+					bacalhauService := machine.MachineServices["Bacalhau"]
+					bacalhauService.State = models.ServiceStateUpdating
+					machine.MachineServices["Bacalhau"] = bacalhauService
 					// TODO: Implement Bacalhau worker installation
-					m.Deployment.Machines[i].Bacalhau = models.ServiceStateSucceeded
+					bacalhauService.State = models.ServiceStateSucceeded
+					machine.MachineServices["Bacalhau"] = bacalhauService
 				}
 			}
 		}
@@ -571,9 +591,9 @@ func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 		machine.PublicIP,
 		machine.PrivateIP,
 		ConvertOrchestratorToEmoji(machine.Orchestrator),
-		ConvertStateToEmoji(machine.SSH),
-		ConvertStateToEmoji(machine.Docker),
-		ConvertStateToEmoji(machine.Bacalhau),
+		ConvertStateToEmoji(machine.MachineServices["SSH"].State),
+		ConvertStateToEmoji(machine.MachineServices["Docker"].State),
+		ConvertStateToEmoji(machine.MachineServices["Bacalhau"].State),
 		"",
 	}
 }
@@ -633,6 +653,9 @@ func (m *DisplayModel) tickCmd() tea.Cmd {
 		case <-m.quitChan:
 			return tea.Quit
 		default:
+			if m.Quitting {
+				return tea.Quit
+			}
 			// Update the whole table based on the current state of the model
 			m.LastUpdate = time.Now()
 			return tickMsg(t)
@@ -648,8 +671,8 @@ func ConvertOrchestratorToEmoji(orchestrator bool) string {
 	return orchString
 }
 
-func ConvertStateToEmoji(state models.ServiceState) string {
-	switch state {
+func ConvertStateToEmoji(serviceState models.ServiceState) string {
+	switch serviceState {
 	case models.ServiceStateNotStarted:
 		return models.DisplayTextNotStarted
 	case models.ServiceStateSucceeded:

@@ -194,7 +194,8 @@ func TestAzureProvider_ListAllResourceGroups(t *testing.T) {
 	}
 	mockClient.On("ListAllResourceGroups", ctx).Return(expectedResourceGroups, nil)
 
-	resourceGroups, err := provider.Client.ListAllResourceGroups(ctx)
+	client := provider.GetAzureClient()
+	resourceGroups, err := client.ListAllResourceGroups(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResourceGroups, resourceGroups)
 }
@@ -266,7 +267,8 @@ func TestAzureProvider_GetVirtualMachine(t *testing.T) {
 		nil,
 	)
 
-	vm, err := provider.Client.GetVirtualMachine(ctx, resourceGroupName, vmName)
+	client := provider.GetAzureClient()
+	vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)
 	assert.NoError(t, err)
 	assert.NotNil(t, vm)
 

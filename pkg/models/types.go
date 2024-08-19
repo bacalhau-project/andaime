@@ -2,11 +2,11 @@ package models
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
 type ProviderAbbreviation string
@@ -233,7 +233,7 @@ func ConvertFromRawResourceToStatus(
 			statuses = append(statuses, status)
 		}
 	} else {
-		if !slices.Contains(SkippedResourceTypes, resourceType) {
+		if !utils.CaseInsensitiveContains(SkippedResourceTypes, resourceType) {
 			return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
 		}
 	}
@@ -319,4 +319,37 @@ func createStatus(machineName, resourceID, resourceType, state string) DisplaySt
 	stateType := ConvertFromStringToAzureResourceState(state)
 
 	return *NewDisplayStatus(machineName, resourceID, azureResourceType, stateType)
+}
+
+func UpdateOnlyChangedStatus(
+	status *DisplayStatus,
+	newStatus *DisplayStatus,
+) *DisplayStatus {
+	if newStatus.StatusMessage != "" {
+		status.StatusMessage = newStatus.StatusMessage
+	}
+
+	if newStatus.DetailedStatus != "" {
+		status.DetailedStatus = newStatus.DetailedStatus
+	}
+	if newStatus.PublicIP != "" {
+		status.PublicIP = newStatus.PublicIP
+	}
+	if newStatus.PrivateIP != "" {
+		status.PrivateIP = newStatus.PrivateIP
+	}
+	if newStatus.InstanceID != "" {
+		status.InstanceID = newStatus.InstanceID
+	}
+	if newStatus.Location != "" {
+		status.Location = newStatus.Location
+	}
+
+	if status.StartTime.IsZero() {
+		status.StartTime = time.Now()
+	}
+
+	status.ElapsedTime = newStatus.ElapsedTime
+
+	return status
 }

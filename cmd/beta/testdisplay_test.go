@@ -24,10 +24,21 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "apple grape mango",
 			Orchestrator:  true,
-			SSH:           models.ServiceStateFailed,
-			Docker:        models.ServiceStateSucceeded,
-			Bacalhau:      models.ServiceStateNotStarted,
-			StartTime:     time.Now().Add(-29 * time.Second),
+			MachineServices: map[string]models.ServiceType{
+				"SSH": {
+					Name:  "SSH",
+					State: models.ServiceStateFailed,
+				},
+				"Docker": {
+					Name:  "Docker",
+					State: models.ServiceStateSucceeded,
+				},
+				"Bacalhau": {
+					Name:  "Bacalhau",
+					State: models.ServiceStateNotStarted,
+				},
+			},
+			StartTime: time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test2",
@@ -35,10 +46,21 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "nectarine fig elderberry",
 			Orchestrator:  true,
-			SSH:           models.ServiceStateFailed,
-			Docker:        models.ServiceStateSucceeded,
-			Bacalhau:      models.ServiceStateNotStarted,
-			StartTime:     time.Now().Add(-29 * time.Second),
+			MachineServices: map[string]models.ServiceType{
+				"SSH": {
+					Name:  "SSH",
+					State: models.ServiceStateSucceeded,
+				},
+				"Docker": {
+					Name:  "Docker",
+					State: models.ServiceStateNotStarted,
+				},
+				"Bacalhau": {
+					Name:  "Bacalhau",
+					State: models.ServiceStateFailed,
+				},
+			},
+			StartTime: time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test3",
@@ -46,10 +68,21 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "grape quince kiwi",
 			Orchestrator:  true,
-			SSH:           models.ServiceStateFailed,
-			Docker:        models.ServiceStateSucceeded,
-			Bacalhau:      models.ServiceStateNotStarted,
-			StartTime:     time.Now().Add(-29 * time.Second),
+			MachineServices: map[string]models.ServiceType{
+				"SSH": {
+					Name:  "SSH",
+					State: models.ServiceStateNotStarted,
+				},
+				"Docker": {
+					Name:  "Docker",
+					State: models.ServiceStateFailed,
+				},
+				"Bacalhau": {
+					Name:  "Bacalhau",
+					State: models.ServiceStateSucceeded,
+				},
+			},
+			StartTime: time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test4",
@@ -57,10 +90,21 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "cherry orange quince",
 			Orchestrator:  true,
-			SSH:           models.ServiceStateFailed,
-			Docker:        models.ServiceStateSucceeded,
-			Bacalhau:      models.ServiceStateNotStarted,
-			StartTime:     time.Now().Add(-29 * time.Second),
+			MachineServices: map[string]models.ServiceType{
+				"SSH": {
+					Name:  "SSH",
+					State: models.ServiceStateFailed,
+				},
+				"Docker": {
+					Name:  "Docker",
+					State: models.ServiceStateSucceeded,
+				},
+				"Bacalhau": {
+					Name:  "Bacalhau",
+					State: models.ServiceStateNotStarted,
+				},
+			},
+			StartTime: time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test5",
@@ -68,10 +112,21 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "raspberry ugli kiwi",
 			Orchestrator:  true,
-			SSH:           models.ServiceStateFailed,
-			Docker:        models.ServiceStateSucceeded,
-			Bacalhau:      models.ServiceStateNotStarted,
-			StartTime:     time.Now().Add(-29 * time.Second),
+			MachineServices: map[string]models.ServiceType{
+				"SSH": {
+					Name:  "SSH",
+					State: models.ServiceStateSucceeded,
+				},
+				"Docker": {
+					Name:  "Docker",
+					State: models.ServiceStateNotStarted,
+				},
+				"Bacalhau": {
+					Name:  "Bacalhau",
+					State: models.ServiceStateFailed,
+				},
+			},
+			StartTime: time.Now().Add(-29 * time.Second),
 		},
 	}
 
@@ -128,9 +183,9 @@ func TestDisplayLayout(t *testing.T) {
 			machine.PublicIP,
 			machine.PrivateIP,
 			display.ConvertOrchestratorToEmoji(machine.Orchestrator),
-			display.ConvertStateToEmoji(machine.SSH),
-			display.ConvertStateToEmoji(machine.Docker),
-			display.ConvertStateToEmoji(machine.Bacalhau),
+			display.ConvertStateToEmoji(machine.MachineServices["SSH"].State),
+			display.ConvertStateToEmoji(machine.MachineServices["Docker"].State),
+			display.ConvertStateToEmoji(machine.MachineServices["Bacalhau"].State),
 			"",
 		)
 		assert.Equal(

@@ -24,19 +24,34 @@ const (
 	ServiceStateUnknown
 )
 
-var RequiredResources = []AzureResourceTypes{
+type ServiceType struct {
+	Name  string
+	State ServiceState
+}
+
+var (
+	ServiceTypeSSH      = ServiceType{Name: "SSH", State: ServiceStateNotStarted}
+	ServiceTypeDocker   = ServiceType{Name: "Docker", State: ServiceStateNotStarted}
+	ServiceTypeBacalhau = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
+)
+
+var RequiredAzureResources = []AzureResourceTypes{
 	AzureResourceTypeVNET,
 	AzureResourceTypeNIC,
 	AzureResourceTypeNSG,
 	AzureResourceTypeIP,
 	AzureResourceTypeDISK,
-	AzureResourceTypeSNET,
 	AzureResourceTypeVM,
 }
 
+var RequiredServices = []ServiceType{
+	ServiceTypeSSH,
+	ServiceTypeDocker,
+	ServiceTypeBacalhau,
+}
+
 var SkippedResourceTypes = []string{
-	"GuestAttestation",
-	"GuestConfiguration",
+	"Microsoft.Compute/virtualMachines/extensions",
 }
 
 type Machine struct {
@@ -51,16 +66,13 @@ type Machine struct {
 	StartTime     time.Time
 
 	MachineResources map[string]MachineResource
+	MachineServices  map[string]ServiceType
 
 	VMSize       string
 	DiskSizeGB   int32 `default:"30"`
 	ComputerName string
 	ElapsedTime  time.Duration
 	Orchestrator bool
-	Docker       ServiceState
-	CorePackages ServiceState
-	Bacalhau     ServiceState
-	SSH          ServiceState
 
 	// New SSH-related fields
 	SSHUser               string
@@ -96,15 +108,15 @@ func (m *Machine) IsOrchestrator() bool {
 }
 
 func (m *Machine) SSHEnabled() bool {
-	return m.SSH == ServiceStateSucceeded
+	return m.MachineServices["SSH"].State == ServiceStateSucceeded
 }
 
 func (m *Machine) DockerEnabled() bool {
-	return m.Docker == ServiceStateSucceeded
+	return m.MachineServices["Docker"].State == ServiceStateSucceeded
 }
 
 func (m *Machine) BacalhauEnabled() bool {
-	return m.Bacalhau == ServiceStateSucceeded
+	return m.MachineServices["Bacalhau"].State == ServiceStateSucceeded
 }
 
 func (m *Machine) GetResource(resourceType string) MachineResource {
@@ -134,32 +146,73 @@ func (m *Machine) SetResource(resourceType string, resourceState AzureResourceSt
 }
 
 func (m *Machine) ResourcesComplete() (int, int) {
-	totalResources := len(RequiredResources)
+	l := logger.Get()
+	totalResources := len(RequiredAzureResources)
 	completedResources := 0
 
-	for _, requiredResource := range RequiredResources {
+	for _, requiredResource := range RequiredAzureResources {
 		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
 			if resource.ResourceState == AzureResourceStateSucceeded {
 				completedResources++
 			}
 		}
 	}
+
+	// Print completed and pending resources
+	l.Infof("Completed resources:")
+	for _, requiredResource := range RequiredAzureResources {
+		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
+			if resource.ResourceState == AzureResourceStateSucceeded {
+				l.Infof("  %s", requiredResource.ResourceString)
+			}
+		}
+	}
+	l.Infof("Pending resources:")
+	for _, requiredResource := range RequiredAzureResources {
+		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
+			if resource.ResourceState != AzureResourceStateSucceeded {
+				l.Infof("  %s", requiredResource.ResourceString)
+			}
+		} else {
+			l.Infof("  %s", requiredResource.ResourceString)
+		}
+	}
+
 	return completedResources, totalResources
 }
 
+func (m *Machine) ServicesComplete() (int, int) {
+	totalServices := len(RequiredServices)
+	completedServices := 0
+
+	for _, requiredService := range RequiredServices {
+		if service, exists := m.MachineServices[requiredService.Name]; exists {
+			if service.State == ServiceStateSucceeded {
+				completedServices++
+			}
+		}
+	}
+
+	return completedServices, totalServices
+}
+
 func (m *Machine) Complete() bool {
-	pending, total := m.ResourcesComplete()
-	return pending == total &&
-		pending > 0 &&
-		m.SSH >= ServiceStateSucceeded &&
-		m.Docker >= ServiceStateSucceeded &&
-		m.Bacalhau >= ServiceStateSucceeded
+	resourcesPending, resourcesTotal := m.ResourcesComplete()
+	resourcesComplete := (resourcesPending == resourcesTotal) && (resourcesPending > 0)
+
+	servicesPending, servicesTotal := m.ServicesComplete()
+	servicesComplete := (servicesPending == servicesTotal) && (servicesPending > 0)
+
+	return resourcesComplete &&
+		servicesComplete
 }
 
 func (m *Machine) InstallDockerAndCorePackages() error {
 	l := logger.Get()
 	// Install Docker
-	m.Docker = ServiceStateUpdating
+	dockerService := m.MachineServices["Docker"]
+	dockerService.State = ServiceStateUpdating
+	m.MachineServices["Docker"] = dockerService
 
 	sshConfig, err := sshutils.NewSSHConfig(
 		m.PublicIP,
@@ -184,11 +237,17 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 
 	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installDockerScriptRemotePath))
 	if err != nil {
-		m.Docker = ServiceStateFailed
+		dockerService.State = ServiceStateFailed
+		m.MachineServices["Docker"] = dockerService
 		return err
 	}
 
-	m.Docker = ServiceStateSucceeded
+	dockerService.State = ServiceStateSucceeded
+	m.MachineServices["Docker"] = dockerService
+
+	corePackagesService := m.MachineServices["CorePackages"]
+	corePackagesService.State = ServiceStateUpdating
+	m.MachineServices["CorePackages"] = corePackagesService
 
 	installCorePackagesScriptPath := "/tmp/install-core-packages.sh"
 	corePackagesScriptBytes, err := internal.GetInstallCorePackagesScript()
@@ -202,11 +261,13 @@ func (m *Machine) InstallDockerAndCorePackages() error {
 
 	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installCorePackagesScriptPath))
 	if err != nil {
-		m.CorePackages = ServiceStateFailed
+		corePackagesService.State = ServiceStateFailed
+		m.MachineServices["CorePackages"] = corePackagesService
 		return err
 	}
 
-	m.CorePackages = ServiceStateSucceeded
+	corePackagesService.State = ServiceStateSucceeded
+	m.MachineServices["CorePackages"] = corePackagesService
 	return nil
 }
 

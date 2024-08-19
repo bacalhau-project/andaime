@@ -230,7 +230,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	dnsFailed := false
 	for retry := 0; retry < maxRetries; retry++ {
-		poller, err := p.Client.DeployTemplate(
+		client := p.GetAzureClient()
+		poller, err := client.DeployTemplate(
 			ctx,
 			m.Deployment.ResourceGroupName,
 			fmt.Sprintf("deployment-%s", machine.Name),
@@ -365,9 +366,11 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		return fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
+	sshService := m.Deployment.Machines[machineIndex].MachineServices["SSH"]
 	sshErr := sshutils.WaitForSSHToBeLive(sshConfig, 3, time.Second*10)
 	if sshErr != nil {
-		m.Deployment.Machines[machineIndex].SSH = models.ServiceStateFailed
+		sshService.State = models.ServiceStateFailed
+		m.Deployment.Machines[machineIndex].MachineServices["SSH"] = sshService
 		m.Deployment.Machines[machineIndex].StatusMessage = "Permanently failed deploying SSH"
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
@@ -379,7 +382,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		)
 	} else {
 		m.Deployment.Machines[machineIndex].StatusMessage = "Successfully Deployed"
-		m.Deployment.Machines[machineIndex].SSH = models.ServiceStateSucceeded
+		sshService.State = models.ServiceStateSucceeded
+		m.Deployment.Machines[machineIndex].MachineServices["SSH"] = sshService
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
@@ -389,7 +393,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			),
 		)
 	}
-	if m.Deployment.Machines[machineIndex].SSH == models.ServiceStateSucceeded {
+	if sshService.State == models.ServiceStateSucceeded {
 		err := m.Deployment.Machines[machineIndex].InstallDockerAndCorePackages()
 		if err != nil {
 			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machine.Name, err)
@@ -406,7 +410,8 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 		l.Debugf("PollAndUpdateResources took %v", time.Since(start))
 	}()
 	m := display.GetGlobalModel()
-	resources, err := p.Client.GetResources(
+	client := p.GetAzureClient()
+	resources, err := client.GetResources(
 		ctx,
 		m.Deployment.SubscriptionID,
 		m.Deployment.ResourceGroupName,
@@ -538,7 +543,8 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 		)
 	}
 
-	_, err := p.Client.GetOrCreateResourceGroup(
+	client := p.GetAzureClient()
+	_, err := client.GetOrCreateResourceGroup(
 		ctx,
 		m.Deployment.ResourceGroupName,
 		m.Deployment.ResourceGroupLocation,
@@ -572,9 +578,10 @@ func (p *AzureProvider) GetVMIPAddresses(
 ) (string, string, error) {
 	l := logger.Get()
 	l.Debugf("Getting IP addresses for VM %s in resource group %s", vmName, resourceGroupName)
+	client := p.GetAzureClient()
 
 	// Get the VM
-	vm, err := p.Client.GetVirtualMachine(ctx, resourceGroupName, vmName)
+	vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get virtual machine: %w", err)
 	}
@@ -598,7 +605,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 	}
 
 	// Get the network interface
-	nic, err := p.Client.GetNetworkInterface(ctx, resourceGroupName, nicName)
+	nic, err := client.GetNetworkInterface(ctx, resourceGroupName, nicName)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get network interface: %w", err)
 	}
@@ -617,7 +624,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 	// Get public IP address
 	publicIP := ""
 	if ipConfig.Properties.PublicIPAddress != nil {
-		publicIP, err = p.Client.GetPublicIPAddress(
+		publicIP, err = client.GetPublicIPAddress(
 			ctx,
 			resourceGroupName,
 			ipConfig.Properties.PublicIPAddress,
