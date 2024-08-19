@@ -4,7 +4,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,7 +40,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	logger.SetLevel(logger.DEBUG)
 	l.Info("Starting executeCreateDeployment")
-	l.Debug(fmt.Sprintf("Command arguments: %v", args))
+	l.Debugf("Command arguments: %v", args)
 
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -65,7 +64,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to initialize deployment: %s", err.Error())
 		l.Error(errMsg)
-		l.Debug(fmt.Sprintf("Deployment initialization error details: %v", err))
+		l.Debugf("Deployment initialization error details: %v", err)
 		return fmt.Errorf(errMsg)
 	}
 	l.Debug("Deployment initialized successfully")
