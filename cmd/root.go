@@ -62,6 +62,7 @@ func Execute() error {
 		<-c
 		logger.Get().Info("Interrupt received, cancelling execution...")
 		cancel()
+		os.Exit(0) // Force exit after cancel
 	}()
 
 	// Set up panic handling

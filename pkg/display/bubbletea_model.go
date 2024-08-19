@@ -239,23 +239,15 @@ func (m *DisplayModel) Init() tea.Cmd {
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
 
-	// Handle key events by sending them to the channel
+	// Handle key events directly in the Update method
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		keyPressTime := time.Now()
 		l.Infof("Key pressed at %s: %s", keyPressTime.Format(time.RFC3339Nano), keyMsg.String())
-		select {
-		case m.keyEventChan <- keyMsg:
-		default:
-			l.Warn("Key event channel is full, dropping key press")
+		if keyMsg.Type == tea.KeyCtrlC || keyMsg.String() == "q" {
+			l.Info("Quit command received")
+			m.Quitting = true
+			return m, tea.Quit
 		}
-	}
-
-	// Check for quit signal
-	select {
-	case <-m.quitChan:
-		return m, tea.Quit
-	default:
-		// Continue with normal processing
 	}
 
 	if m.Quitting {
