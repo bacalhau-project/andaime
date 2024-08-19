@@ -60,9 +60,13 @@ func Execute() error {
 
 	go func() {
 		<-c
-		logger.Get().Info("Interrupt received, cancelling execution...")
+		l := logger.Get()
+		l.Info("Interrupt received, cancelling execution...")
 		cancel()
-		os.Exit(0) // Force exit after cancel
+		// Give some time for goroutines to clean up
+		time.Sleep(2 * time.Second)
+		l.Info("Forcing exit")
+		os.Exit(0)
 	}()
 
 	// Set up panic handling

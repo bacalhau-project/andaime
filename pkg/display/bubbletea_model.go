@@ -166,6 +166,7 @@ type DisplayModel struct {
 	quitChan         chan bool
 	goroutineCount   int64
 	keyEventChan     chan tea.KeyMsg
+	logger           *logger.Logger
 }
 
 // DisplayMachine represents a single machine in the deployment
@@ -216,6 +217,7 @@ func InitialModel() *DisplayModel {
 		UpdateTimesSize:  100,
 		quitChan:         make(chan bool),
 		keyEventChan:     make(chan tea.KeyMsg),
+		logger:           logger.Get(),
 	}
 	go model.handleKeyEvents()
 	return model
@@ -225,15 +227,23 @@ func (m *DisplayModel) handleKeyEvents() {
 	for {
 		select {
 		case <-m.quitChan:
+			if m.logger.IsDebug() {
+				m.logger.Debug("Quit signal received in handleKeyEvents")
+			}
 			return
 		case key := <-m.keyEventChan:
 			if key.String() == "q" || key.String() == "ctrl+c" {
 				m.Quitting = true
-				logger.Get().Infof(
-					"Quit command received (q or ctrl+c) at %s",
-					time.Now().Format(time.RFC3339Nano),
-				)
-				logger.Get().Info("Quit channel closed")
+				if m.logger.IsDebug() {
+					m.logger.Debugf(
+						"Quit command received (q or ctrl+c) at %s",
+						time.Now().Format(time.RFC3339Nano),
+					)
+				}
+				close(m.quitChan)
+				if m.logger.IsDebug() {
+					m.logger.Debug("Quit channel closed")
+				}
 			}
 		}
 	}
@@ -246,20 +256,26 @@ func (m *DisplayModel) Init() tea.Cmd {
 
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	l := logger.Get()
-
 	// Handle key events directly in the Update method
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		keyPressTime := time.Now()
-		l.Infof("Key pressed at %s: %s", keyPressTime.Format(time.RFC3339Nano), keyMsg.String())
+		if m.logger.IsDebug() {
+			m.logger.Debugf("Key pressed at %s: %s", keyPressTime.Format(time.RFC3339Nano), keyMsg.String())
+		}
 		if keyMsg.Type == tea.KeyCtrlC || keyMsg.String() == "q" {
-			l.Info("Quit command received")
+			if m.logger.IsDebug() {
+				m.logger.Debug("Quit command received in Update")
+			}
 			m.Quitting = true
+			close(m.quitChan)
 			return m, tea.Quit
 		}
 	}
 
 	if m.Quitting {
+		if m.logger.IsDebug() {
+			m.logger.Debug("Model is quitting, returning tea.Quit")
+		}
 		return m, tea.Quit
 	}
 
@@ -327,12 +343,16 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 		defer atomic.AddInt64(&m.goroutineCount, -1)
 
 		if m.Quitting {
-			// logger.Get().Info("Quitting, skipping batch updates")
+			if m.logger.IsDebug() {
+				m.logger.Debug("Quitting, skipping batch updates")
+			}
 			return tea.Quit
 		}
 		select {
 		case <-m.quitChan:
-			logger.Get().Info("Quit signal received, stopping batch updates")
+			if m.logger.IsDebug() {
+				m.logger.Debug("Quit signal received, stopping batch updates")
+			}
 			return tea.Quit
 		default:
 			if !m.Quitting {
