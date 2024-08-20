@@ -81,9 +81,6 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l.Debug("Starting DeployARMTemplate")
 	m := display.GetGlobalModelFunc()
 	// Remove the state machine reference
-
-	l.Debugf("Deploying template for deployment: %+v", m.Deployment)
-
 	tags := utils.EnsureAzureTags(
 		m.Deployment.Tags,
 		m.Deployment.ProjectID,
