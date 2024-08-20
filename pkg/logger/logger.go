@@ -117,6 +117,9 @@ func InitProduction() {
 			}
 		}
 
+		if GlobalLogLevel == "" {
+			GlobalLogLevel = "info"
+		}
 		logLevel := getZapLevel(GlobalLogLevel)
 		atom := zap.NewAtomicLevelAt(logLevel)
 
@@ -477,6 +480,7 @@ func getZapLevel(level string) zapcore.Level {
 	case "error":
 		return zapcore.ErrorLevel
 	default:
+		fmt.Printf("Unrecognized log level '%s', defaulting to INFO\n", level)
 		return zapcore.InfoLevel
 	}
 }
