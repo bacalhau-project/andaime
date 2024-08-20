@@ -180,7 +180,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 
 func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
-	l.Debug("Starting StartResourcePolling")
+	// l.Debug("Starting StartResourcePolling")
 	writeToDebugLog("Starting StartResourcePolling")
 
 	resourceTicker := time.NewTicker(5 * time.Second)
@@ -218,7 +218,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				}
 
 				elapsed := time.Since(start)
-				l.Debugf("PollAndUpdateResources #%d took %v", pollCount, elapsed)
+				// l.Debugf("PollAndUpdateResources #%d took %v", pollCount, elapsed)
 				writeToDebugLog(
 					fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed),
 				)
