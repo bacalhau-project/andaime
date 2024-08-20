@@ -33,7 +33,7 @@ var (
 	GlobalEnableFileLogger    bool
 	GlobalEnableBufferLogger  bool
 	GlobalLogPath             string = "/tmp/andaime.log"
-	GlobalLogLevel            string
+	GlobalLogLevel            string = "info"
 	GlobalInstantSync         bool
 	GlobalLoggedBuffer        strings.Builder
 	GlobalLoggedBufferSize    int = 8192
@@ -117,7 +117,7 @@ func InitProduction() {
 			}
 		}
 
-		logLevel := getLogLevel(GlobalLogLevel)
+		logLevel := getZapLevel(GlobalLogLevel)
 		atom := zap.NewAtomicLevelAt(logLevel)
 
 		encoderConfig := zapcore.EncoderConfig{
@@ -457,8 +457,17 @@ func WriteProfileInfo(info string) {
 func GetProfileFilePath() string {
 	return profileFilePath
 }
+
+// SetLogLevel changes the global log level
+func SetLogLevel(level string) {
+	GlobalLogLevel = level
+	if globalLogger != nil {
+		zapLevel := getZapLevel(level)
+		globalLogger.Core().Enabled(zapLevel)
+	}
+}
 func getZapLevel(level string) zapcore.Level {
-	switch level {
+	switch strings.ToLower(level) {
 	case "debug":
 		return zapcore.DebugLevel
 	case "info":
