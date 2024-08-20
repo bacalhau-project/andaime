@@ -92,8 +92,6 @@ func getLogLevel(logLevel string) zapcore.Level {
 }
 func InitProduction() {
 	once.Do(func() {
-		var cores []zapcore.Core
-
 		logPath := viper.GetString("general.log_path")
 		if logPath != "" {
 			GlobalLogPath = logPath
@@ -113,10 +111,23 @@ func InitProduction() {
 		logLevel := getLogLevel(GlobalLogLevel)
 		atom := zap.NewAtomicLevelAt(logLevel)
 
-		if GlobalEnableFileLogger {
-			fileEncoderConfig := zap.NewProductionEncoderConfig()
-			fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		encoderConfig := zapcore.EncoderConfig{
+			TimeKey:        "time",
+			LevelKey:       "level",
+			NameKey:        "logger",
+			CallerKey:      "caller",
+			MessageKey:     "message",
+			StacktraceKey:  "stacktrace",
+			LineEnding:     zapcore.DefaultLineEnding,
+			EncodeLevel:    zapcore.LowercaseLevelEncoder,
+			EncodeTime:     zapcore.ISO8601TimeEncoder,
+			EncodeDuration: zapcore.SecondsDurationEncoder,
+			EncodeCaller:   zapcore.ShortCallerEncoder,
+		}
 
+		var core zapcore.Core
+
+		if GlobalEnableFileLogger {
 			var err error
 			GlobalLogFile, err = os.OpenFile(
 				GlobalLogPath,
@@ -124,44 +135,35 @@ func InitProduction() {
 				0666,
 			)
 			if err == nil {
-				fileCore := zapcore.NewCore(
-					zapcore.NewConsoleEncoder(fileEncoderConfig),
-					zapcore.AddSync(GlobalLogFile),
+				fileWriter := zapcore.AddSync(GlobalLogFile)
+				core = zapcore.NewCore(
+					zapcore.NewConsoleEncoder(encoderConfig),
+					fileWriter,
 					atom,
 				)
-				cores = append(cores, fileCore)
 			}
 		}
 
 		if GlobalEnableBufferLogger {
 			bufferCore := zapcore.NewCore(
-				zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
-					TimeKey:        "time",
-					LevelKey:       "level",
-					NameKey:        "logger",
-					CallerKey:      "caller",
-					MessageKey:     "message",
-					StacktraceKey:  "stacktrace",
-					LineEnding:     zapcore.DefaultLineEnding,
-					EncodeLevel:    zapcore.LowercaseLevelEncoder,
-					EncodeTime:     zapcore.ISO8601TimeEncoder,
-					EncodeDuration: zapcore.SecondsDurationEncoder,
-					EncodeCaller:   zapcore.ShortCallerEncoder,
-				}),
+				zapcore.NewConsoleEncoder(encoderConfig),
 				zapcore.AddSync(&GlobalLoggedBuffer),
 				atom,
 			)
-			cores = append(cores, bufferCore)
+			if core != nil {
+				core = zapcore.NewTee(core, bufferCore)
+			} else {
+				core = bufferCore
+			}
 		}
 
-		core := zapcore.NewTee(cores...)
-		globalLogger = zap.New(core, zap.AddCaller())
+		if core == nil {
+			// If no core is created, create a no-op logger
+			globalLogger = zap.NewNop()
+		} else {
+			globalLogger = zap.New(core, zap.AddCaller())
+		}
 	})
-
-	if globalLogger == nil {
-		// If globalLogger is still nil after initialization, create a no-op logger
-		globalLogger = zap.NewNop()
-	}
 }
 
 type testingWriter struct {
