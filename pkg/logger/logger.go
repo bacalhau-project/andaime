@@ -92,6 +92,9 @@ func getLogLevel(logLevel string) zapcore.Level {
 }
 func InitProduction() {
 	once.Do(func() {
+		fmt.Printf("Initializing logger with: Console=%v, File=%v, Buffer=%v, LogPath=%s, LogLevel=%s\n",
+			GlobalEnableConsoleLogger, GlobalEnableFileLogger, GlobalEnableBufferLogger, GlobalLogPath, GlobalLogLevel)
+
 		logPath := viper.GetString("general.log_path")
 		if logPath != "" {
 			GlobalLogPath = logPath
@@ -154,10 +157,7 @@ func InitProduction() {
 			))
 		}
 
-		if !GlobalEnableConsoleLogger {
-			// If console logging is disabled, use a no-op core for stdout
-			cores = append(cores, zapcore.NewNopCore())
-		} else {
+		if GlobalEnableConsoleLogger {
 			// If console logging is enabled, add a console core
 			consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
 			cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
