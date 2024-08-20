@@ -125,7 +125,7 @@ func InitProduction() {
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 
-		var core zapcore.Core
+		var cores []zapcore.Core
 
 		if GlobalEnableFileLogger {
 			var err error
@@ -136,33 +136,35 @@ func InitProduction() {
 			)
 			if err == nil {
 				fileWriter := zapcore.AddSync(GlobalLogFile)
-				core = zapcore.NewCore(
+				cores = append(cores, zapcore.NewCore(
 					zapcore.NewConsoleEncoder(encoderConfig),
 					fileWriter,
 					atom,
-				)
+				))
+			} else {
+				fmt.Printf("Error opening log file: %v\n", err)
 			}
 		}
 
 		if GlobalEnableBufferLogger {
-			bufferCore := zapcore.NewCore(
+			cores = append(cores, zapcore.NewCore(
 				zapcore.NewConsoleEncoder(encoderConfig),
 				zapcore.AddSync(&GlobalLoggedBuffer),
 				atom,
-			)
-			if core != nil {
-				core = zapcore.NewTee(core, bufferCore)
-			} else {
-				core = bufferCore
-			}
+			))
 		}
 
-		if core == nil {
-			// If no core is created, create a no-op logger
-			globalLogger = zap.NewNop()
+		if !GlobalEnableConsoleLogger {
+			// If console logging is disabled, use a no-op core for stdout
+			cores = append(cores, zapcore.NewNopCore())
 		} else {
-			globalLogger = zap.New(core, zap.AddCaller())
+			// If console logging is enabled, add a console core
+			consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
+			cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
 		}
+
+		core := zapcore.NewTee(cores...)
+		globalLogger = zap.New(core, zap.AddCaller())
 	})
 }
 
