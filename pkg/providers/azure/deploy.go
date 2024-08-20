@@ -214,6 +214,11 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	params map[string]interface{},
 	tags map[string]*string,
 ) error {
+	id := atomic.AddInt64(&p.goroutineCounter, 1)
+	m := display.GetGlobalModelFunc()
+	m.RegisterGoroutine(fmt.Sprintf("deployTemplateWithRetry-%d", id))
+	defer m.DeregisterGoroutine(id)
+
 	l := logger.Get()
 	maxRetries := 3
 	m := display.GetGlobalModelFunc()
