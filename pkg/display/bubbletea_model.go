@@ -167,6 +167,21 @@ type DisplayModel struct {
 	goroutineCount   int64
 	keyEventChan     chan tea.KeyMsg
 	logger           *logger.Logger
+	activeGoroutines sync.Map
+}
+
+func (m *DisplayModel) RegisterGoroutine(label string) int64 {
+	id := atomic.AddInt64(&m.goroutineCount, 1)
+	m.activeGoroutines.Store(id, label)
+	m.logger.Debugf("Goroutine started: %s (ID: %d)", label, id)
+	return id
+}
+
+func (m *DisplayModel) DeregisterGoroutine(id int64) {
+	if label, ok := m.activeGoroutines.LoadAndDelete(id); ok {
+		m.logger.Debugf("Goroutine finished: %s (ID: %d)", label, id)
+	}
+	atomic.AddInt64(&m.goroutineCount, -1)
 }
 
 // DisplayMachine represents a single machine in the deployment

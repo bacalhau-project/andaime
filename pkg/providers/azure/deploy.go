@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
@@ -16,6 +17,11 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
+
+type AzureProvider struct {
+	// ... existing fields ...
+	goroutineCounter int64
+}
 
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
@@ -467,7 +473,6 @@ func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
 	defer m.DeregisterGoroutine(id)
 
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
 
 	// Check for context cancellation
 	if err := ctx.Err(); err != nil {
