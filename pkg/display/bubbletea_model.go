@@ -250,15 +250,16 @@ func (m *DisplayModel) handleKeyEvents() {
 			l.Debug("Quit signal received in handleKeyEvents")
 			return
 		case key := <-m.keyEventChan:
-			if key.String() == "q" || key.String() == "ctrl+c" {
+			if (key.String() == "q" || key.String() == "ctrl+c") && !m.Quitting {
 				m.Quitting = true
 				l.Debugf(
 					"Quit command received (q or ctrl+c) at %s",
 					time.Now().Format(time.RFC3339Nano),
 				)
+				close(m.quitChan)
+				l.Debug("Quit channel closed")
+				return
 			}
-			close(m.quitChan)
-			l.Debug("Quit channel closed")
 		}
 	}
 }
@@ -271,6 +272,12 @@ func (m *DisplayModel) Init() tea.Cmd {
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
+
+	if m.Quitting {
+		l.Debug("Model is quitting, returning tea.Quit")
+		return m, tea.Quit
+	}
+
 	// Handle key events directly in the Update method
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		keyPressTime := time.Now()
@@ -287,31 +294,17 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.Quitting {
-		l.Debug("Model is quitting, returning tea.Quit")
-		return m, tea.Quit
-	}
-
 	updateStart := time.Now()
 	defer func() {
 		updateDuration := time.Since(updateStart)
 		m.UpdateTimes[m.UpdateTimesIndex] = updateDuration
 		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % m.UpdateTimesSize
-		//l.Debugf("Update duration: %v", updateDuration)
 	}()
 
 	switch msg.(type) {
 	case tickMsg:
-		if m.Quitting {
-			return m, nil
-		}
-
-		// l.Debug("Processing tick message")
 		return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 	case batchedUpdatesAppliedMsg:
-		if m.Quitting {
-			return m, nil
-		}
 		m.BatchUpdateTimer = nil
 	}
 
@@ -320,7 +313,6 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	runtime.ReadMemStats(&memStats)
 	m.MemoryUsage = memStats.Alloc
 	m.CPUUsage = getCPUUsage()
-	// l.Debugf("CPU Usage: %.2f%%, Memory Usage: %d MB", m.CPUUsage, m.MemoryUsage/1024/1024)
 
 	return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
 }
@@ -335,17 +327,9 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 			l.Debug("Quitting, skipping batch updates")
 			return tea.Quit
 		}
-		select {
-		case <-m.quitChan:
-			l.Debug("Quit signal received, stopping batch updates")
-			return tea.Quit
-		default:
-			if !m.Quitting {
-				m.applyBatchedUpdates()
-				return batchedUpdatesAppliedMsg{}
-			}
-			return tea.Quit
-		}
+
+		m.applyBatchedUpdates()
+		return batchedUpdatesAppliedMsg{}
 	}
 }
 
