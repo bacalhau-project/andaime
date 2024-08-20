@@ -45,6 +45,7 @@ eastasia
 eastus
 errcheck
 Errf
+errgroup
 Errorf
 euwest
 eventstream

@@ -103,6 +103,19 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			}
 			l.Infof("Bacalhau Orchestrator Deployment completed successfully")
 
+			// Add the orchestrator IP to every machine in the deployment
+			for i := range deployment.Machines {
+				if deployment.Machines[i].Orchestrator ||
+					deployment.Machines[i].OrchestratorIP != "" {
+					l.Warnf(
+						"Machine %s already has an orchestrator IP. Overwriting with: %s",
+						deployment.Machines[i].Name,
+						deployment.OrchestratorIP,
+					)
+				}
+				deployment.Machines[i].OrchestratorIP = deployment.OrchestratorIP
+			}
+
 			l.Infof("Starting Bacalhau Workers Deployment")
 			if err := p.DeployBacalhauWorkers(ctx); err != nil {
 				deploymentErr = fmt.Errorf("failed to deploy Bacalhau workers: %v", err)

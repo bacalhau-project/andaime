@@ -427,7 +427,9 @@ type Disk struct {
 
 func NewDeployment() *Deployment {
 	return &Deployment{
-		Tags: make(map[string]*string),
+		StartTime: time.Now(),
+		Machines:  make([]Machine, 0),
+		Tags:      make(map[string]*string),
 	}
 }
 
