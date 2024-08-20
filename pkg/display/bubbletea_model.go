@@ -171,15 +171,17 @@ type DisplayModel struct {
 }
 
 func (m *DisplayModel) RegisterGoroutine(label string) int64 {
+	l := logger.Get()
 	id := atomic.AddInt64(&m.goroutineCount, 1)
 	m.activeGoroutines.Store(id, label)
-	m.logger.Debugf("Goroutine started: %s (ID: %d)", label, id)
+	l.Debugf("Goroutine started: %s (ID: %d)", label, id)
 	return id
 }
 
 func (m *DisplayModel) DeregisterGoroutine(id int64) {
+	l := logger.Get()
 	if label, ok := m.activeGoroutines.LoadAndDelete(id); ok {
-		m.logger.Debugf("Goroutine finished: %s (ID: %d)", label, id)
+		l.Debugf("Goroutine finished: %s (ID: %d)", label, id)
 	}
 	atomic.AddInt64(&m.goroutineCount, -1)
 }
