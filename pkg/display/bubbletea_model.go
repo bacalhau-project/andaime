@@ -303,18 +303,22 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg.(type) {
 	case tickMsg:
-		return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
+		if !m.Quitting {
+			return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
+		}
 	case batchedUpdatesAppliedMsg:
 		m.BatchUpdateTimer = nil
 	}
 
 	// Update CPU and memory usage
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	m.MemoryUsage = memStats.Alloc
-	m.CPUUsage = getCPUUsage()
+	if !m.Quitting {
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		m.MemoryUsage = memStats.Alloc
+		m.CPUUsage = getCPUUsage()
+	}
 
-	return m, tea.Batch(m.tickCmd(), m.updateLogCmd())
+	return m, nil
 }
 
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
