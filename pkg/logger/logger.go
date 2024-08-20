@@ -111,16 +111,7 @@ func InitProduction() {
 		}
 
 		logLevel := getLogLevel(GlobalLogLevel)
-
-		if GlobalEnableConsoleLogger {
-			// Add console logging
-			consoleCore := zapcore.NewCore(
-				zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
-				zapcore.AddSync(os.Stdout),
-				logLevel,
-			)
-			cores = append(cores, consoleCore)
-		}
+		atom := zap.NewAtomicLevelAt(logLevel)
 
 		if GlobalEnableFileLogger {
 			fileEncoderConfig := zap.NewProductionEncoderConfig()
@@ -136,7 +127,7 @@ func InitProduction() {
 				fileCore := zapcore.NewCore(
 					zapcore.NewConsoleEncoder(fileEncoderConfig),
 					zapcore.AddSync(GlobalLogFile),
-					logLevel,
+					atom,
 				)
 				cores = append(cores, fileCore)
 			}
@@ -158,13 +149,13 @@ func InitProduction() {
 					EncodeCaller:   zapcore.ShortCallerEncoder,
 				}),
 				zapcore.AddSync(&GlobalLoggedBuffer),
-				logLevel,
+				atom,
 			)
 			cores = append(cores, bufferCore)
 		}
 
 		core := zapcore.NewTee(cores...)
-		globalLogger = zap.New(core)
+		globalLogger = zap.New(core, zap.AddCaller())
 	})
 
 	if globalLogger == nil {
@@ -294,7 +285,15 @@ func SetLevel(level zapcore.Level) {
 		InitProduction()
 	}
 	if globalLogger != nil {
-		globalLogger = globalLogger.WithOptions(zap.IncreaseLevel(level))
+		// Create a new logger with the desired level instead of modifying the existing one
+		config := zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(level)
+		newLogger, err := config.Build()
+		if err != nil {
+			Get().Errorf("Failed to create new logger with level %v: %v", level, err)
+			return
+		}
+		globalLogger = newLogger
 	}
 }
 
