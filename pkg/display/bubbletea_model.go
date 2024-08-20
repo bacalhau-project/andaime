@@ -283,7 +283,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		//l.Debugf("Update duration: %v", updateDuration)
 	}()
 
-	switch msg := msg.(type) {
+	switch msg.(type) {
 	case tickMsg:
 		if m.Quitting {
 			return m, nil
@@ -291,35 +291,10 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// l.Debug("Processing tick message")
 		return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
-	case models.StatusUpdateMsg:
-		l.Debug("Processing status update message")
-		m.BatchedUpdates = append(m.BatchedUpdates, msg)
-		if m.BatchUpdateTimer == nil {
-			m.BatchUpdateTimer = time.AfterFunc(100*time.Millisecond, func() {
-				// l.Debug("Applying batched updates")
-				m.applyBatchedUpdates()
-			})
-		}
-	case models.TimeUpdateMsg:
-		if m.Quitting {
-			return m, nil
-		}
-
-		// l.Debug("Processing time update message")
-		m.LastUpdate = time.Now()
-	case logLinesMsg:
-		if m.Quitting {
-			return m, nil
-		}
-
-		// l.Debug("Processing log lines message")
-		m.TextBox = []string(msg)
 	case batchedUpdatesAppliedMsg:
 		if m.Quitting {
 			return m, nil
 		}
-
-		// l.Debug("Batched updates applied")
 		m.BatchUpdateTimer = nil
 	}
 
@@ -502,7 +477,7 @@ func (m *DisplayModel) View() string {
 		atomic.LoadInt64(&m.goroutineCount),
 	)
 
-	logger.WriteProfileInfo(performanceInfo)
+	// logger.WriteProfileInfo(performanceInfo)
 
 	// profileFilePath := logger.GetProfileFilePath()
 	// profileFileInfo := fmt.Sprintf("Profile information written to: %s", profileFilePath)
@@ -662,17 +637,7 @@ type logLinesMsg []string
 
 func (m *DisplayModel) tickCmd() tea.Cmd {
 	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
-		select {
-		case <-m.quitChan:
-			return tea.Quit
-		default:
-			if m.Quitting {
-				return tea.Quit
-			}
-			// Update the whole table based on the current state of the model
-			m.LastUpdate = time.Now()
-			return tickMsg(t)
-		}
+		return tickMsg(t)
 	})
 }
 
