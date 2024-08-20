@@ -73,7 +73,6 @@ func runTestDisplay() error {
 			newDisplayStatus.PublicIP = testutils.RandomIP()
 			newDisplayStatus.PrivateIP = testutils.RandomIP()
 			statuses[i] = newDisplayStatus
-			p.Send(models.StatusUpdateMsg{Status: statuses[i]})
 		}
 
 		wordTicker := time.NewTicker(1 * time.Second)
@@ -86,13 +85,14 @@ func runTestDisplay() error {
 			case <-wordTicker.C:
 				for i := 0; i < totalTasks; i++ {
 					rawStatus := getRandomWords(3)
+					statusMessage := ""
 					if len(rawStatus) > statusLength {
-						statuses[i].StatusMessage = rawStatus[:statusLength]
+						statusMessage = rawStatus[:statusLength]
 					} else {
-						statuses[i].StatusMessage = fmt.Sprintf("%-*s", statusLength, rawStatus)
+						statusMessage = fmt.Sprintf("%-*s", statusLength, rawStatus)
 					}
 					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
-					p.Send(models.StatusUpdateMsg{Status: statuses[i]})
+					m.Deployment.Machines[i].StatusMessage = statusMessage
 
 					// Log the length of each status string
 					// log.Infof("Task %d status length: %d", i+1, len(statuses[i].Status))

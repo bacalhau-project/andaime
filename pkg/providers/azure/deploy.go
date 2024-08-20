@@ -18,11 +18,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
-type AzureProvider struct {
-	// ... existing fields ...
-	goroutineCounter int64
-}
-
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
 
@@ -221,7 +216,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	l := logger.Get()
 	maxRetries := 3
-	m := display.GetGlobalModelFunc()
 
 	machineIndex := -1
 	for i, depMachine := range m.Deployment.Machines {

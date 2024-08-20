@@ -59,7 +59,12 @@ func (m *DisplayModel) updateLogCmd() tea.Cmd {
 		l := logger.Get()
 		start := time.Now()
 		lines := logger.GetLastLines(LogLines)
-		l.Debugf("updateLogCmd: Start: %s, End: %s, Lines: %d", start.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano), len(lines))
+		l.Debugf(
+			"updateLogCmd: Start: %s, End: %s, Lines: %d",
+			start.Format(time.RFC3339Nano),
+			time.Now().Format(time.RFC3339Nano),
+			len(lines),
+		)
 		return logLinesMsg(lines)
 	}
 }
@@ -278,7 +283,8 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
 	msgStart := time.Now()
 	defer func() {
-		l.Debugf("Message processed: %T, Start: %s, End: %s", msg, msgStart.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
+		_ = msgStart
+		// l.Debugf("Message processed: %T, Start: %s, End: %s", msg, msgStart.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
 	}()
 
 	if m.Quitting {
@@ -288,14 +294,14 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Handle key events directly in the Update method
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		keyPressTime := time.Now()
-		l.Debugf(
-			"Key pressed at %s: %s",
-			keyPressTime.Format(time.RFC3339Nano),
-			keyMsg.String(),
-		)
+		// keyPressTime := time.Now()
+		// l.Debugf(
+		// 	"Key pressed at %s: %s",
+		// 	keyPressTime.Format(time.RFC3339Nano),
+		// 	keyMsg.String(),
+		// )
 		if keyMsg.Type == tea.KeyCtrlC || keyMsg.String() == "q" {
-			l.Debug("Quit command received in Update")
+			// l.Debug("Quit command received in Update")
 			m.Quitting = true
 			close(m.quitChan)
 			return m, tea.Quit
@@ -347,7 +353,12 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 
 		updateCount := len(m.BatchedUpdates)
 		m.applyBatchedUpdates()
-		l.Debugf("applyBatchedUpdatesCmd: Start: %s, End: %s, Updates: %d", start.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano), updateCount)
+		l.Debugf(
+			"applyBatchedUpdatesCmd: Start: %s, End: %s, Updates: %d",
+			start.Format(time.RFC3339Nano),
+			time.Now().Format(time.RFC3339Nano),
+			updateCount,
+		)
 		return batchedUpdatesAppliedMsg{}
 	}
 }

@@ -39,6 +39,7 @@ type AzureProvider struct {
 	SSHPort           int
 	lastResourceQuery time.Time
 	cachedResources   []interface{}
+	goroutineCounter  int64
 }
 
 var AzureProviderFunc = NewAzureProvider
