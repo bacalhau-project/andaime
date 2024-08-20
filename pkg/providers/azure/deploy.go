@@ -460,9 +460,12 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 }
 
 // finalizeDeployment performs any necessary cleanup and final steps
-func (p *AzureProvider) FinalizeDeployment(
-	ctx context.Context,
-) error {
+func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
+	id := atomic.AddInt64(&p.goroutineCounter, 1)
+	m := display.GetGlobalModelFunc()
+	m.RegisterGoroutine(fmt.Sprintf("FinalizeDeployment-%d", id))
+	defer m.DeregisterGoroutine(id)
+
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
