@@ -56,7 +56,11 @@ var DisplayColumns = []DisplayColumn{
 
 func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	return func() tea.Msg {
-		return logLinesMsg(logger.GetLastLines(LogLines))
+		l := logger.Get()
+		start := time.Now()
+		lines := logger.GetLastLines(LogLines)
+		l.Debugf("updateLogCmd: Start: %s, End: %s, Lines: %d", start.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano), len(lines))
+		return logLinesMsg(lines)
 	}
 }
 
@@ -272,6 +276,10 @@ func (m *DisplayModel) Init() tea.Cmd {
 // Update handles updates to the DisplayModel
 func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	l := logger.Get()
+	msgStart := time.Now()
+	defer func() {
+		l.Debugf("Message processed: %T, Start: %s, End: %s", msg, msgStart.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
+	}()
 
 	if m.Quitting {
 		l.Debug("Model is quitting, returning tea.Quit")
@@ -301,13 +309,17 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.UpdateTimesIndex = (m.UpdateTimesIndex + 1) % m.UpdateTimesSize
 	}()
 
-	switch msg.(type) {
+	switch typedMsg := msg.(type) {
 	case tickMsg:
+		l.Debugf("Received tickMsg: %v", typedMsg)
 		if !m.Quitting {
 			return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 		}
 	case batchedUpdatesAppliedMsg:
+		l.Debug("Received batchedUpdatesAppliedMsg")
 		m.BatchUpdateTimer = nil
+	case logLinesMsg:
+		l.Debugf("Received logLinesMsg with %d lines", len(typedMsg))
 	}
 
 	// Update CPU and memory usage
@@ -324,6 +336,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 	l := logger.Get()
 	return func() tea.Msg {
+		start := time.Now()
 		atomic.AddInt64(&m.goroutineCount, 1)
 		defer atomic.AddInt64(&m.goroutineCount, -1)
 
@@ -332,7 +345,9 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 			return tea.Quit
 		}
 
+		updateCount := len(m.BatchedUpdates)
 		m.applyBatchedUpdates()
+		l.Debugf("applyBatchedUpdatesCmd: Start: %s, End: %s, Updates: %d", start.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano), updateCount)
 		return batchedUpdatesAppliedMsg{}
 	}
 }
@@ -642,6 +657,8 @@ type logLinesMsg []string
 
 func (m *DisplayModel) tickCmd() tea.Cmd {
 	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
+		l := logger.Get()
+		l.Debugf("Sending tickMsg at %s", t.Format(time.RFC3339Nano))
 		return tickMsg(t)
 	})
 }
