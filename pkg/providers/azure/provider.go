@@ -217,20 +217,30 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 					return
 				}
 
-				writeToDebugLog(fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)))
+				writeToDebugLog(
+					fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)),
+				)
 
 				allResourcesProvisioned := true
 				for _, resource := range resources {
 					resourceMap := resource.(map[string]interface{})
 					provisioningState := resourceMap["provisioningState"].(string)
-					writeToDebugLog(fmt.Sprintf("Resource: %s - Provisioning State: %s", resourceMap["name"].(string), provisioningState))
+					writeToDebugLog(
+						fmt.Sprintf(
+							"Resource: %s - Provisioning State: %s",
+							resourceMap["name"].(string),
+							provisioningState,
+						),
+					)
 					if provisioningState != "Succeeded" {
 						allResourcesProvisioned = false
 					}
 				}
 
 				elapsed := time.Since(start)
-				writeToDebugLog(fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed))
+				writeToDebugLog(
+					fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed),
+				)
 
 				p.logDeploymentStatus()
 
@@ -276,11 +286,10 @@ func (p *AzureProvider) logDeploymentStatus() {
 	)
 	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(p.Deployment.Machines)))
 
-	for i, machine := range p.Deployment.Machines {
+	for _, machine := range p.Deployment.Machines {
 		writeToDebugLog(
 			fmt.Sprintf(
-				"Machine %d - Name: %s, PublicIP: %s, PrivateIP: %s",
-				i+1,
+				"Machine Name: %s, PublicIP: %s, PrivateIP: %s",
 				machine.Name,
 				machine.PublicIP,
 				machine.PrivateIP,
@@ -288,8 +297,8 @@ func (p *AzureProvider) logDeploymentStatus() {
 		)
 		writeToDebugLog(
 			fmt.Sprintf(
-				"Machine %d - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v",
-				i+1,
+				"Machine %s - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v",
+				machine.Name,
 				machine.GetServiceState("Docker"),
 				machine.GetServiceState("CorePackages"),
 				machine.GetServiceState("Bacalhau"),
@@ -300,8 +309,8 @@ func (p *AzureProvider) logDeploymentStatus() {
 		completedResources, totalResources := machine.ResourcesComplete()
 		writeToDebugLog(
 			fmt.Sprintf(
-				"Machine %d - Resources: %d/%d complete",
-				i+1,
+				"Machine %s - Resources: %d/%d complete",
+				machine.Name,
 				completedResources,
 				totalResources,
 			),
@@ -311,8 +320,8 @@ func (p *AzureProvider) logDeploymentStatus() {
 			for resourceType, resource := range machine.GetMachineResources() {
 				writeToDebugLog(
 					fmt.Sprintf(
-						"Machine %d - Resource %s: State: %v, Value: %s",
-						i+1,
+						"Machine %s - Resource %s: State: %v, Value: %s",
+						machine.Name,
 						resourceType,
 						resource.ResourceState,
 						resource.ResourceValue,
@@ -320,7 +329,7 @@ func (p *AzureProvider) logDeploymentStatus() {
 				)
 			}
 		} else {
-			writeToDebugLog(fmt.Sprintf("Machine %d - No machine resources", i+1))
+			writeToDebugLog(fmt.Sprintf("Machine %s - No machine resources", machine.Name))
 		}
 	}
 }
