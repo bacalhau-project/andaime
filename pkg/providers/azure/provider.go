@@ -217,6 +217,14 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 					return
 				}
 
+				// Check for Bacalhau node listing failure
+				if p.checkBacalhauNodeListingFailure() {
+					l.Error("Persistent failure in listing Bacalhau nodes detected")
+					writeToDebugLog("Persistent failure in listing Bacalhau nodes detected")
+					done <- true
+					return
+				}
+
 				writeToDebugLog(
 					fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)),
 				)
@@ -350,4 +358,14 @@ func writeToDebugLog(message string) {
 	if _, err := debugFile.WriteString(logMessage); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
 	}
+}
+
+func (p *AzureProvider) checkBacalhauNodeListingFailure() bool {
+	// This is a placeholder implementation. You should replace this with actual logic
+	// to check if there have been persistent failures in listing Bacalhau nodes.
+	// For example, you could keep a counter of consecutive failures and return true
+	// if it exceeds a certain threshold.
+	
+	// For now, we'll just return false to avoid breaking existing functionality.
+	return false
 }
