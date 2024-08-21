@@ -24,7 +24,6 @@ type Machine struct {
 
 	VMSize         string
 	DiskSizeGB     int32 `default:"30"`
-	ComputerName   string
 	ElapsedTime    time.Duration
 	Orchestrator   bool
 	OrchestratorIP string

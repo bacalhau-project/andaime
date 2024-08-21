@@ -13,16 +13,15 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	azureprovider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 )
 
 var (
-	ConfigFile                string
+	configFile                string
 	projectName               string
 	targetPlatform            string
 	numberOfOrchestratorNodes int
@@ -33,210 +32,110 @@ var (
 	verboseMode               bool
 	outputFormat              string
 
-	once sync.Once
+	once                             sync.Once
+	numberOfDefaultOrchestratorNodes = 1
+	numberOfDefaultComputeNodes      = 2
 )
 
-var (
-	NumberOfDefaultOrchestratorNodes = 1
-	NumberOfDefaultComputeNodes      = 2
-)
-
-type CloudProvider struct {
+type cloudProvider struct {
 	awsProvider   awsprovider.AWSProviderer
-	azureProvider azureprovider.AzureProviderer
+	azureProvider azure.AzureProviderer
 }
 
-// This comes from the /main.go file (in workspace root directory NOT in this directory)
 func Execute() error {
-	// Initialize the logger
-	logger.InitLoggerOutputs()
-	logger.InitProduction()
-	l := logger.Get()
+	l := initLogger()
 	l.Debug("Initializing configuration")
 	initConfig()
 	l.Debug("Configuration initialized")
 
-	// Set up signal handling
+	ctx, cancel := setupSignalHandling()
+	defer cancel()
+
+	setupPanicHandling()
+
+	rootCmd := setupRootCommand()
+	rootCmd.SetContext(ctx)
+	if err := rootCmd.Execute(); err != nil {
+		l.Errorf("Command execution failed: %v", err)
+		return err
+	}
+
+	l.Debug("Command execution completed")
+	return nil
+}
+
+func initLogger() *logger.Logger {
+	logger.InitLoggerOutputs()
+	logger.InitProduction()
+	return logger.Get()
+}
+
+func setupSignalHandling() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
 		<-c
 		l := logger.Get()
 		l.Info("Interrupt received, cancelling execution...")
 		cancel()
-		// Give some time for goroutines to clean up
 		time.Sleep(2 * time.Second)
 		l.Info("Forcing exit")
 		os.Exit(0)
 	}()
 
-	// Set up panic handling
+	return ctx, cancel
+}
+
+func setupPanicHandling() {
 	defer func() {
 		if r := recover(); r != nil {
 			l := logger.Get()
 			_ = l.Sync()
-
-			// Log the panic to debug.log
-			debugLog, err := os.OpenFile(
-				"/tmp/andaime.log",
-				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-				0644,
-			)
-			if err == nil {
-				defer debugLog.Close()
-				l.Errorf("Panic occurred: %v\n", r)
-				l.Error(string(debug.Stack()))
-				l.Errorf("Open Channels: %v", utils.GlobalChannels)
-				if err, ok := r.(error); ok {
-					l.Errorf("Error details: %v", err)
-				}
-			} else {
-				l.Errorf("Failed to open debug log file: %v", err)
-			}
-
-			// Print the stack trace to stderr
-			fmt.Fprintf(os.Stderr, "Panic occurred: %v\n", r)
-			debug.PrintStack()
-			if err, ok := r.(error); ok {
-				fmt.Fprintf(os.Stderr, "Error details: %v\n", err)
-			}
+			logPanic(l, r)
 		}
 	}()
-
-	rootCmd := SetupRootCommand()
-	rootCmd.SetContext(ctx)
-	err := rootCmd.Execute()
-	if err != nil {
-		logger.Get().Errorf("Command execution failed: %v", err)
-		os.Exit(1)
-	}
-	cancel() // Ensure context is cancelled
-	l.Debug("Command execution completed")
-	return nil
 }
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "andaime",
-	Short: "Andaime is a tool for managing cloud resources",
-	Long: `Andaime is a comprehensive tool for managing cloud resources,
-including deploying and managing Bacalhau nodes across multiple cloud providers.`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		initConfig()
-	},
-}
-
-func initConfig() {
-	l := logger.Get()
-	l.Debug("Starting initConfig")
-
-	viper.SetConfigType("yaml")
-
-	if ConfigFile != "" {
-		// tmpLogger.Printf("Debug: Using config file: %s", ConfigFile)
-		l.Debugf("Using config file: %s", ConfigFile)
-		viper.SetConfigFile(ConfigFile)
-	} else {
-		l.Debug("No config file specified, using default paths")
-		// tmpLogger.Print("Debug: No config file specified, using default paths")
-		home, err := os.UserHomeDir()
-		if err != nil {
-			// tmpLogger.Printf("Error getting user home directory: %v", err)
-			// tmpLogger.Printf(`Error: Unable to determine home directory.
-			//  Please specify a config file using the --config flag.`)
-			l.Errorf("Error getting user home directory: %v", err)
-			l.Error("Unable to determine home directory. Please specify a config file using the --config flag.")
-			os.Exit(1)
-		}
-		viper.AddConfigPath(home)
-		viper.AddConfigPath(".") // Add current directory as a search path
-		viper.SetConfigName(".andaime")
-		viper.SetConfigName("config") // Add "config" as a config name to search for
-		// tmpLogger.Printf("Debug: Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
-		l.Debugf("Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
-	}
-
-	viper.AutomaticEnv()
-	// tmpLogger.Print("Debug: Environment variables loaded into viper")
-	l.Debug("Environment variables loaded into viper")
-
-	// tmpLogger.Print("Debug: Attempting to read config file")
-	l.Debug("Attempting to read config file")
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// tmpLogger.Print("Debug: No config file found")
-			l.Debug("No config file found")
-		} else {
-			// tmpLogger.Printf("Error reading config file: %v", err)
-			l.Errorf("Error reading config file: %v", err)
+func logPanic(l *logger.Logger, r interface{}) {
+	debugLog, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		defer debugLog.Close()
+		l.Errorf("Panic occurred: %v\n", r)
+		l.Error(string(debug.Stack()))
+		l.Errorf("Open Channels: %v", utils.GlobalChannels)
+		if err, ok := r.(error); ok {
+			l.Errorf("Error details: %v", err)
 		}
 	} else {
-		// tmpLogger.Printf("Debug: Successfully read config file: %s", viper.ConfigFileUsed())
-		l.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
+		l.Errorf("Failed to open debug log file: %v", err)
 	}
-
-	// Ensure output format is set correctly
-	if outputFormat != "text" && outputFormat != "json" {
-		// tmpLogger.Printf("Debug: Invalid output format '%s'. Using default: text", outputFormat)
-		l.Warnf("Invalid output format '%s'. Using default: text", outputFormat)
-		outputFormat = "text"
-	}
-
-	logger.GlobalEnableConsoleLogger = false
-	logger.GlobalEnableFileLogger = true
-	logger.GlobalEnableBufferLogger = true
-	logger.GlobalLogPath = "/tmp/andaime.log"
-	logger.GlobalLogLevel = "info"
-
-	// Initialize the logger after config is read
-	logger.InitProduction()
-	logger.SetOutputFormat(outputFormat)
-	logger.GlobalInstantSync = true
-	// Set log level based on verbose flag
-	if verboseMode {
-		logger.SetLevel(logger.DEBUG)
-		l := logger.Get()
-		l.Debug("Verbose mode enabled")
-	}
-
-	// tmpLogger.Printf(
-	//     "Logger initialized with configuration: %v",
-	//     zap.String("outputFormat", outputFormat),
-	// )
-	// tmpLogger.Print("Configuration initialization complete")
-	l.Infof("Logger initialized with configuration: %v", zap.String("outputFormat", outputFormat))
-	l.Info("Configuration initialization complete")
 }
 
-func SetupRootCommand() *cobra.Command {
-	// Setup flags
-	setupFlags()
-
-	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		// Parse flags for the current command and all parent commands
-		err := cmd.ParseFlags(os.Args[1:])
-		if err != nil {
-			return err
-		}
-
-		// Set log level based on verbose flag
-		if verboseMode {
-			logger.SetLevel(logger.DEBUG)
-		}
-
-		// Now that flags are parsed, we can initialize the config
-		initConfig()
-
-		return nil
+func setupRootCommand() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "andaime",
+		Short: "Andaime is a tool for managing cloud resources",
+		Long:  `Andaime is a comprehensive tool for managing cloud resources, including deploying and managing Bacalhau nodes across multiple cloud providers.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := cmd.ParseFlags(os.Args[1:]); err != nil {
+				return err
+			}
+			if verboseMode {
+				logger.SetLevel(logger.DEBUG)
+			}
+			initConfig()
+			return nil
+		},
 	}
-	// Add commands
+
+	setupFlags(rootCmd)
 	rootCmd.AddCommand(getMainCmd())
 
 	betaCmd := getBetaCmd(rootCmd)
 	betaCmd.AddCommand(aws.AwsCmd)
-	// Dynamically initialize required cloud providers based on configuration
+
 	initializeCloudProviders()
 
 	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
@@ -248,56 +147,100 @@ func SetupRootCommand() *cobra.Command {
 	return rootCmd
 }
 
-func setupFlags() {
-	rootCmd.PersistentFlags().
-		StringVar(&ConfigFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
-	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
-	rootCmd.PersistentFlags().
-		StringVar(&outputFormat, "output", "text", "Output format: text or json")
-
-	rootCmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
-	rootCmd.PersistentFlags().
-		StringVar(&targetPlatform, "target-platform", "", "Set target platform")
-	rootCmd.PersistentFlags().IntVar(&numberOfOrchestratorNodes,
-		"orchestrator-nodes",
-		NumberOfDefaultOrchestratorNodes,
-		"Set number of orchestrator nodes")
-	rootCmd.PersistentFlags().IntVar(&numberOfComputeNodes,
-		"compute-nodes",
-		numberOfComputeNodes,
-		"Set number of compute nodes")
-	rootCmd.PersistentFlags().StringVar(&targetRegions,
-		"target-regions",
-		"us-east-1",
-		"Comma-separated list of target AWS regions")
-	rootCmd.PersistentFlags().
+func setupFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().
+		StringVar(&configFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
+	cmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
+	cmd.PersistentFlags().StringVar(&outputFormat, "output", "text", "Output format: text or json")
+	cmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
+	cmd.PersistentFlags().StringVar(&targetPlatform, "target-platform", "", "Set target platform")
+	cmd.PersistentFlags().
+		IntVar(&numberOfOrchestratorNodes, "orchestrator-nodes", numberOfDefaultOrchestratorNodes, "Set number of orchestrator nodes")
+	cmd.PersistentFlags().
+		IntVar(&numberOfComputeNodes, "compute-nodes", numberOfDefaultComputeNodes, "Set number of compute nodes")
+	cmd.PersistentFlags().
+		StringVar(&targetRegions, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
+	cmd.PersistentFlags().
 		StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
-	rootCmd.PersistentFlags().
+	cmd.PersistentFlags().
 		StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
 }
 
-func initializeCloudProviders() *CloudProvider {
-	cloudProvider := &CloudProvider{}
+func initConfig() {
+	l := logger.Get()
+	l.Debug("Starting initConfig")
 
-	// Example: Initialize AWS provider
+	viper.SetConfigType("yaml")
+	setupConfigFile()
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			l.Debug("No config file found")
+		} else {
+			l.Errorf("Error reading config file: %v", err)
+		}
+	} else {
+		l.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
+	}
+
+	validateOutputFormat()
+	l.Info("Configuration initialization complete")
+}
+
+func setupConfigFile() {
+	l := logger.Get()
+	if configFile != "" {
+		l.Debugf("Using config file: %s", configFile)
+		viper.SetConfigFile(configFile)
+		return
+	}
+
+	l.Debug("No config file specified, using default paths")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		l.Error(
+			"Unable to determine home directory. Please specify a config file using the --config flag.",
+		)
+		os.Exit(1)
+	}
+
+	viper.AddConfigPath(home)
+	viper.AddConfigPath(".")
+	viper.SetConfigName(".andaime")
+	viper.SetConfigName("config")
+	l.Debugf("Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
+}
+
+func validateOutputFormat() {
+	l := logger.Get()
+	if outputFormat != "text" && outputFormat != "json" {
+		l.Warnf("Invalid output format '%s'. Using default: text", outputFormat)
+		outputFormat = "text"
+	}
+}
+
+func initializeCloudProviders() *cloudProvider {
+	cp := &cloudProvider{}
+
 	if shouldInitAWS() {
-		if err := initAWSProvider(cloudProvider); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to initialize AWS provider: %v\n", err)
+		if err := initAWSProvider(cp); err != nil {
+			logger.Get().Errorf("Failed to initialize AWS provider: %v", err)
 			os.Exit(1)
 		}
 	}
 
 	if shouldInitAzure() {
-		if err := initAzureProvider(cloudProvider); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to initialize Azure provider: %v\n", err)
+		if err := initAzureProvider(cp); err != nil {
+			logger.Get().Errorf("Failed to initialize Azure provider: %v", err)
 			os.Exit(1)
 		}
 	}
-	return cloudProvider
+
+	return cp
 }
 
-// initAWSProvider initializes the AWS provider with the given profile and region
-func initAWSProvider(c *CloudProvider) error {
+func initAWSProvider(c *cloudProvider) error {
 	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
 	if err != nil {
 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
@@ -306,13 +249,8 @@ func initAWSProvider(c *CloudProvider) error {
 	return nil
 }
 
-func shouldInitAWS() bool {
-	// TODO: Detect if AWS should be instantiated
-	return true
-}
-
-func initAzureProvider(c *CloudProvider) error {
-	azureProvider, err := azureprovider.NewAzureProvider()
+func initAzureProvider(c *cloudProvider) error {
+	azureProvider, err := azure.NewAzureProvider()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
@@ -320,7 +258,12 @@ func initAzureProvider(c *CloudProvider) error {
 	return nil
 }
 
+func shouldInitAWS() bool {
+	// TODO: Implement logic to detect if AWS should be instantiated
+	return true
+}
+
 func shouldInitAzure() bool {
-	// TODO: Detect if Azure should be instantiated
+	// TODO: Implement logic to detect if Azure should be instantiated
 	return true
 }

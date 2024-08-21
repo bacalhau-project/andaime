@@ -175,9 +175,8 @@ type Deployment struct {
 	ResourceGroupName     string
 	ResourceGroupLocation string
 	Locations             []string
-	OrchestratorNode      *Machine
 	OrchestratorIP        string
-	Machines              []*Machine
+	Machines              map[string]*Machine
 	UniqueLocations       []string
 	ProjectID             string
 	UniqueID              string
@@ -208,7 +207,7 @@ type Disk struct {
 func NewDeployment() *Deployment {
 	return &Deployment{
 		StartTime: time.Now(),
-		Machines:  make([]*Machine, 0),
+		Machines:  make(map[string]*Machine),
 		Tags:      make(map[string]*string),
 	}
 }
@@ -219,7 +218,6 @@ func (d *Deployment) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"ResourceGroupName":     d.ResourceGroupName,
 		"ResourceGroupLocation": d.ResourceGroupLocation,
-		"OrchestratorNode":      d.OrchestratorNode,
 		"Machines":              d.Machines,
 		"ProjectID":             d.ProjectID,
 		"UniqueID":              d.UniqueID,
@@ -232,9 +230,9 @@ func (d *Deployment) UpdateViperConfig() error {
 	defer d.mu.RUnlock()
 	v := viper.GetViper()
 	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.ResourceGroupName)
-	viperMachines := make([]map[string]interface{}, len(d.Machines))
-	for i, machine := range d.Machines {
-		viperMachines[i] = map[string]interface{}{
+	viperMachines := make(map[string]map[string]interface{})
+	for _, machine := range d.Machines {
+		viperMachines[machine.Name] = map[string]interface{}{
 			"Name":         machine.Name,
 			"PublicIP":     machine.PublicIP,
 			"PrivateIP":    machine.PrivateIP,
@@ -246,21 +244,23 @@ func (d *Deployment) UpdateViperConfig() error {
 	return v.WriteConfig()
 }
 
-func (d *Deployment) GetMachine(index int) *Machine {
+func (d *Deployment) GetMachine(name string) *Machine {
 	d.deploymentMutex.RLock()
 	defer d.deploymentMutex.RUnlock()
-	if index >= 0 && index < len(d.Machines) {
-		return d.Machines[index]
+	if machine, ok := d.Machines[name]; ok {
+		return machine
 	}
 	return nil
 }
 
-func (d *Deployment) UpdateMachine(index int, updater func(*Machine)) {
+func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
 	d.deploymentMutex.Lock()
 	defer d.deploymentMutex.Unlock()
-	if index >= 0 && index < len(d.Machines) {
-		updater(d.Machines[index])
+	if machine, ok := d.Machines[name]; ok {
+		updater(machine)
+		return nil
 	}
+	return fmt.Errorf("machine %s not found", name)
 }
 
 type StatusUpdateMsg struct {

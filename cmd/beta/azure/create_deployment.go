@@ -1,4 +1,3 @@
-//nolint:sigchanyzer
 package azure
 
 import (
@@ -17,10 +16,9 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"golang.org/x/crypto/ssh"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/ssh"
 )
 
 var createAzureDeploymentCmd = &cobra.Command{
@@ -36,45 +34,30 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
-	prog := display.GetGlobalProgram()
-
-	logger.SetLevel(logger.DEBUG)
 	l.Info("Starting executeCreateDeployment")
-	l.Debugf("Command arguments: %v", args)
 
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	UniqueID := time.Now().Format("060102150405")
-	l.Infof("Generated UniqueID: %s", UniqueID)
-	l.Debug("Adding UniqueID to context")
-	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, UniqueID)
+	uniqueID := time.Now().Format("060102150405")
+	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
-	l.Debug("Initializing Azure provider")
 	p, err := azure.AzureProviderFunc()
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to initialize Azure provider: %s", err.Error())
-		l.Error(errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
-	l.Info("Azure provider initialized successfully")
 
-	l.Debug("Initializing deployment")
-	deployment, err := InitializeDeployment(ctx, UniqueID)
+	deployment, err := InitializeDeployment(ctx, uniqueID)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to initialize deployment: %s", err.Error())
-		l.Error(errMsg)
-		l.Debugf("Deployment initialization error details: %v", err)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("failed to initialize deployment: %w", err)
 	}
-	l.Debug("Deployment initialized successfully")
 
-	l.Info("Starting resource deployment")
-
-	// Initialize and run bubbletea program
 	m := display.InitialModel()
 	m.Deployment = deployment
+	prog := display.GetGlobalProgram()
 	prog.InitProgram(m)
+
+	go p.StartResourcePolling(ctx)
 
 	go func() {
 		// Start Resource Polling
@@ -88,54 +71,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			l.Debug("Deployment cancelled")
 			return
 		default:
-			if err := p.DeployResources(ctx); err != nil {
-				deploymentErr = fmt.Errorf("failed to deploy resources: %s", err.Error())
-				l.Error(deploymentErr.Error())
-				prog.Quit()
-				return
-			}
-			l.Info("Starting Bacalhau Orchestrator Deployment")
-			if err := p.DeployBacalhauOrchestrator(ctx); err != nil {
-				deploymentErr = fmt.Errorf("failed to deploy Bacalhau orchestrator: %v", err)
-				l.Error(deploymentErr.Error())
-				prog.Quit()
-				return
-			}
-			l.Infof("Bacalhau Orchestrator Deployment completed successfully")
-
-			// Add the orchestrator IP to every machine in the deployment
-			for i := range deployment.Machines {
-				if deployment.Machines[i].Orchestrator ||
-					deployment.Machines[i].OrchestratorIP != "" {
-					l.Warnf(
-						"Machine %s already has an orchestrator IP. Overwriting with: %s",
-						deployment.Machines[i].Name,
-						deployment.OrchestratorIP,
-					)
-				}
-				deployment.Machines[i].OrchestratorIP = deployment.OrchestratorIP
-			}
-
-			l.Infof("Starting Bacalhau Workers Deployment")
-			if err := p.DeployBacalhauWorkers(ctx); err != nil {
-				deploymentErr = fmt.Errorf("failed to deploy Bacalhau workers: %v", err)
-				l.Error(deploymentErr.Error())
-				prog.Quit()
-				return
-			}
-			l.Infof("Bacalhau Workers Deployment completed successfully")
-
-			l.Info("Azure deployment created successfully")
-			if err := p.FinalizeDeployment(context.Background()); err != nil {
-				deploymentErr = fmt.Errorf("failed to finalize deployment: %v", err)
-				l.Error(deploymentErr.Error())
-				prog.Quit()
-				return
-			}
-
-			l.Info("Deployment finalized")
-			time.Sleep(2 * time.Second) // Wait for 2 seconds before quitting
-			prog.Quit()
+			deploymentErr = runDeployment(ctx, p, deployment)
 		}
 	}()
 
@@ -145,40 +81,67 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Clear the screen
+	// Clear the screen and print final table
 	fmt.Print("\033[H\033[2J")
-
 	fmt.Println(m.RenderFinalTable())
 
-	if deploymentErr != nil {
-		l.Error(deploymentErr.Error())
-		return deploymentErr
+	return deploymentErr
+}
+
+func runDeployment(
+	ctx context.Context,
+	p azure.AzureProviderer,
+	deployment *models.Deployment,
+) error {
+	l := logger.Get()
+	prog := display.GetGlobalProgram()
+
+	if err := p.DeployResources(ctx); err != nil {
+		return fmt.Errorf("failed to deploy resources: %w", err)
 	}
+
+	if err := p.DeployBacalhauOrchestrator(ctx); err != nil {
+		return fmt.Errorf("failed to deploy Bacalhau orchestrator: %w", err)
+	}
+
+	updateOrchestratorIP(deployment)
+
+	if err := p.DeployBacalhauWorkers(ctx); err != nil {
+		return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
+	}
+
+	if err := p.FinalizeDeployment(context.Background()); err != nil {
+		return fmt.Errorf("failed to finalize deployment: %w", err)
+	}
+
+	l.Info("Deployment finalized")
+	time.Sleep(2 * time.Second)
+	prog.Quit()
 
 	return nil
 }
 
-// initializeDeployment prepares the deployment configuration
-func InitializeDeployment(
-	ctx context.Context,
-	uniqueID string,
-) (*models.Deployment, error) {
-	// Check for context cancellation
+func updateOrchestratorIP(deployment *models.Deployment) {
+	for i := range deployment.Machines {
+		deployment.Machines[i].OrchestratorIP = deployment.OrchestratorIP
+	}
+}
+
+func InitializeDeployment(ctx context.Context, uniqueID string) (*models.Deployment, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("deployment cancelled before starting: %w", err)
 	}
 
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
-	} else {
-		logLevel = strings.ToLower(logLevel)
-	}
+	setDefaultConfigurations()
 
-	// Set default values for all configuration items
+	projectID := viper.GetString("general.project_id")
+	return PrepareDeployment(ctx, projectID, uniqueID)
+}
+
+func setDefaultConfigurations() {
 	viper.SetDefault("general.project_id", "default-project")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
-	viper.SetDefault("general.log_level", logLevel)
+	viper.SetDefault("general.log_level", getDefaultLogLevel())
 	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
 	viper.SetDefault("general.ssh_user", "azureuser")
@@ -199,40 +162,23 @@ func InitializeDeployment(
 			},
 		},
 	})
-
-	// Extract Azure-specific configuration
-	projectID := viper.GetString("general.project_id")
-
-	// Create deployment object
-	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
-	}
-
-	return deployment, nil
 }
 
-// prepareDeployment sets up the initial deployment configuration
+func getDefaultLogLevel() string {
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		return "info"
+	}
+	return strings.ToLower(logLevel)
+}
+
 func PrepareDeployment(
 	ctx context.Context,
 	projectID, uniqueID string,
 ) (*models.Deployment, error) {
-	l := logger.Get()
-
 	deployment := &models.Deployment{}
-	deployment.SSHUser = viper.GetString("general.ssh_user")
-	deployment.SSHPort = viper.GetInt("general.ssh_port")
-	deployment.OrchestratorIP = viper.GetString("general.orchestrator_ip")
+	setDeploymentBasicInfo(deployment)
 
-	deployment.ResourceGroupName = viper.GetString("azure.resource_group_name")
-	deployment.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
-	deployment.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
-	deployment.DefaultVMSize = viper.GetString("azure.default_vm_size")
-	deployment.DefaultDiskSizeGB = int32(viper.GetInt("azure.default_disk_size_gb"))
-	deployment.DefaultLocation = viper.GetString("azure.default_location")
-	deployment.SubscriptionID = getSubscriptionID()
-
-	// Extract SSH keys
 	var err error
 	deployment.SSHPublicKeyPath,
 		deployment.SSHPrivateKeyPath,
@@ -243,52 +189,16 @@ func PrepareDeployment(
 		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
 	}
 
-	// Ensure tags
-	tags := utils.EnsureAzureTags(make(map[string]*string), projectID, uniqueID)
-
-	// Validate SSH keys - do this early so we can fail fast
 	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
 		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
 	}
 
-	// Get resource group location
-	resourceGroupLocation := viper.GetString("azure.resource_group_location")
-	if resourceGroupLocation == "" {
-		return nil, fmt.Errorf("resource group location is empty")
-	}
+	setDeploymentDetails(deployment, projectID, uniqueID)
 
-	deployment.ProjectID = projectID
-	deployment.UniqueID = uniqueID
-	deployment.ResourceGroupLocation = resourceGroupLocation
-	deployment.Tags = tags
-
-	// Set ResourceGroupName only if it's not already set
-	if deployment.ResourceGroupName == "" {
-		resourceGroupName := viper.GetString("azure.resource_group_name")
-		if resourceGroupName == "" {
-			return nil, fmt.Errorf("resource group name is empty")
-		}
-		deployment.ResourceGroupName = resourceGroupName
-	}
-
-	// Ensure the deployment has a name
-	if deployment.Name == "" {
-		deployment.Name = fmt.Sprintf("Azure Deployment - %s", uniqueID)
-	}
-
-	// Update Viper configuration
 	if err := deployment.UpdateViperConfig(); err != nil {
 		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
 	}
 
-	// Get allowed ports
-	ports := viper.GetIntSlice("azure.allowed_ports")
-	if len(ports) == 0 {
-		return nil, fmt.Errorf("no allowed ports found in viper config")
-	}
-	l.Debugf("Allowed ports: %v", ports)
-
-	// Process machines, updating the deployment directly
 	if err := ProcessMachinesConfig(deployment); err != nil {
 		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
 	}
@@ -296,17 +206,33 @@ func PrepareDeployment(
 	return deployment, nil
 }
 
-// ExtractSSHKeyPaths retrieves the paths for SSH public and private keys and the content of the public key.
-//
-// This function extracts the file paths for the SSH public and private keys from the configuration,
-// reads the content of the public key file, and returns the necessary information for SSH authentication.
-//
-// Returns:
-//   - string: The file path of the SSH public key.
-//   - string: The file path of the SSH private key.
-//   - string: The content of the SSH public key file, trimmed of newline characters.
-//   - string: The content of the SSH private key file, trimmed of newline characters.
-//   - error: An error if any step in the process fails, such as extracting key paths or reading the public key file.
+func setDeploymentBasicInfo(d *models.Deployment) {
+	d.SSHUser = viper.GetString("general.ssh_user")
+	d.SSHPort = viper.GetInt("general.ssh_port")
+	d.OrchestratorIP = viper.GetString("general.orchestrator_ip")
+	d.ResourceGroupName = viper.GetString("azure.resource_group_name")
+	d.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
+	d.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
+	d.DefaultVMSize = viper.GetString("azure.default_vm_size")
+	d.DefaultDiskSizeGB = int32(viper.GetInt("azure.default_disk_size_gb"))
+	d.DefaultLocation = viper.GetString("azure.default_location")
+	d.SubscriptionID = getSubscriptionID()
+}
+
+func setDeploymentDetails(d *models.Deployment, projectID, uniqueID string) {
+	d.ProjectID = projectID
+	d.UniqueID = uniqueID
+	d.Tags = utils.EnsureAzureTags(make(map[string]*string), projectID, uniqueID)
+
+	if d.ResourceGroupName == "" {
+		d.ResourceGroupName = viper.GetString("azure.resource_group_name")
+	}
+
+	if d.Name == "" {
+		d.Name = fmt.Sprintf("Azure Deployment - %s", uniqueID)
+	}
+}
+
 func ExtractSSHKeyPaths() (string, string, string, string, error) {
 	publicKeyPath, err := extractSSHKeyPath("general.ssh_public_key_path")
 	if err != nil {
@@ -323,43 +249,24 @@ func ExtractSSHKeyPaths() (string, string, string, string, error) {
 		return "", "", "", "", fmt.Errorf("failed to read public key file: %w", err)
 	}
 
-	returnPublicKeyData := strings.TrimSpace(string(publicKeyData))
-
 	privateKeyData, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("failed to read private key file: %w", err)
 	}
-	returnPrivateKeyData := strings.TrimSpace(string(privateKeyData))
 
-	return publicKeyPath,
-		privateKeyPath,
-		returnPublicKeyData,
-		returnPrivateKeyData,
-		nil
+	return publicKeyPath, privateKeyPath, strings.TrimSpace(
+			string(publicKeyData),
+		), strings.TrimSpace(
+			string(privateKeyData),
+		), nil
 }
 
 func extractSSHKeyPath(configKeyString string) (string, error) {
-	l := logger.Get()
-
-	l.Debugf("Extracting key path from %s", configKeyString)
 	keyPath := viper.GetString(configKeyString)
 	if keyPath == "" {
-		return "", fmt.Errorf(
-			"%s is empty. \nConfig key used: %s \nConfig file used: %s",
-			configKeyString,
-			configKeyString,
-			viper.ConfigFileUsed(),
-		)
+		return "", fmt.Errorf("%s is empty", configKeyString)
 	}
 
-	l.Debugf("Extracting key material from %s", keyPath)
-	if keyPath == "" {
-		return "", fmt.Errorf("key path is empty")
-	}
-
-	l.Debugf("Getting absolute path for key file: %s", keyPath)
-
-	// If path starts with "~" then replace with homedir
 	if strings.HasPrefix(keyPath, "~") {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -373,33 +280,29 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 		return "", fmt.Errorf("failed to get absolute path for key file: %w", err)
 	}
 
-	l.Debugf("Reading key file: %s", absoluteKeyPath)
-	keyMaterial, err := os.ReadFile(absoluteKeyPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read key file: %w", err)
-	}
-
-	if len(keyMaterial) == 0 {
-		return "", fmt.Errorf("key file is empty")
+	if _, err := os.Stat(absoluteKeyPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("key file does not exist: %s", absoluteKeyPath)
 	}
 
 	return absoluteKeyPath, nil
 }
 
-// processMachinesConfig processes the machine configurations, modifying the deployment in-place
+// We're going to use a temporary machine struct to unmarshal from the config file
+// and then convert it to the actual machine struct
+type rawMachine struct {
+	Location   string `yaml:"location"`
+	Parameters struct {
+		Count        int    `yaml:"count,omitempty"`
+		Type         string `yaml:"type,omitempty"`
+		Orchestrator bool   `yaml:"orchestrator,omitempty"`
+	} `yaml:"parameters"`
+}
+
 func ProcessMachinesConfig(deployment *models.Deployment) error {
-	var orchestratorNode *models.Machine
 	locations := make(map[string]bool)
 
-	type MachineConfig struct {
-		Location   string `yaml:"location"`
-		Parameters struct {
-			Count        int    `yaml:"count,omitempty"`
-			Type         string `yaml:"type,omitempty"`
-			Orchestrator bool   `yaml:"orchestrator,omitempty"`
-		} `yaml:"parameters"`
-	}
-	var rawMachines []MachineConfig
+	rawMachines := []rawMachine{}
+
 	if err := viper.UnmarshalKey("azure.machines", &rawMachines); err != nil {
 		return fmt.Errorf("error unmarshaling machines: %w", err)
 	}
@@ -408,108 +311,286 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	defaultType := viper.GetString("azure.default_machine_type")
 	defaultDiskSize := viper.GetInt("azure.disk_size_gb")
 
-	if _, err := os.Stat(deployment.SSHPrivateKeyPath); os.IsNotExist(err) {
-		return fmt.Errorf(
-			"private key path does not exist: %s",
-			deployment.SSHPrivateKeyPath,
-		)
+	privateKeyBytes, err := readPrivateKey(deployment.SSHPrivateKeyPath)
+	if err != nil {
+		return err
 	}
 
-	// Open the private key file
-	privateKeyFile, err := os.Open(deployment.SSHPrivateKeyPath)
-	if err != nil {
-		return fmt.Errorf("failed to open private key file: %w", err)
+	orchestratorIP := deployment.OrchestratorIP
+
+	var orchestratorLocations []string
+	for _, rawMachine := range rawMachines {
+		if rawMachine.Parameters.Orchestrator {
+			// We're doing some checking here to make sure that the orchestrator node not
+			// specified in a way that would result in multiple orchestrator nodes
+			if rawMachine.Parameters.Count == 0 {
+				rawMachine.Parameters.Count = defaultCount
+			}
+
+			for i := 0; i < rawMachine.Parameters.Count; i++ {
+				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
+			}
+		}
 	}
-	privateKeyBytes, err := io.ReadAll(privateKeyFile)
+
+	if len(orchestratorLocations) > 1 {
+		return fmt.Errorf("multiple orchestrator nodes found")
+	}
+
+	newMachines := make(map[string]*models.Machine)
+	for _, rawMachine := range rawMachines {
+		countOfMachines := getCountOfMachines(rawMachine.Parameters.Count, defaultCount)
+		for i := 0; i < countOfMachines; i++ {
+			diskSizeGB := defaultDiskSize
+			vmSize := defaultType
+
+			if rawMachine.Parameters.Type != "" {
+				vmSize = rawMachine.Parameters.Type
+			}
+
+			newMachine := createNewMachine(
+				rawMachine.Location,
+				int32(diskSizeGB),
+				vmSize,
+				privateKeyBytes,
+				deployment.SSHPort,
+			)
+			newMachines[newMachine.Name] = newMachine
+		}
+
+		locations[rawMachine.Location] = true
+	}
+
+	// Loop for setting the orchestrator node
+	orchestratorFound := false
+	for name := range newMachines {
+		if orchestratorIP != "" {
+			newMachines[name].OrchestratorIP = orchestratorIP
+			orchestratorFound = true
+		} else if len(orchestratorLocations) > 0 && newMachines[name].Location == orchestratorLocations[0] {
+			newMachines[name].Orchestrator = true
+			orchestratorFound = true
+		} else {
+			newMachines[name].Orchestrator = false
+		}
+	}
+	if !orchestratorFound {
+		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
+	}
+
+	deployment.Machines = newMachines
+	deployment.UniqueLocations = getUniqueLocations(locations)
+
+	return nil
+}
+
+func readPrivateKey(path string) ([]byte, error) {
+	privateKeyFile, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to read private key file: %w", err)
+		return nil, fmt.Errorf("failed to open private key file: %w", err)
 	}
 	defer privateKeyFile.Close()
 
-	_, err = ssh.ParsePrivateKey(privateKeyBytes)
+	privateKeyBytes, err := io.ReadAll(privateKeyFile)
 	if err != nil {
-		return fmt.Errorf("failed to parse private key: %w", err)
+		return nil, fmt.Errorf("failed to read private key file: %w", err)
 	}
 
-	newMachines := make([]*models.Machine, 0)
+	if _, err = ssh.ParsePrivateKey(privateKeyBytes); err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
 
-	for _, rawMachine := range rawMachines {
-		var thisMachine models.Machine
-		thisMachine.Type = models.AzureResourceTypeVM
-		thisMachine.DiskSizeGB = int32(defaultDiskSize)
-		thisMachine.VMSize = defaultType
-		thisMachine.Location = rawMachine.Location
-		thisMachine.Parameters.Orchestrator = false
+	return privateKeyBytes, nil
+}
 
-		// Upsert machine parameters from rawMachine
-		if rawMachine.Parameters.Type != "" {
-			thisMachine.VMSize = rawMachine.Parameters.Type
+func validateMachineOrchestrator(
+	machine *models.Machine,
+	orchestratorNode *models.Machine,
+	deployment *models.Deployment,
+) error {
+	if machine.Orchestrator {
+		if orchestratorNode != nil {
+			return fmt.Errorf("multiple orchestrator nodes found")
 		}
-
-		if rawMachine.Parameters.Orchestrator {
-			if orchestratorNode != nil || rawMachine.Parameters.Count > 1 {
-				return fmt.Errorf("multiple orchestrator nodes found")
-			}
-			if deployment.OrchestratorIP != "" {
-				return fmt.Errorf(
-					"orchestrator node and deployment.OrchestratorIP cannot both be set",
-				)
-			}
-			thisMachine.Orchestrator = rawMachine.Parameters.Orchestrator
-			orchestratorNode = &thisMachine
-		}
-
 		if deployment.OrchestratorIP != "" {
-			if orchestratorNode != nil {
-				return fmt.Errorf(
-					"orchestrator node and deployment.OrchestratorIP cannot both be set",
-				)
-			}
+			return fmt.Errorf("orchestrator node and deployment.OrchestratorIP cannot both be set")
 		}
-
-		countOfMachines := rawMachine.Parameters.Count
-		if countOfMachines == 0 {
-			countOfMachines = defaultCount
-		}
-		for i := 0; i < countOfMachines; i++ {
-			thisMachine.ID = utils.CreateShortID()
-			thisMachine.Name = fmt.Sprintf("%s-vm", thisMachine.ID)
-			thisMachine.ComputerName = fmt.Sprintf("%s-vm", thisMachine.ID)
-			thisMachine.StartTime = time.Now()
-
-			err := thisMachine.EnsureMachineServices()
-			if err != nil {
-				return fmt.Errorf("failed to ensure machine services: %w", err)
-			}
-
-			for _, service := range models.RequiredServices {
-				thisMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
-			}
-
-			thisMachine.SSHUser = "azureuser"
-			thisMachine.SSHPort = deployment.SSHPort
-			thisMachine.SSHPrivateKeyMaterial = privateKeyBytes
-
-			if deployment.OrchestratorIP != "" {
-				thisMachine.OrchestratorIP = deployment.OrchestratorIP
-			}
-
-			newMachines = append(newMachines, &thisMachine)
-		}
-
-		// Track unique locations
-		locations[thisMachine.Location] = true
+		return nil
 	}
-	deployment.Machines = newMachines
 
-	// Populate UniqueLocations in the deployment
-	deployment.UniqueLocations = make([]string, 0, len(locations))
+	if deployment.OrchestratorIP != "" && orchestratorNode != nil {
+		return fmt.Errorf("orchestrator node and deployment.OrchestratorIP cannot both be set")
+	}
+
+	return nil
+}
+
+func getCountOfMachines(paramCount, defaultCount int) int {
+	if paramCount == 0 {
+		return defaultCount
+	}
+	return paramCount
+}
+
+func createNewMachine(
+	location string,
+	diskSizeGB int32,
+	vmSize string,
+	privateKeyBytes []byte,
+	sshPort int,
+) *models.Machine {
+	newMachine := &models.Machine{}
+	newMachine.ID = utils.CreateShortID()
+	newMachine.Name = fmt.Sprintf("%s-vm", newMachine.ID)
+	newMachine.StartTime = time.Now()
+	newMachine.Location = location
+	newMachine.VMSize = vmSize
+	newMachine.DiskSizeGB = diskSizeGB
+
+	if err := newMachine.EnsureMachineServices(); err != nil {
+		logger.Get().Errorf("Failed to ensure machine services: %v", err)
+	}
+
+	for _, service := range models.RequiredServices {
+		newMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
+	}
+
+	newMachine.SSHUser = "azureuser"
+	newMachine.SSHPort = sshPort
+	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
+
+	return newMachine
+}
+
+func getUniqueLocations(locations map[string]bool) []string {
+	uniqueLocations := make([]string, 0, len(locations))
 	for location := range locations {
-		deployment.UniqueLocations = append(deployment.UniqueLocations, location)
+		uniqueLocations = append(uniqueLocations, location)
+	}
+	return uniqueLocations
+}
+
+// Additional helper functions
+
+func validateResourceGroup(deployment *models.Deployment) error {
+	if deployment.ResourceGroupLocation == "" {
+		return fmt.Errorf("resource group location is empty")
+	}
+	if deployment.ResourceGroupName == "" {
+		return fmt.Errorf("resource group name is empty")
+	}
+	return nil
+}
+
+func validateAllowedPorts(deployment *models.Deployment) error {
+	if len(deployment.AllowedPorts) == 0 {
+		return fmt.Errorf("no allowed ports found in configuration")
+	}
+	return nil
+}
+
+// Main execution function (previously executeCreateDeployment)
+func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
+	l := logger.Get()
+	l.Info("Starting Azure deployment creation")
+
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
+	uniqueID := time.Now().Format("060102150405")
+	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
+
+	azureProvider, err := initializeAzureProvider()
+	if err != nil {
+		return err
 	}
 
-	// Set the orchestrator node in the deployment
-	deployment.OrchestratorNode = orchestratorNode
+	deployment, err := InitializeDeployment(ctx, uniqueID)
+	if err != nil {
+		return err
+	}
 
-	return nil // Return only error if any
+	if err := validateDeployment(deployment); err != nil {
+		return err
+	}
+
+	displayModel := initializeDisplayModel(deployment)
+	prog := display.GetGlobalProgram()
+	prog.InitProgram(displayModel)
+
+	go azureProvider.StartResourcePolling(ctx)
+
+	deploymentErr := runDeploymentProcess(ctx, azureProvider, deployment)
+
+	if _, err := prog.Run(); err != nil {
+		l.Errorf("Error running display program: %v", err)
+		return err
+	}
+
+	// Clear the screen and print final table
+	fmt.Print("\033[H\033[2J")
+	fmt.Println(displayModel.RenderFinalTable())
+
+	return deploymentErr
+}
+
+func initializeAzureProvider() (azure.AzureProviderer, error) {
+	azureProvider, err := azure.AzureProviderFunc()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
+	}
+	return azureProvider, nil
+}
+
+func validateDeployment(deployment *models.Deployment) error {
+	if err := validateResourceGroup(deployment); err != nil {
+		return err
+	}
+	if err := validateAllowedPorts(deployment); err != nil {
+		return err
+	}
+	return nil
+}
+
+func initializeDisplayModel(deployment *models.Deployment) *display.DisplayModel {
+	displayModel := display.InitialModel()
+	displayModel.Deployment = deployment
+	return displayModel
+}
+
+func runDeploymentProcess(
+	ctx context.Context,
+	azureProvider azure.AzureProviderer,
+	deployment *models.Deployment,
+) error {
+	l := logger.Get()
+	program := display.GetGlobalProgram()
+
+	deploymentSteps := []struct {
+		name string
+		fn   func(context.Context) error
+	}{
+		{"Deploy Resources", azureProvider.DeployResources},
+		{"Deploy Bacalhau Orchestrator", azureProvider.DeployBacalhauOrchestrator},
+		{"Deploy Bacalhau Workers", azureProvider.DeployBacalhauWorkers},
+		{"Finalize Deployment", azureProvider.FinalizeDeployment},
+	}
+
+	for _, step := range deploymentSteps {
+		l.Infof("Starting %s", step.name)
+		if err := step.fn(ctx); err != nil {
+			return fmt.Errorf("failed to %s: %w", step.name, err)
+		}
+		l.Infof("Completed %s", step.name)
+
+		if step.name == "Deploy Bacalhau Orchestrator" {
+			updateOrchestratorIP(deployment)
+		}
+	}
+
+	l.Info("Deployment process completed successfully")
+	time.Sleep(2 * time.Second)
+	program.Quit()
+
+	return nil
 }

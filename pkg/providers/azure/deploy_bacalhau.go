@@ -35,8 +35,12 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 		return fmt.Errorf("orchestrator IP set")
 	}
 
-	for _, machine := range m.Deployment.Machines {
+	for nodeName, machine := range m.Deployment.Machines {
+		if machine.Name == "" {
+			return fmt.Errorf("no machine name found")
+		}
 		if machine.IsOrchestrator() {
+			orchestratorNodeName = nodeName
 			numberOfOrchestratorNodes++
 			if numberOfOrchestratorNodes > 1 {
 				return fmt.Errorf("multiple orchestrator nodes found")
@@ -202,15 +206,16 @@ func (p *AzureProvider) DeployBacalhauWorkers(
 	m := display.GetGlobalModel()
 
 	var eg errgroup.Group
+	eg.SetLimit(10)
 
-	for machineIndex, machine := range m.Deployment.Machines {
-		internalMachine := machine
+	for machineName, machine := range m.Deployment.Machines {
 		if machine.Orchestrator {
 			continue
 		}
 
 		eg.Go(func() error {
-			return func(machineIndex int, machine *models.Machine) error {
+			return func(machineName string) error {
+				machine := m.Deployment.Machines[machineName]
 				sshConfig, err := sshutils.NewSSHConfigFunc(
 					machine.PublicIP,
 					machine.SSHPort,
@@ -339,12 +344,14 @@ func (p *AzureProvider) DeployBacalhauWorkers(
 				// If the output is valid and contains nodes, log success
 				l.Infof("Bacalhau orchestrator deployed successfully, nodes found: %d", len(nodes))
 				machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
-				m.Deployment.OrchestratorIP = m.Deployment.Machines[machineIndex].PublicIP
+				m.Deployment.OrchestratorIP = m.Deployment.Machines[machineName].PublicIP
 
 				return nil
-			}(machineIndex, internalMachine)
+			}(machineName)
 		})
 	}
-
-	return eg.Wait()
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	return nil
 }

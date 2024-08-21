@@ -126,14 +126,14 @@ func InitProduction() {
 		encoderConfig := zapcore.EncoderConfig{
 			TimeKey:  "time",
 			LevelKey: "level",
-			// NameKey:        "logger",
-			// CallerKey:      "caller",
+			// NameKey:    "logger",
+			// CallerKey:  "caller",
 			MessageKey: "message",
 			// StacktraceKey: "stacktrace",
-			LineEnding: zapcore.DefaultLineEnding,
-			// EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			// EncodeTime:     zapcore.ISO8601TimeEncoder,
-			// EncodeDuration: zapcore.SecondsDurationEncoder,
+			LineEnding:     zapcore.DefaultLineEnding,
+			EncodeLevel:    zapcore.LowercaseLevelEncoder,
+			EncodeTime:     zapcore.ISO8601TimeEncoder,
+			EncodeDuration: zapcore.SecondsDurationEncoder,
 			// EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 

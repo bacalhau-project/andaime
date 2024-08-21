@@ -13,11 +13,7 @@ import (
 )
 
 func RotateServiceStates(i int) models.ServiceState {
-	if i > int(models.AzureResourceStateUnknown) {
-		i = 0
-	} else {
-		i++
-	}
+	i = i % int(models.ServiceStateUnknown)
 	return models.ServiceState(i)
 }
 
@@ -26,8 +22,8 @@ func TestDisplayLayout(t *testing.T) {
 	m := display.GetGlobalModelFunc()
 
 	// Add test machines
-	testMachines := []*models.Machine{
-		{
+	testMachines := map[string]*models.Machine{
+		"test1": {
 			Name:          "test1",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
@@ -35,7 +31,7 @@ func TestDisplayLayout(t *testing.T) {
 			Orchestrator:  true,
 			StartTime:     time.Now().Add(-29 * time.Second),
 		},
-		{
+		"test2": {
 			Name:          "test2",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
@@ -43,7 +39,7 @@ func TestDisplayLayout(t *testing.T) {
 			Orchestrator:  true,
 			StartTime:     time.Now().Add(-29 * time.Second),
 		},
-		{
+		"test3": {
 			Name:          "test3",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
@@ -51,7 +47,7 @@ func TestDisplayLayout(t *testing.T) {
 			Orchestrator:  true,
 			StartTime:     time.Now().Add(-29 * time.Second),
 		},
-		{
+		"test4": {
 			Name:          "test4",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
@@ -59,7 +55,7 @@ func TestDisplayLayout(t *testing.T) {
 			Orchestrator:  true,
 			StartTime:     time.Now().Add(-29 * time.Second),
 		},
-		{
+		"test5": {
 			Name:          "test5",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
@@ -71,9 +67,17 @@ func TestDisplayLayout(t *testing.T) {
 
 	m.Deployment.Machines = testMachines
 
-	for i := range m.Deployment.Machines {
-		for j := range m.Deployment.Machines[i].GetMachineServices() {
-			m.Deployment.Machines[i].SetServiceState(j, RotateServiceStates(i))
+	for _, machine := range m.Deployment.Machines {
+		for _, service := range models.RequiredServices {
+			machine.SetServiceState(service.Name, models.ServiceStateUnknown)
+		}
+	}
+
+	i := 0
+	for _, machine := range m.Deployment.Machines {
+		for _, service := range machine.GetMachineServices() {
+			machine.SetServiceState(service.Name, RotateServiceStates(i))
+			i++
 		}
 	}
 
@@ -104,8 +108,17 @@ func TestDisplayLayout(t *testing.T) {
 	assert.Equal(t, expectedHeader, lines[1], "Header line should match expected format")
 
 	// Test each machine row
-	for i, machine := range testMachines {
-		line := lines[i+2]
+	for _, machine := range testMachines {
+		// Get the line (have to do it this way because the line numbers are not consistent)
+		line := ""
+		for _, putativeLine := range lines {
+			if strings.Contains(putativeLine, machine.Name) {
+				line = putativeLine
+				break
+			}
+		}
+		assert.True(t, line != "", "Machine line should be found")
+
 		expectedLineSprintfString := "│ "
 		for _, column := range display.DisplayColumns {
 			if column.Title != "" {
@@ -137,7 +150,7 @@ func TestDisplayLayout(t *testing.T) {
 			t,
 			expectedLine,
 			line,
-			fmt.Sprintf("Machine line %d should match expected format", i+1),
+			fmt.Sprintf("Machine line should match expected format"),
 		)
 	}
 }
@@ -170,9 +183,9 @@ func TestColumnWidths(t *testing.T) {
 
 func TestProgressBar(t *testing.T) {
 	m := display.GetGlobalModelFunc()
-	m.Deployment.Machines = []*models.Machine{
-		{
-			Name:          "test",
+	m.Deployment.Machines = map[string]*models.Machine{
+		"test1": {
+			Name:          "test1",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "test",

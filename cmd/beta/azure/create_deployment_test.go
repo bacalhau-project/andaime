@@ -138,17 +138,19 @@ func TestProcessMachinesConfig(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		machinesConfig []map[string]interface{}
-		orchestratorIP string
-		expectError    bool
-		expectedNodes  int
+		name                string
+		machinesConfig      []map[string]interface{}
+		orchestratorIP      string
+		expectError         bool
+		expectedErrorString string
+		expectedNodes       int
 	}{
 		{
-			name:           "No orchestrator node and no orchestrator IP",
-			machinesConfig: []map[string]interface{}{},
-			expectError:    false,
-			expectedNodes:  0,
+			name:                "No orchestrator node and no orchestrator IP",
+			machinesConfig:      []map[string]interface{}{},
+			expectError:         true,
+			expectedErrorString: "no orchestrator node and orchestratorIP is not set",
+			expectedNodes:       0,
 		},
 		{
 			name: "No orchestrator node but orchestrator IP specified",
@@ -193,7 +195,11 @@ func TestProcessMachinesConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset the machines slice for each test
-			deployment.Machines = []*models.Machine{}
+			deployment.Machines = map[string]*models.Machine{}
+			deployment.OrchestratorIP = ""
+			if tt.orchestratorIP != "" {
+				deployment.OrchestratorIP = tt.orchestratorIP
+			}
 
 			// Reset viper config for each test
 			viper.Reset()
@@ -216,11 +222,24 @@ func TestProcessMachinesConfig(t *testing.T) {
 				}
 
 				// Check if orchestrator node is set when expected
+				//
 				if tt.name == "One orchestrator node, no other machines" || tt.name == "One orchestrator node and many other machines" {
-					assert.NotNil(t, deployment.OrchestratorNode)
-					assert.True(t, deployment.OrchestratorNode.Orchestrator)
+					// Go through all the machines in the deployment and check if the orchestrator bit is set on one (and only one) of them
+					orchestratorFound := false
+					for _, machine := range deployment.Machines {
+						if machine.Orchestrator {
+							orchestratorFound = true
+						}
+					}
+					assert.True(t, orchestratorFound)
+				} else if tt.name == "No orchestrator node but orchestrator IP specified" {
+					assert.NotNil(t, deployment.OrchestratorIP)
+					for _, machine := range deployment.Machines {
+						assert.False(t, machine.Orchestrator)
+						assert.Equal(t, deployment.OrchestratorIP, machine.OrchestratorIP)
+					}
 				} else {
-					assert.Nil(t, deployment.OrchestratorNode)
+					assert.Nil(t, deployment.OrchestratorIP)
 				}
 			}
 		})

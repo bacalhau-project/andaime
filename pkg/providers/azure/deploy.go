@@ -548,7 +548,11 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
 		if len(m.Deployment.Machines) > 0 {
-			resourceGroupLocation = m.Deployment.Machines[0].Location
+			for _, machine := range m.Deployment.Machines {
+				// Break over the first machine
+				resourceGroupLocation = machine.Location
+				break
+			}
 		}
 		if resourceGroupLocation == "" {
 			return fmt.Errorf(

@@ -3,6 +3,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -45,7 +46,8 @@ func setupMockSSHConfig(m *mockSSHConfig, expectedCalls int) {
 // TestCase represents a generic test case structure
 type TestCase struct {
 	name           string
-	machines       []*models.Machine
+	machines       map[string]*models.Machine
+	machinesToTest []string
 	mockServices   []models.ServiceType
 	mockSetup      func(*mockSSHConfig)
 	expectedError  string
@@ -58,9 +60,9 @@ func runTest(t *testing.T, tc TestCase, testFunc func(*AzureProvider, context.Co
 		m := display.GetGlobalModel()
 		m.Deployment.Machines = tc.machines
 
-		for i := range m.Deployment.Machines {
+		for _, machine := range m.Deployment.Machines {
 			for _, service := range tc.mockServices {
-				m.Deployment.Machines[i].SetServiceState(service.Name, service.State)
+				machine.SetServiceState(service.Name, service.State)
 			}
 		}
 
@@ -95,8 +97,13 @@ func assertTestResults(t *testing.T, tc TestCase, err error, m *display.DisplayM
 		assert.NoError(t, err)
 	}
 
-	for i, expectedState := range tc.expectedStates {
-		assert.Equal(t, expectedState, m.Deployment.Machines[i].GetServiceState("Bacalhau"))
+	for _, expectedState := range tc.expectedStates {
+		for _, machine := range m.Deployment.Machines {
+			if tc.machinesToTest != nil && !slices.Contains(tc.machinesToTest, machine.Name) {
+				continue
+			}
+			assert.Equal(t, expectedState, machine.GetServiceState("Bacalhau"))
+		}
 	}
 }
 
@@ -104,18 +111,21 @@ func TestDeployBacalhauOrchestrator(t *testing.T) {
 	tests := []TestCase{
 		{
 			name:          "No orchestrator node and no orchestrator IP",
-			machines:      []*models.Machine{},
+			machines:      map[string]*models.Machine{},
 			expectedError: "no orchestrator node found",
 		},
 		{
-			name:          "No orchestrator node, but orchestrator IP specified",
-			machines:      []*models.Machine{{OrchestratorIP: "NOT_EMPTY"}},
+			name: "No orchestrator node, but orchestrator IP specified",
+			machines: map[string]*models.Machine{
+				"": {OrchestratorIP: "NOT_EMPTY", Name: "machine-1"},
+			},
 			expectedError: "orchestrator IP set",
 		},
 		{
 			name: "One orchestrator node, no other machines",
-			machines: []*models.Machine{
-				{
+			machines: map[string]*models.Machine{
+				"machine-1": {
+					Name:         "machine-1",
 					Orchestrator: true,
 				},
 			},
@@ -131,12 +141,17 @@ func TestDeployBacalhauOrchestrator(t *testing.T) {
 		},
 		{
 			name: "One orchestrator node and many other machines",
-			machines: []*models.Machine{
-				{
+			machines: map[string]*models.Machine{
+				"machine-1": {
 					Orchestrator: true,
+					Name:         "machine-1",
 				},
-				{},
-				{},
+				"machine-2": {
+					Name: "machine-2",
+				},
+				"machine-3": {
+					Name: "machine-3",
+				},
 			},
 			mockServices: []models.ServiceType{
 				{Name: "Bacalhau", State: models.ServiceStateUnknown},
@@ -149,8 +164,11 @@ func TestDeployBacalhauOrchestrator(t *testing.T) {
 			},
 		},
 		{
-			name:     "Multiple orchestrator nodes (should error)",
-			machines: []*models.Machine{{Orchestrator: true}, {Orchestrator: true}},
+			name: "Multiple orchestrator nodes (should error)",
+			machines: map[string]*models.Machine{
+				"machine-1": {Orchestrator: true, Name: "machine-1"},
+				"machine-2": {Orchestrator: true, Name: "machine-2"},
+			},
 			mockServices: []models.ServiceType{
 				{Name: "Bacalhau", State: models.ServiceStateUnknown},
 			},
@@ -208,14 +226,15 @@ func TestDeployBacalhauOrchestrator_FailureScenarios(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc.machines = []*models.Machine{
-			{
+		tc.machines = map[string]*models.Machine{
+			"machine-1": {
 				Orchestrator: true,
+				Name:         "machine-1",
 			},
 		}
-		for i := range tc.machines {
+		for _, machine := range tc.machines {
 			for _, service := range tc.mockServices {
-				tc.machines[i].SetServiceState(service.Name, service.State)
+				machine.SetServiceState(service.Name, service.State)
 			}
 		}
 		runTest(t, tc, func(p *AzureProvider, ctx context.Context) error {
@@ -228,18 +247,21 @@ func TestDeployBacalhauWorkers(t *testing.T) {
 	tests := []TestCase{
 		{
 			name: "Successful deployment",
-			machines: []*models.Machine{
-				{Orchestrator: true},
-				{
+			machines: map[string]*models.Machine{
+				"machine-1": {Orchestrator: true, Name: "machine-1"},
+				"machine-2": {
 					VMSize: "Standard_D2s_v3",
+					Name:   "machine-2",
 				},
-				{
+				"machine-3": {
 					VMSize: "Standard_D2s_v3",
+					Name:   "machine-3",
 				},
 			},
 			mockServices: []models.ServiceType{
 				{Name: "Bacalhau", State: models.ServiceStateUnknown},
 			},
+			machinesToTest: []string{"machine-2", "machine-3"},
 			mockSetup: func(m *mockSSHConfig) {
 				m.On("PushFile", mock.Anything, mock.Anything, true).
 					Return(nil).Times(4)
@@ -257,14 +279,23 @@ func TestDeployBacalhauWorkers(t *testing.T) {
 		},
 		{
 			name: "Failure in script execution",
-			machines: []*models.Machine{
-				{Orchestrator: true},
-				{
+			machines: map[string]*models.Machine{
+				"machine-1": {Orchestrator: true, Name: "machine-1"},
+				"machine-2": {
 					VMSize: "Standard_D2s_v3",
+					Name:   "machine-2",
 				},
 			},
+			machinesToTest: []string{"machine-2"},
 			mockServices: []models.ServiceType{
-				{Name: "Bacalhau", State: models.ServiceStateUnknown},
+				{
+					Name:  "Bacalhau",
+					State: models.ServiceStateUnknown,
+				},
+				{
+					Name:  "Bacalhau",
+					State: models.ServiceStateUnknown,
+				},
 			},
 			mockSetup: func(m *mockSSHConfig) {
 				m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil)
@@ -277,12 +308,14 @@ func TestDeployBacalhauWorkers(t *testing.T) {
 		},
 		{
 			name: "Invalid JSON in Bacalhau node list",
-			machines: []*models.Machine{
-				{Orchestrator: true},
-				{
+			machines: map[string]*models.Machine{
+				"machine-1": {Orchestrator: true, Name: "machine-1"},
+				"machine-2": {
 					VMSize: "Standard_D2s_v3",
+					Name:   "machine-2",
 				},
 			},
+			machinesToTest: []string{"machine-2"},
 			mockServices: []models.ServiceType{
 				{Name: "Bacalhau", State: models.ServiceStateUnknown},
 			},

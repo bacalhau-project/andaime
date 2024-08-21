@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,9 +45,9 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Location", Width: 16},
 	{Title: "Status", Width: StatusLength},
 	{Title: "Progress", Width: 20},
-	{Title: "Time", Width: 8},
-	{Title: "Pub IP", Width: 19},
-	{Title: "Priv IP", Width: 19},
+	{Title: "Time", Width: 10},
+	{Title: "Pub IP", Width: 20},
+	{Title: "Priv IP", Width: 20},
 	{Title: models.DisplayTextOrchestrator, Width: 2, EmojiColumn: true},
 	{Title: models.DisplayTextSSH, Width: 2, EmojiColumn: true},
 	{Title: models.DisplayTextDocker, Width: 2, EmojiColumn: true},
@@ -134,8 +135,8 @@ func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*model
 		if status.StatusMessage != "" {
 			newMachine.StatusMessage = status.StatusMessage
 		}
-		m.Deployment.Machines = append(m.Deployment.Machines, &newMachine)
-		return m.Deployment.Machines[len(m.Deployment.Machines)-1], false
+		m.Deployment.Machines[newMachine.Name] = &newMachine
+		return &newMachine, false
 	}
 
 	return nil, false
@@ -534,10 +535,22 @@ func (m *DisplayModel) renderTable(headerStyle, cellStyle lipgloss.Style) string
 	if m.DebugMode {
 		tableStr += strings.Repeat("-", AggregateColumnWidths()) + "\n"
 	}
+
+	// Get an ordered list of machine names
+	orderedMachineNames := []string{}
 	for _, machine := range m.Deployment.Machines {
 		if machine.Name != "" {
-			tableStr += m.renderRow(m.getMachineRowData(machine), cellStyle, false)
+			orderedMachineNames = append(orderedMachineNames, machine.Name)
 		}
+	}
+	slices.SortFunc(orderedMachineNames, func(a, b string) int { return strings.Compare(a, b) })
+
+	for _, machineName := range orderedMachineNames {
+		tableStr += m.renderRow(
+			m.getMachineRowData(m.Deployment.Machines[machineName]),
+			cellStyle,
+			false,
+		)
 	}
 	return tableStr
 }

@@ -204,13 +204,9 @@ func ConvertFromRawResourceToStatus(
 			return nil, err
 		}
 		for _, machineName := range machinesNames {
-			machineIndex, err := GetMachineIndexByName(machineName, deployment.Machines)
-			if err != nil {
-				return nil, err
-			}
 			if machineNeedsUpdating(
 				deployment,
-				machineIndex,
+				machineName,
 				resourceType,
 				resourceState,
 			) {
@@ -219,17 +215,13 @@ func ConvertFromRawResourceToStatus(
 			}
 		}
 	} else if machineName := GetMachineNameFromResourceName(resourceName); machineName != "" {
-		machineIndex, err := GetMachineIndexByName(machineName, deployment.Machines)
-		if err != nil {
-			return nil, fmt.Errorf("machine not found by resourceName: %s", resourceName)
-		}
 		if machineNeedsUpdating(
 			deployment,
-			machineIndex,
+			machineName,
 			resourceType,
 			resourceState,
 		) {
-			status := createStatus(resourceName, resourceName, resourceType, resourceState)
+			status := createStatus(machineName, resourceName, resourceType, resourceState)
 			statuses = append(statuses, status)
 		}
 	} else {
@@ -258,7 +250,7 @@ func GetMachineNameFromResourceName(id string) string {
 
 func machineNeedsUpdating(
 	deployment *Deployment,
-	machineIndex int,
+	machineName string,
 	resourceType string,
 	resourceState string,
 ) bool {
@@ -272,15 +264,15 @@ func machineNeedsUpdating(
 	currentState := ConvertFromStringToAzureResourceState(resourceState)
 
 	needsUpdate := 0
-	if (deployment.Machines[machineIndex].GetResource(resourceType) == MachineResource{}) ||
-		(deployment.Machines[machineIndex].GetResource(resourceType).ResourceState < currentState) {
-		deployment.Machines[machineIndex].SetResource(resourceType, currentState)
+	if (deployment.Machines[machineName].GetResource(resourceType) == MachineResource{}) ||
+		(deployment.Machines[machineName].GetResource(resourceType).ResourceState < currentState) {
+		deployment.Machines[machineName].SetResource(resourceType, currentState)
 		needsUpdate++
 	}
 	return needsUpdate > 0
 }
 
-func GetMachinesInLocation(resourceName string, machines []*Machine) ([]string, error) {
+func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([]string, error) {
 	location := strings.Split(resourceName, "-")[0]
 
 	if location == "" {
@@ -296,15 +288,6 @@ func GetMachinesInLocation(resourceName string, machines []*Machine) ([]string, 
 	}
 
 	return machinesInLocation, nil
-}
-
-func GetMachineIndexByName(name string, machines []*Machine) (int, error) {
-	for i, machine := range machines {
-		if machine.Name == name {
-			return i, nil
-		}
-	}
-	return -1, fmt.Errorf("machine not found in index: %s", name)
 }
 
 // createStatus creates a new DisplayStatus

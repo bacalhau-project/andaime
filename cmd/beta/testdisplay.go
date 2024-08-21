@@ -83,7 +83,7 @@ func runTestDisplay() error {
 		for {
 			select {
 			case <-wordTicker.C:
-				for i := 0; i < totalTasks; i++ {
+				for _, machine := range m.Deployment.Machines {
 					rawStatus := getRandomWords(3)
 					statusMessage := ""
 					if len(rawStatus) > statusLength {
@@ -91,19 +91,8 @@ func runTestDisplay() error {
 					} else {
 						statusMessage = fmt.Sprintf("%-*s", statusLength, rawStatus)
 					}
-					statuses[i].Progress = (statuses[i].Progress + 1) % display.AzureTotalSteps
-					m.Deployment.Machines[i].StatusMessage = statusMessage
-
-					// Log the length of each status string
-					// log.Infof("Task %d status length: %d", i+1, len(statuses[i].Status))
+					m.Deployment.Machines[machine.Name].StatusMessage = statusMessage
 				}
-
-				// Log the total width of all statuses
-				// totalWidth := statusLength * totalTasks
-				// log.Infof("Total width of all statuses: %d", totalWidth)
-
-				// Log a constant value for terminal width (adjust as needed)
-				// log.Infof("Assumed terminal width: %d", 80)
 			case <-timeTicker.C:
 				p.Send(models.TimeUpdateMsg{})
 			}
