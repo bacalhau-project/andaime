@@ -92,17 +92,22 @@ func CloseAllChannels() {
 	l.Debugf("Closing all channels - via events.CloseAllChannels")
 	GlobalChannelsMutex.Lock()
 	defer GlobalChannelsMutex.Unlock()
-	for _, ch := range GlobalChannels {
+	for i, ch := range GlobalChannels {
 		if ch != nil {
 			if !ch.IsClosed() {
-				l.Debugf("Closing channel %v", ch.GetName())
+				l.Debugf("Closing channel %d: %v", i, ch.GetName())
 				ch.Close()
 			} else {
-				l.Debugf("Channel %v is already closed", ch.GetName())
+				l.Debugf("Channel %d: %v is already closed", i, ch.GetName())
 			}
+		} else {
+			l.Debugf("Channel %d is nil", i)
 		}
-		ch.SetClosed()
+		if ch != nil {
+			ch.SetClosed()
+		}
 	}
+	l.Debugf("All channels closed")
 }
 
 // Helper functions for common channel types

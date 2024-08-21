@@ -181,7 +181,6 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 
 func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
-	// l.Debug("Starting StartResourcePolling")
 	writeToDebugLog("Starting StartResourcePolling")
 
 	resourceTicker := time.NewTicker(5 * time.Second)
@@ -201,6 +200,8 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 			case <-resourceTicker.C:
 				m := display.GetGlobalModelFunc()
 				if m.Quitting {
+					writeToDebugLog("Quitting detected, stopping resource polling")
+					done <- true
 					return
 				}
 				pollCount++
@@ -211,31 +212,33 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				if err != nil {
 					l.Errorf("Failed to poll and update resources: %v", err)
 					writeToDebugLog(fmt.Sprintf("Failed to poll and update resources: %v", err))
-				} else {
-					writeToDebugLog(fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)))
-					for _, resource := range resources {
-						writeToDebugLog(fmt.Sprintf("Resource: %+v", resource))
+					done <- true
+					return
+				}
+
+				writeToDebugLog(fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)))
+
+				allResourcesProvisioned := true
+				for _, resource := range resources {
+					resourceMap := resource.(map[string]interface{})
+					provisioningState := resourceMap["provisioningState"].(string)
+					writeToDebugLog(fmt.Sprintf("Resource: %s - Provisioning State: %s", resourceMap["name"].(string), provisioningState))
+					if provisioningState != "Succeeded" {
+						allResourcesProvisioned = false
 					}
 				}
 
-				for _, resource := range resources {
-					resourceMap := resource.(map[string]interface{})
-					writeToDebugLog(
-						fmt.Sprintf(
-							"Resource: %s - Provisioning State: %s",
-							resourceMap["name"].(string),
-							resourceMap["provisioningState"].(string),
-						),
-					)
-				}
-
 				elapsed := time.Since(start)
-				// l.Debugf("PollAndUpdateResources #%d took %v", pollCount, elapsed)
-				writeToDebugLog(
-					fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed),
-				)
+				writeToDebugLog(fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed))
 
 				p.logDeploymentStatus()
+
+				if allResourcesProvisioned {
+					writeToDebugLog("All resources provisioned, stopping resource polling")
+					done <- true
+					return
+				}
+
 			case <-quit:
 				l.Debug("Quit signal received, exiting resource polling")
 				writeToDebugLog("Quit signal received, exiting resource polling")
@@ -250,9 +253,11 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 		l.Debug("Quit signal received, forcing immediate exit")
 		writeToDebugLog("Quit signal received, forcing immediate exit")
 	case <-done:
-		l.Debug("Resource polling completed normally")
-		writeToDebugLog("Resource polling completed normally")
+		l.Debug("Resource polling completed")
+		writeToDebugLog("Resource polling completed")
 	}
+
+	utils.CloseAllChannels()
 }
 
 func (p *AzureProvider) logDeploymentStatus() {
