@@ -218,16 +218,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	l := logger.Get()
 	maxRetries := 3
 
-	machineIndex := -1
-	for i, depMachine := range m.Deployment.Machines {
-		if depMachine.ID == machine.ID {
-			machineIndex = i
-			break
-		}
-	}
-
-	if machineIndex == -1 {
-		return fmt.Errorf("machine %s not found in deployment", machine.ID)
+	if mach, ok := m.Deployment.Machines[machine.Name]; !ok || mach == nil {
+		return fmt.Errorf("machine %s not found in deployment", machine.Name)
 	}
 
 	m.UpdateStatus(
@@ -316,14 +308,14 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				"Failed to deploy due to DNS conflict.",
 			),
 		)
-		m.Deployment.Machines[machineIndex].StatusMessage = "Failed to deploy due to DNS conflict"
+		m.Deployment.Machines[machine.Name].StatusMessage = "Failed to deploy due to DNS conflict"
 	} else {
 		for i := 0; i < ipRetries; i++ {
 			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, m.Deployment.ResourceGroupName, machine.Name)
 			if err != nil {
 				if i == ipRetries-1 {
 					l.Errorf("Failed to get IP addresses for VM %s after %d retries: %v", machine.Name, ipRetries, err)
-					m.Deployment.Machines[machineIndex].StatusMessage = "Failed to get IP addresses"
+					m.Deployment.Machines[machine.Name].StatusMessage = "Failed to get IP addresses"
 					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
 				}
 				time.Sleep(timeBetweenIPRetries)
@@ -341,12 +333,12 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				continue
 			}
 
-			m.Deployment.Machines[machineIndex].PublicIP = publicIP
-			m.Deployment.Machines[machineIndex].PrivateIP = privateIP
-			m.Deployment.Machines[machineIndex].StatusMessage = "Testing SSH"
+			m.Deployment.Machines[machine.Name].PublicIP = publicIP
+			m.Deployment.Machines[machine.Name].PrivateIP = privateIP
+			m.Deployment.Machines[machine.Name].StatusMessage = "Testing SSH"
 
-			if m.Deployment.Machines[machineIndex].ElapsedTime == 0 {
-				m.Deployment.Machines[machineIndex].ElapsedTime = time.Since(machine.StartTime)
+			if m.Deployment.Machines[machine.Name].ElapsedTime == 0 {
+				m.Deployment.Machines[machine.Name].ElapsedTime = time.Since(machine.StartTime)
 			}
 			displayStatus := models.NewDisplayStatusWithText(
 				machine.Name,
