@@ -348,7 +348,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			)
 			displayStatus.PublicIP = publicIP
 			displayStatus.PrivateIP = privateIP
-			displayStatus.ElapsedTime = m.Deployment.Machines[machineIndex].ElapsedTime
+			displayStatus.ElapsedTime = m.Deployment.Machines[machine.Name].ElapsedTime
 			m.UpdateStatus(
 				displayStatus,
 			)
@@ -358,9 +358,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	// Test SSH connectivity
 	sshConfig, err := sshutils.NewSSHConfigFunc(
-		m.Deployment.Machines[machineIndex].PublicIP,
-		m.Deployment.Machines[machineIndex].SSHPort,
-		m.Deployment.Machines[machineIndex].SSHUser,
+		m.Deployment.Machines[machine.Name].PublicIP,
+		m.Deployment.Machines[machine.Name].SSHPort,
+		m.Deployment.Machines[machine.Name].SSHUser,
 		[]byte(m.Deployment.SSHPrivateKeyMaterial),
 	)
 	if err != nil {
@@ -379,7 +379,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	machine.SetServiceState("SSH", models.ServiceStateUpdating)
 	sshErr := sshutils.WaitForSSHToBeLive(sshConfig, 3, time.Second*10)
 	if sshErr != nil {
-		m.Deployment.UpdateMachine(machineIndex, func(machine *models.Machine) {
+		m.Deployment.UpdateMachine(machine.Name, func(machine *models.Machine) {
 			machine.SetServiceState("SSH", models.ServiceStateFailed)
 			machine.StatusMessage = "Permanently failed deploying SSH"
 		})
@@ -388,12 +388,12 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				machine.Name,
 				models.AzureResourceTypeVM,
 				models.AzureResourceStateFailed,
-				m.Deployment.Machines[machineIndex].StatusMessage,
+				m.Deployment.Machines[machine.Name].StatusMessage,
 			),
 		)
 	} else {
-		m.Deployment.Machines[machineIndex].StatusMessage = "Successfully Deployed"
-		m.Deployment.Machines[machineIndex].SetServiceState("SSH", models.ServiceStateSucceeded)
+		m.Deployment.Machines[machine.Name].StatusMessage = "Successfully Deployed"
+		m.Deployment.Machines[machine.Name].SetServiceState("SSH", models.ServiceStateSucceeded)
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
@@ -403,8 +403,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			),
 		)
 	}
-	if m.Deployment.Machines[machineIndex].GetServiceState("SSH") == models.ServiceStateSucceeded {
-		err := m.Deployment.Machines[machineIndex].InstallDockerAndCorePackages()
+	if m.Deployment.Machines[machine.Name].GetServiceState("SSH") == models.ServiceStateSucceeded {
+		err := m.Deployment.Machines[machine.Name].InstallDockerAndCorePackages()
 		if err != nil {
 			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machine.Name, err)
 		}
