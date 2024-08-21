@@ -193,7 +193,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset the machines slice for each test
-			deployment.Machines = []models.Machine{}
+			deployment.Machines = []*models.Machine{}
 
 			// Reset viper config for each test
 			viper.Reset()

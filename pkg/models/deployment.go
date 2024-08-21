@@ -7,9 +7,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 )
 
@@ -52,224 +49,6 @@ var RequiredServices = []ServiceType{
 
 var SkippedResourceTypes = []string{
 	"Microsoft.Compute/virtualMachines/extensions",
-}
-
-type Machine struct {
-	ID            string
-	Name          string
-	Type          AzureResourceTypes
-	Location      string
-	StatusMessage string
-	Parameters    Parameters
-	PublicIP      string
-	PrivateIP     string
-	StartTime     time.Time
-
-	MachineResources map[string]MachineResource
-	MachineServices  map[string]ServiceType
-
-	VMSize         string
-	DiskSizeGB     int32 `default:"30"`
-	ComputerName   string
-	ElapsedTime    time.Duration
-	Orchestrator   bool
-	OrchestratorIP string
-
-	// New SSH-related fields
-	SSHUser               string
-	SSHPrivateKeyMaterial []byte
-	SSHPort               int
-
-	// Timing information
-	CreationStartTime time.Time
-	CreationEndTime   time.Time
-	SSHStartTime      time.Time
-	SSHEndTime        time.Time
-	DockerStartTime   time.Time
-	DockerEndTime     time.Time
-	BacalhauStartTime time.Time
-	BacalhauEndTime   time.Time
-}
-
-func (m *Machine) LogTimingInfo(logger *logger.Logger) {
-	logger.Info(fmt.Sprintf("Machine %s timing information:", m.Name))
-	logger.Info(fmt.Sprintf("  Creation time: %v", m.CreationEndTime.Sub(m.CreationStartTime)))
-	logger.Info(fmt.Sprintf("  SSH setup time: %v", m.SSHEndTime.Sub(m.SSHStartTime)))
-	logger.Info(
-		fmt.Sprintf("  Docker installation time: %v", m.DockerEndTime.Sub(m.DockerStartTime)),
-	)
-	logger.Info(
-		fmt.Sprintf("  Bacalhau setup time: %v", m.BacalhauEndTime.Sub(m.BacalhauStartTime)),
-	)
-	logger.Info(fmt.Sprintf("  Total time: %v", m.BacalhauEndTime.Sub(m.CreationStartTime)))
-}
-
-func (m *Machine) IsOrchestrator() bool {
-	return m.Orchestrator
-}
-
-func (m *Machine) SSHEnabled() bool {
-	return m.MachineServices["SSH"].State == ServiceStateSucceeded
-}
-
-func (m *Machine) DockerEnabled() bool {
-	return m.MachineServices["Docker"].State == ServiceStateSucceeded
-}
-
-func (m *Machine) BacalhauEnabled() bool {
-	return m.MachineServices["Bacalhau"].State == ServiceStateSucceeded
-}
-
-func (m *Machine) GetResource(resourceType string) MachineResource {
-	if m.MachineResources == nil {
-		m.MachineResources = make(map[string]MachineResource)
-	}
-
-	resourceTypeLower := strings.ToLower(resourceType)
-	if resource, ok := m.MachineResources[resourceTypeLower]; ok {
-		return resource
-	} else {
-		return MachineResource{}
-	}
-}
-
-func (m *Machine) SetResource(resourceType string, resourceState AzureResourceState) {
-	if m.MachineResources == nil {
-		m.MachineResources = make(map[string]MachineResource)
-	}
-	resourceTypeLower := strings.ToLower(resourceType)
-	m.MachineResources[resourceTypeLower] = MachineResource{
-		ResourceName:  resourceType,
-		ResourceType:  GetAzureResourceType(resourceType),
-		ResourceState: resourceState,
-		ResourceValue: "",
-	}
-}
-
-func (m *Machine) ResourcesComplete() (int, int) {
-	// l := logger.Get()
-	totalResources := len(RequiredAzureResources)
-	completedResources := 0
-
-	for _, requiredResource := range RequiredAzureResources {
-		if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
-			if resource.ResourceState == AzureResourceStateSucceeded {
-				completedResources++
-			}
-		}
-	}
-
-	// // Print completed and pending resources
-	// l.Debugf("Completed resources:")
-	// for _, requiredResource := range RequiredAzureResources {
-	// 	if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
-	// 		if resource.ResourceState == AzureResourceStateSucceeded {
-	// 			l.Debugf("  %s", requiredResource.ResourceString)
-	// 		}
-	// 	}
-	// }
-	// l.Infof("Pending resources:")
-	// for _, requiredResource := range RequiredAzureResources {
-	// 	if resource, exists := m.MachineResources[requiredResource.GetResourceLowerString()]; exists {
-	// 		if resource.ResourceState != AzureResourceStateSucceeded {
-	// 			l.Infof("  %s", requiredResource.ResourceString)
-	// 		}
-	// 	} else {
-	// 		l.Infof("  %s", requiredResource.ResourceString)
-	// 	}
-	// }
-
-	return completedResources, totalResources
-}
-
-func (m *Machine) ServicesComplete() (int, int) {
-	totalServices := len(RequiredServices)
-	completedServices := 0
-
-	for _, requiredService := range RequiredServices {
-		if service, exists := m.MachineServices[requiredService.Name]; exists {
-			if service.State == ServiceStateSucceeded {
-				completedServices++
-			}
-		}
-	}
-
-	return completedServices, totalServices
-}
-
-func (m *Machine) Complete() bool {
-	resourcesPending, resourcesTotal := m.ResourcesComplete()
-	resourcesComplete := (resourcesPending == resourcesTotal) && (resourcesPending > 0)
-
-	servicesPending, servicesTotal := m.ServicesComplete()
-	servicesComplete := (servicesPending == servicesTotal) && (servicesPending > 0)
-
-	return resourcesComplete &&
-		servicesComplete
-}
-
-func (m *Machine) InstallDockerAndCorePackages() error {
-	l := logger.Get()
-	// Install Docker
-	dockerService := m.MachineServices["Docker"]
-	dockerService.State = ServiceStateUpdating
-	m.MachineServices["Docker"] = dockerService
-
-	sshConfig, err := sshutils.NewSSHConfigFunc(
-		m.PublicIP,
-		m.SSHPort,
-		m.SSHUser,
-		m.SSHPrivateKeyMaterial,
-	)
-	if err != nil {
-		l.Errorf("Error creating SSH config: %v", err)
-		return err
-	}
-
-	installDockerScriptRemotePath := "/tmp/install-docker.sh"
-	installDockerScriptBytes, err := internal.GetInstallDockerScript()
-	if err != nil {
-		return err
-	}
-	err = sshConfig.PushFile(installDockerScriptBytes, installDockerScriptRemotePath, true)
-	if err != nil {
-		return err
-	}
-
-	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installDockerScriptRemotePath))
-	if err != nil {
-		dockerService.State = ServiceStateFailed
-		m.MachineServices["Docker"] = dockerService
-		return err
-	}
-
-	dockerService.State = ServiceStateSucceeded
-	m.MachineServices["Docker"] = dockerService
-
-	corePackagesService := m.MachineServices["CorePackages"]
-	corePackagesService.State = ServiceStateUpdating
-	m.MachineServices["CorePackages"] = corePackagesService
-
-	installCorePackagesScriptPath := "/tmp/install-core-packages.sh"
-	corePackagesScriptBytes, err := internal.GetInstallCorePackagesScript()
-	if err != nil {
-		return err
-	}
-	err = sshConfig.PushFile(corePackagesScriptBytes, installCorePackagesScriptPath, true)
-	if err != nil {
-		return err
-	}
-
-	_, err = sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", installCorePackagesScriptPath))
-	if err != nil {
-		corePackagesService.State = ServiceStateFailed
-		m.MachineServices["CorePackages"] = corePackagesService
-		return err
-	}
-
-	corePackagesService.State = ServiceStateSucceeded
-	m.MachineServices["CorePackages"] = corePackagesService
-	return nil
 }
 
 type AzureResourceTypes struct {
@@ -398,7 +177,7 @@ type Deployment struct {
 	Locations             []string
 	OrchestratorNode      *Machine
 	OrchestratorIP        string
-	Machines              []Machine
+	Machines              []*Machine
 	UniqueLocations       []string
 	ProjectID             string
 	UniqueID              string
@@ -416,6 +195,7 @@ type Deployment struct {
 	StartTime             time.Time
 	EndTime               time.Time
 	SubscriptionID        string
+	deploymentMutex       sync.RWMutex
 }
 
 type Disk struct {
@@ -428,7 +208,7 @@ type Disk struct {
 func NewDeployment() *Deployment {
 	return &Deployment{
 		StartTime: time.Now(),
-		Machines:  make([]Machine, 0),
+		Machines:  make([]*Machine, 0),
 		Tags:      make(map[string]*string),
 	}
 }
@@ -464,6 +244,23 @@ func (d *Deployment) UpdateViperConfig() error {
 
 	v.Set(deploymentPath, viperMachines)
 	return v.WriteConfig()
+}
+
+func (d *Deployment) GetMachine(index int) *Machine {
+	d.deploymentMutex.RLock()
+	defer d.deploymentMutex.RUnlock()
+	if index >= 0 && index < len(d.Machines) {
+		return d.Machines[index]
+	}
+	return nil
+}
+
+func (d *Deployment) UpdateMachine(index int, updater func(*Machine)) {
+	d.deploymentMutex.Lock()
+	defer d.deploymentMutex.Unlock()
+	if index >= 0 && index < len(d.Machines) {
+		updater(d.Machines[index])
+	}
 }
 
 type StatusUpdateMsg struct {

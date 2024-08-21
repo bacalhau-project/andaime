@@ -280,7 +280,7 @@ func machineNeedsUpdating(
 	return needsUpdate > 0
 }
 
-func GetMachinesInLocation(resourceName string, machines []Machine) ([]string, error) {
+func GetMachinesInLocation(resourceName string, machines []*Machine) ([]string, error) {
 	location := strings.Split(resourceName, "-")[0]
 
 	if location == "" {
@@ -298,7 +298,7 @@ func GetMachinesInLocation(resourceName string, machines []Machine) ([]string, e
 	return machinesInLocation, nil
 }
 
-func GetMachineIndexByName(name string, machines []Machine) (int, error) {
+func GetMachineIndexByName(name string, machines []*Machine) (int, error) {
 	for i, machine := range machines {
 		if machine.Name == name {
 			return i, nil

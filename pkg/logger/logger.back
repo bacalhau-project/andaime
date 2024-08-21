@@ -53,7 +53,7 @@ func (l *Logger) SetVerbose(verbose bool) {
 func InitLoggerOutputs() {
 	GlobalEnableConsoleLogger = false
 	GlobalEnableFileLogger = true
-	GlobalEnableBufferLogger = false
+	GlobalEnableBufferLogger = true
 	GlobalLogPath = "/tmp/andaime.log"
 	GlobalLogLevel = "info"
 	GlobalInstantSync = false
@@ -124,20 +124,20 @@ func InitProduction() {
 		atom := zap.NewAtomicLevelAt(logLevel)
 
 		encoderConfig := zapcore.EncoderConfig{
-			TimeKey:  "time",
-			LevelKey: "level",
+			TimeKey: "time",
+			// LevelKey:       "level",
 			// NameKey:        "logger",
 			// CallerKey:      "caller",
-			MessageKey: "message",
-			// StacktraceKey: "stacktrace",
-			LineEnding: zapcore.DefaultLineEnding,
+			// MessageKey:     "message",
+			// StacktraceKey:  "stacktrace",
+			// LineEnding:     zapcore.DefaultLineEnding,
 			// EncodeLevel:    zapcore.LowercaseLevelEncoder,
 			// EncodeTime:     zapcore.ISO8601TimeEncoder,
 			// EncodeDuration: zapcore.SecondsDurationEncoder,
 			// EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 
-		var cores []zapcore.Core
+		var core zapcore.Core
 
 		if GlobalEnableFileLogger {
 			var err error
@@ -148,34 +148,22 @@ func InitProduction() {
 			)
 			if err == nil {
 				fileWriter := zapcore.AddSync(GlobalLogFile)
-				cores = append(cores, zapcore.NewCore(
+				core = zapcore.NewCore(
 					zapcore.NewConsoleEncoder(encoderConfig),
 					fileWriter,
 					atom,
-				))
+				)
 			} else {
 				fmt.Printf("Error opening log file: %v\n", err)
+				// Fall back to a no-op core if file can't be opened
+				core = zapcore.NewNopCore()
 			}
+		} else {
+			// If file logging is not enabled, use a no-op core
+			core = zapcore.NewNopCore()
 		}
 
-		// if GlobalEnableBufferLogger {
-		// 	cores = append(cores, zapcore.NewCore(
-		// 		zapcore.NewConsoleEncoder(encoderConfig),
-		// 		zapcore.AddSync(&GlobalLoggedBuffer),
-		// 		atom,
-		// 	))
-		// }
-
-		// if GlobalEnableConsoleLogger {
-		// 	// If console logging is enabled, add a console core
-		// 	consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
-		// 	cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
-		// }
-
-		core := zapcore.NewTee(cores...)
-		// globalLogger = zap.New(core, zap.AddCaller())
-
-		globalLogger = zap.New(core)
+		globalLogger = zap.New(core, zap.AddCaller())
 	})
 }
 

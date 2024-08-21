@@ -218,6 +218,17 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 					}
 				}
 
+				for _, resource := range resources {
+					resourceMap := resource.(map[string]interface{})
+					writeToDebugLog(
+						fmt.Sprintf(
+							"Resource: %s - Provisioning State: %s",
+							resourceMap["name"].(string),
+							resourceMap["provisioningState"].(string),
+						),
+					)
+				}
+
 				elapsed := time.Since(start)
 				// l.Debugf("PollAndUpdateResources #%d took %v", pollCount, elapsed)
 				writeToDebugLog(
@@ -273,10 +284,10 @@ func (p *AzureProvider) logDeploymentStatus() {
 			fmt.Sprintf(
 				"Machine %d - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v",
 				i+1,
-				machine.MachineServices["Docker"].State,
-				machine.MachineServices["CorePackages"].State,
-				machine.MachineServices["Bacalhau"].State,
-				machine.MachineServices["SSH"].State,
+				machine.GetServiceState("Docker"),
+				machine.GetServiceState("CorePackages"),
+				machine.GetServiceState("Bacalhau"),
+				machine.GetServiceState("SSH"),
 			),
 		)
 
@@ -290,8 +301,8 @@ func (p *AzureProvider) logDeploymentStatus() {
 			),
 		)
 
-		if machine.MachineResources != nil {
-			for resourceType, resource := range machine.MachineResources {
+		if machine.GetMachineResources() != nil {
+			for resourceType, resource := range machine.GetMachineResources() {
 				writeToDebugLog(
 					fmt.Sprintf(
 						"Machine %d - Resource %s: State: %v, Value: %s",

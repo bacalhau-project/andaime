@@ -48,24 +48,22 @@ func GetInstallBacalhauScript() ([]byte, error) {
 	return script, nil
 }
 
-//go:embed 105_install_bacalhau_compute.sh
-var InstallBacalhauCompute embed.FS
+//go:embed 105_install_run_bacalhau.sh
+var InstallRunBacalhau embed.FS
 
-func GetInstallBacalhauComputeScript() ([]byte, error) {
-	script, err := InstallBacalhauCompute.ReadFile("105_install_bacalhau_compute.sh")
+func GetInstallRunBacalhauScript() ([]byte, error) {
+	script, err := InstallRunBacalhau.ReadFile("105_install_run_bacalhau.sh")
 	if err != nil {
 		return nil, err
 	}
 	return script, nil
 }
 
-//go:embed 110_install_and_restart_bacalhau_service.sh
-var InstallAndRestartBacalhauServices embed.FS
+//go:embed bacalhau.service
+var BacalhauService embed.FS
 
-func GetInstallAndRestartBacalhauServicesScript() ([]byte, error) {
-	script, err := InstallAndRestartBacalhauServices.ReadFile(
-		"110_install_and_restart_bacalhau_service.sh",
-	)
+func GetBacalhauServiceScript() ([]byte, error) {
+	script, err := BacalhauService.ReadFile("bacalhau.service")
 	if err != nil {
 		return nil, err
 	}

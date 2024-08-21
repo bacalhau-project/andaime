@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -118,7 +119,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 					),
 				)
 			}
-		}(&internalMachine)
+		}(internalMachine)
 	}
 
 	// Wait for all deployments to complete
@@ -374,12 +375,22 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		return fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
-	sshService := m.Deployment.Machines[machineIndex].MachineServices["SSH"]
+	m.UpdateStatus(
+		models.NewDisplayStatusWithText(
+			machine.Name,
+			models.AzureResourceTypeVM,
+			models.AzureResourceStatePending,
+			"Testing SSH",
+		),
+	)
+
+	machine.SetServiceState("SSH", models.ServiceStateUpdating)
 	sshErr := sshutils.WaitForSSHToBeLive(sshConfig, 3, time.Second*10)
 	if sshErr != nil {
-		sshService.State = models.ServiceStateFailed
-		m.Deployment.Machines[machineIndex].MachineServices["SSH"] = sshService
-		m.Deployment.Machines[machineIndex].StatusMessage = "Permanently failed deploying SSH"
+		m.Deployment.UpdateMachine(machineIndex, func(machine *models.Machine) {
+			machine.SetServiceState("SSH", models.ServiceStateFailed)
+			machine.StatusMessage = "Permanently failed deploying SSH"
+		})
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
@@ -390,18 +401,17 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		)
 	} else {
 		m.Deployment.Machines[machineIndex].StatusMessage = "Successfully Deployed"
-		sshService.State = models.ServiceStateSucceeded
-		m.Deployment.Machines[machineIndex].MachineServices["SSH"] = sshService
+		m.Deployment.Machines[machineIndex].SetServiceState("SSH", models.ServiceStateSucceeded)
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.Name,
 				models.AzureResourceTypeVM,
 				models.AzureResourceStateSucceeded,
-				"Successfully Deployed",
+				"SSH Successfully Deployed",
 			),
 		)
 	}
-	if sshService.State == models.ServiceStateSucceeded {
+	if m.Deployment.Machines[machineIndex].GetServiceState("SSH") == models.ServiceStateSucceeded {
 		err := m.Deployment.Machines[machineIndex].InstallDockerAndCorePackages()
 		if err != nil {
 			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machine.Name, err)
@@ -429,8 +439,26 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 		return nil, err
 	}
 
+	// All resources
+	// Write status for pending or complete to a file
+	//nolint:gomnd
+	resourceBytes, err := json.Marshal(resources)
+	if err != nil {
+		l.Errorf("Failed to marshal resources: %v", err)
+	}
+
+	err = os.WriteFile(
+		"status.txt",
+		resourceBytes,
+		0600,
+	)
+
 	var statusUpdates []*models.DisplayStatus
 	for _, resource := range resources {
+		if err != nil {
+			l.Errorf("Failed to write status to file: %v", err)
+		}
+
 		statuses, err := models.ConvertFromRawResourceToStatus(
 			resource.(map[string]interface{}),
 			m.Deployment,

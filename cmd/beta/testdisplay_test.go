@@ -12,33 +12,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func RotateServiceStates(i int) models.ServiceState {
+	if i > int(models.AzureResourceStateUnknown) {
+		i = 0
+	} else {
+		i++
+	}
+	return models.ServiceState(i)
+}
+
 func TestDisplayLayout(t *testing.T) {
 	// Initialize the display model
 	m := display.GetGlobalModelFunc()
 
 	// Add test machines
-	testMachines := []models.Machine{
+	testMachines := []*models.Machine{
 		{
 			Name:          "test1",
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "apple grape mango",
 			Orchestrator:  true,
-			MachineServices: map[string]models.ServiceType{
-				"SSH": {
-					Name:  "SSH",
-					State: models.ServiceStateFailed,
-				},
-				"Docker": {
-					Name:  "Docker",
-					State: models.ServiceStateSucceeded,
-				},
-				"Bacalhau": {
-					Name:  "Bacalhau",
-					State: models.ServiceStateNotStarted,
-				},
-			},
-			StartTime: time.Now().Add(-29 * time.Second),
+			StartTime:     time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test2",
@@ -46,21 +41,7 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "nectarine fig elderberry",
 			Orchestrator:  true,
-			MachineServices: map[string]models.ServiceType{
-				"SSH": {
-					Name:  "SSH",
-					State: models.ServiceStateSucceeded,
-				},
-				"Docker": {
-					Name:  "Docker",
-					State: models.ServiceStateNotStarted,
-				},
-				"Bacalhau": {
-					Name:  "Bacalhau",
-					State: models.ServiceStateFailed,
-				},
-			},
-			StartTime: time.Now().Add(-29 * time.Second),
+			StartTime:     time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test3",
@@ -68,21 +49,7 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "grape quince kiwi",
 			Orchestrator:  true,
-			MachineServices: map[string]models.ServiceType{
-				"SSH": {
-					Name:  "SSH",
-					State: models.ServiceStateNotStarted,
-				},
-				"Docker": {
-					Name:  "Docker",
-					State: models.ServiceStateFailed,
-				},
-				"Bacalhau": {
-					Name:  "Bacalhau",
-					State: models.ServiceStateSucceeded,
-				},
-			},
-			StartTime: time.Now().Add(-29 * time.Second),
+			StartTime:     time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test4",
@@ -90,21 +57,7 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "cherry orange quince",
 			Orchestrator:  true,
-			MachineServices: map[string]models.ServiceType{
-				"SSH": {
-					Name:  "SSH",
-					State: models.ServiceStateFailed,
-				},
-				"Docker": {
-					Name:  "Docker",
-					State: models.ServiceStateSucceeded,
-				},
-				"Bacalhau": {
-					Name:  "Bacalhau",
-					State: models.ServiceStateNotStarted,
-				},
-			},
-			StartTime: time.Now().Add(-29 * time.Second),
+			StartTime:     time.Now().Add(-29 * time.Second),
 		},
 		{
 			Name:          "test5",
@@ -112,25 +65,17 @@ func TestDisplayLayout(t *testing.T) {
 			Location:      "us-west-2",
 			StatusMessage: "raspberry ugli kiwi",
 			Orchestrator:  true,
-			MachineServices: map[string]models.ServiceType{
-				"SSH": {
-					Name:  "SSH",
-					State: models.ServiceStateSucceeded,
-				},
-				"Docker": {
-					Name:  "Docker",
-					State: models.ServiceStateNotStarted,
-				},
-				"Bacalhau": {
-					Name:  "Bacalhau",
-					State: models.ServiceStateFailed,
-				},
-			},
-			StartTime: time.Now().Add(-29 * time.Second),
+			StartTime:     time.Now().Add(-29 * time.Second),
 		},
 	}
 
 	m.Deployment.Machines = testMachines
+
+	for i := range m.Deployment.Machines {
+		for j := range m.Deployment.Machines[i].GetMachineServices() {
+			m.Deployment.Machines[i].SetServiceState(j, RotateServiceStates(i))
+		}
+	}
 
 	// Render the table
 	renderedTable := m.RenderFinalTable()
@@ -183,9 +128,9 @@ func TestDisplayLayout(t *testing.T) {
 			machine.PublicIP,
 			machine.PrivateIP,
 			display.ConvertOrchestratorToEmoji(machine.Orchestrator),
-			display.ConvertStateToEmoji(machine.MachineServices["SSH"].State),
-			display.ConvertStateToEmoji(machine.MachineServices["Docker"].State),
-			display.ConvertStateToEmoji(machine.MachineServices["Bacalhau"].State),
+			display.ConvertStateToEmoji(machine.GetServiceState("SSH")),
+			display.ConvertStateToEmoji(machine.GetServiceState("Docker")),
+			display.ConvertStateToEmoji(machine.GetServiceState("Bacalhau")),
 			"",
 		)
 		assert.Equal(
@@ -225,7 +170,7 @@ func TestColumnWidths(t *testing.T) {
 
 func TestProgressBar(t *testing.T) {
 	m := display.GetGlobalModelFunc()
-	m.Deployment.Machines = []models.Machine{
+	m.Deployment.Machines = []*models.Machine{
 		{
 			Name:          "test",
 			Type:          models.AzureResourceTypeVM,

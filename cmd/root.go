@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -114,7 +113,7 @@ func Execute() error {
 		os.Exit(1)
 	}
 	cancel() // Ensure context is cancelled
-	logger.Get().Debug("Command execution completed")
+	l.Debug("Command execution completed")
 	return nil
 }
 
@@ -132,67 +131,56 @@ including deploying and managing Bacalhau nodes across multiple cloud providers.
 func initConfig() {
 	l := logger.Get()
 	l.Debug("Starting initConfig")
-	// Use a temporary logger for initial debugging
-	debugLog, err := os.OpenFile(
-		"/tmp/andaime-start.log",
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0644,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error opening debug log file: %v\n", err)
-		os.Exit(1)
-	}
-	defer debugLog.Close()
-
-	tmpLogger := log.New(debugLog, "", log.LstdFlags)
-
-	tmpLogger.Printf("Debug: Starting initConfig")
-	tmpLogger.Printf("Debug: ConfigFile value: %s", ConfigFile)
-	tmpLogger.Printf("Debug: Output format: %s", outputFormat)
 
 	viper.SetConfigType("yaml")
 
 	if ConfigFile != "" {
-		tmpLogger.Printf("Debug: Using config file: %s", ConfigFile)
+		// tmpLogger.Printf("Debug: Using config file: %s", ConfigFile)
 		l.Debugf("Using config file: %s", ConfigFile)
 		viper.SetConfigFile(ConfigFile)
 	} else {
 		l.Debug("No config file specified, using default paths")
-		tmpLogger.Print("Debug: No config file specified, using default paths")
+		// tmpLogger.Print("Debug: No config file specified, using default paths")
 		home, err := os.UserHomeDir()
 		if err != nil {
-			tmpLogger.Printf("Error getting user home directory: %v", err)
-			tmpLogger.Printf(`Error: Unable to determine home directory.
- Please specify a config file using the --config flag.`)
+			// tmpLogger.Printf("Error getting user home directory: %v", err)
+			// tmpLogger.Printf(`Error: Unable to determine home directory.
+			//  Please specify a config file using the --config flag.`)
+			l.Errorf("Error getting user home directory: %v", err)
+			l.Error("Unable to determine home directory. Please specify a config file using the --config flag.")
 			os.Exit(1)
 		}
 		viper.AddConfigPath(home)
 		viper.AddConfigPath(".") // Add current directory as a search path
 		viper.SetConfigName(".andaime")
 		viper.SetConfigName("config") // Add "config" as a config name to search for
-		tmpLogger.Printf("Debug: Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
+		// tmpLogger.Printf("Debug: Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
+		l.Debugf("Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
 	}
 
 	viper.AutomaticEnv()
-	tmpLogger.Print("Debug: Environment variables loaded into viper")
+	// tmpLogger.Print("Debug: Environment variables loaded into viper")
+	l.Debug("Environment variables loaded into viper")
 
-	tmpLogger.Print("Debug: Attempting to read config file")
+	// tmpLogger.Print("Debug: Attempting to read config file")
+	l.Debug("Attempting to read config file")
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			tmpLogger.Print("Debug: No config file found")
+			// tmpLogger.Print("Debug: No config file found")
 			l.Debug("No config file found")
 		} else {
-			tmpLogger.Printf("Error reading config file: %v", err)
+			// tmpLogger.Printf("Error reading config file: %v", err)
 			l.Errorf("Error reading config file: %v", err)
 		}
 	} else {
-		tmpLogger.Printf("Debug: Successfully read config file: %s", viper.ConfigFileUsed())
+		// tmpLogger.Printf("Debug: Successfully read config file: %s", viper.ConfigFileUsed())
 		l.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
 	}
 
 	// Ensure output format is set correctly
 	if outputFormat != "text" && outputFormat != "json" {
-		tmpLogger.Printf("Debug: Invalid output format '%s'. Using default: text", outputFormat)
+		// tmpLogger.Printf("Debug: Invalid output format '%s'. Using default: text", outputFormat)
+		l.Warnf("Invalid output format '%s'. Using default: text", outputFormat)
 		outputFormat = "text"
 	}
 
@@ -213,11 +201,13 @@ func initConfig() {
 		l.Debug("Verbose mode enabled")
 	}
 
-	tmpLogger.Printf(
-		"Logger initialized with configuration: %v",
-		zap.String("outputFormat", outputFormat),
-	)
-	tmpLogger.Print("Configuration initialization complete")
+	// tmpLogger.Printf(
+	//     "Logger initialized with configuration: %v",
+	//     zap.String("outputFormat", outputFormat),
+	// )
+	// tmpLogger.Print("Configuration initialization complete")
+	l.Infof("Logger initialized with configuration: %v", zap.String("outputFormat", outputFormat))
+	l.Info("Configuration initialization complete")
 }
 
 func SetupRootCommand() *cobra.Command {

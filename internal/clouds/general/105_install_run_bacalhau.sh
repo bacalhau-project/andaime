@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-BACALHAU_COMPUTE_SH="/root/bacalhau_compute.sh"
+RUN_BACALHAU_SH="/root/run_bacalhau.sh"
 
-cat << 'EOF' > "${BACALHAU_COMPUTE_SH}"
+cat << 'EOF' > "${RUN_BACALHAU_SH}"
 #!/usr/bin/env bash
 
 set -euo pipefail
 
-LOG_FILE="/var/log/bacalhau_compute_start.log"
+LOG_FILE="/var/log/bacalhau_start.log"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
@@ -32,7 +32,7 @@ check_orchestrators() {
 }
 
 start_bacalhau() {
-    log "Starting Bacalhau compute node..."
+    log "Starting Bacalhau..."
 
     # Get the instance's private DNS name
     HOSTNAME=$(curl -s http://169.254.169.254/latest/meta-data/local-hostname)
@@ -47,20 +47,20 @@ start_bacalhau() {
 
     # Start Bacalhau
     /usr/local/bin/bacalhau serve \
-        --node-type compute \
+        --node-type "${NODE_TYPE}" \
         --orchestrators "${ORCHESTRATORS}" \
         --labels "${LABELS}" \
         >> "${LOG_FILE}" 2>&1 &
     
     local PID=$!
-    log "Bacalhau compute node started with PID ${PID}"
+    log "Bacalhau worker node started with PID ${PID}"
     log "Labels: ${LABELS}"
 }
 
 stop_bacalhau() {
-    log "Stopping Bacalhau compute node..."
+    log "Stopping Bacalhau worker node..."
     pkill -f "bacalhau serve" || true
-    log "Bacalhau compute node stopped"
+    log "Bacalhau worker node stopped"
 }
 
 # Main execution
@@ -91,6 +91,6 @@ main() {
 main "$@"
 EOF
 
-chmod +x "${BACALHAU_COMPUTE_SH}"
+chmod +x "${RUN_BACALHAU_SH}"
 
-echo "Bacalhau compute service script has been created at ${BACALHAU_COMPUTE_SH}"
+echo "Bacalhau service script has been created at ${RUN_BACALHAU_SH}"

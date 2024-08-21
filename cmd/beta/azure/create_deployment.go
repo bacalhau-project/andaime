@@ -431,6 +431,8 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 		return fmt.Errorf("failed to parse private key: %w", err)
 	}
 
+	newMachines := make([]*models.Machine, 0)
+
 	for _, rawMachine := range rawMachines {
 		var thisMachine models.Machine
 		thisMachine.Type = models.AzureResourceTypeVM
@@ -475,12 +477,13 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			thisMachine.ComputerName = fmt.Sprintf("%s-vm", thisMachine.ID)
 			thisMachine.StartTime = time.Now()
 
-			if thisMachine.MachineServices == nil {
-				thisMachine.MachineServices = make(map[string]models.ServiceType)
+			err := thisMachine.EnsureMachineServices()
+			if err != nil {
+				return fmt.Errorf("failed to ensure machine services: %w", err)
 			}
 
 			for _, service := range models.RequiredServices {
-				thisMachine.MachineServices[service.Name] = service
+				thisMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
 			}
 
 			thisMachine.SSHUser = "azureuser"
@@ -491,12 +494,13 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				thisMachine.OrchestratorIP = deployment.OrchestratorIP
 			}
 
-			deployment.Machines = append(deployment.Machines, thisMachine)
+			newMachines = append(newMachines, &thisMachine)
 		}
 
 		// Track unique locations
 		locations[thisMachine.Location] = true
 	}
+	deployment.Machines = newMachines
 
 	// Populate UniqueLocations in the deployment
 	deployment.UniqueLocations = make([]string, 0, len(locations))

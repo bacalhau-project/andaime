@@ -98,31 +98,23 @@ func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *mode
 	}
 
 	if status.SSH != models.ServiceStateUnknown {
-		sshService := machine.MachineServices["SSH"]
-		sshService.State = status.SSH
-		machine.MachineServices["SSH"] = sshService
+		machine.SetServiceState("SSH", status.SSH)
 	}
 	if status.Docker != models.ServiceStateUnknown {
-		dockerService := machine.MachineServices["Docker"]
-		dockerService.State = status.Docker
-		machine.MachineServices["Docker"] = dockerService
+		machine.SetServiceState("Docker", status.Docker)
 	}
 	if status.CorePackages != models.ServiceStateUnknown {
-		corePackagesService := machine.MachineServices["CorePackages"]
-		corePackagesService.State = status.CorePackages
-		machine.MachineServices["CorePackages"] = corePackagesService
+		machine.SetServiceState("CorePackages", status.CorePackages)
 	}
 	if status.Bacalhau != models.ServiceStateUnknown {
-		bacalhauService := machine.MachineServices["Bacalhau"]
-		bacalhauService.State = status.Bacalhau
-		machine.MachineServices["Bacalhau"] = bacalhauService
+		machine.SetServiceState("Bacalhau", status.Bacalhau)
 	}
 }
 
 func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*models.Machine, bool) {
 	for i, machine := range m.Deployment.Machines {
 		if machine.Name == status.Name {
-			return &m.Deployment.Machines[i], true
+			return m.Deployment.Machines[i], true
 		}
 	}
 
@@ -142,8 +134,8 @@ func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*model
 		if status.StatusMessage != "" {
 			newMachine.StatusMessage = status.StatusMessage
 		}
-		m.Deployment.Machines = append(m.Deployment.Machines, newMachine)
-		return &m.Deployment.Machines[len(m.Deployment.Machines)-1], false
+		m.Deployment.Machines = append(m.Deployment.Machines, &newMachine)
+		return m.Deployment.Machines[len(m.Deployment.Machines)-1], false
 	}
 
 	return nil, false
@@ -375,12 +367,12 @@ func (m *DisplayModel) applyBatchedUpdates() {
 	for _, machine := range m.Deployment.Machines {
 		progress, total := machine.ResourcesComplete()
 		if progress != total ||
-			machine.MachineServices["SSH"].State != models.ServiceStateSucceeded {
+			machine.GetServiceState("SSH") != models.ServiceStateSucceeded {
 			allCompleted = false
 			break
 		}
-		if machine.MachineServices["Docker"].State != models.ServiceStateSucceeded ||
-			machine.MachineServices["CorePackages"].State != models.ServiceStateSucceeded {
+		if machine.GetServiceState("Docker") != models.ServiceStateSucceeded ||
+			machine.GetServiceState("CorePackages") != models.ServiceStateSucceeded {
 			allDockerAndCorePackagesInstalled = false
 			break
 		}
@@ -391,15 +383,12 @@ func (m *DisplayModel) applyBatchedUpdates() {
 		orchestratorInstalled := false
 		for _, machine := range m.Deployment.Machines {
 			if machine.Orchestrator &&
-				machine.MachineServices["Bacalhau"].State != models.ServiceStateSucceeded {
-				bacalhauService := machine.MachineServices["Bacalhau"]
-				bacalhauService.State = models.ServiceStateUpdating
-				machine.MachineServices["Bacalhau"] = bacalhauService
+				machine.GetServiceState("Bacalhau") != models.ServiceStateSucceeded {
+				machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
 
 				// TODO: Implement Bacalhau orchestrator installation
 
-				bacalhauService.State = models.ServiceStateSucceeded
-				machine.MachineServices["Bacalhau"] = bacalhauService
+				machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
 				orchestratorInstalled = true
 				break
 			}
@@ -408,13 +397,10 @@ func (m *DisplayModel) applyBatchedUpdates() {
 		if orchestratorInstalled {
 			for _, machine := range m.Deployment.Machines {
 				if !machine.Orchestrator &&
-					machine.MachineServices["Bacalhau"].State != models.ServiceStateSucceeded {
-					bacalhauService := machine.MachineServices["Bacalhau"]
-					bacalhauService.State = models.ServiceStateUpdating
-					machine.MachineServices["Bacalhau"] = bacalhauService
+					machine.GetServiceState("Bacalhau") != models.ServiceStateSucceeded {
+					machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
 					// TODO: Implement Bacalhau worker installation
-					bacalhauService.State = models.ServiceStateSucceeded
-					machine.MachineServices["Bacalhau"] = bacalhauService
+					machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
 				}
 			}
 		}
@@ -500,8 +486,8 @@ func (m *DisplayModel) View() string {
 	}
 
 	performanceInfo := fmt.Sprintf(
-		"Avg Update Time: %v, CPU Usage: %.2f%%, Memory Usage: %d MB, Circular Buffer Size: %d, Goroutines: %d",
-		avgUpdateTime,
+		"Avg Update Time: %.2fms, CPU Usage: %.2f%%, Memory Usage: %d MB, Circular Buffer Size: %d, Goroutines: %d",
+		avgUpdateTime.Seconds()*1000,
 		m.CPUUsage,
 		m.MemoryUsage/1024/1024,
 		m.UpdateTimesSize,
@@ -591,7 +577,7 @@ func (m *DisplayModel) renderRow(data interface{}, baseStyle lipgloss.Style, isH
 	return rowStr + "\n"
 }
 
-func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
+func (m *DisplayModel) getMachineRowData(machine *models.Machine) []string {
 	elapsedTime := time.Since(machine.StartTime).Truncate(TickerInterval)
 	progress, total := machine.ResourcesComplete()
 	progressBar := renderProgressBar(
@@ -600,6 +586,17 @@ func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 		DisplayColumns[4].Width-ProgressBarPadding,
 	)
 
+	if progress < total {
+		logger.WriteToDebugLog(fmt.Sprintf("Progress: %d, Total: %d", progress, total))
+		logger.WriteToDebugLog(fmt.Sprintf("Machine: %s", machine.Name))
+		for _, service := range machine.GetMachineServices() {
+			if service.State != models.ServiceStateSucceeded {
+				logger.WriteToDebugLog(
+					fmt.Sprintf("Service: %s, State: %v", service.Name, service.State),
+				)
+			}
+		}
+	}
 	return []string{
 		machine.Name,
 		machine.Type.ShortResourceName,
@@ -610,9 +607,9 @@ func (m *DisplayModel) getMachineRowData(machine models.Machine) []string {
 		machine.PublicIP,
 		machine.PrivateIP,
 		ConvertOrchestratorToEmoji(machine.Orchestrator),
-		ConvertStateToEmoji(machine.MachineServices["SSH"].State),
-		ConvertStateToEmoji(machine.MachineServices["Docker"].State),
-		ConvertStateToEmoji(machine.MachineServices["Bacalhau"].State),
+		ConvertStateToEmoji(machine.GetServiceState("SSH")),
+		ConvertStateToEmoji(machine.GetServiceState("Docker")),
+		ConvertStateToEmoji(machine.GetServiceState("Bacalhau")),
 		"",
 	}
 }
