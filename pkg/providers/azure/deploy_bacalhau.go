@@ -20,13 +20,14 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 	l.Info("Deploying Bacalhau Orchestrator")
 
 	m := display.GetGlobalModelFunc()
-	orchestratorNodeIndex := -1
+	orchestratorNodeName := ""
 	numberOfOrchestratorNodes := 0
 
 	allMachinesOrchestratorSet := false
-	for i := range m.Deployment.Machines {
-		if m.Deployment.Machines[i].OrchestratorIP != "" {
+	for name, machine := range m.Deployment.Machines {
+		if machine.OrchestratorIP != "" {
 			allMachinesOrchestratorSet = true
+			orchestratorNodeName = name
 		}
 	}
 
@@ -34,21 +35,20 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 		return fmt.Errorf("orchestrator IP set")
 	}
 
-	for i := range m.Deployment.Machines {
-		if m.Deployment.Machines[i].IsOrchestrator() {
+	for _, machine := range m.Deployment.Machines {
+		if machine.IsOrchestrator() {
 			numberOfOrchestratorNodes++
 			if numberOfOrchestratorNodes > 1 {
 				return fmt.Errorf("multiple orchestrator nodes found")
 			}
-			orchestratorNodeIndex = i
 		}
 	}
 
-	if orchestratorNodeIndex == -1 && m.Deployment.OrchestratorIP == "" {
+	if _, ok := m.Deployment.Machines[orchestratorNodeName]; !ok {
 		return fmt.Errorf("no orchestrator node found")
 	}
 
-	orchestratorMachine := m.Deployment.GetMachine(orchestratorNodeIndex)
+	orchestratorMachine := m.Deployment.Machines[orchestratorNodeName]
 	if orchestratorMachine != nil {
 		orchestratorMachine.SetServiceState("Bacalhau", models.ServiceStateNotStarted)
 
@@ -82,16 +82,21 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 		err = getNodeMetadataScriptTemplate.Execute(
 			&getNodeMetadataScriptBuffer,
 			map[string]interface{}{
-				"MachineType":   m.Deployment.Machines[orchestratorNodeIndex].VMSize,
-				"MachineName":   m.Deployment.Machines[orchestratorNodeIndex].Name,
-				"Location":      m.Deployment.Machines[orchestratorNodeIndex],
-				"Orchestrators": m.Deployment.Machines[orchestratorNodeIndex].PublicIP,
-				"IP":            m.Deployment.Machines[orchestratorNodeIndex].PublicIP,
+				"MachineType":   orchestratorMachine.VMSize,
+				"MachineName":   orchestratorMachine.Name,
+				"Location":      orchestratorMachine.Location,
+				"Orchestrators": orchestratorMachine.PublicIP,
+				"IP":            orchestratorMachine.PublicIP,
 				"Token":         "",
 				"NodeType":      "requester",
 				"Project":       m.Deployment.ProjectID,
 			},
 		)
+		if err != nil {
+			orchestratorMachine.SetServiceState("Bacalhau", models.ServiceStateFailed)
+			return err
+		}
+
 		err = sshConfig.PushFile(
 			getNodeMetadataScriptBuffer.Bytes(),
 			getNodeConfigMetadataPath,
@@ -184,7 +189,7 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 		// If the output is valid and contains nodes, log success
 		l.Infof("Bacalhau orchestrator deployed successfully, nodes found: %d", len(nodes))
 		orchestratorMachine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
-		m.Deployment.OrchestratorIP = m.Deployment.Machines[orchestratorNodeIndex].PublicIP
+		m.Deployment.OrchestratorIP = m.Deployment.Machines[orchestratorNodeName].PublicIP
 	}
 
 	return nil
