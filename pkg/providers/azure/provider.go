@@ -213,6 +213,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				if err != nil {
 					l.Errorf("Failed to poll and update resources: %v", err)
 					writeToDebugLog(fmt.Sprintf("Failed to poll and update resources: %v", err))
+					p.CancelAllDeployments(ctx)
 					done <- true
 					return
 				}
@@ -221,6 +222,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				if p.checkBacalhauNodeListingFailure() {
 					l.Error("Persistent failure in listing Bacalhau nodes detected")
 					writeToDebugLog("Persistent failure in listing Bacalhau nodes detected")
+					p.CancelAllDeployments(ctx)
 					done <- true
 					return
 				}
@@ -258,6 +260,12 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 					return
 				}
 
+				if p.AllMachinesComplete() {
+					writeToDebugLog("All machines completed, stopping resource polling")
+					done <- true
+					return
+				}
+
 			case <-quit:
 				l.Debug("Quit signal received, exiting resource polling")
 				writeToDebugLog("Quit signal received, exiting resource polling")
@@ -277,6 +285,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	}
 
 	utils.CloseAllChannels()
+	os.Exit(0)
 }
 
 func (p *AzureProvider) logDeploymentStatus() {
@@ -368,4 +377,30 @@ func (p *AzureProvider) checkBacalhauNodeListingFailure() bool {
 	
 	// For now, we'll just return false to avoid breaking existing functionality.
 	return false
+}
+
+func (p *AzureProvider) CancelAllDeployments(ctx context.Context) {
+	l := logger.Get()
+	l.Info("Cancelling all deployments")
+	writeToDebugLog("Cancelling all deployments")
+
+	for _, machine := range p.Deployment.Machines {
+		if !machine.Complete() {
+			machine.SetComplete()
+		}
+	}
+
+	// Cancel the context to stop all ongoing operations
+	if cancelFunc, ok := ctx.Value("cancelFunc").(context.CancelFunc); ok {
+		cancelFunc()
+	}
+}
+
+func (p *AzureProvider) AllMachinesComplete() bool {
+	for _, machine := range p.Deployment.Machines {
+		if !machine.Complete() {
+			return false
+		}
+	}
+	return true
 }
