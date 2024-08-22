@@ -71,11 +71,100 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
+	if err := p.ProvisionMachines(ctx); err != nil {
+		l.Error(fmt.Sprintf("Failed to provision machines: %v", err))
+		return err
+	}
+
 	if err := p.FinalizeDeployment(ctx); err != nil {
 		l.Error(fmt.Sprintf("Failed to finalize deployment: %v", err))
 		return err
 	}
 
+	return nil
+}
+
+func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	var orchestrator *models.Machine
+	var workers []*models.Machine
+
+	for _, machine := range m.Deployment.Machines {
+		if machine.Orchestrator {
+			orchestrator = machine
+		} else {
+			workers = append(workers, machine)
+		}
+	}
+
+	// Provision SSH for all machines
+	for _, machine := range m.Deployment.Machines {
+		if err := p.provisionSSH(ctx, machine); err != nil {
+			l.Errorf("Failed to provision SSH for machine %s: %v", machine.Name, err)
+			return err
+		}
+	}
+
+	// Provision Docker for all machines
+	for _, machine := range m.Deployment.Machines {
+		if err := p.provisionDocker(ctx, machine); err != nil {
+			l.Errorf("Failed to provision Docker for machine %s: %v", machine.Name, err)
+			return err
+		}
+	}
+
+	// Provision Bacalhau orchestrator
+	if err := p.provisionBacalhauOrchestrator(ctx, orchestrator); err != nil {
+		l.Errorf("Failed to provision Bacalhau orchestrator: %v", err)
+		return err
+	}
+
+	// Provision Bacalhau workers
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(workers))
+
+	for _, worker := range workers {
+		wg.Add(1)
+		go func(w *models.Machine) {
+			defer wg.Done()
+			if err := p.provisionBacalhauWorker(ctx, w); err != nil {
+				errChan <- fmt.Errorf("failed to provision Bacalhau worker %s: %v", w.Name, err)
+			}
+		}(worker)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			l.Error(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *AzureProvider) provisionSSH(ctx context.Context, machine *models.Machine) error {
+	// Implementation for SSH provisioning
+	return nil
+}
+
+func (p *AzureProvider) provisionDocker(ctx context.Context, machine *models.Machine) error {
+	// Implementation for Docker provisioning
+	return nil
+}
+
+func (p *AzureProvider) provisionBacalhauOrchestrator(ctx context.Context, machine *models.Machine) error {
+	// Implementation for Bacalhau orchestrator provisioning
+	return nil
+}
+
+func (p *AzureProvider) provisionBacalhauWorker(ctx context.Context, machine *models.Machine) error {
+	// Implementation for Bacalhau worker provisioning
 	return nil
 }
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
