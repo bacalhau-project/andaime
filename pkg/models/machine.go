@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -248,19 +249,25 @@ func (m *Machine) SetMachineServices(services map[string]ServiceType) {
 
 // Installation methods
 
-func (m *Machine) InstallDockerAndCorePackages() error {
-	if err := m.installDocker(); err != nil {
+func (m *Machine) InstallDockerAndCorePackages(ctx context.Context) error {
+	if err := m.installDocker(ctx); err != nil {
 		return err
 	}
-	return m.installCorePackages()
+	return m.installCorePackages(ctx)
 }
 
-func (m *Machine) installDocker() error {
-	return m.installService("Docker", "install-docker.sh", internal.GetInstallDockerScript)
-}
-
-func (m *Machine) installCorePackages() error {
+func (m *Machine) installDocker(ctx context.Context) error {
 	return m.installService(
+		ctx,
+		"Docker",
+		"install-docker.sh",
+		internal.GetInstallDockerScript,
+	)
+}
+
+func (m *Machine) installCorePackages(ctx context.Context) error {
+	return m.installService(
+		ctx,
 		"CorePackages",
 		"install-core-packages.sh",
 		internal.GetInstallCorePackagesScript,
@@ -268,6 +275,7 @@ func (m *Machine) installCorePackages() error {
 }
 
 func (m *Machine) installService(
+	ctx context.Context,
 	serviceName, scriptName string,
 	scriptGetter func() ([]byte, error),
 ) error {
@@ -291,11 +299,11 @@ func (m *Machine) installService(
 	}
 
 	scriptPath := fmt.Sprintf("/tmp/%s", scriptName)
-	if err := sshConfig.PushFile(scriptBytes, scriptPath, true); err != nil {
+	if err := sshConfig.PushFile(ctx, scriptBytes, scriptPath, true); err != nil {
 		return err
 	}
 
-	if _, err := sshConfig.ExecuteCommand(fmt.Sprintf("sudo %s", scriptPath)); err != nil {
+	if _, err := sshConfig.ExecuteCommand(ctx, fmt.Sprintf("sudo %s", scriptPath)); err != nil {
 		m.SetServiceState(serviceName, ServiceStateFailed)
 		return err
 	}

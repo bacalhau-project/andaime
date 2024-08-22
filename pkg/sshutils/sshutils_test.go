@@ -1,6 +1,7 @@
 package sshutils
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -101,6 +102,7 @@ func TestConnectFailure(t *testing.T) {
 
 func TestExecuteCommand(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockSSHSession := &MockSSHSession{}
 
 	mockSSHClient, sshConfig := GetTypedMockClient(t, log)
@@ -112,7 +114,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	sshConfig.SetSSHClient(mockSSHClient)
 	// Execute
-	actualResult, err := sshConfig.ExecuteCommand("ls -l")
+	actualResult, err := sshConfig.ExecuteCommand(ctx, "ls -l")
 
 	// Assert
 	assert.NoError(t, err)
@@ -124,6 +126,7 @@ func TestExecuteCommand(t *testing.T) {
 
 func TestExecuteCommandWithRetry(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockSSHSession := &MockSSHSession{}
 
 	mockSSHClient, sshConfig := GetTypedMockClient(t, log)
@@ -139,7 +142,7 @@ func TestExecuteCommandWithRetry(t *testing.T) {
 	sshConfig.SetSSHClient(mockSSHClient)
 
 	// Execute
-	actualResult, err := sshConfig.ExecuteCommand("ls -l")
+	actualResult, err := sshConfig.ExecuteCommand(ctx, "ls -l")
 
 	// Assert
 	assert.NoError(t, err)
@@ -152,6 +155,7 @@ func TestExecuteCommandWithRetry(t *testing.T) {
 
 func TestPushFile(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, _ := GetTypedMockClient(t, log)
 
 	// Create test content
@@ -175,7 +179,7 @@ func TestPushFile(t *testing.T) {
 	sshConfig.SetSSHClient(mockClient)
 
 	// Test successful file push
-	err := sshConfig.PushFile(localContent, "/remote/path", false)
+	err := sshConfig.PushFile(ctx, localContent, "/remote/path", false)
 	assert.NoError(t, err)
 
 	// Verify expectations
@@ -186,6 +190,7 @@ func TestPushFile(t *testing.T) {
 
 func TestPushFileExecutable(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, _ := GetTypedMockClient(t, log)
 
 	// Create test content
@@ -209,7 +214,7 @@ func TestPushFileExecutable(t *testing.T) {
 	sshConfig.SetSSHClient(mockClient)
 
 	// Test successful file push with executable flag
-	err := sshConfig.PushFile(localContent, "/remote/path", true)
+	err := sshConfig.PushFile(ctx, localContent, "/remote/path", true)
 	assert.NoError(t, err)
 
 	// Verify expectations
@@ -220,6 +225,7 @@ func TestPushFileExecutable(t *testing.T) {
 
 func TestInstallSystemdServiceSuccess(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 
 	// Test successful service installation
@@ -230,7 +236,7 @@ func TestInstallSystemdServiceSuccess(t *testing.T) {
 
 	sshConfig.SetSSHClient(mockClient)
 
-	err := sshConfig.InstallSystemdService("service_name", "service_content")
+	err := sshConfig.InstallSystemdService(ctx, "service_name", "service_content")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -239,6 +245,7 @@ func TestInstallSystemdServiceSuccess(t *testing.T) {
 
 func TestInstallSystemdServiceFailure(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 
 	mockSession := &MockSSHSession{}
@@ -248,7 +255,7 @@ func TestInstallSystemdServiceFailure(t *testing.T) {
 
 	sshConfig.SetSSHClient(mockClient)
 
-	err := sshConfig.InstallSystemdService("service_name", "service_content")
+	err := sshConfig.InstallSystemdService(ctx, "service_name", "service_content")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -257,6 +264,7 @@ func TestInstallSystemdServiceFailure(t *testing.T) {
 
 func TestStartServiceSuccess(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 
 	// Test successful service start
@@ -266,7 +274,7 @@ func TestStartServiceSuccess(t *testing.T) {
 	mockSession.On("Close").Return(nil)
 	sshConfig.SetSSHClient(mockClient)
 
-	err := sshConfig.StartService("service_name")
+	err := sshConfig.StartService(ctx, "service_name")
 	assert.NoError(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -275,6 +283,7 @@ func TestStartServiceSuccess(t *testing.T) {
 
 func TestStartServiceFailure(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 
 	mockSession := &MockSSHSession{}
@@ -283,7 +292,7 @@ func TestStartServiceFailure(t *testing.T) {
 	mockSession.On("Close").Return(nil)
 	sshConfig.SetSSHClient(mockClient)
 
-	err := sshConfig.StartService("service_name")
+	err := sshConfig.StartService(ctx, "service_name")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -292,6 +301,7 @@ func TestStartServiceFailure(t *testing.T) {
 
 func TestRestartServiceSuccess(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 
 	// Test successful service restart
@@ -301,7 +311,7 @@ func TestRestartServiceSuccess(t *testing.T) {
 	mockSession.On("Close").Return(nil)
 	sshConfig.SetSSHClient(mockClient)
 
-	err := sshConfig.RestartService("service_name")
+	err := sshConfig.RestartService(ctx, "service_name")
 	assert.NoError(t, err)
 
 	mockClient.AssertExpectations(t)
@@ -310,6 +320,7 @@ func TestRestartServiceSuccess(t *testing.T) {
 
 func TestRestartServiceFailure(t *testing.T) {
 	log := logger.Get()
+	ctx := context.Background()
 	mockClient, sshConfig := GetTypedMockClient(t, log)
 
 	mockSession := &MockSSHSession{}
@@ -318,7 +329,7 @@ func TestRestartServiceFailure(t *testing.T) {
 	mockSession.On("Close").Return(nil)
 	sshConfig.SetSSHClient(mockClient)
 
-	err := sshConfig.RestartService("service_name")
+	err := sshConfig.RestartService(ctx, "service_name")
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)

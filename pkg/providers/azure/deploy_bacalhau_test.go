@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"slices"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -13,328 +12,452 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// mockSSHConfig is a mock implementation of sshutils.SSHConfiger
-type mockSSHConfig struct {
+// MockSSHConfig is a mock implementation of sshutils.SSHConfiger
+type MockSSHConfig struct {
 	mock.Mock
 }
 
-func (m *mockSSHConfig) Connect() (sshutils.SSHClienter, error)   { return nil, nil }
-func (m *mockSSHConfig) Close() error                             { return nil }
-func (m *mockSSHConfig) SetSSHClient(client sshutils.SSHClienter) {}
-func (m *mockSSHConfig) PushFile(content []byte, remotePath string, executable bool) error {
-	return m.Called(content, remotePath, executable).Error(0)
+func (m *MockSSHConfig) PushFile(
+	ctx context.Context,
+	content []byte,
+	remotePath string,
+	executable bool,
+) error {
+	args := m.Called(ctx, content, remotePath, executable)
+	return args.Error(0)
 }
-func (m *mockSSHConfig) ExecuteCommand(cmd string) (string, error) {
-	args := m.Called(cmd)
+
+func (m *MockSSHConfig) ExecuteCommand(
+	ctx context.Context,
+	cmd string,
+) (string, error) {
+	args := m.Called(ctx, cmd)
 	return args.String(0), args.Error(1)
 }
-func (m *mockSSHConfig) InstallSystemdService(serviceName string, servicePath string) error {
+
+func (m *MockSSHConfig) InstallSystemdService(
+	ctx context.Context,
+	serviceName string,
+	serviceContent string,
+) error {
+	args := m.Called(ctx, serviceName, serviceContent)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) RestartService(
+	ctx context.Context,
+	serviceName string,
+) error {
+	args := m.Called(ctx, serviceName)
+	return args.Error(0)
+}
+
+// Additional methods to satisfy the SSHConfiger interface
+func (m *MockSSHConfig) Connect() (sshutils.SSHClienter, error) { return nil, nil }
+
+func (m *MockSSHConfig) Close() error                             { return nil }
+func (m *MockSSHConfig) SetSSHClient(client sshutils.SSHClienter) {}
+
+func (m *MockSSHConfig) StartService(
+	ctx context.Context,
+	serviceName string,
+) error {
 	return nil
 }
-func (m *mockSSHConfig) RestartService(serviceName string) error { return nil }
-func (m *mockSSHConfig) StartService(serviceName string) error   { return nil }
 
-// setupMockSSHConfig sets up the mock SSH config with expected calls
-func setupMockSSHConfig(m *mockSSHConfig, expectedCalls int) {
-	m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil).Times(expectedCalls)
-	m.On("ExecuteCommand", mock.Anything).Return("", nil).Times(expectedCalls)
-	m.On("ExecuteCommand", "bacalhau node list --output json --api-host 0.0.0.0").
-		Return(`[{"id": "node1"}]`, nil).
-		Times(expectedCalls)
-}
+func setupTestBacalhauDeployer(
+	machines map[string]*models.Machine,
+) (*BacalhauDeployer, *MockSSHConfig) {
+	mockSSH := new(MockSSHConfig)
 
-// TestCase represents a generic test case structure
-type TestCase struct {
-	name           string
-	machines       map[string]*models.Machine
-	machinesToTest []string
-	mockServices   []models.ServiceType
-	mockSetup      func(*mockSSHConfig)
-	expectedError  string
-	expectedStates map[int]models.ServiceState
-}
+	m := display.GetGlobalModelFunc()
+	m.Deployment.Machines = machines
+	m.Deployment.OrchestratorIP = "1.2.3.4"
 
-// runTest is a generic test runner for both orchestrator and worker tests
-func runTest(t *testing.T, tc TestCase, testFunc func(*AzureProvider, context.Context) error) {
-	t.Run(tc.name, func(t *testing.T) {
-		m := display.GetGlobalModel()
-		m.Deployment.Machines = tc.machines
+	deployer := NewBacalhauDeployer()
 
-		for _, machine := range m.Deployment.Machines {
-			for _, service := range tc.mockServices {
-				machine.SetServiceState(service.Name, service.State)
-			}
-		}
-
-		mockSSH := new(mockSSHConfig)
-		if tc.mockSetup != nil {
-			tc.mockSetup(mockSSH)
-		}
-
-		originalNewSSHConfig := sshutils.NewSSHConfigFunc
-		sshutils.NewSSHConfigFunc = func(host string, port int, user string, privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
-			if tc.expectedError == "Error creating SSH config" {
-				return nil, assert.AnError
-			}
-			return mockSSH, nil
-		}
-		defer func() { sshutils.NewSSHConfigFunc = originalNewSSHConfig }()
-
-		provider := &AzureProvider{}
-		err := testFunc(provider, context.Background())
-
-		assertTestResults(t, tc, err, m)
-		mockSSH.AssertExpectations(t)
-	})
-}
-
-// assertTestResults checks the test results against expected values
-func assertTestResults(t *testing.T, tc TestCase, err error, m *display.DisplayModel) {
-	if tc.expectedError != "" {
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), tc.expectedError)
-	} else {
-		assert.NoError(t, err)
+	// Override the SSH config creation function
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		privateKeyMaterial []byte,
+	) (sshutils.SSHConfiger, error) {
+		return mockSSH, nil
 	}
 
-	for _, expectedState := range tc.expectedStates {
-		for _, machine := range m.Deployment.Machines {
-			if tc.machinesToTest != nil && !slices.Contains(tc.machinesToTest, machine.Name) {
-				continue
-			}
-			assert.Equal(t, expectedState, machine.GetServiceState("Bacalhau"))
-		}
-	}
+	return deployer, mockSSH
 }
 
-func TestDeployBacalhauOrchestrator(t *testing.T) {
-	tests := []TestCase{
+func TestFindOrchestratorMachine(t *testing.T) {
+	tests := []struct {
+		name          string
+		machines      map[string]*models.Machine
+		expectedError string
+	}{
 		{
-			name:          "No orchestrator node and no orchestrator IP",
-			machines:      map[string]*models.Machine{},
+			name: "Single orchestrator",
+			machines: map[string]*models.Machine{
+				"orch":   {Name: "orch", Orchestrator: true},
+				"worker": {Name: "worker"},
+			},
+			expectedError: "",
+		},
+		{
+			name: "No orchestrator",
+			machines: map[string]*models.Machine{
+				"worker1": {Name: "worker1"},
+				"worker2": {Name: "worker2"},
+			},
 			expectedError: "no orchestrator node found",
 		},
 		{
-			name: "No orchestrator node, but orchestrator IP specified",
+			name: "Multiple orchestrators",
 			machines: map[string]*models.Machine{
-				"": {OrchestratorIP: "NOT_EMPTY", Name: "machine-1"},
-			},
-			expectedError: "orchestrator IP set",
-		},
-		{
-			name: "One orchestrator node, no other machines",
-			machines: map[string]*models.Machine{
-				"machine-1": {
-					Name:         "machine-1",
-					Orchestrator: true,
-				},
-			},
-			mockServices: []models.ServiceType{
-				{Name: "Bacalhau", State: models.ServiceStateUnknown},
-			},
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil).Times(3)
-				m.On("ExecuteCommand", mock.Anything).Return("", nil).Times(3)
-				m.On("ExecuteCommand", "bacalhau node list --output json --api-host 0.0.0.0").
-					Return(`[{"id": "node1"}]`, nil)
-			},
-		},
-		{
-			name: "One orchestrator node and many other machines",
-			machines: map[string]*models.Machine{
-				"machine-1": {
-					Orchestrator: true,
-					Name:         "machine-1",
-				},
-				"machine-2": {
-					Name: "machine-2",
-				},
-				"machine-3": {
-					Name: "machine-3",
-				},
-			},
-			mockServices: []models.ServiceType{
-				{Name: "Bacalhau", State: models.ServiceStateUnknown},
-			},
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil).Times(3)
-				m.On("ExecuteCommand", mock.Anything).Return("", nil).Times(3)
-				m.On("ExecuteCommand", "bacalhau node list --output json --api-host 0.0.0.0").
-					Return(`[{"id": "node1"}]`, nil)
-			},
-		},
-		{
-			name: "Multiple orchestrator nodes (should error)",
-			machines: map[string]*models.Machine{
-				"machine-1": {Orchestrator: true, Name: "machine-1"},
-				"machine-2": {Orchestrator: true, Name: "machine-2"},
-			},
-			mockServices: []models.ServiceType{
-				{Name: "Bacalhau", State: models.ServiceStateUnknown},
+				"orch1": {Name: "orch1", Orchestrator: true},
+				"orch2": {Name: "orch2", Orchestrator: true},
 			},
 			expectedError: "multiple orchestrator nodes found",
 		},
 	}
 
-	for _, tc := range tests {
-		runTest(t, tc, func(p *AzureProvider, ctx context.Context) error {
-			return p.DeployBacalhauOrchestrator(ctx)
-		})
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deployer, _ := setupTestBacalhauDeployer(tt.machines)
+			machine, err := deployer.findOrchestratorMachine()
 
-func TestDeployBacalhauOrchestrator_FailureScenarios(t *testing.T) {
-	tests := []TestCase{
-		{
-			name: "Fail after Docker install",
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil)
-				m.On("ExecuteCommand", mock.Anything).
-					Return("", fmt.Errorf("Docker installation failed"))
-			},
-			expectedError: "Docker installation failed",
-			expectedStates: map[int]models.ServiceState{
-				0: models.ServiceStateFailed,
-			},
-		},
-		{
-			name: "Fail after Bacalhau install",
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Times(2).Return(nil)
-				m.On("ExecuteCommand", mock.Anything).Return("", nil).Once()
-				m.On("ExecuteCommand", mock.Anything).
-					Return("", fmt.Errorf("Bacalhau installation failed"))
-			},
-			expectedError: "Bacalhau installation failed",
-			expectedStates: map[int]models.ServiceState{
-				0: models.ServiceStateFailed,
-			},
-		},
-		{
-			name: "Service fails to start",
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Times(3).Return(nil)
-				m.On("ExecuteCommand", mock.Anything).Return("", nil).Times(2)
-				m.On("ExecuteCommand", mock.Anything).
-					Return("", fmt.Errorf("Service failed to start"))
-			},
-			expectedError: "Service failed to start",
-			expectedStates: map[int]models.ServiceState{
-				0: models.ServiceStateFailed,
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		tc.machines = map[string]*models.Machine{
-			"machine-1": {
-				Orchestrator: true,
-				Name:         "machine-1",
-			},
-		}
-		for _, machine := range tc.machines {
-			for _, service := range tc.mockServices {
-				machine.SetServiceState(service.Name, service.State)
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, machine)
+				assert.True(t, machine.Orchestrator)
 			}
-		}
-		runTest(t, tc, func(p *AzureProvider, ctx context.Context) error {
-			return p.DeployBacalhauOrchestrator(ctx)
 		})
 	}
 }
 
-func TestDeployBacalhauWorkers(t *testing.T) {
-	tests := []TestCase{
+func TestSetupNodeConfigMetadata(t *testing.T) {
+	m := display.GetGlobalModelFunc()
+	ctx := context.Background()
+	m.Deployment.Machines = map[string]*models.Machine{
+		"test": {Name: "test", VMSize: "Standard_D2s_v3", Location: "eastus"},
+	}
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+	mockSSH.On("PushFile", ctx, mock.Anything, "/tmp/get-node-config-metadata.sh", true).Return(nil)
+	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/get-node-config-metadata.sh").Return("", nil)
+
+	err := deployer.setupNodeConfigMetadata(
+		ctx,
+		m.Deployment.Machines["test"],
+		mockSSH,
+		"compute",
+	)
+
+	assert.NoError(t, err)
+	mockSSH.AssertExpectations(t)
+}
+
+func TestInstallBacalhau(t *testing.T) {
+	m := display.GetGlobalModelFunc()
+	ctx := context.Background()
+	m.Deployment.Machines = map[string]*models.Machine{
+		"test": {Name: "test", Orchestrator: true},
+	}
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+	mockSSH.On("PushFile", ctx, mock.Anything, "/tmp/install-bacalhau.sh", true).
+		Return(nil).
+		Times(1)
+	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/install-bacalhau.sh").Return("", nil)
+
+	err := deployer.installBacalhau(
+		ctx,
+		mockSSH,
+	)
+
+	assert.NoError(t, err)
+	mockSSH.AssertExpectations(t)
+}
+
+func TestInstallBacalhauRun(t *testing.T) {
+	m := display.GetGlobalModelFunc()
+	ctx := context.Background()
+	m.Deployment.Machines = map[string]*models.Machine{
+		"test": {Name: "test", Orchestrator: true},
+	}
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+	mockSSH.On("PushFile", ctx, mock.Anything, "/tmp/install-run-bacalhau.sh", true).
+		Return(nil).
+		Times(1)
+	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/install-run-bacalhau.sh").Return("", nil)
+
+	err := deployer.installBacalhauRunScript(
+		ctx,
+		mockSSH,
+	)
+
+	assert.NoError(t, err)
+	mockSSH.AssertExpectations(t)
+}
+
+func TestSetupBacalhauService(t *testing.T) {
+	m := display.GetGlobalModelFunc()
+	ctx := context.Background()
+	m.Deployment.Machines = map[string]*models.Machine{
+		"test": {Name: "test"},
+	}
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+	mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
+	mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
+
+	err := deployer.setupBacalhauService(
+		ctx,
+		mockSSH,
+	)
+
+	assert.NoError(t, err)
+	mockSSH.AssertExpectations(t)
+}
+
+func TestVerifyBacalhauDeployment(t *testing.T) {
+	tests := []struct {
+		name           string
+		nodeListOutput string
+		expectedError  string
+	}{
 		{
-			name: "Successful deployment",
-			machines: map[string]*models.Machine{
-				"machine-1": {Orchestrator: true, Name: "machine-1"},
-				"machine-2": {
-					VMSize: "Standard_D2s_v3",
-					Name:   "machine-2",
-				},
-				"machine-3": {
-					VMSize: "Standard_D2s_v3",
-					Name:   "machine-3",
-				},
-			},
-			mockServices: []models.ServiceType{
-				{Name: "Bacalhau", State: models.ServiceStateUnknown},
-			},
-			machinesToTest: []string{"machine-2", "machine-3"},
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).
-					Return(nil).Times(4)
-				m.On("ExecuteCommand", mock.Anything).Return("", nil).Times(2)
-				m.On("ExecuteCommand", "bacalhau node list --output json --api-host 0.0.0.0").
-					Return(`[{"id": "node1"}]`, nil).Once()
-				m.On("ExecuteCommand", mock.Anything).Return("", nil).Times(2)
-				m.On("ExecuteCommand", "bacalhau node list --output json --api-host 0.0.0.0").
-					Return(`[{"id": "node2"}]`, nil).Once()
-			},
-			expectedStates: map[int]models.ServiceState{
-				1: models.ServiceStateSucceeded,
-				2: models.ServiceStateSucceeded,
-			},
+			name:           "Successful verification",
+			nodeListOutput: `[{"id": "node1"}]`,
+			expectedError:  "",
 		},
 		{
-			name: "Failure in script execution",
-			machines: map[string]*models.Machine{
-				"machine-1": {Orchestrator: true, Name: "machine-1"},
-				"machine-2": {
-					VMSize: "Standard_D2s_v3",
-					Name:   "machine-2",
-				},
-			},
-			machinesToTest: []string{"machine-2"},
-			mockServices: []models.ServiceType{
-				{
-					Name:  "Bacalhau",
-					State: models.ServiceStateUnknown,
-				},
-				{
-					Name:  "Bacalhau",
-					State: models.ServiceStateUnknown,
-				},
-			},
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil)
-				m.On("ExecuteCommand", mock.Anything).Return("", assert.AnError)
-			},
-			expectedError: "assert.AnError general error for testing",
-			expectedStates: map[int]models.ServiceState{
-				1: models.ServiceStateFailed,
-			},
+			name:           "Empty node list",
+			nodeListOutput: `[]`,
+			expectedError:  "no Bacalhau nodes found in the output",
 		},
 		{
-			name: "Invalid JSON in Bacalhau node list",
-			machines: map[string]*models.Machine{
-				"machine-1": {Orchestrator: true, Name: "machine-1"},
-				"machine-2": {
-					VMSize: "Standard_D2s_v3",
-					Name:   "machine-2",
-				},
-			},
-			machinesToTest: []string{"machine-2"},
-			mockServices: []models.ServiceType{
-				{Name: "Bacalhau", State: models.ServiceStateUnknown},
-			},
-			mockSetup: func(m *mockSSHConfig) {
-				m.On("PushFile", mock.Anything, mock.Anything, true).Return(nil)
-				m.On("ExecuteCommand", mock.Anything).Return("", nil)
-				m.On("ExecuteCommand", "bacalhau node list --output json --api-host 0.0.0.0").
-					Return("invalid json", nil)
-			},
-			expectedError: "failed to unmarshal node list output",
-			expectedStates: map[int]models.ServiceState{
-				1: models.ServiceStateFailed,
-			},
+			name:           "Invalid JSON",
+			nodeListOutput: `invalid json`,
+			expectedError:  "failed to unmarshal node list output",
 		},
 	}
 
-	for _, tc := range tests {
-		runTest(t, tc, func(p *AzureProvider, ctx context.Context) error {
-			return p.DeployBacalhauWorkers(ctx)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			deployer, mockSSH := setupTestBacalhauDeployer(map[string]*models.Machine{
+				"test": {Name: "test"},
+			})
+
+			mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 0.0.0.0").
+				Return(tt.nodeListOutput, nil)
+
+			err := deployer.verifyBacalhauDeployment(
+				ctx,
+				mockSSH,
+				"0.0.0.0",
+			)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockSSH.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDeployBacalhauNode(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name          string
+		nodeType      string
+		setupMock     func(*MockSSHConfig)
+		expectedError string
+	}{
+		{
+			name:     "Successful orchestrator deployment on bacalhau node",
+			nodeType: "requester",
+			setupMock: func(mockSSH *MockSSHConfig) {
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(3)
+				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(3)
+				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
+				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
+				mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 1.2.3.4").
+					Return(`[{"id": "node1"}]`, nil)
+			},
+			expectedError: "",
+		},
+		{
+			name:     "Failed orchestrator deployment",
+			nodeType: "requester",
+			setupMock: func(mockSSH *MockSSHConfig) {
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).
+					Return(fmt.Errorf("push file error"))
+			},
+			expectedError: "failed to push node config metadata script",
+		},
+		{
+			name:     "Successful worker deployment",
+			nodeType: "compute",
+			setupMock: func(mockSSH *MockSSHConfig) {
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(3)
+				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(3)
+				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
+				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
+				mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 1.2.3.4").
+					Return(`[{"id": "node1"}]`, nil)
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := display.GetGlobalModelFunc()
+			m.Deployment.Machines = map[string]*models.Machine{
+				"test": {Name: "test", Orchestrator: tt.nodeType == "requester"},
+			}
+			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+			tt.setupMock(mockSSH)
+
+			err := deployer.deployBacalhauNode(
+				context.Background(),
+				m.Deployment.Machines["test"],
+				tt.nodeType,
+			)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines["test"].GetServiceState("Bacalhau"))
+			}
+
+			mockSSH.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDeployOrchestrator(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name          string
+		machines      map[string]*models.Machine
+		setupMock     func(*MockSSHConfig)
+		expectedError string
+	}{
+		{
+			name: "Successful orchestrator deployment",
+			machines: map[string]*models.Machine{
+				"orch": {Name: "orch", Orchestrator: true, PublicIP: "1.2.3.4"},
+			},
+			setupMock: func(mockSSH *MockSSHConfig) {
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(3)
+				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(3)
+				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
+				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
+				mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 1.2.3.4").
+					Return(`[{"id": "node1"}]`, nil)
+			},
+			expectedError: "",
+		},
+		{
+			name: "No orchestrator node",
+			machines: map[string]*models.Machine{
+				"worker": {Name: "worker"},
+			},
+			setupMock:     func(mockSSH *MockSSHConfig) {},
+			expectedError: "no orchestrator node found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := display.GetGlobalModelFunc()
+			m.Deployment.Machines = tt.machines
+			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+			tt.setupMock(mockSSH)
+
+			err := deployer.DeployOrchestrator(ctx)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines["orch"].GetServiceState("Bacalhau"))
+				assert.NotEmpty(t, m.Deployment.OrchestratorIP)
+			}
+
+			mockSSH.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDeployWorkers(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name          string
+		machines      map[string]*models.Machine
+		setupMock     func(*MockSSHConfig)
+		expectedError string
+	}{
+		{
+			name: "Successful workers deployment",
+			machines: map[string]*models.Machine{
+				"orch":    {Name: "orch", Orchestrator: true, PublicIP: "1.2.3.4"},
+				"worker1": {Name: "worker1"},
+				"worker2": {Name: "worker2"},
+			},
+			setupMock: func(mockSSH *MockSSHConfig) {
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(6)
+				mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 1.2.3.4").
+					Return(`[{"id": "node1"}]`, nil).
+					Times(2)
+				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(6)
+				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).
+					Return(nil).
+					Times(2)
+				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil).Times(2)
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := display.GetGlobalModelFunc()
+			m.Deployment.Machines = tt.machines
+			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+
+			tt.setupMock(mockSSH)
+
+			err := deployer.DeployWorkers(ctx)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				for name, machine := range tt.machines {
+					if !machine.Orchestrator {
+						assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines[name].GetServiceState("Bacalhau"))
+					}
+				}
+			}
+
+			mockSSH.AssertExpectations(t)
 		})
 	}
 }

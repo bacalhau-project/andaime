@@ -1,6 +1,7 @@
 package sshutils
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -28,11 +29,11 @@ type SSHConfig struct {
 type SSHConfiger interface {
 	SetSSHClient(client SSHClienter)
 	Connect() (SSHClienter, error)
-	ExecuteCommand(command string) (string, error)
-	PushFile(content []byte, remotePath string, executable bool) error
-	InstallSystemdService(serviceName, serviceContent string) error
-	StartService(serviceName string) error
-	RestartService(serviceName string) error
+	ExecuteCommand(ctx context.Context, command string) (string, error)
+	PushFile(ctx context.Context, content []byte, remotePath string, executable bool) error
+	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
+	StartService(ctx context.Context, serviceName string) error
+	RestartService(ctx context.Context, serviceName string) error
 }
 
 var NewSSHConfigFunc = NewSSHConfig
@@ -116,7 +117,7 @@ func (c *SSHConfig) NewSession() (SSHSessioner, error) {
 // It takes the command as a string argument.
 // It retries the execution a configurable number of times if it fails.
 // It returns the output of the command as a string and any error encountered.
-func (c *SSHConfig) ExecuteCommand(command string) (string, error) {
+func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
 	l := logger.Get()
 	l.Infof("Executing command: %s", command)
 
@@ -143,7 +144,12 @@ func (c *SSHConfig) ExecuteCommand(command string) (string, error) {
 // It takes the local file path and the remote file path as arguments.
 // The file is copied over an SSH session using the stdin pipe.
 // It returns an error if any step of the process fails.
-func (c *SSHConfig) PushFile(content []byte, remotePath string, executable bool) error {
+func (c *SSHConfig) PushFile(
+	ctx context.Context,
+	content []byte,
+	remotePath string,
+	executable bool,
+) error {
 	l := logger.Get()
 	l.Infof("Pushing file to: %s", remotePath)
 
@@ -193,7 +199,9 @@ func (c *SSHConfig) PushFile(content []byte, remotePath string, executable bool)
 }
 
 func (c *SSHConfig) InstallSystemdService(
-	serviceName, serviceContent string,
+	ctx context.Context,
+	serviceName,
+	serviceContent string,
 ) error {
 	l := logger.Get()
 	l.Infof("Installing systemd service: %s", serviceName)
@@ -214,15 +222,15 @@ func (c *SSHConfig) InstallSystemdService(
 	return nil
 }
 
-func (c *SSHConfig) StartService(serviceName string) error {
-	return c.manageService(serviceName, "start")
+func (c *SSHConfig) StartService(ctx context.Context, serviceName string) error {
+	return c.manageService(ctx, serviceName, "start")
 }
 
-func (c *SSHConfig) RestartService(serviceName string) error {
-	return c.manageService(serviceName, "restart")
+func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) error {
+	return c.manageService(ctx, serviceName, "restart")
 }
 
-func (c *SSHConfig) manageService(serviceName, action string) error {
+func (c *SSHConfig) manageService(ctx context.Context, serviceName, action string) error {
 	l := logger.Get()
 	l.Infof("Managing service: %s %s", serviceName, action)
 	session, err := c.NewSession()

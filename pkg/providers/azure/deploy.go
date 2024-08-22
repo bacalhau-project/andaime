@@ -404,7 +404,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		)
 	}
 	if m.Deployment.Machines[machine.Name].GetServiceState("SSH") == models.ServiceStateSucceeded {
-		err := m.Deployment.Machines[machine.Name].InstallDockerAndCorePackages()
+		err := m.Deployment.Machines[machine.Name].InstallDockerAndCorePackages(ctx)
 		if err != nil {
 			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machine.Name, err)
 		}
