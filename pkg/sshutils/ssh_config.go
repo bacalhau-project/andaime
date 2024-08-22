@@ -30,7 +30,7 @@ type SSHConfiger interface {
 	SetSSHClient(client SSHClienter)
 	Connect() (SSHClienter, error)
 	ExecuteCommand(ctx context.Context, command string) (string, error)
-	PushFile(ctx context.Context, content []byte, remotePath string, executable bool) error
+	PushFile(ctx context.Context, remotePath string, content []byte, executable bool) error
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
 	StartService(ctx context.Context, serviceName string) error
 	RestartService(ctx context.Context, serviceName string) error
@@ -146,8 +146,8 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 // It returns an error if any step of the process fails.
 func (c *SSHConfig) PushFile(
 	ctx context.Context,
-	content []byte,
 	remotePath string,
+	content []byte,
 	executable bool,
 ) error {
 	l := logger.Get()
@@ -230,7 +230,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) erro
 	return c.manageService(ctx, serviceName, "restart")
 }
 
-func (c *SSHConfig) manageService(ctx context.Context, serviceName, action string) error {
+func (c *SSHConfig) manageService(_ context.Context, serviceName, action string) error {
 	l := logger.Get()
 	l.Infof("Managing service: %s %s", serviceName, action)
 	session, err := c.NewSession()

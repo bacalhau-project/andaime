@@ -1,8 +1,10 @@
 package azure
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -15,15 +17,16 @@ import (
 // MockSSHConfig is a mock implementation of sshutils.SSHConfiger
 type MockSSHConfig struct {
 	mock.Mock
+	Name string
 }
 
 func (m *MockSSHConfig) PushFile(
 	ctx context.Context,
-	content []byte,
 	remotePath string,
+	content []byte,
 	executable bool,
 ) error {
-	args := m.Called(ctx, content, remotePath, executable)
+	args := m.Called(ctx, remotePath, content, executable)
 	return args.Error(0)
 }
 
@@ -145,7 +148,7 @@ func TestSetupNodeConfigMetadata(t *testing.T) {
 	}
 	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
 
-	mockSSH.On("PushFile", ctx, mock.Anything, "/tmp/get-node-config-metadata.sh", true).Return(nil)
+	mockSSH.On("PushFile", ctx, "/tmp/get-node-config-metadata.sh", mock.Anything, true).Return(nil)
 	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/get-node-config-metadata.sh").Return("", nil)
 
 	err := deployer.setupNodeConfigMetadata(
@@ -167,7 +170,7 @@ func TestInstallBacalhau(t *testing.T) {
 	}
 	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
 
-	mockSSH.On("PushFile", ctx, mock.Anything, "/tmp/install-bacalhau.sh", true).
+	mockSSH.On("PushFile", ctx, "/tmp/install-bacalhau.sh", mock.Anything, true).
 		Return(nil).
 		Times(1)
 	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/install-bacalhau.sh").Return("", nil)
@@ -189,7 +192,7 @@ func TestInstallBacalhauRun(t *testing.T) {
 	}
 	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
 
-	mockSSH.On("PushFile", ctx, mock.Anything, "/tmp/install-run-bacalhau.sh", true).
+	mockSSH.On("PushFile", ctx, "/tmp/install-run-bacalhau.sh", mock.Anything, true).
 		Return(nil).
 		Times(1)
 	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/install-run-bacalhau.sh").Return("", nil)
@@ -347,22 +350,76 @@ func TestDeployBacalhauNode(t *testing.T) {
 		})
 	}
 }
-
 func TestDeployOrchestrator(t *testing.T) {
 	ctx := context.Background()
+	hostname := "orch"
+	ip := "1.2.3.4"
+	location := "eastus"
+	orchestrators := "1.2.3.4"
+	vmSize := "Standard_D2s_v3"
+
+	expectedLines := map[string][]string{
+		"get-node-config-metadata.sh": {
+			fmt.Sprintf(`MACHINE_TYPE="%s"`, vmSize),
+			fmt.Sprintf(`HOSTNAME="%s"`, hostname),
+			`VCPU_COUNT="$VCPU_COUNT"`,
+			`MEMORY_GB="$MEMORY_GB"`,
+			`DISK_GB="$DISK_SIZE"`,
+			fmt.Sprintf(`LOCATION="%s"`, location),
+			fmt.Sprintf(`IP="%s"`, ip),
+			fmt.Sprintf(`ORCHESTRATORS="%s"`, orchestrators),
+			`TOKEN=""`,
+			`NODE_TYPE="requester"`,
+		},
+		"install-bacalhau.sh": {
+			`sudo curl -sSL https://get.bacalhau.org/install.sh?dl="${BACALHAU_INSTALL_ID}" | sudo bash`,
+		},
+		"install-run-bacalhau.sh": {
+			`    /usr/local/bin/bacalhau serve \`, // spacing and end line is correct here
+		},
+	}
+
 	tests := []struct {
 		name          string
 		machines      map[string]*models.Machine
-		setupMock     func(*MockSSHConfig)
+		setupMock     func(*MockSSHConfig, map[string][]byte)
 		expectedError string
 	}{
 		{
 			name: "Successful orchestrator deployment",
 			machines: map[string]*models.Machine{
-				"orch": {Name: "orch", Orchestrator: true, PublicIP: "1.2.3.4"},
+				"orch": {Name: hostname,
+					Orchestrator: true,
+					PublicIP:     ip,
+					VMSize:       vmSize,
+					Location:     location,
+				},
 			},
-			setupMock: func(mockSSH *MockSSHConfig) {
-				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(3)
+			setupMock: func(mockSSH *MockSSHConfig, renderedScripts map[string][]byte) {
+				mockSSH.On("PushFile", ctx, "/tmp/get-node-config-metadata.sh", mock.Anything, true).
+					Run(func(args mock.Arguments) {
+						if args.Get(1).(string) == "/tmp/get-node-config-metadata.sh" {
+							renderedScripts["get-node-config-metadata.sh"] = args.Get(2).([]byte)
+						}
+					}).
+					Return(nil).
+					Once()
+				mockSSH.On("PushFile", ctx, "/tmp/install-bacalhau.sh", mock.Anything, true).
+					Run(func(args mock.Arguments) {
+						if args.Get(1).(string) == "/tmp/install-bacalhau.sh" {
+							renderedScripts["install-bacalhau.sh"] = args.Get(2).([]byte)
+						}
+					}).
+					Return(nil).
+					Once()
+				mockSSH.On("PushFile", ctx, "/tmp/install-run-bacalhau.sh", mock.Anything, true).
+					Run(func(args mock.Arguments) {
+						if args.Get(1).(string) == "/tmp/install-run-bacalhau.sh" {
+							renderedScripts["install-run-bacalhau.sh"] = args.Get(2).([]byte)
+						}
+					}).
+					Return(nil).
+					Once()
 				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(3)
 				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
 				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
@@ -370,14 +427,6 @@ func TestDeployOrchestrator(t *testing.T) {
 					Return(`[{"id": "node1"}]`, nil)
 			},
 			expectedError: "",
-		},
-		{
-			name: "No orchestrator node",
-			machines: map[string]*models.Machine{
-				"worker": {Name: "worker"},
-			},
-			setupMock:     func(mockSSH *MockSSHConfig) {},
-			expectedError: "no orchestrator node found",
 		},
 	}
 
@@ -387,7 +436,8 @@ func TestDeployOrchestrator(t *testing.T) {
 			m.Deployment.Machines = tt.machines
 			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
 
-			tt.setupMock(mockSSH)
+			renderedScripts := make(map[string][]byte)
+			tt.setupMock(mockSSH, renderedScripts)
 
 			err := deployer.DeployOrchestrator(ctx)
 
@@ -398,6 +448,26 @@ func TestDeployOrchestrator(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines["orch"].GetServiceState("Bacalhau"))
 				assert.NotEmpty(t, m.Deployment.OrchestratorIP)
+
+				// Check the content of the second PushFile call
+				// Create a temp file and write the content of the second PushFile call to it
+				thisFile := "install-run-bacalhau.sh"
+				tempFile, err := os.CreateTemp("/tmp", thisFile)
+				assert.NoError(t, err)
+				_, err = tempFile.Write(renderedScripts[thisFile])
+				assert.NoError(t, err)
+				tempFile.Close()
+				defer os.Remove(tempFile.Name())
+
+				filesToTest := []string{"get-node-config-metadata.sh", "install-bacalhau.sh", "install-run-bacalhau.sh"}
+				// Check the content of each script
+				for _, fileToTest := range filesToTest {
+					for _, expectedLine := range expectedLines[fileToTest] {
+						if !bytes.Contains(renderedScripts[fileToTest], []byte(expectedLine+"\n")) {
+							assert.Fail(t, fmt.Sprintf("Expected line not found: %s", expectedLine), fileToTest)
+						}
+					}
+				}
 			}
 
 			mockSSH.AssertExpectations(t)

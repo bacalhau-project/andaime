@@ -1,6 +1,7 @@
 package sshutils
 
 import (
+	"context"
 	"io"
 	"testing"
 
@@ -14,8 +15,13 @@ type MockSSHClient struct {
 	Dialer         SSHDialer
 }
 
-func (m *MockSSHClient) PushFile(content []byte, remotePath string, executable bool) error {
-	args := m.Called(content, remotePath, executable)
+func (m *MockSSHClient) PushFile(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+) error {
+	args := m.Called(ctx, remotePath, content, executable)
 	return args.Error(0)
 }
 

@@ -310,15 +310,16 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch typedMsg := msg.(type) {
 	case tickMsg:
-		l.Debugf("Received tickMsg: %v", typedMsg)
+		// l.Debugf("Received tickMsg: %v", typedMsg)
 		if !m.Quitting {
 			return m, tea.Batch(m.tickCmd(), m.updateLogCmd(), m.applyBatchedUpdatesCmd())
 		}
 	case batchedUpdatesAppliedMsg:
-		l.Debug("Received batchedUpdatesAppliedMsg")
+		// l.Debug("Received batchedUpdatesAppliedMsg")
 		m.BatchUpdateTimer = nil
 	case logLinesMsg:
-		l.Debugf("Received logLinesMsg with %d lines", len(typedMsg))
+		// l.Debugf("Received logLinesMsg with %d lines", len(typedMsg))
+		_ = typedMsg
 	}
 
 	// Update CPU and memory usage
@@ -678,8 +679,8 @@ type logLinesMsg []string
 
 func (m *DisplayModel) tickCmd() tea.Cmd {
 	return tea.Tick(TickerInterval, func(t time.Time) tea.Msg {
-		l := logger.Get()
-		l.Debugf("Sending tickMsg at %s", t.Format(time.RFC3339Nano))
+		// l := logger.Get()
+		// l.Debugf("Sending tickMsg at %s", t.Format(time.RFC3339Nano))
 		return tickMsg(t)
 	})
 }

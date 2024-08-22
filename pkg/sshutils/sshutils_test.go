@@ -179,7 +179,7 @@ func TestPushFile(t *testing.T) {
 	sshConfig.SetSSHClient(mockClient)
 
 	// Test successful file push
-	err := sshConfig.PushFile(ctx, localContent, "/remote/path", false)
+	err := sshConfig.PushFile(ctx, "/remote/path", localContent, false)
 	assert.NoError(t, err)
 
 	// Verify expectations
@@ -214,7 +214,7 @@ func TestPushFileExecutable(t *testing.T) {
 	sshConfig.SetSSHClient(mockClient)
 
 	// Test successful file push with executable flag
-	err := sshConfig.PushFile(ctx, localContent, "/remote/path", true)
+	err := sshConfig.PushFile(ctx, "/remote/path", localContent, true)
 	assert.NoError(t, err)
 
 	// Verify expectations

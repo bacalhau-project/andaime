@@ -128,6 +128,8 @@ func (bd *BacalhauDeployer) deployBacalhauNode(
 		m.Deployment.OrchestratorIP = machine.PublicIP
 	}
 
+	machine.SetComplete()
+
 	return nil
 }
 
@@ -158,8 +160,14 @@ func (bd *BacalhauDeployer) setupNodeConfigMetadata(
 		return fmt.Errorf("failed to parse node metadata script template: %w", err)
 	}
 
-	orchestrators := []string{m.Deployment.OrchestratorIP}
+	orchestrators := []string{}
 	if machine.Orchestrator {
+		if m.Deployment.OrchestratorIP != "" {
+			orchestrators = append(orchestrators, strings.TrimSpace(m.Deployment.OrchestratorIP))
+		}
+	}
+
+	if len(orchestrators) == 0 {
 		orchestrators = append(orchestrators, strings.TrimSpace(machine.PublicIP))
 	}
 
@@ -179,7 +187,7 @@ func (bd *BacalhauDeployer) setupNodeConfigMetadata(
 	}
 
 	scriptPath := "/tmp/get-node-config-metadata.sh"
-	if err := sshConfig.PushFile(ctx, scriptBuffer.Bytes(), scriptPath, true); err != nil {
+	if err := sshConfig.PushFile(ctx, scriptPath, scriptBuffer.Bytes(), true); err != nil {
 		return fmt.Errorf("failed to push node config metadata script: %w", err)
 	}
 
@@ -200,7 +208,7 @@ func (bd *BacalhauDeployer) installBacalhau(
 	}
 
 	scriptPath := "/tmp/install-bacalhau.sh"
-	if err := sshConfig.PushFile(ctx, installScriptBytes, scriptPath, true); err != nil {
+	if err := sshConfig.PushFile(ctx, scriptPath, installScriptBytes, true); err != nil {
 		return fmt.Errorf("failed to push install Bacalhau script: %w", err)
 	}
 
@@ -221,7 +229,7 @@ func (bd *BacalhauDeployer) installBacalhauRunScript(
 	}
 
 	scriptPath := "/tmp/install-run-bacalhau.sh"
-	if err := sshConfig.PushFile(ctx, installScriptBytes, scriptPath, true); err != nil {
+	if err := sshConfig.PushFile(ctx, scriptPath, installScriptBytes, true); err != nil {
 		return fmt.Errorf("failed to push install Bacalhau script: %w", err)
 	}
 

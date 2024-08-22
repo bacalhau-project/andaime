@@ -50,6 +50,7 @@ Errorf
 euwest
 eventstream
 exportloopref
+Failf
 Fatalf
 Fdump
 Fini

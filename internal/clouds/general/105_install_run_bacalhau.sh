@@ -34,16 +34,32 @@ check_orchestrators() {
 start_bacalhau() {
     log "Starting Bacalhau..."
     
-    # Construct LABELS from Node Info
-    # Autoconstruct the labels from the node-config
+    # Initialize an empty string for labels
     LABELS=""
-    while IFS= read -r LINE; do
-        [[ "$LINE" =~ ^TOKEN ]] && continue  # Exclude lines starting with TOKEN
-        LABELS="${LABELS}${LINE},"
+
+    # Read each line from node-config
+    while IFS= read -r line
+    do  
+        # Skip empty lines and lines starting with TOKEN
+        [[ -z "$line" || "$line" =~ ^TOKEN ]] && continue
+    
+        # Extract variable name and value
+        var_name=$(echo "$line" | cut -d'=' -f1)
+        var_value=${!var_name}
+    
+        # Remove any quotes from the value
+        var_value=$(echo "$var_value" | tr -d '"')
+    
+        # Append to LABELS string
+        LABELS="${LABELS}${var_name}=${var_value},"
     done < /etc/node-config
 
     # Remove the trailing comma
     LABELS="${LABELS%,}"
+
+    # Print the labels for verification
+    echo "Constructed Labels:"
+    echo "$LABELS"
     
     if [ -n "${TOKEN:-}" ]; then
         ORCHESTRATORS="${TOKEN}@${ORCHESTRATORS}"

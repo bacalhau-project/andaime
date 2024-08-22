@@ -59,11 +59,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	go p.StartResourcePolling(ctx)
 
-	go func() {
-		// Start Resource Polling
-		go p.StartResourcePolling(ctx)
-	}()
-
 	var deploymentErr error
 	go func() {
 		select {
@@ -487,51 +482,6 @@ func validateAllowedPorts(deployment *models.Deployment) error {
 		return fmt.Errorf("no allowed ports found in configuration")
 	}
 	return nil
-}
-
-// Main execution function (previously executeCreateDeployment)
-func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
-	l := logger.Get()
-	l.Info("Starting Azure deployment creation")
-
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
-
-	uniqueID := time.Now().Format("060102150405")
-	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
-
-	azureProvider, err := initializeAzureProvider()
-	if err != nil {
-		return err
-	}
-
-	deployment, err := InitializeDeployment(ctx, uniqueID)
-	if err != nil {
-		return err
-	}
-
-	if err := validateDeployment(deployment); err != nil {
-		return err
-	}
-
-	displayModel := initializeDisplayModel(deployment)
-	prog := display.GetGlobalProgram()
-	prog.InitProgram(displayModel)
-
-	go azureProvider.StartResourcePolling(ctx)
-
-	deploymentErr := runDeploymentProcess(ctx, azureProvider, deployment)
-
-	if _, err := prog.Run(); err != nil {
-		l.Errorf("Error running display program: %v", err)
-		return err
-	}
-
-	// Clear the screen and print final table
-	fmt.Print("\033[H\033[2J")
-	fmt.Println(displayModel.RenderFinalTable())
-
-	return deploymentErr
 }
 
 func initializeAzureProvider() (azure.AzureProviderer, error) {

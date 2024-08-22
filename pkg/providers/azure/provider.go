@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -184,12 +185,20 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	writeToDebugLog("Starting StartResourcePolling")
 
 	resourceTicker := time.NewTicker(5 * time.Second)
-	defer resourceTicker.Stop()
 
 	quit := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		close(quit)
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			l.Errorf("Recovered from panic in StartResourcePolling: %v", r)
+			writeToDebugLog(fmt.Sprintf("Panic in StartResourcePolling: %v", r))
+			debug.PrintStack()
+		}
+		writeToDebugLog("Exiting StartResourcePolling function")
 	}()
 
 	pollCount := 0
@@ -249,13 +258,16 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 			p.logDeploymentStatus()
 
 			if allResourcesProvisioned && p.AllMachinesComplete() {
-				writeToDebugLog("All resources provisioned and machines completed, stopping resource polling")
+				writeToDebugLog(
+					"All resources provisioned and machines completed, stopping resource polling",
+				)
 				return
 			}
 
 		case <-quit:
 			l.Debug("Quit signal received, exiting resource polling")
 			writeToDebugLog("Quit signal received, exiting resource polling")
+			resourceTicker.Stop()
 			return
 		}
 	}
@@ -347,7 +359,7 @@ func (p *AzureProvider) checkBacalhauNodeListingFailure() bool {
 	// to check if there have been persistent failures in listing Bacalhau nodes.
 	// For example, you could keep a counter of consecutive failures and return true
 	// if it exceeds a certain threshold.
-	
+
 	// For now, we'll just return false to avoid breaking existing functionality.
 	return false
 }

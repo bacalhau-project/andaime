@@ -316,7 +316,7 @@ func (m *Machine) installService(
 	}
 
 	scriptPath := fmt.Sprintf("/tmp/%s", scriptName)
-	if err := sshConfig.PushFile(ctx, scriptBytes, scriptPath, true); err != nil {
+	if err := sshConfig.PushFile(ctx, scriptPath, scriptBytes, true); err != nil {
 		return err
 	}
 
