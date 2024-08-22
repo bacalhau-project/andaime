@@ -193,99 +193,73 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 		close(quit)
 	}()
 
-	done := make(chan bool)
-	go func() {
-		pollCount := 0
-		for {
-			select {
-			case <-resourceTicker.C:
-				m := display.GetGlobalModelFunc()
-				if m.Quitting {
-					writeToDebugLog("Quitting detected, stopping resource polling")
-					done <- true
-					return
-				}
-				pollCount++
-				start := time.Now()
-				writeToDebugLog(fmt.Sprintf("Starting poll #%d", pollCount))
-
-				resources, err := p.PollAndUpdateResources(ctx)
-				if err != nil {
-					l.Errorf("Failed to poll and update resources: %v", err)
-					writeToDebugLog(fmt.Sprintf("Failed to poll and update resources: %v", err))
-					p.CancelAllDeployments(ctx)
-					done <- true
-					return
-				}
-
-				// Check for Bacalhau node listing failure
-				if p.checkBacalhauNodeListingFailure() {
-					l.Error("Persistent failure in listing Bacalhau nodes detected")
-					writeToDebugLog("Persistent failure in listing Bacalhau nodes detected")
-					p.CancelAllDeployments(ctx)
-					done <- true
-					return
-				}
-
-				writeToDebugLog(
-					fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)),
-				)
-
-				allResourcesProvisioned := true
-				for _, resource := range resources {
-					resourceMap := resource.(map[string]interface{})
-					provisioningState := resourceMap["provisioningState"].(string)
-					writeToDebugLog(
-						fmt.Sprintf(
-							"Resource: %s - Provisioning State: %s",
-							resourceMap["name"].(string),
-							provisioningState,
-						),
-					)
-					if provisioningState != "Succeeded" {
-						allResourcesProvisioned = false
-					}
-				}
-
-				elapsed := time.Since(start)
-				writeToDebugLog(
-					fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed),
-				)
-
-				p.logDeploymentStatus()
-
-				if allResourcesProvisioned {
-					writeToDebugLog("All resources provisioned, stopping resource polling")
-					done <- true
-					return
-				}
-
-				if p.AllMachinesComplete() {
-					writeToDebugLog("All machines completed, stopping resource polling")
-					done <- true
-					return
-				}
-
-			case <-quit:
-				l.Debug("Quit signal received, exiting resource polling")
-				writeToDebugLog("Quit signal received, exiting resource polling")
-				done <- true
+	pollCount := 0
+	for {
+		select {
+		case <-resourceTicker.C:
+			m := display.GetGlobalModelFunc()
+			if m.Quitting {
+				writeToDebugLog("Quitting detected, stopping resource polling")
 				return
 			}
+			pollCount++
+			start := time.Now()
+			writeToDebugLog(fmt.Sprintf("Starting poll #%d", pollCount))
+
+			resources, err := p.PollAndUpdateResources(ctx)
+			if err != nil {
+				l.Errorf("Failed to poll and update resources: %v", err)
+				writeToDebugLog(fmt.Sprintf("Failed to poll and update resources: %v", err))
+				p.CancelAllDeployments(ctx)
+				return
+			}
+
+			// Check for Bacalhau node listing failure
+			if p.checkBacalhauNodeListingFailure() {
+				l.Error("Persistent failure in listing Bacalhau nodes detected")
+				writeToDebugLog("Persistent failure in listing Bacalhau nodes detected")
+				p.CancelAllDeployments(ctx)
+				return
+			}
+
+			writeToDebugLog(
+				fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)),
+			)
+
+			allResourcesProvisioned := true
+			for _, resource := range resources {
+				resourceMap := resource.(map[string]interface{})
+				provisioningState := resourceMap["provisioningState"].(string)
+				writeToDebugLog(
+					fmt.Sprintf(
+						"Resource: %s - Provisioning State: %s",
+						resourceMap["name"].(string),
+						provisioningState,
+					),
+				)
+				if provisioningState != "Succeeded" {
+					allResourcesProvisioned = false
+				}
+			}
+
+			elapsed := time.Since(start)
+			writeToDebugLog(
+				fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed),
+			)
+
+			p.logDeploymentStatus()
+
+			if allResourcesProvisioned && p.AllMachinesComplete() {
+				writeToDebugLog("All resources provisioned and machines completed, stopping resource polling")
+				return
+			}
+
+		case <-quit:
+			l.Debug("Quit signal received, exiting resource polling")
+			writeToDebugLog("Quit signal received, exiting resource polling")
+			return
 		}
-	}()
-
-	select {
-	case <-quit:
-		l.Debug("Quit signal received, forcing immediate exit")
-		writeToDebugLog("Quit signal received, forcing immediate exit")
-	case <-done:
-		l.Debug("Resource polling completed")
-		writeToDebugLog("Resource polling completed")
 	}
-
-	utils.CloseAllChannels()
-	os.Exit(0)
 }
 
 func (p *AzureProvider) logDeploymentStatus() {
