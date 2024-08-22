@@ -10,7 +10,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
