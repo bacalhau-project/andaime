@@ -50,7 +50,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l.Debug("Preparing resource group")
 	err := p.PrepareResourceGroup(ctx)
 	if err != nil {
-		l.Error("Failed to prepare resource group: " + err.Error())
+		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		l.Debug(fmt.Sprintf("Resource group preparation error details: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %v", err)
 	}
