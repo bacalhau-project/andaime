@@ -55,9 +55,15 @@ func (m *MockAzureClient) DeployTemplate(
 	tags map[string]*string,
 ) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
 	args := m.Called(ctx, resourceGroupName, deploymentName, template, parameters, tags)
-	return args.Get(0).(*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse]), args.Error(
-		1,
-	)
+	// Return a mock Poller instead of nil
+	return &MockPoller{}, args.Error(1)
+}
+
+// MockPoller is a mock implementation of the Poller interface
+type MockPoller struct{}
+
+func (mp *MockPoller) PollUntilDone(ctx context.Context, options *runtime.PollUntilDoneOptions) (armresources.DeploymentsClientCreateOrUpdateResponse, error) {
+	return armresources.DeploymentsClientCreateOrUpdateResponse{}, nil
 }
 
 func (m *MockAzureClient) DeleteDeployment(
