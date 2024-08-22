@@ -49,6 +49,11 @@ func (m *MockAzureClient) GetPublicIPAddress(ctx context.Context, resourceGroupN
 	return args.String(0), args.Error(1)
 }
 
+func (m *MockAzureClient) DeleteResourceGroup(ctx context.Context, resourceGroupName string) error {
+	args := m.Called(ctx, resourceGroupName)
+	return args.Error(0)
+}
+
 func TestAzureProviderIntegration(t *testing.T) {
 	// Setup
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
