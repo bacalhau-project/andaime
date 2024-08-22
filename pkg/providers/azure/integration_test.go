@@ -33,8 +33,6 @@ func TestAzureProviderIntegration(t *testing.T) {
 		"worker2":      {Name: "worker2"},
 	}
 
-	provider.DeployResources(ctx)
-
 	// Mock SSH operations
 	sshutils.NewSSHConfigFunc = func(host string, port int, user string, privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
 		return mockSSHConfig, nil
@@ -47,23 +45,32 @@ func TestAzureProviderIntegration(t *testing.T) {
 		Return(nil)
 	mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
 
-	// Run the test
-	err := provider.DeployResources(ctx)
+	// Test PrepareDeployment
+	err := provider.PrepareDeployment(ctx)
 	assert.NoError(t, err)
 
-	// Verify that all machines are provisioned
-	for _, machine := range m.Deployment.Machines {
-		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("SSH"))
-		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Docker"))
-		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-	}
+	// Test ProvisionResources
+	t.Run("Successful provisioning", func(t *testing.T) {
+		mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, nil)
+
+		err := provider.ProvisionResources(ctx)
+		assert.NoError(t, err)
+
+		// Verify that all machines are provisioned
+		for _, machine := range m.Deployment.Machines {
+			assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("SSH"))
+			assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Docker"))
+			assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
+		}
+	})
 
 	// Test failure scenarios
 	t.Run("Resource provisioning failure", func(t *testing.T) {
 		mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, fmt.Errorf("resource provisioning failed"))
 
-		err := provider.DeployResources(ctx)
+		err := provider.ProvisionResources(ctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "resource provisioning failed")
 	})
@@ -72,7 +79,7 @@ func TestAzureProviderIntegration(t *testing.T) {
 		mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
 			Return("", fmt.Errorf("SSH provisioning failed"))
 
-		err := provider.DeployResources(ctx)
+		err := provider.ProvisionResources(ctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "SSH provisioning failed")
 	})
@@ -81,7 +88,7 @@ func TestAzureProviderIntegration(t *testing.T) {
 		mockSSHConfig.On("ExecuteCommand", mock.Anything, "docker --version").
 			Return("", fmt.Errorf("Docker not installed"))
 
-		err := provider.DeployResources(ctx)
+		err := provider.ProvisionResources(ctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Docker not installed")
 	})
@@ -90,7 +97,7 @@ func TestAzureProviderIntegration(t *testing.T) {
 		mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau version").
 			Return("", fmt.Errorf("Bacalhau not installed"))
 
-		err := provider.DeployResources(ctx)
+		err := provider.ProvisionResources(ctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Bacalhau not installed")
 

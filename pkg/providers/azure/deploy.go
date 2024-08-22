@@ -22,11 +22,10 @@ import (
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
 
-// DeployResources deploys Azure resources based on the provided configuration.
-// Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources(ctx context.Context) error {
+// PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.
+func (p *AzureProvider) PrepareDeployment(ctx context.Context) error {
 	l := logger.Get()
-	l.Debug("Starting DeployResources")
+	l.Debug("Starting PrepareDeployment")
 	m := display.GetGlobalModelFunc()
 
 	// Set the start time for the deployment
@@ -61,6 +60,15 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		return fmt.Errorf("failed to update viper config: %v", err)
 	}
 
+	return nil
+}
+
+// ProvisionResources deploys Azure resources and provisions the machines.
+func (p *AzureProvider) ProvisionResources(ctx context.Context) error {
+	l := logger.Get()
+	l.Debug("Starting ProvisionResources")
+	m := display.GetGlobalModelFunc()
+
 	if err := p.DeployARMTemplate(ctx); err != nil {
 		l.Error(fmt.Sprintf("Failed to deploy ARM template: %v", err))
 		return err
@@ -82,6 +90,15 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// DeployResources deploys Azure resources based on the provided configuration.
+// Config should be the Azure subsection of the viper config.
+func (p *AzureProvider) DeployResources(ctx context.Context) error {
+	if err := p.PrepareDeployment(ctx); err != nil {
+		return err
+	}
+	return p.ProvisionResources(ctx)
 }
 
 func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
