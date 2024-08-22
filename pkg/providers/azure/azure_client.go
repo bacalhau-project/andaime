@@ -277,7 +277,6 @@ func (c *LiveAzureClient) GetResources(
 	resourceGroupName string,
 	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
-	prog := display.GetGlobalProgram()
 	m := display.GetGlobalModelFunc()
 	// Remove the state machine reference
 	// --- START OF MERGED SearchResources functionality ---
@@ -324,7 +323,7 @@ func (c *LiveAzureClient) GetResources(
 
 		for _, status := range statuses {
 			internalStatus := status
-			prog.UpdateStatus(&internalStatus)
+			m.UpdateStatus(&internalStatus)
 		}
 	}
 

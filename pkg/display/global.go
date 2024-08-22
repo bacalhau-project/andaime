@@ -3,7 +3,6 @@ package display
 import (
 	"sync"
 
-	"github.com/bacalhau-project/andaime/pkg/models"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -34,14 +33,6 @@ func (gp *GlobalProgram) InitProgram(m *DisplayModel) {
 // GetProgram returns the tea.Program instance
 func (gp *GlobalProgram) GetProgram() *GlobalProgram {
 	return gp
-}
-
-// UpdateStatus updates the status of a deployment or machine
-func (gp *GlobalProgram) UpdateStatus(status *models.DisplayStatus) {
-	m := GetGlobalModel()
-	if m != nil {
-		m.UpdateStatus(status)
-	}
 }
 
 func (gp *GlobalProgram) Quit() {

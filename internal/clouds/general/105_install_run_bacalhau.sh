@@ -35,7 +35,15 @@ start_bacalhau() {
     log "Starting Bacalhau..."
     
     # Construct LABELS from Node Info
-    LABELS="EC2_INSTANCE_FAMILY=${EC2_INSTANCE_FAMILY:-unknown},EC2_VCPU_COUNT=${EC2_VCPU_COUNT:-unknown},EC2_MEMORY_GB=${EC2_MEMORY_GB:-unknown},EC2_DISK_GB=${EC2_DISK_GB:-unknown},ORCHESTRATORS=${ORCHESTRATORS},HOSTNAME=${HOSTNAME},IP=${IP}"
+    # Autoconstruct the labels from the node-config
+    LABELS=""
+    while IFS= read -r LINE; do
+        [[ "$LINE" =~ ^TOKEN ]] && continue  # Exclude lines starting with TOKEN
+        LABELS="${LABELS}${LINE},"
+    done < /etc/node-config
+
+    # Remove the trailing comma
+    LABELS="${LABELS%,}"
     
     if [ -n "${TOKEN:-}" ]; then
         ORCHESTRATORS="${TOKEN}@${ORCHESTRATORS}"

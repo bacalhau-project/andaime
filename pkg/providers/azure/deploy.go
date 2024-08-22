@@ -134,6 +134,10 @@ func (p *AzureProvider) deployMachine(
 	tags map[string]*string,
 ) error {
 	m := display.GetGlobalModelFunc()
+	defer func() {
+		m := display.GetGlobalModelFunc()
+		m.DeregisterGoroutine(atomic.LoadInt64(&p.goroutineCounter))
+	}()
 
 	m.UpdateStatus(
 		models.NewDisplayStatus(
@@ -465,9 +469,8 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	}
 
 	// Push all changes to the update loop at once
-	prog := display.GetGlobalProgram()
 	for _, status := range statusUpdates {
-		prog.UpdateStatus(status)
+		m.UpdateStatus(status)
 	}
 
 	defer func() {
@@ -530,7 +533,6 @@ func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
 // 5. Updates the global deployment object with the finalized resource group information.
 func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	l := logger.Get()
-	prog := display.GetGlobalProgram()
 	m := display.GetGlobalModelFunc()
 
 	if m.Deployment == nil {
@@ -569,7 +571,7 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	)
 
 	for _, machine := range m.Deployment.Machines {
-		prog.UpdateStatus(
+		m.UpdateStatus(
 			models.NewDisplayVMStatus(
 				machine.Name,
 				models.AzureResourceStatePending,
@@ -590,7 +592,7 @@ func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
 	}
 
 	for _, machine := range m.Deployment.Machines {
-		prog.UpdateStatus(
+		m.UpdateStatus(
 			models.NewDisplayVMStatus(
 				machine.Name,
 				models.AzureResourceStateNotStarted,

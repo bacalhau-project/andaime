@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"text/template"
 
 	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
@@ -159,7 +160,7 @@ func (bd *BacalhauDeployer) setupNodeConfigMetadata(
 
 	orchestrators := []string{m.Deployment.OrchestratorIP}
 	if machine.Orchestrator {
-		orchestrators = append(orchestrators, machine.PublicIP)
+		orchestrators = append(orchestrators, strings.TrimSpace(machine.PublicIP))
 	}
 
 	var scriptBuffer bytes.Buffer
@@ -167,7 +168,7 @@ func (bd *BacalhauDeployer) setupNodeConfigMetadata(
 		"MachineType":   machine.VMSize,
 		"MachineName":   machine.Name,
 		"Location":      machine.Location,
-		"Orchestrators": orchestrators,
+		"Orchestrators": strings.Join(orchestrators, ","),
 		"IP":            machine.PublicIP,
 		"Token":         "",
 		"NodeType":      nodeType,
@@ -257,6 +258,9 @@ func (bd *BacalhauDeployer) verifyBacalhauDeployment(
 	orchestratorIP string,
 ) error {
 	l := logger.Get()
+	if orchestratorIP == "" {
+		orchestratorIP = "0.0.0.0"
+	}
 	out, err := sshConfig.ExecuteCommand(
 		ctx,
 		fmt.Sprintf("bacalhau node list --output json --api-host %s", orchestratorIP),
