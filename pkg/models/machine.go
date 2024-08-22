@@ -41,11 +41,13 @@ type Machine struct {
 	DockerEndTime     time.Time
 	BacalhauStartTime time.Time
 	BacalhauEndTime   time.Time
+	DeploymentEndTime time.Time
 
 	machineResources map[string]MachineResource
 	machineServices  map[string]ServiceType
 
 	stateMutex sync.RWMutex
+	done       bool
 }
 
 // Logging methods
@@ -82,6 +84,21 @@ func (m *Machine) BacalhauEnabled() bool {
 }
 
 func (m *Machine) Complete() bool {
+	m.stateMutex.RLock()
+	defer m.stateMutex.RUnlock()
+	return m.done
+}
+
+func (m *Machine) SetComplete() {
+	m.stateMutex.Lock()
+	defer m.stateMutex.Unlock()
+	if !m.done {
+		m.done = true
+		m.DeploymentEndTime = time.Now()
+	}
+}
+
+func (m *Machine) IsComplete() bool {
 	resourcesComplete := m.resourcesComplete()
 	servicesComplete := m.servicesComplete()
 	return resourcesComplete && servicesComplete
