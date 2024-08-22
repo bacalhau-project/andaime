@@ -140,7 +140,7 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 
 	for err := range errChan {
 		if err != nil {
-			l.Error(err)
+			l.Error(err.Error())
 			return err
 		}
 	}
@@ -158,12 +158,18 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machine *models.Mac
 	return nil
 }
 
-func (p *AzureProvider) provisionBacalhauOrchestrator(ctx context.Context, machine *models.Machine) error {
+func (p *AzureProvider) provisionBacalhauOrchestrator(
+	ctx context.Context,
+	machine *models.Machine,
+) error {
 	// Implementation for Bacalhau orchestrator provisioning
 	return nil
 }
 
-func (p *AzureProvider) provisionBacalhauWorker(ctx context.Context, machine *models.Machine) error {
+func (p *AzureProvider) provisionBacalhauWorker(
+	ctx context.Context,
+	machine *models.Machine,
+) error {
 	// Implementation for Bacalhau worker provisioning
 	return nil
 }
