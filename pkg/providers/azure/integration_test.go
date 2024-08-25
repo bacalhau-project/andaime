@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -45,13 +44,30 @@ func setupTest(
 		Client: mockAzureClient,
 	}
 
+	display.SetGlobalModel(display.InitialModel())
 	m := display.GetGlobalModelFunc()
 	m.Deployment = models.NewDeployment()
-	m.Deployment.Machines = map[string]*models.Machine{
+	machinesToAdd := map[string]*models.Machine{
 		"orchestrator": {Name: "orchestrator", Orchestrator: true, PublicIP: "1.2.3.4"},
 		"worker1":      {Name: "worker1", PublicIP: "1.2.3.5"},
 		"worker2":      {Name: "worker2", PublicIP: "1.2.3.6"},
 	}
+	if m.Deployment.Machines == nil {
+		m.Deployment.Machines = make(map[string]*models.Machine)
+	}
+
+	for name, machine := range machinesToAdd {
+		if _, ok := m.Deployment.Machines[name]; !ok {
+			m.Deployment.CreateMachine(name)
+		}
+		m.Deployment.UpdateMachine(name, func(mach *models.Machine) {
+			mach.Orchestrator = machine.Orchestrator
+			mach.Name = machine.Name
+			mach.PublicIP = machine.PublicIP
+			m.Deployment.Machines[name] = mach
+		})
+	}
+
 	m.Deployment.ResourceGroupLocation = "eastus"
 
 	mockSSHClient := new(sshutils.MockSSHClient)
@@ -87,7 +103,7 @@ func TestPrepareDeployment(t *testing.T) {
 }
 
 func TestProvisionResourcesSuccess(t *testing.T) {
-	provider, mockAzureClient, mockSSHConfig, mockSSHClient, cleanup := setupTest(t)
+	provider, mockAzureClient, mockSSHConfig, _, cleanup := setupTest(t)
 	defer cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -146,24 +162,34 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
 		Return(publicIPAddress, nil)
 
-	// Mock SSH operations
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(func(command string) bool {
-		return strings.Contains(command, "bacalhau node list --output json --api-host")
-	})).Return(`[{"id": "node1"}]`, nil)
-	mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-	mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
-
-	mockSession := new(sshutils.MockSSHSession)
-	mockSession.On("Close").Return(nil)
-	mockSSHClient.Session = mockSession
-
 	// Mock WaitForSSHToBeLive behavior
 	mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
 		Return(nil)
+
+	mockSSHConfig.On("PushFile", mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
+		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh").
+		Return("", nil)
+	mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockSSHConfig.On("RestartService", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 20.30.40.50").
+		Return(`[{"id": "node1"}]`, nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
+		Return(`[{"id": "node1"}]`, nil)
 
 	// Run the test
 	err := provider.ProvisionResources(ctx)

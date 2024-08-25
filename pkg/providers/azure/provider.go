@@ -14,7 +14,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/errgroup"
 )
 
 // AzureProvider wraps the Azure deployment functionality

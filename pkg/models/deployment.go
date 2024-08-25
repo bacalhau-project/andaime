@@ -175,7 +175,6 @@ type Deployment struct {
 	ResourceGroupName     string
 	ResourceGroupLocation string
 	Locations             []string
-	UniqueLocations       []string
 	OrchestratorIP        string
 	Machines              map[string]*Machine
 	UniqueLocations       []string
@@ -252,6 +251,11 @@ func (d *Deployment) GetMachine(name string) *Machine {
 		return machine
 	}
 	return nil
+}
+func (d *Deployment) CreateMachine(name string) {
+	d.deploymentMutex.Lock()
+	defer d.deploymentMutex.Unlock()
+	d.Machines[name] = &Machine{}
 }
 
 func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
