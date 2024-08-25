@@ -175,6 +175,7 @@ type Deployment struct {
 	ResourceGroupName     string
 	ResourceGroupLocation string
 	Locations             []string
+	UniqueLocations       []string
 	OrchestratorIP        string
 	Machines              map[string]*Machine
 	UniqueLocations       []string
