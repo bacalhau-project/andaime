@@ -398,3 +398,60 @@ func (p *AzureProvider) AllMachinesComplete() bool {
 	}
 	return true
 }
+import (
+	"context"
+	"fmt"
+	"golang.org/x/sync/errgroup"
+)
+
+func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Deploying ARM template")
+
+	client := p.GetAzureClient()
+
+	// Group machines by location
+	machinesByLocation := make(map[string][]*models.Machine)
+	for _, machine := range p.Deployment.Machines {
+		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	for location, machines := range machinesByLocation {
+		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			// Deploy the first machine in this location
+			if len(machines) == 0 {
+				return fmt.Errorf("no machines to deploy in location %s", location)
+			}
+			firstMachine := machines[0]
+			err := client.DeployARMTemplate(ctx, p.Deployment.ResourceGroupName, firstMachine.Name, location)
+			if err != nil {
+				return fmt.Errorf("failed to deploy first machine %s in location %s: %w", firstMachine.Name, location, err)
+			}
+
+			// If there are more machines, deploy them in parallel
+			if len(machines) > 1 {
+				subG, subCtx := errgroup.WithContext(ctx)
+				for _, machine := range machines[1:] {
+					machine := machine // https://golang.org/doc/faq#closures_and_goroutines
+					subG.Go(func() error {
+						return client.DeployARMTemplate(subCtx, p.Deployment.ResourceGroupName, machine.Name, location)
+					})
+				}
+				if err := subG.Wait(); err != nil {
+					return fmt.Errorf("failed to deploy remaining machines in location %s: %w", location, err)
+				}
+			}
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("deployment failed: %w", err)
+	}
+
+	return nil
+}
