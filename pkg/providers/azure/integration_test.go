@@ -351,28 +351,92 @@ func TestDockerProvisioningFailure(t *testing.T) {
 }
 
 func TestOrchestratorProvisioningFailure(t *testing.T) {
-	provider, mockAzureClient, mockSSHConfig, mockSSHClient, cleanup := setupTest(t)
+	provider, mockAzureClient, mockSSHConfig, _, cleanup := setupTest(t)
 	defer cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
+	successState := armresources.ProvisioningStateSucceeded
+	props.Properties = &armresources.DeploymentPropertiesExtended{
+		ProvisioningState: &successState,
+	}
+
 	mockArmDeploymentPoller := &MockPoller{}
 	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(armresources.DeploymentsClientCreateOrUpdateResponse{}, nil)
+		Return(props, nil)
 
 	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(mockArmDeploymentPoller, nil)
+	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
+	mockVM := &armcompute.VirtualMachine{
+		Properties: &armcompute.VirtualMachineProperties{
+			NetworkProfile: &armcompute.NetworkProfile{
+				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
+					{
+						ID: &nicID,
+					},
+				},
+			},
+		},
+	}
+	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
+		Return(mockVM, nil)
+	// Mock GetNetworkInterface
+	privateIPAddress := "10.0.0.4"
+	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
+	mockNIC := &armnetwork.Interface{
+		Properties: &armnetwork.InterfacePropertiesFormat{
+			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
+				{
+					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
+						PrivateIPAddress: &privateIPAddress,
+						PublicIPAddress: &armnetwork.PublicIPAddress{
+							ID: &publicIPAddressID,
+						},
+					},
+				},
+			},
+		},
+	}
+	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
+		Return(mockNIC, nil)
 
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau version").
-		Return("", fmt.Errorf("Bacalhau not installed"))
-	mockSSHClient.On("NewSession", mock.Anything, mock.Anything).
-		Return(fmt.Errorf("SSH provisioning failed"))
+	// Mock GetPublicIPAddress
+	publicIPAddress := "20.30.40.50"
+	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
+		Return(publicIPAddress, nil)
+
+	mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
+		Return(nil)
+
+	mockSSHConfig.On("PushFile", mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
+		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh").
+		Return("", nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh").
+		Return("", nil)
+	mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockSSHConfig.On("RestartService", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
+		Return(`[]`, nil)
 
 	err := provider.ProvisionResources(ctx)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Bacalhau not installed")
+	assert.Contains(t, err.Error(), "no Bacalhau nodes")
 
 	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {

@@ -357,10 +357,13 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string)
 	m.Deployment.Machines[machineName].SetServiceState("Docker", models.ServiceStateUpdating)
 	_, dockerErr := sshConfig.ExecuteCommand(ctx, "sudo docker version -f json")
 	if dockerErr != nil {
-		m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
+		err := m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
 			machine.SetServiceState("Docker", models.ServiceStateFailed)
 			machine.StatusMessage = "Permanently failed deploying Docker"
 		})
+		if err != nil {
+			return err
+		}
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machineName,
