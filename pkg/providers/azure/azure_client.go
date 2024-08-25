@@ -4,6 +4,7 @@ package azure
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -37,6 +38,17 @@ func IsValidVMSize(vmSize string) bool {
 
 var skippedTypes = []string{
 	"microsoft.compute/virtualmachines/extensions",
+}
+
+type Pollerer interface {
+	PollUntilDone(
+		ctx context.Context,
+		options *runtime.PollUntilDoneOptions,
+	) (armresources.DeploymentsClientCreateOrUpdateResponse, error)
+	ResumeToken() (string, error)
+	Result(ctx context.Context) (armresources.DeploymentsClientCreateOrUpdateResponse, error)
+	Done() bool
+	Poll(ctx context.Context) (*http.Response, error)
 }
 
 type AzureClient interface {
@@ -84,7 +96,7 @@ type AzureClient interface {
 		template map[string]interface{},
 		parameters map[string]interface{},
 		tags map[string]*string,
-	) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error)
+	) (Pollerer, error)
 	GetDeploymentsClient() *armresources.DeploymentsClient
 	GetVirtualMachine(
 		ctx context.Context,
@@ -175,7 +187,7 @@ func (c *LiveAzureClient) DeployTemplate(
 	template map[string]interface{},
 	params map[string]interface{},
 	tags map[string]*string,
-) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
+) (Pollerer, error) {
 	l := logger.Get()
 	l.Debugf("DeployTemplate: Beginning - %s", deploymentName)
 

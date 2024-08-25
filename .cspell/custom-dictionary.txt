@@ -40,6 +40,8 @@ Deallocation
 Debugf
 depguard
 Dialerer
+dockerclient
+dockertypes
 dupl
 eastasia
 eastus
@@ -117,6 +119,7 @@ optup
 orchestratorip
 panicnil
 PBIP
+Pollerer
 practise
 predeclared
 Providerer
@@ -168,6 +171,7 @@ unmarshalling
 unpadded
 Upsert
 utod
+VCPU
 virtualenvs
 virtualmachine
 virtualmachines

@@ -46,26 +46,6 @@ func (m *MockAzureClient) DestroyResourceGroup(
 	return args.Error(0)
 }
 
-func (m *MockAzureClient) DeployTemplate(
-	ctx context.Context,
-	resourceGroupName string,
-	deploymentName string,
-	template map[string]interface{},
-	parameters map[string]interface{},
-	tags map[string]*string,
-) (*runtime.Poller[armresources.DeploymentsClientCreateOrUpdateResponse], error) {
-	args := m.Called(ctx, resourceGroupName, deploymentName, template, parameters, tags)
-	// Return a mock Poller instead of nil
-	return &MockPoller{}, args.Error(1)
-}
-
-// MockPoller is a mock implementation of the Poller interface
-type MockPoller struct{}
-
-func (mp *MockPoller) PollUntilDone(ctx context.Context, options *runtime.PollUntilDoneOptions) (armresources.DeploymentsClientCreateOrUpdateResponse, error) {
-	return armresources.DeploymentsClientCreateOrUpdateResponse{}, nil
-}
-
 func (m *MockAzureClient) DeleteDeployment(
 	ctx context.Context,
 	resourceGroupName string,
@@ -123,6 +103,45 @@ func (m *MockAzureClient) ListAllResourcesInSubscription(
 	return result.([]interface{}), args.Error(1)
 }
 
+func (m *MockAzureClient) DeployTemplate(
+	ctx context.Context,
+	resourceGroupName string,
+	deploymentName string,
+	template map[string]interface{},
+	parameters map[string]interface{},
+	tags map[string]*string,
+) (Pollerer, error) {
+	args := m.Called(ctx, resourceGroupName, deploymentName, template, parameters, tags)
+	return args.Get(0).(Pollerer), args.Error(1)
+}
+
+func (m *MockAzureClient) GetVirtualMachine(
+	ctx context.Context,
+	resourceGroupName string,
+	vmName string,
+) (*armcompute.VirtualMachine, error) {
+	args := m.Called(ctx, resourceGroupName, vmName)
+	return args.Get(0).(*armcompute.VirtualMachine), args.Error(1)
+}
+
+func (m *MockAzureClient) GetNetworkInterface(
+	ctx context.Context,
+	resourceGroupName string,
+	nicName string,
+) (*armnetwork.Interface, error) {
+	args := m.Called(ctx, resourceGroupName, nicName)
+	return args.Get(0).(*armnetwork.Interface), args.Error(1)
+}
+
+func (m *MockAzureClient) GetPublicIPAddress(
+	ctx context.Context,
+	resourceGroupName string,
+	publicIPAddress *armnetwork.PublicIPAddress,
+) (string, error) {
+	args := m.Called(ctx, resourceGroupName, publicIPAddress)
+	return args.String(0), args.Error(1)
+}
+
 func (m *MockAzureClient) GetResources(
 	ctx context.Context,
 	subscriptionID string,
@@ -163,31 +182,6 @@ func (m *MockAzureClient) GetVMExtensions(
 ) ([]*armcompute.VirtualMachineExtension, error) {
 	args := m.Called(ctx, resourceGroupName, vmName)
 	return args.Get(0).([]*armcompute.VirtualMachineExtension), args.Error(1)
-}
-
-func (m *MockAzureClient) GetVirtualMachine(
-	ctx context.Context,
-	resourceGroupName, vmName string,
-) (*armcompute.VirtualMachine, error) {
-	args := m.Called(ctx, resourceGroupName, vmName)
-	return args.Get(0).(*armcompute.VirtualMachine), args.Error(1)
-}
-
-func (m *MockAzureClient) GetNetworkInterface(
-	ctx context.Context,
-	resourceGroupName, networkInterfaceName string,
-) (*armnetwork.Interface, error) {
-	args := m.Called(ctx, resourceGroupName, networkInterfaceName)
-	return args.Get(0).(*armnetwork.Interface), args.Error(1)
-}
-
-func (m *MockAzureClient) GetPublicIPAddress(
-	ctx context.Context,
-	resourceGroupName string,
-	publicIPAddress *armnetwork.PublicIPAddress,
-) (string, error) {
-	args := m.Called(ctx, resourceGroupName, publicIPAddress)
-	return args.Get(0).(string), args.Error(1)
 }
 
 func TestAzureProvider_ListAllResourceGroups(t *testing.T) {
@@ -280,3 +274,6 @@ func TestAzureProvider_GetVirtualMachine(t *testing.T) {
 
 	mockClient.AssertExpectations(t)
 }
+
+// Test to make sure MockAzureClient implements AzureClient interface
+var _ AzureClient = new(MockAzureClient)

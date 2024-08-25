@@ -13,7 +13,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"golang.org/x/sync/errgroup"
 )
 
 type BacalhauDeployer struct{}
@@ -27,37 +26,69 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 	return deployer.DeployOrchestrator(ctx)
 }
 
-func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
+func (p *AzureProvider) DeployBacalhauWorker(
+	ctx context.Context,
+	machineName string,
+	workerErrChan chan error,
+) error {
 	deployer := NewBacalhauDeployer()
-	return deployer.DeployWorkers(ctx)
+	return deployer.DeployWorker(ctx, machineName, workerErrChan)
 }
 
 func (bd *BacalhauDeployer) DeployOrchestrator(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
 	orchestratorMachine, err := bd.findOrchestratorMachine()
 	if err != nil {
 		return err
 	}
 
-	return bd.deployBacalhauNode(ctx, orchestratorMachine, "requester")
-}
+	err = bd.deployBacalhauNode(ctx, orchestratorMachine.Name, "requester")
+	if err != nil {
+		return err
+	}
 
-func (bd *BacalhauDeployer) DeployWorkers(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
-	var eg errgroup.Group
-	eg.SetLimit(10)
-
+	orchestratorIP := orchestratorMachine.PublicIP
+	m.Deployment.OrchestratorIP = orchestratorIP
+	err = m.Deployment.UpdateMachine(orchestratorMachine.Name, func(mach *models.Machine) {
+		mach.OrchestratorIP = orchestratorIP
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set orchestrator IP on Orchestrator node: %w", err)
+	}
 	for _, machine := range m.Deployment.Machines {
 		if machine.Orchestrator {
 			continue
 		}
-
-		machine := machine // Create a new variable to avoid closure issues
-		eg.Go(func() error {
-			return bd.deployBacalhauNode(ctx, machine, "compute")
+		err = m.Deployment.UpdateMachine(machine.Name, func(mach *models.Machine) {
+			mach.OrchestratorIP = orchestratorIP
 		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to set orchestrator IP on compute node (%s): %w",
+				machine.Name,
+				err,
+			)
+		}
 	}
 
-	return eg.Wait()
+	return nil
+}
+
+func (bd *BacalhauDeployer) DeployWorker(
+	ctx context.Context,
+	machineName string,
+	workerErrChan chan error,
+) error {
+	m := display.GetGlobalModelFunc()
+
+	if m.Deployment.Machines[machineName].Orchestrator {
+		return fmt.Errorf(
+			"machine %s is an orchestrator, and should not be deployed as a worker",
+			machineName,
+		)
+	}
+
+	return bd.deployBacalhauNode(ctx, machineName, "compute")
 }
 
 func (bd *BacalhauDeployer) findOrchestratorMachine() (*models.Machine, error) {
@@ -85,18 +116,23 @@ func (bd *BacalhauDeployer) findOrchestratorMachine() (*models.Machine, error) {
 
 func (bd *BacalhauDeployer) deployBacalhauNode(
 	ctx context.Context,
-	machine *models.Machine,
+	machineName string,
 	nodeType string,
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
+	machine := m.Deployment.Machines[machineName]
 	sshConfig, err := bd.createSSHConfig(machine)
 	if err != nil {
 		return err
 	}
 
 	machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
+
+	if nodeType == "compute" && m.Deployment.OrchestratorIP == "" {
+		return bd.handleDeploymentError(machine, fmt.Errorf("no orchestrator IP found"))
+	}
 
 	if err := bd.setupNodeConfigMetadata(ctx, machine, sshConfig, nodeType); err != nil {
 		return bd.handleDeploymentError(machine, err)
@@ -114,9 +150,6 @@ func (bd *BacalhauDeployer) deployBacalhauNode(
 		return bd.handleDeploymentError(machine, err)
 	}
 
-	if machine.OrchestratorIP == "" {
-		machine.OrchestratorIP = m.Deployment.OrchestratorIP
-	}
 	if err := bd.verifyBacalhauDeployment(ctx, sshConfig, machine.OrchestratorIP); err != nil {
 		return bd.handleDeploymentError(machine, err)
 	}
@@ -126,6 +159,7 @@ func (bd *BacalhauDeployer) deployBacalhauNode(
 
 	if machine.Orchestrator {
 		m.Deployment.OrchestratorIP = machine.PublicIP
+		machine.OrchestratorIP = "0.0.0.0"
 	}
 
 	machine.SetComplete()
@@ -161,14 +195,14 @@ func (bd *BacalhauDeployer) setupNodeConfigMetadata(
 	}
 
 	orchestrators := []string{}
-	if machine.Orchestrator {
-		if m.Deployment.OrchestratorIP != "" {
-			orchestrators = append(orchestrators, strings.TrimSpace(m.Deployment.OrchestratorIP))
-		}
-	}
-
-	if len(orchestrators) == 0 {
-		orchestrators = append(orchestrators, strings.TrimSpace(machine.PublicIP))
+	if nodeType == "requester" {
+		orchestrators = append(orchestrators, "0.0.0.0")
+	} else if machine.OrchestratorIP != "" {
+		orchestrators = append(orchestrators, machine.OrchestratorIP)
+	} else if m.Deployment.OrchestratorIP != "" {
+		orchestrators = append(orchestrators, m.Deployment.OrchestratorIP)
+	} else {
+		return fmt.Errorf("no orchestrator IP found")
 	}
 
 	var scriptBuffer bytes.Buffer

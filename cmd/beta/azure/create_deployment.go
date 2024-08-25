@@ -101,11 +101,16 @@ func runDeployment(
 
 	updateOrchestratorIP(deployment)
 
-	if err := p.DeployBacalhauWorkers(ctx); err != nil {
-		return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
+	workerErrChan := make(chan error)
+	for _, machine := range deployment.Machines {
+		if !machine.Orchestrator {
+			if err := p.DeployBacalhauWorker(ctx, machine.Name, workerErrChan); err != nil {
+				return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
+			}
+		}
 	}
 
-	if err := p.FinalizeDeployment(context.Background()); err != nil {
+	if err := p.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
 
@@ -506,41 +511,4 @@ func initializeDisplayModel(deployment *models.Deployment) *display.DisplayModel
 	displayModel := display.InitialModel()
 	displayModel.Deployment = deployment
 	return displayModel
-}
-
-func runDeploymentProcess(
-	ctx context.Context,
-	azureProvider azure.AzureProviderer,
-	deployment *models.Deployment,
-) error {
-	l := logger.Get()
-	program := display.GetGlobalProgram()
-
-	deploymentSteps := []struct {
-		name string
-		fn   func(context.Context) error
-	}{
-		{"Deploy Resources", azureProvider.DeployResources},
-		{"Deploy Bacalhau Orchestrator", azureProvider.DeployBacalhauOrchestrator},
-		{"Deploy Bacalhau Workers", azureProvider.DeployBacalhauWorkers},
-		{"Finalize Deployment", azureProvider.FinalizeDeployment},
-	}
-
-	for _, step := range deploymentSteps {
-		l.Infof("Starting %s", step.name)
-		if err := step.fn(ctx); err != nil {
-			return fmt.Errorf("failed to %s: %w", step.name, err)
-		}
-		l.Infof("Completed %s", step.name)
-
-		if step.name == "Deploy Bacalhau Orchestrator" {
-			updateOrchestratorIP(deployment)
-		}
-	}
-
-	l.Info("Deployment process completed successfully")
-	time.Sleep(2 * time.Second)
-	program.Quit()
-
-	return nil
 }

@@ -43,3 +43,7 @@ func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {
 	}
 	return &SSHSessionWrapper{session}, nil
 }
+
+func (w *SSHClientWrapper) Close() error {
+	return w.Client.Close()
+}

@@ -57,89 +57,108 @@ var DisplayColumns = []DisplayColumn{
 
 func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	return func() tea.Msg {
-		l := logger.Get()
-		start := time.Now()
+		// l := logger.Get()
+		// start := time.Now()
 		lines := logger.GetLastLines(LogLines)
-		l.Debugf(
-			"updateLogCmd: Start: %s, End: %s, Lines: %d",
-			start.Format(time.RFC3339Nano),
-			time.Now().Format(time.RFC3339Nano),
-			len(lines),
-		)
+		// l.Debugf(
+		// 	"updateLogCmd: Start: %s, End: %s, Lines: %d",
+		// 	start.Format(time.RFC3339Nano),
+		// 	time.Now().Format(time.RFC3339Nano),
+		// 	len(lines),
+		// )
 		return logLinesMsg(lines)
 	}
 }
 
-func (m *DisplayModel) updateMachineStatus(machine *models.Machine, status *models.DisplayStatus) {
+func (m *DisplayModel) updateMachineStatus(
+	machineName string,
+	newStatus *models.DisplayStatus,
+) {
 	l := logger.Get()
-	if status.StatusMessage != "" {
-		trimmedStatus := strings.TrimSpace(status.StatusMessage)
+	if _, ok := m.Deployment.Machines[machineName]; !ok {
+		l.Debugf("Machine %s not found, skipping update", machineName)
+		return
+	}
+
+	if newStatus.StatusMessage != "" {
+		trimmedStatus := strings.TrimSpace(newStatus.StatusMessage)
 		if len(trimmedStatus) > StatusLength-3 {
 			l.Debugf("Status too long, truncating: '%s'", trimmedStatus)
-			machine.StatusMessage = trimmedStatus[:StatusLength-3] + "…"
+			err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+				m.StatusMessage = trimmedStatus[:StatusLength-3] + "…"
+			})
+			if err != nil {
+				l.Errorf("Error updating machine status: %v", err)
+			}
 		} else {
-			machine.StatusMessage = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
+			err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+				m.StatusMessage = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
+			})
+			if err != nil {
+				l.Errorf("Error updating machine status: %v", err)
+			}
 		}
 	}
 
-	if status.Location != "" {
-		machine.Location = status.Location
+	if newStatus.Location != "" {
+		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+			m.Location = newStatus.Location
+		})
+		if err != nil {
+			l.Errorf("Error updating machine status: %v", err)
+		}
 	}
-	if status.PublicIP != "" {
-		machine.PublicIP = status.PublicIP
+	if newStatus.PublicIP != "" {
+		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+			m.PublicIP = newStatus.PublicIP
+		})
+		if err != nil {
+			l.Errorf("Error updating machine status: %v", err)
+		}
 	}
-	if status.PrivateIP != "" {
-		machine.PrivateIP = status.PrivateIP
+	if newStatus.PrivateIP != "" {
+		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+			m.PrivateIP = newStatus.PrivateIP
+		})
+		if err != nil {
+			l.Errorf("Error updating machine status: %v", err)
+		}
 	}
-	if status.ElapsedTime > 0 && !machine.Complete() {
-		machine.ElapsedTime = status.ElapsedTime
+	if newStatus.ElapsedTime > 0 && !m.Deployment.Machines[machineName].Complete() {
+		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+			m.ElapsedTime = newStatus.ElapsedTime
+		})
+		if err != nil {
+			l.Errorf("Error updating machine status: %v", err)
+		}
 	}
-	if status.Orchestrator {
-		machine.Orchestrator = status.Orchestrator
-	}
-
-	if status.SSH != models.ServiceStateUnknown {
-		machine.SetServiceState("SSH", status.SSH)
-	}
-	if status.Docker != models.ServiceStateUnknown {
-		machine.SetServiceState("Docker", status.Docker)
-	}
-	if status.CorePackages != models.ServiceStateUnknown {
-		machine.SetServiceState("CorePackages", status.CorePackages)
-	}
-	if status.Bacalhau != models.ServiceStateUnknown {
-		machine.SetServiceState("Bacalhau", status.Bacalhau)
-	}
-}
-
-func (m *DisplayModel) findOrCreateMachine(status *models.DisplayStatus) (*models.Machine, bool) {
-	for i, machine := range m.Deployment.Machines {
-		if machine.Name == status.Name {
-			return m.Deployment.Machines[i], true
+	if newStatus.Orchestrator {
+		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
+			m.Orchestrator = newStatus.Orchestrator
+		})
+		if err != nil {
+			l.Errorf("Error updating machine status: %v", err)
 		}
 	}
 
-	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
-		newMachine := models.Machine{
-			StartTime: time.Now(),
-		}
-		if status.Name != "" {
-			newMachine.Name = status.Name
-		}
-		if status.Type != (models.AzureResourceTypes{}) {
-			newMachine.Type = status.Type
-		}
-		if status.Location != "" {
-			newMachine.Location = status.Location
-		}
-		if status.StatusMessage != "" {
-			newMachine.StatusMessage = status.StatusMessage
-		}
-		m.Deployment.Machines[newMachine.Name] = &newMachine
-		return &newMachine, false
+	if newStatus.SSH != models.ServiceStateUnknown &&
+		m.Deployment.Machines[machineName].GetServiceState("SSH") != newStatus.SSH {
+		m.Deployment.Machines[machineName].SetServiceState("SSH", newStatus.SSH)
 	}
-
-	return nil, false
+	if newStatus.Docker != models.ServiceStateUnknown &&
+		m.Deployment.Machines[machineName].GetServiceState("Docker") != newStatus.Docker {
+		m.Deployment.Machines[machineName].SetServiceState("Docker", newStatus.Docker)
+	}
+	if newStatus.CorePackages != models.ServiceStateUnknown &&
+		m.Deployment.Machines[machineName].GetServiceState(
+			"CorePackages",
+		) != newStatus.CorePackages {
+		m.Deployment.Machines[machineName].SetServiceState("CorePackages", newStatus.CorePackages)
+	}
+	if newStatus.Bacalhau != models.ServiceStateUnknown &&
+		m.Deployment.Machines[machineName].GetServiceState("Bacalhau") != newStatus.Bacalhau {
+		m.Deployment.Machines[machineName].SetServiceState("Bacalhau", newStatus.Bacalhau)
+	}
 }
 
 func AggregateColumnWidths() int {
@@ -336,7 +355,7 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 	l := logger.Get()
 	return func() tea.Msg {
-		start := time.Now()
+		// start := time.Now()
 		atomic.AddInt64(&m.goroutineCount, 1)
 		defer atomic.AddInt64(&m.goroutineCount, -1)
 
@@ -345,14 +364,14 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 			return tea.Quit
 		}
 
-		updateCount := len(m.BatchedUpdates)
+		// updateCount := len(m.BatchedUpdates)
 		m.applyBatchedUpdates()
-		l.Debugf(
-			"applyBatchedUpdatesCmd: Start: %s, End: %s, Updates: %d",
-			start.Format(time.RFC3339Nano),
-			time.Now().Format(time.RFC3339Nano),
-			updateCount,
-		)
+		// l.Debugf(
+		// 	"applyBatchedUpdatesCmd: Start: %s, End: %s, Updates: %d",
+		// 	start.Format(time.RFC3339Nano),
+		// 	time.Now().Format(time.RFC3339Nano),
+		// 	updateCount,
+		// )
 		return batchedUpdatesAppliedMsg{}
 	}
 }
@@ -362,51 +381,6 @@ func (m *DisplayModel) applyBatchedUpdates() {
 		m.UpdateStatus(update.Status)
 	}
 	m.BatchedUpdates = nil
-
-	// Check if all machines have completed their deployment and Docker/Core Packages installation
-	allCompleted := true
-	allDockerAndCorePackagesInstalled := true
-	for _, machine := range m.Deployment.Machines {
-		progress, total := machine.ResourcesComplete()
-		if progress != total ||
-			machine.GetServiceState("SSH") != models.ServiceStateSucceeded {
-			allCompleted = false
-			break
-		}
-		if machine.GetServiceState("Docker") != models.ServiceStateSucceeded ||
-			machine.GetServiceState("CorePackages") != models.ServiceStateSucceeded {
-			allDockerAndCorePackagesInstalled = false
-			break
-		}
-	}
-
-	// If all machines are completed and Docker/Core Packages are installed, install Bacalhau
-	if allCompleted && allDockerAndCorePackagesInstalled {
-		orchestratorInstalled := false
-		for _, machine := range m.Deployment.Machines {
-			if machine.Orchestrator &&
-				machine.GetServiceState("Bacalhau") != models.ServiceStateSucceeded {
-				machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
-
-				// TODO: Implement Bacalhau orchestrator installation
-
-				machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
-				orchestratorInstalled = true
-				break
-			}
-		}
-
-		if orchestratorInstalled {
-			for _, machine := range m.Deployment.Machines {
-				if !machine.Orchestrator &&
-					machine.GetServiceState("Bacalhau") != models.ServiceStateSucceeded {
-					machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
-					// TODO: Implement Bacalhau worker installation
-					machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
-				}
-			}
-		}
-	}
 }
 
 type batchedUpdatesAppliedMsg struct{}
@@ -522,9 +496,8 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 		return
 	}
 
-	machine, found := m.findOrCreateMachine(status)
-	if found || (status.Name != "" && status.Type == models.AzureResourceTypeVM) {
-		m.updateMachineStatus(machine, status)
+	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
+		m.updateMachineStatus(status.Name, status)
 	}
 }
 

@@ -11,8 +11,8 @@ import (
 
 type MockSSHClient struct {
 	mock.Mock
-	WaitForSSHFunc func(host, user, privateKey string) error
-	Dialer         SSHDialer
+	Session SSHSessioner
+	Dialer  SSHDialer
 }
 
 func (m *MockSSHClient) PushFile(
@@ -25,14 +25,10 @@ func (m *MockSSHClient) PushFile(
 	return args.Error(0)
 }
 
-func (m *MockSSHClient) WaitForSSH(host, user, privateKey string) error {
-	if m.WaitForSSHFunc != nil {
-		return m.WaitForSSHFunc(host, user, privateKey)
-	}
-	return nil
-}
-
 func (m *MockSSHClient) NewSession() (SSHSessioner, error) {
+	if m.Session != nil {
+		return m.Session, nil
+	}
 	args := m.Called()
 	return args.Get(0).(SSHSessioner), args.Error(1)
 }

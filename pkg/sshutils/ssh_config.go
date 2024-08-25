@@ -29,6 +29,7 @@ type SSHConfig struct {
 type SSHConfiger interface {
 	SetSSHClient(client SSHClienter)
 	Connect() (SSHClienter, error)
+	WaitForSSH(retry int, timeout time.Duration) error
 	ExecuteCommand(ctx context.Context, command string) (string, error)
 	PushFile(ctx context.Context, remotePath string, content []byte, executable bool) error
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
@@ -99,6 +100,51 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 	c.SSHClient = client
 
 	return client, nil
+}
+
+func (c *SSHConfig) WaitForSSH(retry int, timeout time.Duration) error {
+	l := logger.Get()
+	for i := 0; i < SSHRetryAttempts; i++ {
+		l.Debugf("Attempt %d to connect via SSH\n", i+1)
+		client, err := c.Connect()
+		if err != nil {
+			err = fmt.Errorf("failed to connect to SSH: %v", err)
+			l.Error(err.Error())
+			time.Sleep(SSHRetryDelay)
+			continue
+		}
+		session, err := client.NewSession()
+		if err != nil {
+			err = fmt.Errorf("failed to create SSH session: %v", err)
+			l.Error(err.Error())
+			client.Close()
+			time.Sleep(SSHRetryDelay)
+			continue
+		}
+
+		defer func() {
+			if client != nil {
+				client.Close()
+			}
+			if session != nil {
+				session.Close()
+			}
+		}()
+
+		if session == nil {
+			err = fmt.Errorf("SSH session is nil despite no error")
+			l.Error(err.Error())
+			time.Sleep(SSHRetryDelay)
+			continue
+		}
+
+		l.Debug("SSH connection established")
+		return nil
+	}
+
+	err := fmt.Errorf("failed to establish SSH connection after multiple attempts")
+	l.Error(err.Error())
+	return err
 }
 
 func (c *SSHConfig) NewSession() (SSHSessioner, error) {

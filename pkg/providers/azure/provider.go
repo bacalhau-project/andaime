@@ -11,6 +11,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
@@ -22,19 +23,19 @@ type AzureProviderer interface {
 	SetAzureClient(client AzureClient)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
+	GetSSHClient() sshutils.SSHClienter
+	SetSSHClient(client sshutils.SSHClienter)
 
 	StartResourcePolling(ctx context.Context)
 	DeployResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
-
-	DeployBacalhauOrchestrator(ctx context.Context) error
-	DeployBacalhauWorkers(ctx context.Context) error
 }
 
 type AzureProvider struct {
 	Client            interface{}
 	Config            *viper.Viper
+	SSHClient         sshutils.SSHClienter
 	Deployment        *models.Deployment
 	SSHUser           string
 	SSHPort           int
@@ -127,6 +128,14 @@ func (p *AzureProvider) GetAzureClient() AzureClient {
 
 func (p *AzureProvider) SetAzureClient(client AzureClient) {
 	p.Client = client
+}
+
+func (p *AzureProvider) GetSSHClient() sshutils.SSHClienter {
+	return p.SSHClient
+}
+
+func (p *AzureProvider) SetSSHClient(client sshutils.SSHClienter) {
+	p.SSHClient = client
 }
 
 func (p *AzureProvider) GetConfig() *viper.Viper {
