@@ -21,9 +21,15 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func setupTest(
-	t *testing.T,
-) (*AzureProvider, *MockAzureClient, *MockSSHConfig, *sshutils.MockSSHClient, func()) {
+type testSetup struct {
+	provider        *AzureProvider
+	mockAzureClient *MockAzureClient
+	mockSSHConfig   *MockSSHConfig
+	mockSSHClient   *sshutils.MockSSHClient
+	cleanup         func()
+}
+
+func setupTest(t *testing.T) *testSetup {
 	tempConfigFile, err := os.CreateTemp("", "config*.yaml")
 	assert.NoError(t, err)
 
@@ -39,39 +45,22 @@ func setupTest(
 
 	mockAzureClient := new(MockAzureClient)
 	mockSSHConfig := new(MockSSHConfig)
+	mockSSHClient := new(sshutils.MockSSHClient)
+	mockSSHClient.Session = new(sshutils.MockSSHSession)
 
 	provider := &AzureProvider{
 		Client: mockAzureClient,
 	}
 
 	display.SetGlobalModel(display.InitialModel())
-	m := display.GetGlobalModelFunc()
+	m := display.GetGlobalModel()
 	m.Deployment = models.NewDeployment()
-	machinesToAdd := map[string]*models.Machine{
+	m.Deployment.Machines = map[string]*models.Machine{
 		"orchestrator": {Name: "orchestrator", Orchestrator: true, PublicIP: "1.2.3.4"},
 		"worker1":      {Name: "worker1", PublicIP: "1.2.3.5"},
 		"worker2":      {Name: "worker2", PublicIP: "1.2.3.6"},
 	}
-	if m.Deployment.Machines == nil {
-		m.Deployment.Machines = make(map[string]*models.Machine)
-	}
-
-	for name, machine := range machinesToAdd {
-		if _, ok := m.Deployment.Machines[name]; !ok {
-			m.Deployment.CreateMachine(name)
-		}
-		m.Deployment.UpdateMachine(name, func(mach *models.Machine) {
-			mach.Orchestrator = machine.Orchestrator
-			mach.Name = machine.Name
-			mach.PublicIP = machine.PublicIP
-			m.Deployment.Machines[name] = mach
-		})
-	}
-
 	m.Deployment.ResourceGroupLocation = "eastus"
-
-	mockSSHClient := new(sshutils.MockSSHClient)
-	mockSSHClient.Session = new(sshutils.MockSSHSession)
 
 	sshutils.NewSSHConfigFunc = func(host string, port int, user string, privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
 		return mockSSHConfig, nil
@@ -80,391 +69,217 @@ func setupTest(
 	cleanup := func() {
 		os.Remove(tempConfigFile.Name())
 		viper.Reset()
-		display.SetGlobalModel(nil)
 	}
 
-	return provider, mockAzureClient, mockSSHConfig, mockSSHClient, cleanup
+	return &testSetup{
+		provider:        provider,
+		mockAzureClient: mockAzureClient,
+		mockSSHConfig:   mockSSHConfig,
+		mockSSHClient:   mockSSHClient,
+		cleanup:         cleanup,
+	}
 }
 
-func TestPrepareDeployment(t *testing.T) {
-	provider, mockAzureClient, _, _, cleanup := setupTest(t)
-	defer cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	mockAzureClient.On("GetOrCreateResourceGroup", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&armresources.ResourceGroup{}, nil)
-
-	err := provider.PrepareDeployment(ctx)
-	assert.NoError(t, err)
-
-	mockAzureClient.AssertExpectations(t)
-}
-
-func TestProvisionResourcesSuccess(t *testing.T) {
-	provider, mockAzureClient, mockSSHConfig, _, cleanup := setupTest(t)
-	defer cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Mock DeployTemplate
+func setupMockDeployment(mockAzureClient *MockAzureClient) *MockPoller {
 	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
 	successState := armresources.ProvisioningStateSucceeded
 	props.Properties = &armresources.DeploymentPropertiesExtended{
 		ProvisioningState: &successState,
 	}
 	mockArmDeploymentPoller := &MockPoller{}
-	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(props, nil)
+	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).Return(props, nil)
 	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(mockArmDeploymentPoller, nil)
+	return mockArmDeploymentPoller
+}
 
-	// Mock GetVirtualMachine
+func setupMockVMAndNetwork(mockAzureClient *MockAzureClient) {
 	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
 	mockVM := &armcompute.VirtualMachine{
 		Properties: &armcompute.VirtualMachineProperties{
 			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-					{
-						ID: &nicID,
-					},
-				},
+				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{{ID: &nicID}},
 			},
 		},
 	}
 	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
 		Return(mockVM, nil)
 
-	// Mock GetNetworkInterface
 	privateIPAddress := "10.0.0.4"
 	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
 	mockNIC := &armnetwork.Interface{
 		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-				{
-					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-						PrivateIPAddress: &privateIPAddress,
-						PublicIPAddress: &armnetwork.PublicIPAddress{
-							ID: &publicIPAddressID,
-						},
-					},
+			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{{
+				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
+					PrivateIPAddress: &privateIPAddress,
+					PublicIPAddress:  &armnetwork.PublicIPAddress{ID: &publicIPAddressID},
 				},
-			},
+			}},
 		},
 	}
 	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
 		Return(mockNIC, nil)
 
-	// Mock GetPublicIPAddress
 	publicIPAddress := "20.30.40.50"
 	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
 		Return(publicIPAddress, nil)
+}
 
-	// Mock WaitForSSHToBeLive behavior
-	mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
-		Return(nil)
+func TestPrepareDeployment(t *testing.T) {
+	setup := setupTest(t)
+	defer setup.cleanup()
 
-	mockSSHConfig.On("PushFile", mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything).Return(nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
-		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh").
-		Return("", nil)
-	mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	mockSSHConfig.On("RestartService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 20.30.40.50").
-		Return(`[{"id": "node1"}]`, nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
-		Return(`[{"id": "node1"}]`, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	// Run the test
-	err := provider.ProvisionResources(ctx)
+	setup.mockAzureClient.On("GetOrCreateResourceGroup", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&armresources.ResourceGroup{}, nil)
+
+	err := setup.provider.PrepareDeployment(ctx)
 	assert.NoError(t, err)
 
-	// Verify the results
-	m := display.GetGlobalModelFunc()
+	setup.mockAzureClient.AssertExpectations(t)
+}
+
+func TestProvisionResourcesSuccess(t *testing.T) {
+	setup := setupTest(t)
+	defer setup.cleanup()
+
+	fakeOrchestratorIP := "20.30.40.50"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
+
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
+		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
+	setup.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(func(command string) bool {
+		return command == fmt.Sprintf(
+			"bacalhau node list --output json --api-host %s",
+			fakeOrchestratorIP,
+		) ||
+			command == "bacalhau node list --output json --api-host 0.0.0.0"
+	})).
+		Return(`[{"id": "node1"}]`, nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
+
+	err := setup.provider.ProvisionResources(ctx)
+	assert.NoError(t, err)
+
+	m := display.GetGlobalModel()
 	for _, machine := range m.Deployment.Machines {
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("SSH"))
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Docker"))
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-		assert.Equal(t, publicIPAddress, machine.PublicIP)
-		assert.Equal(t, privateIPAddress, machine.PrivateIP)
+		assert.Equal(t, fakeOrchestratorIP, machine.PublicIP)
+		assert.Equal(t, "10.0.0.4", machine.PrivateIP)
 	}
 
-	// Assert that all expected methods were called
 	mockArmDeploymentPoller.AssertExpectations(t)
-	mockAzureClient.AssertExpectations(t)
-	mockSSHConfig.AssertExpectations(t)
+	setup.mockAzureClient.AssertExpectations(t)
+	setup.mockSSHConfig.AssertExpectations(t)
 }
 
 func TestProvisionResourcesFailure(t *testing.T) {
-	provider, mockAzureClient, _, _, cleanup := setupTest(t)
-	defer cleanup()
+	setup := setupTest(t)
+	defer setup.cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	setup.mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(&MockPoller{}, fmt.Errorf("resource provisioning failed"))
 
-	err := provider.ProvisionResources(ctx)
+	err := setup.provider.ProvisionResources(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "resource provisioning failed")
 
-	mockAzureClient.AssertExpectations(t)
+	setup.mockAzureClient.AssertExpectations(t)
 }
 
 func TestSSHProvisioningFailure(t *testing.T) {
-	provider, mockAzureClient, mockSSHConfig, _, cleanup := setupTest(t)
-	defer cleanup()
+	setup := setupTest(t)
+	defer setup.cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
-	successState := armresources.ProvisioningStateSucceeded
-	props.Properties = &armresources.DeploymentPropertiesExtended{
-		ProvisioningState: &successState,
-	}
+	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
 
-	mockArmDeploymentPoller := &MockPoller{}
-	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(props, nil)
-
-	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockArmDeploymentPoller, nil)
-	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
-	mockVM := &armcompute.VirtualMachine{
-		Properties: &armcompute.VirtualMachineProperties{
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-					{
-						ID: &nicID,
-					},
-				},
-			},
-		},
-	}
-	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockVM, nil)
-	// Mock GetNetworkInterface
-	privateIPAddress := "10.0.0.4"
-	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
-	mockNIC := &armnetwork.Interface{
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-				{
-					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-						PrivateIPAddress: &privateIPAddress,
-						PublicIPAddress: &armnetwork.PublicIPAddress{
-							ID: &publicIPAddressID,
-						},
-					},
-				},
-			},
-		},
-	}
-	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockNIC, nil)
-
-	// Mock GetPublicIPAddress
-	publicIPAddress := "20.30.40.50"
-	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(publicIPAddress, nil)
-
-	mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
 		Return(fmt.Errorf("SSH provisioning failed"))
 
-	err := provider.ProvisionResources(ctx)
+	err := setup.provider.ProvisionResources(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SSH provisioning failed")
 
 	mockArmDeploymentPoller.AssertExpectations(t)
-	mockAzureClient.AssertExpectations(t)
-	mockSSHConfig.AssertExpectations(t)
+	setup.mockAzureClient.AssertExpectations(t)
+	setup.mockSSHConfig.AssertExpectations(t)
 }
 
 func TestDockerProvisioningFailure(t *testing.T) {
-	provider, mockAzureClient, mockSSHConfig, _, cleanup := setupTest(t)
-	defer cleanup()
+	setup := setupTest(t)
+	defer setup.cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
-	successState := armresources.ProvisioningStateSucceeded
-	props.Properties = &armresources.DeploymentPropertiesExtended{
-		ProvisioningState: &successState,
-	}
+	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
 
-	mockArmDeploymentPoller := &MockPoller{}
-	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(props, nil)
-
-	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockArmDeploymentPoller, nil)
-	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
-	mockVM := &armcompute.VirtualMachine{
-		Properties: &armcompute.VirtualMachineProperties{
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-					{
-						ID: &nicID,
-					},
-				},
-			},
-		},
-	}
-	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockVM, nil)
-	// Mock GetNetworkInterface
-	privateIPAddress := "10.0.0.4"
-	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
-	mockNIC := &armnetwork.Interface{
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-				{
-					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-						PrivateIPAddress: &privateIPAddress,
-						PublicIPAddress: &armnetwork.PublicIPAddress{
-							ID: &publicIPAddressID,
-						},
-					},
-				},
-			},
-		},
-	}
-	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockNIC, nil)
-
-	// Mock GetPublicIPAddress
-	publicIPAddress := "20.30.40.50"
-	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(publicIPAddress, nil)
-
-	mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
+		Return(`{"Client":{"Version":"1.2.3"}}`, nil) // Missing Server version
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
 
-	mockSSHConfig.On("PushFile", mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything).Return(nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
-		Return("[]", nil)
-
-	err := provider.ProvisionResources(ctx)
+	err := setup.provider.ProvisionResources(ctx)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "")
+	assert.Contains(t, err.Error(), "failed to get Docker server version")
 
 	mockArmDeploymentPoller.AssertExpectations(t)
-	mockAzureClient.AssertExpectations(t)
-	mockSSHConfig.AssertExpectations(t)
+	setup.mockAzureClient.AssertExpectations(t)
+	setup.mockSSHConfig.AssertExpectations(t)
 }
 
 func TestOrchestratorProvisioningFailure(t *testing.T) {
-	provider, mockAzureClient, mockSSHConfig, _, cleanup := setupTest(t)
-	defer cleanup()
+	setup := setupTest(t)
+	defer setup.cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
-	successState := armresources.ProvisioningStateSucceeded
-	props.Properties = &armresources.DeploymentPropertiesExtended{
-		ProvisioningState: &successState,
-	}
+	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
 
-	mockArmDeploymentPoller := &MockPoller{}
-	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(props, nil)
-
-	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockArmDeploymentPoller, nil)
-	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
-	mockVM := &armcompute.VirtualMachine{
-		Properties: &armcompute.VirtualMachineProperties{
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-					{
-						ID: &nicID,
-					},
-				},
-			},
-		},
-	}
-	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockVM, nil)
-	// Mock GetNetworkInterface
-	privateIPAddress := "10.0.0.4"
-	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
-	mockNIC := &armnetwork.Interface{
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-				{
-					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-						PrivateIPAddress: &privateIPAddress,
-						PublicIPAddress: &armnetwork.PublicIPAddress{
-							ID: &publicIPAddressID,
-						},
-					},
-				},
-			},
-		},
-	}
-	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockNIC, nil)
-
-	// Mock GetPublicIPAddress
-	publicIPAddress := "20.30.40.50"
-	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(publicIPAddress, nil)
-
-	mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-
-	mockSSHConfig.On("PushFile", mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything).Return(nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
 		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh").
-		Return("", nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh").
-		Return("", nil)
-	mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
+	setup.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-	mockSSHConfig.On("RestartService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
+	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
 		Return(`[]`, nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
 
-	err := provider.ProvisionResources(ctx)
+	err := setup.provider.ProvisionResources(ctx)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no Bacalhau nodes")
+	assert.Contains(t, err.Error(), "no Bacalhau nodes found")
 
-	m := display.GetGlobalModelFunc()
+	m := display.GetGlobalModel()
 	for _, machine := range m.Deployment.Machines {
 		if !machine.Orchestrator {
 			assert.NotEqual(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
@@ -472,8 +287,8 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 	}
 
 	mockArmDeploymentPoller.AssertExpectations(t)
-	mockAzureClient.AssertExpectations(t)
-	mockSSHConfig.AssertExpectations(t)
+	setup.mockAzureClient.AssertExpectations(t)
+	setup.mockSSHConfig.AssertExpectations(t)
 }
 
 type MockPoller struct {
