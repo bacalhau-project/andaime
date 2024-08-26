@@ -7,12 +7,14 @@ import (
 	"os"
 	"runtime/debug"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -227,40 +229,35 @@ func TestDeployARMTemplate(t *testing.T) {
 		})
 	}
 }
-func TestPollAndUpdateResources(t *testing.T) {
-	// Create a mock Azure client
-	mockClient := &MockAzureClient{}
 
+type MockResourceGraphClient struct {
+	mock.Mock
+}
+
+func TestPollAndUpdateResources(t *testing.T) {
 	// Create a mock configuration
 	mockConfig := viper.New()
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
 
-	// Create a provider with the mock client and configuration
-	provider := &AzureProvider{
-		Client:      mockClient,
-		Config:      mockConfig,
-		updateQueue: make(chan UpdateAction, 100),
-	}
-
 	// Set up the mock expectations
-	mockResources := []interface{}{
+	mockResponse := []interface{}{
 		map[string]interface{}{
-			"name":               "test-vm",
-			"type":               "Microsoft.Compute/virtualMachines",
-			"provisioningState":  "Succeeded",
+			"name":              "test-vm",
+			"type":              "Microsoft.Compute/virtualMachines",
+			"provisioningState": "Succeeded",
 		},
 		map[string]interface{}{
-			"name":               "test-vm",
-			"type":               "Microsoft.Network/publicIPAddresses",
-			"provisioningState":  "Succeeded",
+			"name":              "test-vm",
+			"type":              "Microsoft.Network/publicIPAddresses",
+			"provisioningState": "Succeeded",
 			"properties": map[string]interface{}{
 				"ipAddress": "1.2.3.4",
 			},
 		},
 		map[string]interface{}{
-			"name":               "test-vm",
-			"type":               "Microsoft.Network/networkInterfaces",
-			"provisioningState":  "Succeeded",
+			"name":              "test-vm",
+			"type":              "Microsoft.Network/networkInterfaces",
+			"provisioningState": "Succeeded",
 			"properties": map[string]interface{}{
 				"ipConfigurations": []interface{}{
 					map[string]interface{}{
@@ -273,7 +270,15 @@ func TestPollAndUpdateResources(t *testing.T) {
 		},
 	}
 
-	mockClient.On("ListAllResourcesInSubscription", mock.Anything, "test-subscription-id", mock.Anything).Return(mockResources, nil)
+	mockClient := &MockAzureClient{}
+	mockClient.On("GetResources", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(mockResponse, nil)
+
+	provider := &AzureProvider{
+		Client:      mockClient,
+		Config:      mockConfig,
+		updateQueue: make(chan UpdateAction, 100),
+	}
 
 	// Set up a test deployment
 	m := display.GetGlobalModelFunc()
@@ -296,16 +301,16 @@ func TestPollAndUpdateResources(t *testing.T) {
 
 	// Check the results
 	assert.NoError(t, err)
-	assert.Equal(t, mockResources, resources)
+	assert.Equal(t, mockResponse, resources)
 
 	// Wait for updates to be processed
 	time.Sleep(100 * time.Millisecond)
 
 	// Check that the machine state was updated correctly
 	machine := m.Deployment.Machines["test-vm"]
-	assert.Equal(t, "Succeeded", machine.GetMachineResourceState("VM"))
-	assert.Equal(t, "Succeeded", machine.GetMachineResourceState("PublicIP"))
-	assert.Equal(t, "Succeeded", machine.GetMachineResourceState("NetworkInterface"))
+	assert.Equal(t, "Succeeded", machine.GetResourceState("VM"))
+	assert.Equal(t, "Succeeded", machine.GetResourceState("PublicIP"))
+	assert.Equal(t, "Succeeded", machine.GetResourceState("NetworkInterface"))
 	assert.Equal(t, "1.2.3.4", machine.PublicIP)
 	assert.Equal(t, "10.0.0.4", machine.PrivateIP)
 
