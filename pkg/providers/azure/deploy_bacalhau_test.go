@@ -253,7 +253,7 @@ func TestVerifyBacalhauDeployment(t *testing.T) {
 		{
 			name:           "Invalid JSON",
 			nodeListOutput: `invalid json`,
-			expectedError:  "failed to unmarshal node list output",
+			expectedError:  "failed to strip and parse JSON",
 		},
 	}
 
@@ -548,10 +548,9 @@ func TestDeployWorkers(t *testing.T) {
 			tt.setupMock(mockSSH)
 
 			var err error
-			workerErrChan := make(chan error)
 			for _, machine := range tt.machines {
 				if !machine.Orchestrator {
-					err = deployer.DeployWorker(ctx, machine.Name, workerErrChan)
+					err = deployer.DeployWorker(ctx, machine.Name)
 					assert.NoError(t, err)
 				} else {
 					err = deployer.DeployOrchestrator(ctx)
