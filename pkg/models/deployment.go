@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 )
 
@@ -140,18 +141,24 @@ const (
 )
 
 func ConvertFromStringToAzureResourceState(s string) AzureResourceState {
+	l := logger.Get()
 	switch s {
 	case "Not Started":
 		return AzureResourceStateNotStarted
 	case "Pending":
 		return AzureResourceStatePending
-	case "Running":
-		return AzureResourceStateRunning
+	case "Creating":
+		return AzureResourceStatePending
 	case "Failed":
 		return AzureResourceStateFailed
 	case "Succeeded":
 		return AzureResourceStateSucceeded
+	case "Updating":
+		return AzureResourceStateSucceeded
+	case "Running":
+		return AzureResourceStateSucceeded
 	default:
+		l.Debugf("Unknown Azure Resource State: %s", s)
 		return AzureResourceStateUnknown
 	}
 }

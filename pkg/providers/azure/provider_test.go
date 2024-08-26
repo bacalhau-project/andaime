@@ -286,7 +286,8 @@ func TestPollAndUpdateResources(t *testing.T) {
 
 		// Set up mock client expectation
 		provider.Client.(*MockAzureClient).On("GetResources", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return(mockResponse, nil).Once()
+			Return(mockResponse, nil).
+			Once()
 
 		// Call the function
 		resources, err := provider.PollAndUpdateResources(ctx)
@@ -303,28 +304,38 @@ func TestPollAndUpdateResources(t *testing.T) {
 			machine := m.Deployment.Machines[machineName]
 			for _, resourceType := range requiredResources {
 				state := machine.GetResourceState(resourceType.ShortResourceName)
-				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
-				
+				assert.Contains(
+					t,
+					[]string{"", "Creating", "Updating", "Succeeded", "Failed"},
+					state,
+				)
+
 				switch resourceType.ShortResourceName {
 				case "IP":
-					if state == "Succeeded" {
+					if state == models.AzureResourceStateSucceeded {
 						assert.NotEmpty(t, machine.PublicIP)
 					}
 				case "NIC":
-					if state == "Succeeded" {
+					if state == models.AzureResourceStateSucceeded {
 						assert.NotEmpty(t, machine.PrivateIP)
 					}
 				case "VM":
-					if state == "Succeeded" {
+					if state == models.AzureResourceStateSucceeded {
 						assert.NotEmpty(t, machine.VMSize)
 					}
 				case "DISK":
-					if state == "Succeeded" {
-						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
+					if state == models.AzureResourceStateSucceeded {
+						assert.NotEmpty(
+							t,
+							machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue,
+						)
 					}
 				case "VNET", "SNET", "NSG":
-					if state == "Succeeded" {
-						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
+					if state == models.AzureResourceStateSucceeded {
+						assert.NotEmpty(
+							t,
+							machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue,
+						)
 					}
 				}
 			}
@@ -335,7 +346,10 @@ func TestPollAndUpdateResources(t *testing.T) {
 	provider.Client.(*MockAzureClient).AssertExpectations(t)
 }
 
-func generateMockResource(machineName string, resourceType models.AzureResourceTypes) map[string]interface{} {
+func generateMockResource(
+	machineName string,
+	resourceType models.AzureResourceTypes,
+) map[string]interface{} {
 	states := []string{"Creating", "Updating", "Succeeded", "Failed"}
 	state := states[rand.Intn(len(states))]
 
