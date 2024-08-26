@@ -9,12 +9,10 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/errgroup"
 )
 
 // AzureProvider wraps the Azure deployment functionality
@@ -37,7 +35,6 @@ type AzureProvider struct {
 	Client            interface{}
 	Config            *viper.Viper
 	SSHClient         sshutils.SSHClienter
-	Deployment        *models.Deployment
 	SSHUser           string
 	SSHPort           int
 	lastResourceQuery time.Time
@@ -107,11 +104,10 @@ func NewAzureProvider() (AzureProviderer, error) {
 	}
 
 	return &AzureProvider{
-		Client:     client,
-		Config:     config,
-		Deployment: models.NewDeployment(),
-		SSHUser:    sshUser,
-		SSHPort:    sshPort,
+		Client:  client,
+		Config:  config,
+		SSHUser: sshUser,
+		SSHPort: sshPort,
 	}, nil
 }
 
@@ -284,7 +280,8 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 }
 
 func (p *AzureProvider) logDeploymentStatus() {
-	if p.Deployment == nil {
+	m := display.GetGlobalModelFunc()
+	if m.Deployment == nil {
 		writeToDebugLog("Deployment is nil")
 		return
 	}
@@ -292,13 +289,13 @@ func (p *AzureProvider) logDeploymentStatus() {
 	writeToDebugLog(
 		fmt.Sprintf(
 			"Deployment Status - Name: %s, ResourceGroup: %s",
-			p.Deployment.Name,
-			p.Deployment.ResourceGroupName,
+			m.Deployment.Name,
+			m.Deployment.ResourceGroupName,
 		),
 	)
-	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(p.Deployment.Machines)))
+	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(m.Deployment.Machines)))
 
-	for _, machine := range p.Deployment.Machines {
+	for _, machine := range m.Deployment.Machines {
 		writeToDebugLog(
 			fmt.Sprintf(
 				"Machine Name: %s, PublicIP: %s, PrivateIP: %s",
@@ -376,10 +373,11 @@ func (p *AzureProvider) checkBacalhauNodeListingFailure() bool {
 
 func (p *AzureProvider) CancelAllDeployments(ctx context.Context) {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	l.Info("Cancelling all deployments")
 	writeToDebugLog("Cancelling all deployments")
 
-	for _, machine := range p.Deployment.Machines {
+	for _, machine := range m.Deployment.Machines {
 		if !machine.Complete() {
 			machine.SetComplete()
 		}
@@ -392,170 +390,11 @@ func (p *AzureProvider) CancelAllDeployments(ctx context.Context) {
 }
 
 func (p *AzureProvider) AllMachinesComplete() bool {
-	for _, machine := range p.Deployment.Machines {
+	m := display.GetGlobalModelFunc()
+	for _, machine := range m.Deployment.Machines {
 		if !machine.Complete() {
 			return false
 		}
 	}
 	return true
-}
-
-func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Deploying ARM template")
-
-	client := p.GetAzureClient()
-
-	// Group machines by location
-	machinesByLocation := make(map[string][]*models.Machine)
-	for _, machine := range p.Deployment.Machines {
-		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	for location, machines := range machinesByLocation {
-		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
-		g.Go(func() error {
-			// Deploy the first machine in this location
-			if len(machines) == 0 {
-				return fmt.Errorf("no machines to deploy in location %s", location)
-			}
-			firstMachine := machines[0]
-			err := client.DeployARMTemplate(ctx, p.Deployment.ResourceGroupName, firstMachine.Name, location)
-			if err != nil {
-				return fmt.Errorf("failed to deploy first machine %s in location %s: %w", firstMachine.Name, location, err)
-			}
-
-			// If there are more machines, deploy them in parallel
-			if len(machines) > 1 {
-				subG, subCtx := errgroup.WithContext(ctx)
-				for _, machine := range machines[1:] {
-					machine := machine // https://golang.org/doc/faq#closures_and_goroutines
-					subG.Go(func() error {
-						return client.DeployARMTemplate(subCtx, p.Deployment.ResourceGroupName, machine.Name, location)
-					})
-				}
-				if err := subG.Wait(); err != nil {
-					return fmt.Errorf("failed to deploy remaining machines in location %s: %w", location, err)
-				}
-			}
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("deployment failed: %w", err)
-	}
-
-	return nil
-}
-import (
-	"context"
-	"fmt"
-	"golang.org/x/sync/errgroup"
-)
-
-func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Deploying ARM template")
-
-	client := p.GetAzureClient()
-
-	// Group machines by location
-	machinesByLocation := make(map[string][]*models.Machine)
-	for _, machine := range p.Deployment.Machines {
-		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	for location, machines := range machinesByLocation {
-		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
-		g.Go(func() error {
-			// Deploy the first machine in this location
-			if len(machines) == 0 {
-				return fmt.Errorf("no machines to deploy in location %s", location)
-			}
-			firstMachine := machines[0]
-			err := client.DeployARMTemplate(ctx, p.Deployment.ResourceGroupName, firstMachine.Name, location)
-			if err != nil {
-				return fmt.Errorf("failed to deploy first machine %s in location %s: %w", firstMachine.Name, location, err)
-			}
-
-			// If there are more machines, deploy them in parallel
-			if len(machines) > 1 {
-				subG, subCtx := errgroup.WithContext(ctx)
-				for _, machine := range machines[1:] {
-					machine := machine // https://golang.org/doc/faq#closures_and_goroutines
-					subG.Go(func() error {
-						return client.DeployARMTemplate(subCtx, p.Deployment.ResourceGroupName, machine.Name, location)
-					})
-				}
-				if err := subG.Wait(); err != nil {
-					return fmt.Errorf("failed to deploy remaining machines in location %s: %w", location, err)
-				}
-			}
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("deployment failed: %w", err)
-	}
-
-	return nil
-}
-func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Deploying ARM template")
-
-	client := p.GetAzureClient()
-
-	// Group machines by location
-	machinesByLocation := make(map[string][]*models.Machine)
-	for _, machine := range p.Deployment.Machines {
-		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	for location, machines := range machinesByLocation {
-		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
-		g.Go(func() error {
-			// Deploy the first machine in this location
-			if len(machines) == 0 {
-				return fmt.Errorf("no machines to deploy in location %s", location)
-			}
-			firstMachine := machines[0]
-			err := client.DeployARMTemplate(ctx, p.Deployment.ResourceGroupName, firstMachine.Name, location)
-			if err != nil {
-				return fmt.Errorf("failed to deploy first machine %s in location %s: %w", firstMachine.Name, location, err)
-			}
-
-			// If there are more machines, deploy them in parallel
-			if len(machines) > 1 {
-				subG, subCtx := errgroup.WithContext(ctx)
-				for _, machine := range machines[1:] {
-					machine := machine // https://golang.org/doc/faq#closures_and_goroutines
-					subG.Go(func() error {
-						return client.DeployARMTemplate(subCtx, p.Deployment.ResourceGroupName, machine.Name, location)
-					})
-				}
-				if err := subG.Wait(); err != nil {
-					return fmt.Errorf("failed to deploy remaining machines in location %s: %w", location, err)
-				}
-			}
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("deployment failed: %w", err)
-	}
-
-	return nil
 }

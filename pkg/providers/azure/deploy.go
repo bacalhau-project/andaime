@@ -12,7 +12,6 @@ import (
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -400,49 +399,67 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string)
 
 func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l := logger.Get()
-	l.Debug("Starting DeployARMTemplate")
+	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
-	// Remove the state machine reference
-	tags := utils.EnsureAzureTags(
-		m.Deployment.Tags,
-		m.Deployment.ProjectID,
-		m.Deployment.UniqueID,
-	)
 
-	// Create wait group
-	errGroup := errgroup.Group{}
-
-	// Run maximum 5 deployments at a time
-	sem := make(chan struct{}, globals.MaximumSimultaneousDeployments)
-
+	// Group machines by location
+	machinesByLocation := make(map[string][]*models.Machine)
 	for _, machine := range m.Deployment.Machines {
-		internalMachine := machine
+		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
+	}
 
-		sem <- struct{}{}
-		errGroup.Go(func() error {
-			return func(internalMachine *models.Machine) error {
-				err := p.deployMachine(ctx, internalMachine, tags)
-				if err != nil {
-					l.Errorf("Failed to deploy machine %s: %v", internalMachine.ID, err)
+	g, ctx := errgroup.WithContext(ctx)
 
-					// Uses the machine name for the resource name because this is the VM
-					m.UpdateStatus(
-						models.NewDisplayVMStatus(
-							internalMachine.Name,
-							models.AzureResourceStateFailed,
-						),
-					)
-					return err
+	for location, machines := range machinesByLocation {
+		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			// Deploy the first machine in this location
+			if len(machines) == 0 {
+				return fmt.Errorf("no machines to deploy in location %s", location)
+			}
+			firstMachine := machines[0]
+			err := p.deployMachine(
+				ctx,
+				firstMachine,
+				map[string]*string{},
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to deploy first machine %s in location %s: %w",
+					firstMachine.Name,
+					location,
+					err,
+				)
+			}
+
+			// If there are more machines, deploy them in parallel
+			if len(machines) > 1 {
+				subG, subCtx := errgroup.WithContext(ctx)
+				for _, machine := range machines[1:] {
+					machine := machine // https://golang.org/doc/faq#closures_and_goroutines
+					subG.Go(func() error {
+						return p.deployMachine(
+							subCtx,
+							machine,
+							map[string]*string{},
+						)
+					})
 				}
-				return nil
-			}(internalMachine)
+				if err := subG.Wait(); err != nil {
+					return fmt.Errorf(
+						"failed to deploy remaining machines in location %s: %w",
+						location,
+						err,
+					)
+				}
+			}
+
+			return nil
 		})
 	}
 
-	// Wait for all deployments to complete
-	err := errGroup.Wait()
-	if err != nil {
-		return err
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("deployment failed: %w", err)
 	}
 
 	return nil
