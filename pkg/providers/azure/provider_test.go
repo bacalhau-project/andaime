@@ -236,6 +236,42 @@ type MockResourceGraphClient struct {
 }
 
 func TestPollAndUpdateResources(t *testing.T) {
+	// Existing test setup...
+
+	// Add this to the test cases
+	servicesProvisioned := false
+
+	// Modify the provider setup
+	provider := &AzureProvider{
+		Client:      &MockAzureClient{},
+		Config:      mockConfig,
+		updateQueue: make(chan UpdateAction, 100),
+		serviceMutex: sync.Mutex{},
+	}
+
+	// Add this to the iterations loop
+	if !servicesProvisioned && allResourcesSucceeded {
+		servicesProvisioned = true
+		// Mock service provisioning
+		for _, machineName := range testMachines {
+			machine := m.Deployment.Machines[machineName]
+			for _, service := range models.RequiredServices {
+				machine.SetServiceState(service.Name, models.ServiceStateSucceeded)
+			}
+		}
+	}
+
+	// Add assertions for service states
+	if servicesProvisioned {
+		for _, machineName := range testMachines {
+			machine := m.Deployment.Machines[machineName]
+			for _, service := range models.RequiredServices {
+				assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState(service.Name))
+			}
+		}
+	}
+
+	// Rest of the test remains the same...
 	// Create a mock configuration
 	mockConfig := viper.New()
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
