@@ -56,13 +56,22 @@ func setupTest(t *testing.T) *testSetup {
 	m := display.GetGlobalModel()
 	m.Deployment = models.NewDeployment()
 	m.Deployment.Machines = map[string]*models.Machine{
-		"orchestrator": {Name: "orchestrator", Orchestrator: true, PublicIP: "1.2.3.4"},
-		"worker1":      {Name: "worker1", PublicIP: "1.2.3.5"},
-		"worker2":      {Name: "worker2", PublicIP: "1.2.3.6"},
+		"orchestrator": {
+			Name:         "orchestrator",
+			Orchestrator: true,
+			PublicIP:     "1.2.3.4",
+			Location:     "eastus",
+		},
+		"worker1": {Name: "worker1", PublicIP: "1.2.3.5", Location: "eastus2"},
+		"worker2": {Name: "worker2", PublicIP: "1.2.3.6", Location: "westus"},
 	}
 	m.Deployment.ResourceGroupLocation = "eastus"
+	m.Deployment.UniqueLocations = []string{"eastus", "eastus2", "westus"}
 
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
 		return mockSSHConfig, nil
 	}
 

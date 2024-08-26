@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -116,40 +115,21 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	sshAndDockerWG := sync.WaitGroup{}
-	sshAndDockerErrChan := make(chan error, len(m.Deployment.Machines))
-
+	sshAndDockerEG := errgroup.Group{}
 	// Provision SSH and Docker for all machines
 	for _, machine := range m.Deployment.Machines {
-		sshAndDockerWG.Add(1)
-		go func(w *models.Machine) {
-			defer sshAndDockerWG.Done()
-			if err := p.testSSHLiveness(ctx, machine.Name); err != nil {
-				l.Errorf("Failed to provision SSH for machine %s: %v", machine.Name, err)
-				sshAndDockerErrChan <- err
-				return
+		internalMachine := machine
+		sshAndDockerEG.Go(func() error {
+			if err := p.provisionDocker(ctx, internalMachine.Name); err != nil {
+				l.Errorf("Failed to provision Docker for machine %s: %v", internalMachine.Name, err)
+				return err
 			}
-
-			if err := p.provisionDocker(ctx, machine.Name); err != nil {
-				l.Errorf("Failed to provision Docker for machine %s: %v", machine.Name, err)
-				sshAndDockerErrChan <- err
-				return
-			}
-		}(machine)
+			return nil
+		})
 	}
 
-	// Wait for either all goroutines to finish or an error to occur
-	done := make(chan struct{})
-	go func() {
-		sshAndDockerWG.Wait()
-		close(done)
-	}()
-
-	select {
-	case err := <-sshAndDockerErrChan:
+	if err := sshAndDockerEG.Wait(); err != nil {
 		return err
-	case <-done:
-		// All SSH and Docker provisioning completed successfully
 	}
 
 	bd := BacalhauDeployer{}
@@ -402,6 +382,10 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
+	if len(m.Deployment.UniqueLocations) == 0 {
+		return fmt.Errorf("no locations provided")
+	}
+
 	// Group machines by location
 	machinesByLocation := make(map[string][]*models.Machine)
 	for _, machine := range m.Deployment.Machines {
@@ -412,18 +396,31 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 
 	for location, machines := range machinesByLocation {
 		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
+		l.Infof(
+			"Preparing to deploy machines in location %s with %d machines",
+			location,
+			len(machines),
+		)
+
 		g.Go(func() error {
-			// Deploy the first machine in this location
+			l.Infof("Starting deployment for location %s", location)
+
 			if len(machines) == 0 {
+				l.Errorf("No machines to deploy in location %s", location)
 				return fmt.Errorf("no machines to deploy in location %s", location)
 			}
+
 			firstMachine := machines[0]
-			err := p.deployMachine(
-				ctx,
-				firstMachine,
-				map[string]*string{},
-			)
+			l.Infof("Deploying first machine %s in location %s", firstMachine.Name, location)
+
+			err := p.deployMachine(ctx, firstMachine, map[string]*string{})
 			if err != nil {
+				l.Errorf(
+					"Failed to deploy first machine %s in location %s: %v",
+					firstMachine.Name,
+					location,
+					err,
+				)
 				return fmt.Errorf(
 					"failed to deploy first machine %s in location %s: %w",
 					firstMachine.Name,
@@ -432,20 +429,71 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				)
 			}
 
-			// If there are more machines, deploy them in parallel
+			l.Infof("Testing SSH liveness for machine %s", firstMachine.Name)
+			if err := p.testSSHLiveness(ctx, firstMachine.Name); err != nil {
+				l.Errorf("Failed to provision SSH for machine %s: %v", firstMachine.Name, err)
+				return err
+			}
+
+			l.Infof(
+				"Successfully deployed first machine %s in location %s",
+				firstMachine.Name,
+				location,
+			)
+
 			if len(machines) > 1 {
 				subG, subCtx := errgroup.WithContext(ctx)
 				for _, machine := range machines[1:] {
-					machine := machine // https://golang.org/doc/faq#closures_and_goroutines
+					machine := machine // capture range variable
+					l.Infof("Deploying machine %s in location %s", machine.Name, location)
+
 					subG.Go(func() error {
-						return p.deployMachine(
-							subCtx,
-							machine,
-							map[string]*string{},
+						l.Infof(
+							"Starting deployment for machine %s in location %s",
+							machine.Name,
+							location,
 						)
+						err := p.deployMachine(subCtx, machine, map[string]*string{})
+						if err != nil {
+							l.Errorf(
+								"Failed to deploy machine %s in location %s: %v",
+								machine.Name,
+								location,
+								err,
+							)
+							return fmt.Errorf(
+								"failed to deploy machine %s in location %s: %w",
+								machine.Name,
+								location,
+								err,
+							)
+						}
+
+						l.Infof("Testing SSH liveness for machine %s", machine.Name)
+						if err := p.testSSHLiveness(subCtx, machine.Name); err != nil {
+							l.Errorf(
+								"Failed to provision SSH for machine %s: %v",
+								machine.Name,
+								err,
+							)
+							return err
+						}
+
+						l.Infof(
+							"Successfully deployed machine %s in location %s",
+							machine.Name,
+							location,
+						)
+						return nil
 					})
 				}
+
 				if err := subG.Wait(); err != nil {
+					l.Errorf(
+						"Failed to deploy remaining machines in location %s: %v",
+						location,
+						err,
+					)
 					return fmt.Errorf(
 						"failed to deploy remaining machines in location %s: %w",
 						location,
@@ -454,14 +502,17 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				}
 			}
 
+			l.Infof("Successfully deployed all machines in location %s", location)
 			return nil
 		})
 	}
 
 	if err := g.Wait(); err != nil {
+		l.Errorf("Deployment failed: %v", err)
 		return fmt.Errorf("deployment failed: %w", err)
 	}
 
+	l.Info("ARM template deployment completed successfully")
 	return nil
 }
 

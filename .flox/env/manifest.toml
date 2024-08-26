@@ -36,8 +36,6 @@ on-activate = '''
   uv pip install -r requirements.txt
 
   # Set up Go environment
-  export GOROOT="$FLOX_ENV/go"
-  export PATH="$GOROOT/bin:$PATH"
   export GOPATH="$HOME/go"
   export PATH="$GOPATH/bin:$PATH"
 
@@ -54,7 +52,6 @@ on-activate = '''
 # `profile.{bash,fish,tcsh,zsh}` is sourced by the corresponding shell.
 [profile]
 common = '''
-unset GOROOT
 alias uvf="uv pip freeze | uv pip compile - -o requirements.txt"
 '''
 

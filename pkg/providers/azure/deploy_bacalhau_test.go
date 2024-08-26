@@ -61,7 +61,7 @@ func (m *MockSSHConfig) RestartService(
 // Additional methods to satisfy the SSHConfiger interface
 func (m *MockSSHConfig) Connect() (sshutils.SSHClienter, error) { return m.MockClient, nil }
 
-func (m *MockSSHConfig) Close() error                             { return nil }
+func (m *MockSSHConfig) Close() error { return nil }
 
 func (m *MockSSHConfig) WaitForSSH(retries int, retryDelay time.Duration) error {
 	args := m.Called(retries, retryDelay)
@@ -74,11 +74,6 @@ func (m *MockSSHConfig) StartService(
 	serviceName string,
 ) error {
 	return nil
-}
-
-func (m *MockSSHConfig) WaitForSSH(retry int, timeout time.Duration) error {
-	args := m.Called(retry, timeout)
-	return args.Error(0)
 }
 
 func setupTestBacalhauDeployer(
@@ -572,5 +567,17 @@ func TestDeployWorkers(t *testing.T) {
 			}
 			mockSSH.AssertExpectations(t)
 		})
+	}
+}
+
+func createMockMachine(
+	name string,
+) *models.Machine {
+	return &models.Machine{
+		Name:     name,
+		VMSize:   "fake-vm-size",
+		Location: "fake-location",
+		SSHPort:  66000,
+		SSHUser:  "fake-user",
 	}
 }
