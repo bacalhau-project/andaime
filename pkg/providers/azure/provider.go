@@ -399,26 +399,3 @@ func (p *AzureProvider) AllMachinesComplete() bool {
 	return true
 }
 
-func (p *AzureProvider) DeployARMTemplate(ctx context.Context, locations []string, machinesPerLocation int) error {
-	if len(locations) == 0 {
-		return fmt.Errorf("no locations provided")
-	}
-
-	for _, location := range locations {
-		for i := 0; i < machinesPerLocation; i++ {
-			machineName := fmt.Sprintf("machine-%s-%d", location, i)
-			err := p.deployMachine(ctx, location, machineName)
-			if err != nil {
-				return fmt.Errorf("failed to deploy machine %s in location %s: %w", machineName, location, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (p *AzureProvider) deployMachine(ctx context.Context, location, machineName string) error {
-	// Placeholder for actual ARM template deployment logic
-	// In a real implementation, this would use the Azure SDK to deploy an ARM template
-	return nil
-}

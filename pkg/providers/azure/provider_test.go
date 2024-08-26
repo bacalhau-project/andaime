@@ -14,8 +14,8 @@ type MockAzureProvider struct {
 	AzureProvider
 }
 
-func (m *MockAzureProvider) deployMachine(ctx context.Context, location, machineName string) error {
-	args := m.Called(ctx, location, machineName)
+func (m *MockAzureProvider) deployMachine(ctx context.Context, machine *models.Machine, tags map[string]*string) error {
+	args := m.Called(ctx, machine, tags)
 	return args.Error(0)
 }
 
@@ -106,7 +106,9 @@ func TestDeployARMTemplate(t *testing.T) {
 					if !ok {
 						err = nil
 					}
-					mockProvider.On("deployMachine", mock.Anything, location, machineName).Return(err)
+					mockProvider.On("deployMachine", mock.Anything, mock.MatchedBy(func(m *models.Machine) bool {
+						return m.Name == machineName && m.Location == location
+					}), mock.Anything).Return(err)
 				}
 			}
 
