@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"runtime/debug"
 	"testing"
@@ -302,12 +303,12 @@ func TestPollAndUpdateResources(t *testing.T) {
 			machine := m.Deployment.Machines[machineName]
 			for _, resourceType := range requiredResources {
 				state := machine.GetResourceState(resourceType)
-				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
+				assert.Contains(t, []models.AzureResourceState{"", models.AzureResourceStateCreating, models.AzureResourceStateUpdating, models.AzureResourceStateSucceeded, models.AzureResourceStateFailed}, state)
 				
-				if resourceType == "PublicIP" && state == "Succeeded" {
+				if resourceType == "PublicIP" && state == models.AzureResourceStateSucceeded {
 					assert.NotEmpty(t, machine.PublicIP)
 				}
-				if resourceType == "NetworkInterface" && state == "Succeeded" {
+				if resourceType == "NetworkInterface" && state == models.AzureResourceStateSucceeded {
 					assert.NotEmpty(t, machine.PrivateIP)
 				}
 			}
@@ -319,20 +320,20 @@ func TestPollAndUpdateResources(t *testing.T) {
 }
 
 func generateMockResource(machineName, resourceType string) map[string]interface{} {
-	states := []string{"Creating", "Updating", "Succeeded", "Failed"}
+	states := []models.AzureResourceState{models.AzureResourceStateCreating, models.AzureResourceStateUpdating, models.AzureResourceStateSucceeded, models.AzureResourceStateFailed}
 	state := states[rand.Intn(len(states))]
 
 	resource := map[string]interface{}{
 		"name":              machineName,
 		"type":              fmt.Sprintf("Microsoft.Compute/%s", resourceType),
-		"provisioningState": state,
+		"provisioningState": string(state),
 	}
 
-	if resourceType == "PublicIP" && state == "Succeeded" {
+	if resourceType == "PublicIP" && state == models.AzureResourceStateSucceeded {
 		resource["properties"] = map[string]interface{}{
 			"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
 		}
-	} else if resourceType == "NetworkInterface" && state == "Succeeded" {
+	} else if resourceType == "NetworkInterface" && state == models.AzureResourceStateSucceeded {
 		resource["properties"] = map[string]interface{}{
 			"ipConfigurations": []interface{}{
 				map[string]interface{}{
