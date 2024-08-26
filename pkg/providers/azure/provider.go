@@ -41,16 +41,18 @@ type AzureProviderer interface {
 }
 
 type AzureProvider struct {
-	Client            interface{}
-	Config            *viper.Viper
-	SSHClient         sshutils.SSHClienter
-	SSHUser           string
-	SSHPort           int
-	lastResourceQuery time.Time
-	cachedResources   []interface{}
-	goroutineCounter  int64
-	updateQueue       chan UpdateAction
-	updateMutex       sync.Mutex
+	Client              interface{}
+	Config              *viper.Viper
+	SSHClient           sshutils.SSHClienter
+	SSHUser             string
+	SSHPort             int
+	lastResourceQuery   time.Time
+	cachedResources     []interface{}
+	goroutineCounter    int64
+	updateQueue         chan UpdateAction
+	updateMutex         sync.Mutex
+	servicesProvisioned bool
+	serviceMutex        sync.Mutex
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -460,3 +462,40 @@ func stripAndParseJSON(input string) ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+func (p *AzureProvider) provisionServices(ctx context.Context) {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	p.serviceMutex.Lock()
+	defer p.serviceMutex.Unlock()
+
+	for _, machine := range m.Deployment.Machines {
+		for _, service := range models.RequiredServices {
+			if err := p.provisionService(ctx, machine, service); err != nil {
+				l.Errorf("Failed to provision %s for machine %s: %v", service.Name, machine.Name, err)
+				return
+			}
+		}
+	}
+}
+
+func (p *AzureProvider) provisionService(ctx context.Context, machine *models.Machine, service models.ServiceType) error {
+	l := logger.Get()
+	l.Infof("Provisioning %s for machine %s", service.Name, machine.Name)
+
+	switch service.Name {
+	case "SSH":
+		// Implement SSH provisioning
+	case "CorePackages":
+		// Implement core packages installation
+	case "Docker":
+		// Implement Docker installation
+	case "Bacalhau":
+		// Implement Bacalhau installation
+	default:
+		return fmt.Errorf("unknown service type: %s", service.Name)
+	}
+
+	machine.SetServiceState(service.Name, models.ServiceStateSucceeded)
+	return nil
+}
