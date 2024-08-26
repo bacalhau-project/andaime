@@ -312,11 +312,27 @@ func TestPollAndUpdateResources(t *testing.T) {
 				state := machine.GetResourceState(resourceType.ShortResourceName)
 				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
 				
-				if resourceType.ShortResourceName == "PublicIP" && state == "Succeeded" {
-					assert.NotEmpty(t, machine.PublicIP)
-				}
-				if resourceType.ShortResourceName == "NetworkInterface" && state == "Succeeded" {
-					assert.NotEmpty(t, machine.PrivateIP)
+				switch resourceType.ShortResourceName {
+				case "IP":
+					if state == "Succeeded" {
+						assert.NotEmpty(t, machine.PublicIP)
+					}
+				case "NIC":
+					if state == "Succeeded" {
+						assert.NotEmpty(t, machine.PrivateIP)
+					}
+				case "VM":
+					if state == "Succeeded" {
+						assert.NotEmpty(t, machine.VMSize)
+					}
+				case "DISK":
+					if state == "Succeeded" {
+						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
+					}
+				case "VNET", "SNET", "NSG":
+					if state == "Succeeded" {
+						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
+					}
 				}
 			}
 		}
@@ -337,13 +353,13 @@ func generateMockResource(machineName string, resourceType models.AzureResourceT
 	}
 
 	switch resourceType.ShortResourceName {
-	case "PublicIP":
-		if state == "Succeeded" {
-			resource["properties"] = map[string]interface{}{
-				"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
-			}
+	case "VM":
+		resource["properties"] = map[string]interface{}{
+			"hardwareProfile": map[string]interface{}{
+				"vmSize": "Standard_DS1_v2",
+			},
 		}
-	case "NetworkInterface":
+	case "NIC":
 		if state == "Succeeded" {
 			resource["properties"] = map[string]interface{}{
 				"ipConfigurations": []interface{}{
@@ -355,13 +371,17 @@ func generateMockResource(machineName string, resourceType models.AzureResourceT
 				},
 			}
 		}
-	case "VirtualNetwork":
+	case "VNET":
 		resource["properties"] = map[string]interface{}{
 			"addressSpace": map[string]interface{}{
 				"addressPrefixes": []string{"10.0.0.0/16"},
 			},
 		}
-	case "NetworkSecurityGroup":
+	case "SNET":
+		resource["properties"] = map[string]interface{}{
+			"addressPrefix": "10.0.0.0/24",
+		}
+	case "NSG":
 		resource["properties"] = map[string]interface{}{
 			"securityRules": []interface{}{
 				map[string]interface{}{
@@ -379,11 +399,16 @@ func generateMockResource(machineName string, resourceType models.AzureResourceT
 				},
 			},
 		}
-	case "StorageAccount":
+	case "DISK":
 		resource["properties"] = map[string]interface{}{
-			"primaryEndpoints": map[string]interface{}{
-				"blob": fmt.Sprintf("https://%s.blob.core.windows.net/", machineName),
-			},
+			"diskSizeGB": 30,
+			"diskState":  "Attached",
+		}
+	case "IP":
+		if state == "Succeeded" {
+			resource["properties"] = map[string]interface{}{
+				"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
+			}
 		}
 	}
 
