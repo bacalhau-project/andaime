@@ -241,7 +241,14 @@ func TestPollAndUpdateResources(t *testing.T) {
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
 
 	// Define the required resources for each machine
-	requiredResources := []string{"VM", "PublicIP", "NetworkInterface"}
+	requiredResources := []models.AzureResourceTypes{
+		{ResourceString: "Microsoft.Compute/virtualMachines", ShortResourceName: "VM"},
+		{ResourceString: "Microsoft.Network/publicIPAddresses", ShortResourceName: "PublicIP"},
+		{ResourceString: "Microsoft.Network/networkInterfaces", ShortResourceName: "NetworkInterface"},
+		{ResourceString: "Microsoft.Network/virtualNetworks", ShortResourceName: "VirtualNetwork"},
+		{ResourceString: "Microsoft.Network/networkSecurityGroups", ShortResourceName: "NetworkSecurityGroup"},
+		{ResourceString: "Microsoft.Storage/storageAccounts", ShortResourceName: "StorageAccount"},
+	}
 
 	// Set up test machines
 	testMachines := []string{"vm1", "vm2", "vm3"}
@@ -302,13 +309,13 @@ func TestPollAndUpdateResources(t *testing.T) {
 		for _, machineName := range testMachines {
 			machine := m.Deployment.Machines[machineName]
 			for _, resourceType := range requiredResources {
-				state := machine.GetResourceState(resourceType)
+				state := machine.GetResourceState(resourceType.ShortResourceName)
 				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
 				
-				if resourceType == "PublicIP" && state == "Succeeded" {
+				if resourceType.ShortResourceName == "PublicIP" && state == "Succeeded" {
 					assert.NotEmpty(t, machine.PublicIP)
 				}
-				if resourceType == "NetworkInterface" && state == "Succeeded" {
+				if resourceType.ShortResourceName == "NetworkInterface" && state == "Succeeded" {
 					assert.NotEmpty(t, machine.PrivateIP)
 				}
 			}
@@ -319,28 +326,63 @@ func TestPollAndUpdateResources(t *testing.T) {
 	provider.Client.(*MockAzureClient).AssertExpectations(t)
 }
 
-func generateMockResource(machineName, resourceType string) map[string]interface{} {
+func generateMockResource(machineName string, resourceType models.AzureResourceTypes) map[string]interface{} {
 	states := []string{"Creating", "Updating", "Succeeded", "Failed"}
 	state := states[rand.Intn(len(states))]
 
 	resource := map[string]interface{}{
-		"name":              machineName,
-		"type":              fmt.Sprintf("Microsoft.Compute/%s", resourceType),
+		"name":              fmt.Sprintf("%s-%s", machineName, resourceType.ShortResourceName),
+		"type":              resourceType.ResourceString,
 		"provisioningState": state,
 	}
 
-	if resourceType == "PublicIP" && state == "Succeeded" {
-		resource["properties"] = map[string]interface{}{
-			"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
+	switch resourceType.ShortResourceName {
+	case "PublicIP":
+		if state == "Succeeded" {
+			resource["properties"] = map[string]interface{}{
+				"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
+			}
 		}
-	} else if resourceType == "NetworkInterface" && state == "Succeeded" {
-		resource["properties"] = map[string]interface{}{
-			"ipConfigurations": []interface{}{
-				map[string]interface{}{
-					"properties": map[string]interface{}{
-						"privateIPAddress": fmt.Sprintf("10.0.0.%d", rand.Intn(255)),
+	case "NetworkInterface":
+		if state == "Succeeded" {
+			resource["properties"] = map[string]interface{}{
+				"ipConfigurations": []interface{}{
+					map[string]interface{}{
+						"properties": map[string]interface{}{
+							"privateIPAddress": fmt.Sprintf("10.0.0.%d", rand.Intn(255)),
+						},
 					},
 				},
+			}
+		}
+	case "VirtualNetwork":
+		resource["properties"] = map[string]interface{}{
+			"addressSpace": map[string]interface{}{
+				"addressPrefixes": []string{"10.0.0.0/16"},
+			},
+		}
+	case "NetworkSecurityGroup":
+		resource["properties"] = map[string]interface{}{
+			"securityRules": []interface{}{
+				map[string]interface{}{
+					"name": "AllowSSH",
+					"properties": map[string]interface{}{
+						"protocol":                 "Tcp",
+						"sourcePortRange":          "*",
+						"destinationPortRange":     "22",
+						"sourceAddressPrefix":      "*",
+						"destinationAddressPrefix": "*",
+						"access":                   "Allow",
+						"priority":                 1000,
+						"direction":                "Inbound",
+					},
+				},
+			},
+		}
+	case "StorageAccount":
+		resource["properties"] = map[string]interface{}{
+			"primaryEndpoints": map[string]interface{}{
+				"blob": fmt.Sprintf("https://%s.blob.core.windows.net/", machineName),
 			},
 		}
 	}
