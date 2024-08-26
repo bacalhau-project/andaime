@@ -227,3 +227,88 @@ func TestDeployARMTemplate(t *testing.T) {
 		})
 	}
 }
+func TestPollAndUpdateResources(t *testing.T) {
+	// Create a mock Azure client
+	mockClient := &MockAzureClient{}
+
+	// Create a mock configuration
+	mockConfig := viper.New()
+	mockConfig.Set("azure.subscription_id", "test-subscription-id")
+
+	// Create a provider with the mock client and configuration
+	provider := &AzureProvider{
+		Client:      mockClient,
+		Config:      mockConfig,
+		updateQueue: make(chan UpdateAction, 100),
+	}
+
+	// Set up the mock expectations
+	mockResources := []interface{}{
+		map[string]interface{}{
+			"name":               "test-vm",
+			"type":               "Microsoft.Compute/virtualMachines",
+			"provisioningState":  "Succeeded",
+		},
+		map[string]interface{}{
+			"name":               "test-vm",
+			"type":               "Microsoft.Network/publicIPAddresses",
+			"provisioningState":  "Succeeded",
+			"properties": map[string]interface{}{
+				"ipAddress": "1.2.3.4",
+			},
+		},
+		map[string]interface{}{
+			"name":               "test-vm",
+			"type":               "Microsoft.Network/networkInterfaces",
+			"provisioningState":  "Succeeded",
+			"properties": map[string]interface{}{
+				"ipConfigurations": []interface{}{
+					map[string]interface{}{
+						"properties": map[string]interface{}{
+							"privateIPAddress": "10.0.0.4",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	mockClient.On("ListAllResourcesInSubscription", mock.Anything, "test-subscription-id", mock.Anything).Return(mockResources, nil)
+
+	// Set up a test deployment
+	m := display.GetGlobalModelFunc()
+	m.Deployment = &models.Deployment{
+		Name: "test-deployment",
+		Machines: map[string]*models.Machine{
+			"test-vm": {
+				Name: "test-vm",
+			},
+		},
+	}
+
+	// Start the update processor
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go provider.startUpdateProcessor(ctx)
+
+	// Call the function
+	resources, err := provider.PollAndUpdateResources(ctx)
+
+	// Check the results
+	assert.NoError(t, err)
+	assert.Equal(t, mockResources, resources)
+
+	// Wait for updates to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that the machine state was updated correctly
+	machine := m.Deployment.Machines["test-vm"]
+	assert.Equal(t, "Succeeded", machine.GetMachineResourceState("VM"))
+	assert.Equal(t, "Succeeded", machine.GetMachineResourceState("PublicIP"))
+	assert.Equal(t, "Succeeded", machine.GetMachineResourceState("NetworkInterface"))
+	assert.Equal(t, "1.2.3.4", machine.PublicIP)
+	assert.Equal(t, "10.0.0.4", machine.PrivateIP)
+
+	// Verify that the mock expectations were met
+	mockClient.AssertExpectations(t)
+}
