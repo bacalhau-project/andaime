@@ -240,15 +240,8 @@ func TestPollAndUpdateResources(t *testing.T) {
 	mockConfig := viper.New()
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
 
-	// Define the required resources for each machine
-	requiredResources := []models.AzureResourceTypes{
-		{ResourceString: "Microsoft.Compute/virtualMachines", ShortResourceName: "VM"},
-		{ResourceString: "Microsoft.Network/publicIPAddresses", ShortResourceName: "PublicIP"},
-		{ResourceString: "Microsoft.Network/networkInterfaces", ShortResourceName: "NetworkInterface"},
-		{ResourceString: "Microsoft.Network/virtualNetworks", ShortResourceName: "VirtualNetwork"},
-		{ResourceString: "Microsoft.Network/networkSecurityGroups", ShortResourceName: "NetworkSecurityGroup"},
-		{ResourceString: "Microsoft.Storage/storageAccounts", ShortResourceName: "StorageAccount"},
-	}
+	// Use all AzureResourceTypes defined in models.GetAllAzureResources()
+	requiredResources := models.GetAllAzureResources()
 
 	// Set up test machines
 	testMachines := []string{"vm1", "vm2", "vm3"}
