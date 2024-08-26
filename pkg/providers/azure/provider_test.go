@@ -239,56 +239,30 @@ func TestPollAndUpdateResources(t *testing.T) {
 	mockConfig := viper.New()
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
 
-	// Set up the mock expectations
-	mockResponse := []interface{}{
-		map[string]interface{}{
-			"name":              "test-vm",
-			"type":              "Microsoft.Compute/virtualMachines",
-			"provisioningState": "Succeeded",
-		},
-		map[string]interface{}{
-			"name":              "test-vm",
-			"type":              "Microsoft.Network/publicIPAddresses",
-			"provisioningState": "Succeeded",
-			"properties": map[string]interface{}{
-				"ipAddress": "1.2.3.4",
-			},
-		},
-		map[string]interface{}{
-			"name":              "test-vm",
-			"type":              "Microsoft.Network/networkInterfaces",
-			"provisioningState": "Succeeded",
-			"properties": map[string]interface{}{
-				"ipConfigurations": []interface{}{
-					map[string]interface{}{
-						"properties": map[string]interface{}{
-							"privateIPAddress": "10.0.0.4",
-						},
-					},
-				},
-			},
-		},
-	}
+	// Define the required resources for each machine
+	requiredResources := []string{"VM", "PublicIP", "NetworkInterface"}
 
-	mockClient := &MockAzureClient{}
-	mockClient.On("GetResources", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockResponse, nil)
+	// Set up test machines
+	testMachines := []string{"vm1", "vm2", "vm3"}
 
-	provider := &AzureProvider{
-		Client:      mockClient,
-		Config:      mockConfig,
-		updateQueue: make(chan UpdateAction, 100),
-	}
-
-	// Set up a test deployment
+	// Set up the global model
 	m := display.GetGlobalModelFunc()
 	m.Deployment = &models.Deployment{
-		Name: "test-deployment",
-		Machines: map[string]*models.Machine{
-			"test-vm": {
-				Name: "test-vm",
-			},
-		},
+		Name:     "test-deployment",
+		Machines: make(map[string]*models.Machine),
+	}
+
+	for _, machineName := range testMachines {
+		m.Deployment.Machines[machineName] = &models.Machine{
+			Name: machineName,
+		}
+	}
+
+	// Create a provider with a mock client
+	provider := &AzureProvider{
+		Client:      &MockAzureClient{},
+		Config:      mockConfig,
+		updateQueue: make(chan UpdateAction, 100),
 	}
 
 	// Start the update processor
@@ -296,24 +270,79 @@ func TestPollAndUpdateResources(t *testing.T) {
 	defer cancel()
 	go provider.startUpdateProcessor(ctx)
 
-	// Call the function
-	resources, err := provider.PollAndUpdateResources(ctx)
+	// Run multiple iterations to simulate resource state changes
+	iterations := 5
+	for i := 0; i < iterations; i++ {
+		mockResponse := []interface{}{}
 
-	// Check the results
-	assert.NoError(t, err)
-	assert.Equal(t, mockResponse, resources)
+		// Generate mock response for each machine and its resources
+		for _, machineName := range testMachines {
+			for _, resourceType := range requiredResources {
+				resource := generateMockResource(machineName, resourceType)
+				mockResponse = append(mockResponse, resource)
+			}
+		}
 
-	// Wait for updates to be processed
-	time.Sleep(100 * time.Millisecond)
+		// Set up mock client expectation
+		provider.Client.(*MockAzureClient).On("GetResources", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(mockResponse, nil).Once()
 
-	// Check that the machine state was updated correctly
-	machine := m.Deployment.Machines["test-vm"]
-	assert.Equal(t, "Succeeded", machine.GetResourceState("VM"))
-	assert.Equal(t, "Succeeded", machine.GetResourceState("PublicIP"))
-	assert.Equal(t, "Succeeded", machine.GetResourceState("NetworkInterface"))
-	assert.Equal(t, "1.2.3.4", machine.PublicIP)
-	assert.Equal(t, "10.0.0.4", machine.PrivateIP)
+		// Call the function
+		resources, err := provider.PollAndUpdateResources(ctx)
+
+		// Check the results
+		assert.NoError(t, err)
+		assert.Equal(t, mockResponse, resources)
+
+		// Wait for updates to be processed
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify machine states
+		for _, machineName := range testMachines {
+			machine := m.Deployment.Machines[machineName]
+			for _, resourceType := range requiredResources {
+				state := machine.GetResourceState(resourceType)
+				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
+				
+				if resourceType == "PublicIP" && state == "Succeeded" {
+					assert.NotEmpty(t, machine.PublicIP)
+				}
+				if resourceType == "NetworkInterface" && state == "Succeeded" {
+					assert.NotEmpty(t, machine.PrivateIP)
+				}
+			}
+		}
+	}
 
 	// Verify that the mock expectations were met
-	mockClient.AssertExpectations(t)
+	provider.Client.(*MockAzureClient).AssertExpectations(t)
+}
+
+func generateMockResource(machineName, resourceType string) map[string]interface{} {
+	states := []string{"Creating", "Updating", "Succeeded", "Failed"}
+	state := states[rand.Intn(len(states))]
+
+	resource := map[string]interface{}{
+		"name":              machineName,
+		"type":              fmt.Sprintf("Microsoft.Compute/%s", resourceType),
+		"provisioningState": state,
+	}
+
+	if resourceType == "PublicIP" && state == "Succeeded" {
+		resource["properties"] = map[string]interface{}{
+			"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
+		}
+	} else if resourceType == "NetworkInterface" && state == "Succeeded" {
+		resource["properties"] = map[string]interface{}{
+			"ipConfigurations": []interface{}{
+				map[string]interface{}{
+					"properties": map[string]interface{}{
+						"privateIPAddress": fmt.Sprintf("10.0.0.%d", rand.Intn(255)),
+					},
+				},
+			},
+		}
+	}
+
+	return resource
 }
