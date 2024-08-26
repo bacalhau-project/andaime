@@ -62,6 +62,11 @@ func (m *MockSSHConfig) RestartService(
 func (m *MockSSHConfig) Connect() (sshutils.SSHClienter, error) { return m.MockClient, nil }
 
 func (m *MockSSHConfig) Close() error                             { return nil }
+
+func (m *MockSSHConfig) WaitForSSH(retries int, retryDelay time.Duration) error {
+	args := m.Called(retries, retryDelay)
+	return args.Error(0)
+}
 func (m *MockSSHConfig) SetSSHClient(client sshutils.SSHClienter) {}
 
 func (m *MockSSHConfig) StartService(
