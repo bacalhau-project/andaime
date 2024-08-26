@@ -303,12 +303,12 @@ func TestPollAndUpdateResources(t *testing.T) {
 			machine := m.Deployment.Machines[machineName]
 			for _, resourceType := range requiredResources {
 				state := machine.GetResourceState(resourceType)
-				assert.Contains(t, []models.AzureResourceState{"", models.AzureResourceStateCreating, models.AzureResourceStateUpdating, models.AzureResourceStateSucceeded, models.AzureResourceStateFailed}, state)
+				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
 				
-				if resourceType == "PublicIP" && state == models.AzureResourceStateSucceeded {
+				if resourceType == "PublicIP" && state == "Succeeded" {
 					assert.NotEmpty(t, machine.PublicIP)
 				}
-				if resourceType == "NetworkInterface" && state == models.AzureResourceStateSucceeded {
+				if resourceType == "NetworkInterface" && state == "Succeeded" {
 					assert.NotEmpty(t, machine.PrivateIP)
 				}
 			}
@@ -320,20 +320,20 @@ func TestPollAndUpdateResources(t *testing.T) {
 }
 
 func generateMockResource(machineName, resourceType string) map[string]interface{} {
-	states := []models.AzureResourceState{models.AzureResourceStateCreating, models.AzureResourceStateUpdating, models.AzureResourceStateSucceeded, models.AzureResourceStateFailed}
+	states := []string{"Creating", "Updating", "Succeeded", "Failed"}
 	state := states[rand.Intn(len(states))]
 
 	resource := map[string]interface{}{
 		"name":              machineName,
 		"type":              fmt.Sprintf("Microsoft.Compute/%s", resourceType),
-		"provisioningState": string(state),
+		"provisioningState": state,
 	}
 
-	if resourceType == "PublicIP" && state == models.AzureResourceStateSucceeded {
+	if resourceType == "PublicIP" && state == "Succeeded" {
 		resource["properties"] = map[string]interface{}{
 			"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
 		}
-	} else if resourceType == "NetworkInterface" && state == models.AzureResourceStateSucceeded {
+	} else if resourceType == "NetworkInterface" && state == "Succeeded" {
 		resource["properties"] = map[string]interface{}{
 			"ipConfigurations": []interface{}{
 				map[string]interface{}{
