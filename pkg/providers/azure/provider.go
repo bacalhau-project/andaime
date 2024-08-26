@@ -7,15 +7,22 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
+
+type UpdateAction struct {
+	MachineName string
+	UpdateFunc  func(*models.Machine)
+}
 
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
@@ -42,6 +49,8 @@ type AzureProvider struct {
 	lastResourceQuery time.Time
 	cachedResources   []interface{}
 	goroutineCounter  int64
+	updateQueue       chan UpdateAction
+	updateMutex       sync.Mutex
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -105,12 +114,17 @@ func NewAzureProvider() (AzureProviderer, error) {
 		sshPort = 22 // Default SSH port
 	}
 
-	return &AzureProvider{
-		Client:  client,
-		Config:  config,
-		SSHUser: sshUser,
-		SSHPort: sshPort,
-	}, nil
+	provider := &AzureProvider{
+		Client:      client,
+		Config:      config,
+		SSHUser:     sshUser,
+		SSHPort:     sshPort,
+		updateQueue: make(chan UpdateAction, 100), // Buffer size of 100, adjust as needed
+	}
+	
+	go provider.startUpdateProcessor(context.Background())
+	
+	return provider, nil
 }
 
 func (p *AzureProvider) GetClient() interface{} {
@@ -143,6 +157,31 @@ func (p *AzureProvider) GetConfig() *viper.Viper {
 
 func (p *AzureProvider) SetConfig(config *viper.Viper) {
 	p.Config = config
+}
+
+func (p *AzureProvider) startUpdateProcessor(ctx context.Context) {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case action := <-p.updateQueue:
+				p.updateMutex.Lock()
+				m := display.GetGlobalModelFunc()
+				if machine, ok := m.Deployment.Machines[action.MachineName]; ok {
+					action.UpdateFunc(machine)
+				}
+				p.updateMutex.Unlock()
+			}
+		}
+	}()
+}
+
+func (p *AzureProvider) queueUpdate(machineName string, updateFunc func(*models.Machine)) {
+	p.updateQueue <- UpdateAction{
+		MachineName: machineName,
+		UpdateFunc:  updateFunc,
+	}
 }
 
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
