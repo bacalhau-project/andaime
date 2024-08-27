@@ -27,6 +27,27 @@ type UpdateAction struct {
 	)
 }
 
+func NewUpdateAction(
+	machineName string,
+	updateData UpdatePayload,
+) UpdateAction {
+	l := logger.Get()
+	updateFunc := func(machine *models.Machine, update UpdatePayload) {
+		if update.UpdateType == UpdateTypeResource {
+			machine.SetResourceState(update.ResourceType.ResourceString, update.ResourceState)
+		} else if update.UpdateType == UpdateTypeService {
+			machine.SetServiceState(update.ServiceType.Name, update.ServiceState)
+		} else {
+			l.Errorf("Invalid update type: %s", update.UpdateType)
+		}
+	}
+	return UpdateAction{
+		MachineName: machineName,
+		UpdateData:  updateData,
+		UpdateFunc:  updateFunc,
+	}
+}
+
 type UpdatePayload struct {
 	UpdateType    UpdateType
 	ServiceType   models.ServiceType

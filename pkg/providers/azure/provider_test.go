@@ -34,19 +34,24 @@ func setupTestDisplayModel() *display.DisplayModel {
 	}
 }
 
+var updateTestDisplayModel *display.DisplayModel
+var deployARMTemplateTestDisplayModel *display.DisplayModel
+
 func setupUpdateTest(t *testing.T) {
 	t.Helper()
+	updateTestDisplayModel = setupTestDisplayModel()
 	originalGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
-		return setupTestDisplayModel()
+		return updateTestDisplayModel
 	}
 }
 
 func setupDeployARMTemplateTest(t *testing.T) {
 	t.Helper()
+	deployARMTemplateTestDisplayModel = setupTestDisplayModel()
 	originalGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
-		return setupTestDisplayModel()
+		return deployARMTemplateTestDisplayModel
 	}
 }
 
@@ -79,22 +84,22 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 		updateCalled := false
-		update := UpdateAction{
-			MachineName: machineName,
-			UpdateData: UpdatePayload{
+		update := NewUpdateAction(
+			machineName,
+			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
 				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
 				ResourceState: models.AzureResourceStateSucceeded,
 			},
-			UpdateFunc: func(m *models.Machine, data UpdatePayload) {
-				fmt.Printf("Update called with data: %v\n", data)
+		)
+		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+			fmt.Printf("Update called with data: %v\n", data)
 
-				updateCalled = true
-				assert.Equal(t, machineName, m.Name)
-				assert.Equal(t, UpdateTypeResource, data.UpdateType)
-				assert.Equal(t, "testResource", data.ResourceType.ResourceString)
-				assert.Equal(t, models.AzureResourceStateSucceeded, data.ResourceState)
-			},
+			updateCalled = true
+			assert.Equal(t, machineName, m.Name)
+			assert.Equal(t, UpdateTypeResource, data.UpdateType)
+			assert.Equal(t, "testResource", data.ResourceType.ResourceString)
+			assert.Equal(t, models.AzureResourceStateSucceeded, data.ResourceState)
 		}
 
 		provider.processUpdate(update)
@@ -110,11 +115,16 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := UpdateAction{
-			MachineName: "testMachine",
-			UpdateFunc: func(m *models.Machine, data UpdatePayload) {
-				t.Error("Update function should not have been called")
+		update := NewUpdateAction(
+			"testMachine",
+			UpdatePayload{
+				UpdateType:    UpdateTypeResource,
+				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.AzureResourceStateSucceeded,
 			},
+		)
+		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+			t.Error("Update function should not have been called")
 		}
 
 		provider.processUpdate(update)
@@ -129,11 +139,16 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := UpdateAction{
-			MachineName: "testMachine",
-			UpdateFunc: func(m *models.Machine, data UpdatePayload) {
-				t.Error("Update function should not have been called")
+		update := NewUpdateAction(
+			"testMachine",
+			UpdatePayload{
+				UpdateType:    UpdateTypeResource,
+				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.AzureResourceStateSucceeded,
 			},
+		)
+		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+			t.Error("Update function should not have been called")
 		}
 
 		provider.processUpdate(update)
@@ -142,11 +157,16 @@ func TestProcessUpdate(t *testing.T) {
 	t.Run("NonExistentMachine", func(t *testing.T) {
 		provider := &AzureProvider{}
 
-		update := UpdateAction{
-			MachineName: "nonExistentMachine",
-			UpdateFunc: func(m *models.Machine, data UpdatePayload) {
-				t.Error("Update function should not have been called")
+		update := NewUpdateAction(
+			"nonExistentMachine",
+			UpdatePayload{
+				UpdateType:    UpdateTypeResource,
+				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.AzureResourceStateSucceeded,
 			},
+		)
+		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+			t.Error("Update function should not have been called")
 		}
 
 		provider.processUpdate(update)
@@ -168,10 +188,15 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := UpdateAction{
-			MachineName: machineName,
-			UpdateFunc:  nil,
-		}
+		update := NewUpdateAction(
+			machineName,
+			UpdatePayload{
+				UpdateType:    UpdateTypeResource,
+				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.AzureResourceStateSucceeded,
+			},
+		)
+		update.UpdateFunc = nil
 
 		provider.processUpdate(update)
 	})
@@ -503,14 +528,14 @@ func TestPollAndUpdateResources(t *testing.T) {
 							state,
 						)
 						select {
-						case provider.updateQueue <- UpdateAction{
-							MachineName: machine,
-							UpdateData: UpdatePayload{
+						case provider.updateQueue <- NewUpdateAction(
+							machine,
+							UpdatePayload{
 								UpdateType:    UpdateTypeResource,
 								ResourceType:  resourceType,
 								ResourceState: state,
 							},
-						}:
+						):
 							atomic.AddInt32(&updatesSent, 1)
 						case <-ctx.Done():
 							t.Logf(
@@ -717,21 +742,19 @@ func TestRandomServiceUpdates(t *testing.T) {
 			}
 			for i := 0; i < 100; i++ { // Increase to 100 updates per machine
 				service := allServices[rng.Intn(len(allServices))]
-				state := serviceStates[service.Name]
 				newState := models.ServiceState(
 					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
 				) // Exclude NotStarted state
-				serviceStates[service.Name] = newState
 
 				select {
-				case provider.updateQueue <- UpdateAction{
-					MachineName: machine,
-					UpdateData: UpdatePayload{
+				case provider.updateQueue <- NewUpdateAction(
+					machine,
+					UpdatePayload{
 						UpdateType:   UpdateTypeService,
 						ServiceType:  service,
-						ServiceState: state,
+						ServiceState: newState,
 					},
-				}:
+				):
 					atomic.AddInt32(&updatesSent, 1)
 				case <-ctx.Done():
 					log(
