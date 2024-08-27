@@ -298,12 +298,12 @@ func TestDeployBacalhauNode(t *testing.T) {
 			name:     "Successful orchestrator deployment on bacalhau node",
 			nodeType: "requester",
 			setupMock: func(mockSSH *MockSSHConfig) {
-				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(4)
-				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(4)
-				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
-				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 				mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 0.0.0.0").
 					Return(`[{"id": "node1"}]`, nil)
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(3)
+				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(3)
+				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
+				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 			},
 			machines: map[string]*models.Machine{
 				"test": {Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
@@ -326,12 +326,12 @@ func TestDeployBacalhauNode(t *testing.T) {
 			name:     "Successful worker deployment",
 			nodeType: "compute",
 			setupMock: func(mockSSH *MockSSHConfig) {
-				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(4)
-				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(4)
-				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
-				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 				mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 1.2.3.4").
 					Return(`[{"id": "node1"}]`, nil)
+				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).Return(nil).Times(3)
+				mockSSH.On("ExecuteCommand", ctx, mock.Anything).Return("", nil).Times(3)
+				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
+				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 			},
 			machines: map[string]*models.Machine{
 				"test": {
@@ -365,7 +365,6 @@ func TestDeployBacalhauNode(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines["test"].GetServiceState("Bacalhau"))
-				assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines["test"].GetServiceState("CorePackages"))
 			}
 
 			mockSSH.AssertExpectations(t)

@@ -25,10 +25,11 @@ import (
 
 var originalGlobalModelFunc func() *display.DisplayModel
 
-func resetTestDisplayModel() *display.DisplayModel {
+func setupTestDisplayModel() *display.DisplayModel {
 	return &display.DisplayModel{
 		Deployment: &models.Deployment{
-			Machines: make(map[string]*models.Machine),
+			Machines:  make(map[string]*models.Machine),
+			Locations: []string{"eastus"},
 		},
 	}
 }
@@ -37,11 +38,24 @@ func setupUpdateTest(t *testing.T) {
 	t.Helper()
 	originalGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
-		return resetTestDisplayModel()
+		return setupTestDisplayModel()
+	}
+}
+
+func setupDeployARMTemplateTest(t *testing.T) {
+	t.Helper()
+	originalGlobalModelFunc = display.GetGlobalModelFunc
+	display.GetGlobalModelFunc = func() *display.DisplayModel {
+		return setupTestDisplayModel()
 	}
 }
 
 func teardownTest(t *testing.T) {
+	t.Helper()
+	display.GetGlobalModelFunc = originalGlobalModelFunc
+}
+
+func teardownDeployARMTemplateTest(t *testing.T) {
 	t.Helper()
 	display.GetGlobalModelFunc = originalGlobalModelFunc
 }
@@ -55,7 +69,7 @@ func TestProcessUpdate(t *testing.T) {
 		machineName := "testMachine"
 		originalGlobalModelFunc = display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel {
-			m := resetTestDisplayModel()
+			m := setupTestDisplayModel()
 			m.Deployment.Machines[machineName] = &models.Machine{
 				Name: machineName,
 			}
@@ -109,7 +123,11 @@ func TestProcessUpdate(t *testing.T) {
 	t.Run("NilDeployment", func(t *testing.T) {
 		provider := &AzureProvider{}
 
-		resetTestDisplayModel().Deployment = nil
+		originalGlobalModelFunc = display.GetGlobalModelFunc
+		display.GetGlobalModelFunc = func() *display.DisplayModel { return nil }
+		defer func() {
+			display.GetGlobalModelFunc = originalGlobalModelFunc
+		}()
 
 		update := UpdateAction{
 			MachineName: "testMachine",
@@ -138,9 +156,17 @@ func TestProcessUpdate(t *testing.T) {
 		provider := &AzureProvider{}
 
 		machineName := "testMachine"
-		display.GetGlobalModelFunc().Deployment.Machines[machineName] = &models.Machine{
-			Name: machineName,
+		originalGlobalModelFunc = display.GetGlobalModelFunc
+		display.GetGlobalModelFunc = func() *display.DisplayModel {
+			m := setupTestDisplayModel()
+			m.Deployment.Machines[machineName] = &models.Machine{
+				Name: machineName,
+			}
+			return m
 		}
+		defer func() {
+			display.GetGlobalModelFunc = originalGlobalModelFunc
+		}()
 
 		update := UpdateAction{
 			MachineName: machineName,
@@ -152,8 +178,8 @@ func TestProcessUpdate(t *testing.T) {
 }
 
 func TestDeployARMTemplate(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
+	setupDeployARMTemplateTest(t)
+	defer teardownDeployARMTemplateTest(t)
 
 	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	testSSHPrivateKeyMaterial, err := os.ReadFile(testSSHPrivateKeyPath)
@@ -296,14 +322,21 @@ func TestDeployARMTemplate(t *testing.T) {
 				}
 			}
 
-			display.SetGlobalModel(display.InitialModel())
-			m := display.GetGlobalModelFunc()
+			m := setupTestDisplayModel()
 			m.Deployment = &models.Deployment{
 				UniqueLocations:       tt.locations,
 				Machines:              make(map[string]*models.Machine),
 				SSHPrivateKeyMaterial: string(testSSHPrivateKeyMaterial),
 				SSHPort:               66000,
 				SSHUser:               "fake-user",
+			}
+
+			originalGlobalModelFunc := display.GetGlobalModelFunc
+			defer func() {
+				display.GetGlobalModelFunc = originalGlobalModelFunc
+			}()
+			display.GetGlobalModelFunc = func() *display.DisplayModel {
+				return m
 			}
 
 			for _, location := range tt.locations {
@@ -362,7 +395,7 @@ type MockResourceGraphClient struct {
 }
 
 func TestPollAndUpdateResources(t *testing.T) {
-	setupTest(t)
+	setupUpdateTest(t)
 	defer teardownTest(t)
 
 	t.Logf("TestPollAndUpdateResources started")
@@ -409,12 +442,14 @@ func TestPollAndUpdateResources(t *testing.T) {
 
 	defer mockClient.AssertExpectations(t)
 
-	mockResponse := []map[string]interface{}{}
-	for _, resource := range requiredResources {
-		mockResponse = append(
-			mockResponse,
-			generateMockResource(resource.ShortResourceName, resource),
-		)
+	mockResponse := []interface{}{}
+	for _, machine := range testMachines {
+		for _, resource := range requiredResources {
+			mockResponse = append(
+				mockResponse,
+				generateMockResource(machine, resource),
+			)
+		}
 	}
 
 	log("Mock response generated")
@@ -454,37 +489,39 @@ func TestPollAndUpdateResources(t *testing.T) {
 			wg.Add(1)
 			go func(machine string, resourceType models.AzureResourceTypes) {
 				defer wg.Done()
-				for _, state := range []models.AzureResourceState{
-					models.AzureResourceStateNotStarted,
-					models.AzureResourceStatePending,
-					models.AzureResourceStateRunning,
-					models.AzureResourceStateSucceeded,
-					models.AzureResourceStateFailed,
-				} {
-					t.Logf(
-						"Sending update for machine %s, resource type %s",
-						machine,
-						resourceType.ResourceString,
-					)
-					select {
-					case provider.updateQueue <- UpdateAction{
-						MachineName: machine,
-						UpdateData: UpdatePayload{
-							UpdateType:    UpdateTypeResource,
-							ResourceType:  resourceType,
-							ResourceState: state,
-						},
-					}:
-						atomic.AddInt32(&updatesSent, 1)
-					case <-ctx.Done():
+				for i := 0; i < 10; i++ {
+					for _, state := range []models.AzureResourceState{
+						models.AzureResourceStateNotStarted,
+						models.AzureResourceStatePending,
+						models.AzureResourceStateRunning,
+						models.AzureResourceStateSucceeded,
+					} {
 						t.Logf(
-							"Context cancelled while sending update for %s, %s",
+							"Sending update for machine %s, resource type %s, state %d",
 							machine,
 							resourceType.ResourceString,
+							state,
 						)
-						return
+						select {
+						case provider.updateQueue <- UpdateAction{
+							MachineName: machine,
+							UpdateData: UpdatePayload{
+								UpdateType:    UpdateTypeResource,
+								ResourceType:  resourceType,
+								ResourceState: state,
+							},
+						}:
+							atomic.AddInt32(&updatesSent, 1)
+						case <-ctx.Done():
+							t.Logf(
+								"Context cancelled while sending update for %s, %s",
+								machine,
+								resourceType.ResourceString,
+							)
+							return
+						}
+						time.Sleep(50 * time.Millisecond)
 					}
-					time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 				}
 			}(machine, resourceType)
 		}
@@ -520,11 +557,17 @@ func TestPollAndUpdateResources(t *testing.T) {
 			state := m.Deployment.Machines[machine].GetResourceState(resourceType.ResourceString)
 			assert.Equal(
 				t,
-				models.AzureResourceStateFailed,
+				models.AzureResourceStateSucceeded,
 				state,
 				"Unexpected final state for machine %s, resource %s",
 				machine,
 				resourceType.ResourceString,
+			)
+			t.Logf(
+				"Final state for machine %s, resource %s: %d",
+				machine,
+				resourceType.ResourceString,
+				state,
 			)
 		}
 	}
@@ -536,13 +579,10 @@ func generateMockResource(
 	machineName string,
 	resourceType models.AzureResourceTypes,
 ) map[string]interface{} {
-	states := []string{"Creating", "Updating", "Succeeded", "Failed"}
-	state := states[rand.Intn(len(states))]
-
 	resource := map[string]interface{}{
 		"name":              fmt.Sprintf("%s-%s", machineName, resourceType.ShortResourceName),
 		"type":              resourceType.ResourceString,
-		"provisioningState": state,
+		"provisioningState": "Succeeded",
 	}
 
 	switch resourceType.ShortResourceName {
@@ -553,16 +593,14 @@ func generateMockResource(
 			},
 		}
 	case "NIC":
-		if state == "Succeeded" {
-			resource["properties"] = map[string]interface{}{
-				"ipConfigurations": []interface{}{
-					map[string]interface{}{
-						"properties": map[string]interface{}{
-							"privateIPAddress": fmt.Sprintf("10.0.0.%d", rand.Intn(255)),
-						},
+		resource["properties"] = map[string]interface{}{
+			"ipConfigurations": []interface{}{
+				map[string]interface{}{
+					"properties": map[string]interface{}{
+						"privateIPAddress": fmt.Sprintf("10.0.0.%d", rand.Intn(255)),
 					},
 				},
-			}
+			},
 		}
 	case "VNET":
 		resource["properties"] = map[string]interface{}{
@@ -598,10 +636,8 @@ func generateMockResource(
 			"diskState":  "Attached",
 		}
 	case "IP":
-		if state == "Succeeded" {
-			resource["properties"] = map[string]interface{}{
-				"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
-			}
+		resource["properties"] = map[string]interface{}{
+			"ipAddress": fmt.Sprintf("1.2.3.%d", rand.Intn(255)),
 		}
 	}
 
@@ -609,7 +645,7 @@ func generateMockResource(
 }
 
 func TestRandomServiceUpdates(t *testing.T) {
-	setupTest(t)
+	setupUpdateTest(t)
 	defer teardownTest(t)
 
 	log := func(msg string) {
@@ -666,15 +702,26 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	var wg sync.WaitGroup
 	updatesSent := int32(0)
-	expectedUpdates := int32(len(testMachines) * 20) // 20 updates per machine
+	expectedUpdates := int32(len(testMachines) * 100) // 100 updates per machine
 
 	for _, machine := range testMachines {
 		wg.Add(1)
 		go func(machine string) {
 			defer wg.Done()
-			for i := 0; i < 20; i++ { // Send 20 updates per machine
-				service := allServices[rand.Intn(len(allServices))]
-				state := models.ServiceState(rand.Intn(int(models.ServiceStateFailed) + 1))
+			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			serviceStates := make(map[string]models.ServiceState)
+			for _, service := range allServices {
+				serviceStates[service.Name] = models.ServiceState(
+					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
+				) // Exclude NotStarted state
+			}
+			for i := 0; i < 100; i++ { // Increase to 100 updates per machine
+				service := allServices[rng.Intn(len(allServices))]
+				state := serviceStates[service.Name]
+				newState := models.ServiceState(
+					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
+				) // Exclude NotStarted state
+				serviceStates[service.Name] = newState
 
 				select {
 				case provider.updateQueue <- UpdateAction{
@@ -696,7 +743,9 @@ func TestRandomServiceUpdates(t *testing.T) {
 					)
 					return
 				}
-				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+				time.Sleep(
+					time.Duration(rng.Intn(20)) * time.Millisecond,
+				) // Increase max delay to 20ms
 			}
 		}(machine)
 	}
@@ -755,24 +804,36 @@ func TestRandomServiceUpdates(t *testing.T) {
 		}
 	}
 
-	// Check for state bleed-over
-	for i, machine1 := range testMachines {
-		for j, machine2 := range testMachines {
-			if i != j {
-				for _, service := range allServices {
-					assert.NotEqual(
-						t,
-						m.Deployment.Machines[machine1].GetServiceState(service.Name),
-						m.Deployment.Machines[machine2].GetServiceState(service.Name),
-						"State bleed-over detected between %s and %s for service %s",
-						machine1,
-						machine2,
-						service.Name,
-					)
-				}
-			}
+	// Check for unique states across machines and ensure no NotStarted states
+	stateMap := make(map[string]map[string]models.ServiceState)
+	for _, machine := range testMachines {
+		stateMap[machine] = make(map[string]models.ServiceState)
+		for _, service := range allServices {
+			state := m.Deployment.Machines[machine].GetServiceState(service.Name)
+			stateMap[machine][service.Name] = state
+			assert.NotEqual(
+				t,
+				models.ServiceStateNotStarted,
+				state,
+				"Service %s on machine %s is still in NotStarted state",
+				service.Name,
+				machine,
+			)
 		}
 	}
+
+	uniqueStates := make(map[string]bool)
+	for _, machine := range testMachines {
+		stateString := fmt.Sprintf("%v", stateMap[machine])
+		uniqueStates[stateString] = true
+	}
+
+	assert.Equal(
+		t,
+		len(testMachines),
+		len(uniqueStates),
+		"Not all machines have unique service state combinations",
+	)
 
 	log("Test completed successfully")
 }

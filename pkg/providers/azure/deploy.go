@@ -369,6 +369,15 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
+	if len(m.Deployment.Locations) >= 0 {
+		// Merge the Locations with the UniqueLocations
+		m.Deployment.UniqueLocations = append(
+			m.Deployment.UniqueLocations,
+			m.Deployment.Locations...)
+		// Remove duplicates
+		m.Deployment.UniqueLocations = utils.RemoveDuplicates(m.Deployment.UniqueLocations)
+	}
+
 	if len(m.Deployment.UniqueLocations) == 0 {
 		return fmt.Errorf("no locations provided")
 	}
