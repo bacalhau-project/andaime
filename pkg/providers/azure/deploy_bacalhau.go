@@ -3,7 +3,6 @@ package azure
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"text/template"
@@ -29,10 +28,9 @@ func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
 func (p *AzureProvider) DeployBacalhauWorker(
 	ctx context.Context,
 	machineName string,
-	workerErrChan chan error,
 ) error {
 	deployer := NewBacalhauDeployer()
-	return deployer.DeployWorker(ctx, machineName, workerErrChan)
+	return deployer.DeployWorker(ctx, machineName)
 }
 
 func (bd *BacalhauDeployer) DeployOrchestrator(ctx context.Context) error {
@@ -77,7 +75,6 @@ func (bd *BacalhauDeployer) DeployOrchestrator(ctx context.Context) error {
 func (bd *BacalhauDeployer) DeployWorker(
 	ctx context.Context,
 	machineName string,
-	workerErrChan chan error,
 ) error {
 	m := display.GetGlobalModelFunc()
 
@@ -131,27 +128,27 @@ func (bd *BacalhauDeployer) deployBacalhauNode(
 	machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
 
 	if nodeType == "compute" && m.Deployment.OrchestratorIP == "" {
-		return bd.handleDeploymentError(machine, fmt.Errorf("no orchestrator IP found"))
+		return bd.handleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
 	}
 
 	if err := bd.setupNodeConfigMetadata(ctx, machine, sshConfig, nodeType); err != nil {
-		return bd.handleDeploymentError(machine, err)
+		return bd.handleDeploymentError(ctx, machine, err)
 	}
 
 	if err := bd.installBacalhau(ctx, sshConfig); err != nil {
-		return bd.handleDeploymentError(machine, err)
+		return bd.handleDeploymentError(ctx, machine, err)
 	}
 
 	if err := bd.installBacalhauRunScript(ctx, sshConfig); err != nil {
-		return bd.handleDeploymentError(machine, err)
+		return bd.handleDeploymentError(ctx, machine, err)
 	}
 
 	if err := bd.setupBacalhauService(ctx, sshConfig); err != nil {
-		return bd.handleDeploymentError(machine, err)
+		return bd.handleDeploymentError(ctx, machine, err)
 	}
 
 	if err := bd.verifyBacalhauDeployment(ctx, sshConfig, machine.OrchestratorIP); err != nil {
-		return bd.handleDeploymentError(machine, err)
+		return bd.handleDeploymentError(ctx, machine, err)
 	}
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.Name)
@@ -311,10 +308,9 @@ func (bd *BacalhauDeployer) verifyBacalhauDeployment(
 		return fmt.Errorf("failed to list Bacalhau nodes: %w", err)
 	}
 
-	var nodes []map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &nodes); err != nil {
-		l.Errorf("Output is not valid JSON. Raw output: %s", out)
-		return fmt.Errorf("failed to unmarshal node list output: %w", err)
+	nodes, err := stripAndParseJSON(out)
+	if err != nil {
+		return fmt.Errorf("failed to strip and parse JSON: %w", err)
 	}
 
 	if len(nodes) == 0 {
@@ -330,7 +326,11 @@ func (bd *BacalhauDeployer) verifyBacalhauDeployment(
 	return nil
 }
 
-func (bd *BacalhauDeployer) handleDeploymentError(machine *models.Machine, err error) error {
+func (bd *BacalhauDeployer) handleDeploymentError(
+	_ context.Context,
+	machine *models.Machine,
+	err error,
+) error {
 	l := logger.Get()
 	machine.SetServiceState("Bacalhau", models.ServiceStateFailed)
 	l.Errorf("Failed to deploy Bacalhau on machine %s: %v", machine.Name, err)

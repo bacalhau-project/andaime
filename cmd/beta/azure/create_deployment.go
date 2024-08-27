@@ -101,10 +101,9 @@ func runDeployment(
 
 	updateOrchestratorIP(deployment)
 
-	workerErrChan := make(chan error)
 	for _, machine := range deployment.Machines {
 		if !machine.Orchestrator {
-			if err := p.DeployBacalhauWorker(ctx, machine.Name, workerErrChan); err != nil {
+			if err := p.DeployBacalhauWorker(ctx, machine.Name); err != nil {
 				return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
 			}
 		}
@@ -439,13 +438,7 @@ func createNewMachine(
 	privateKeyBytes []byte,
 	sshPort int,
 ) *models.Machine {
-	newMachine := &models.Machine{}
-	newMachine.ID = utils.CreateShortID()
-	newMachine.Name = fmt.Sprintf("%s-vm", newMachine.ID)
-	newMachine.StartTime = time.Now()
-	newMachine.Location = location
-	newMachine.VMSize = vmSize
-	newMachine.DiskSizeGB = diskSizeGB
+	newMachine := models.NewMachine(location, vmSize, diskSizeGB)
 
 	if err := newMachine.EnsureMachineServices(); err != nil {
 		logger.Get().Errorf("Failed to ensure machine services: %v", err)

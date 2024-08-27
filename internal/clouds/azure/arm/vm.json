@@ -101,6 +101,13 @@
       "metadata": {
         "description": "Security Type of the Virtual Machine."
       }
+    },
+    "allowedPorts": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "List of allowed ports"
+      }
     }
   },
   "variables": {
@@ -196,6 +203,45 @@
               "sourcePortRange": "*",
               "destinationAddressPrefix": "*",
               "destinationPortRange": "22"
+            }
+          },
+          {
+            "name": "Bacalhau-1234",
+            "properties": {
+              "priority": 1001,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "1234"
+            }
+          },
+          {
+            "name": "Bacalhau-1235",
+            "properties": {
+              "priority": 1002,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "1235"
+            }
+          },
+          {
+            "name": "Bacalhau-4222",
+            "properties": {
+              "priority": 1003,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "4222"
             }
           }
         ]

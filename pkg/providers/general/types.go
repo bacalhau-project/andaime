@@ -14,7 +14,5 @@ type Providerer interface {
 	SetConfig(config *viper.Viper)
 
 	DeployBacalhauOrchestrator(ctx context.Context) error
-	DeployBacalhauWorker(ctx context.Context,
-		machineName string,
-		workerErrChan chan error) error
+	DeployBacalhauWorker(ctx context.Context, machineName string) error
 }

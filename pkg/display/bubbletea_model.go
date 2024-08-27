@@ -496,7 +496,7 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 		return
 	}
 
-	if status.Name != "" && status.Type == models.AzureResourceTypeVM {
+	if status.Name != "" {
 		m.updateMachineStatus(status.Name, status)
 	}
 }

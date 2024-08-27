@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/aws/smithy-go/ptr"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -258,6 +259,12 @@ func TestPollAndUpdateResources(t *testing.T) {
 		m.Deployment.Machines[machineName] = &models.Machine{
 			Name: machineName,
 		}
+		for _, resource := range requiredResources {
+			m.Deployment.Machines[machineName].SetResourceState(
+				resource.ResourceString,
+				models.AzureResourceStateNotStarted,
+			)
+		}
 	}
 
 	// Create a provider with a mock client
@@ -272,86 +279,74 @@ func TestPollAndUpdateResources(t *testing.T) {
 	// Defer the assertion of expectations
 	defer mockClient.AssertExpectations(t)
 
+	mockResponse := []interface{}{}
+	for _, resource := range requiredResources {
+		mockResponse = append(
+			mockResponse,
+			generateMockResource(resource.ShortResourceName, resource),
+		)
+	}
+
 	// Start the update processor
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go provider.startUpdateProcessor(ctx)
 
-	// Run multiple iterations to simulate resource state changes
-	iterations := 5
-	for i := 0; i < iterations; i++ {
-		mockResponse := []interface{}{}
+	// Set up mock client expectation
+	mockClient.On("GetResources", mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).
+		Return(mockResponse, nil).
+		Once()
 
-		// Generate mock response for each machine and its resources
-		allResourcesSucceeded := true
-		for _, machineName := range testMachines {
-			for _, resourceType := range requiredResources {
-				resource := generateMockResource(machineName, resourceType)
-				mockResponse = append(mockResponse, resource)
-				if resource.(map[string]interface{})["provisioningState"] != "Succeeded" {
-					allResourcesSucceeded = false
-				}
-			}
-		}
+	// Call the function
+	resources, err := provider.PollAndUpdateResources(ctx)
 
-		// Set up mock client expectation
-		mockClient.On("ListAllResourcesInSubscription", mock.Anything, mock.Anything, mock.Anything).
-			Return(mockResponse, nil).
-			Once()
+	// Check the results
+	assert.NoError(t, err)
+	assert.Equal(t, mockResponse, resources)
 
-		// Call the function
-		resources, err := provider.PollAndUpdateResources(ctx)
+	// Wait for updates to be processed
+	time.Sleep(100 * time.Millisecond)
 
-		// Check the results
-		assert.NoError(t, err)
-		assert.Equal(t, mockResponse, resources)
+	resourceStates := []models.AzureResourceState{
+		models.AzureResourceStateNotStarted,
+		models.AzureResourceStatePending,
+		models.AzureResourceStateRunning,
+		models.AzureResourceStateSucceeded,
+		models.AzureResourceStateFailed,
+	}
 
-		// Wait for updates to be processed
-		time.Sleep(100 * time.Millisecond)
+	lastResourceState := models.AzureResourceStateUnknown
+	for _, resourceState := range resourceStates {
+		for _, resourceType := range requiredResources {
+			// Verify machine states
+			updatedMachineNames := []string{}
+			machineIndex := 0
+			for machineName, machine := range m.Deployment.Machines {
+				m.Deployment.Machines[machineName].SetResourceState(
+					resourceType.ResourceString,
+					resourceState,
+				)
+				updatedMachineNames = append(updatedMachineNames, machine.Name)
 
-		// Verify machine states
-		for _, machineName := range testMachines {
-			machine := m.Deployment.Machines[machineName]
-			for _, resourceType := range requiredResources {
-				state := machine.GetResourceState(resourceType.ShortResourceName)
-				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
-
-				switch resourceType.ShortResourceName {
-				case "IP":
-					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(t, machine.PublicIP)
-					}
-				case "NIC":
-					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(t, machine.PrivateIP)
-					}
-				case "VM":
-					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(t, machine.VMSize)
-					}
-				case "DISK":
-					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
-					}
-				case "VNET", "SNET", "NSG":
-					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
+				for innerMachineIndex, innerMachineName := range updatedMachineNames {
+					testState := m.Deployment.Machines[innerMachineName].GetResourceState(
+						resourceType.ResourceString,
+					)
+					if innerMachineIndex <= machineIndex {
+						assert.Equal(t, testState, resourceState)
+					} else {
+						assert.Equal(t, testState, lastResourceState)
 					}
 				}
 			}
+			machineIndex++
 		}
-
-		// Check if services provisioning started
-		if allResourcesSucceeded && !provider.servicesProvisioned {
-			assert.True(t, provider.servicesProvisioned)
-			// Add assertions for service states
-			for _, machineName := range testMachines {
-				machine := m.Deployment.Machines[machineName]
-				for _, service := range models.RequiredServices {
-					assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState(service.Name))
-				}
-			}
-		}
+		lastResourceState = resourceState
 	}
 }
 

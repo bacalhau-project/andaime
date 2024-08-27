@@ -152,9 +152,6 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 	}
 	m.Deployment.OrchestratorIP = orchestrator.PublicIP
 
-	// Provision Bacalhau workers
-	workerErrChan := make(chan error, len(m.Deployment.Machines))
-
 	var eg errgroup.Group
 	eg.SetLimit(10) //nolint:gomnd
 
@@ -164,8 +161,8 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 		}
 		internalWorker := machine
 		eg.Go(func() error {
-			if err := bd.DeployWorker(ctx, internalWorker.Name, workerErrChan); err != nil {
-				workerErrChan <- fmt.Errorf("failed to provision Bacalhau worker %s: %v",
+			if err := bd.DeployWorker(ctx, internalWorker.Name); err != nil {
+				return fmt.Errorf("failed to provision Bacalhau worker %s: %v",
 					internalWorker.Name,
 					err,
 				)
@@ -174,21 +171,8 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 		})
 	}
 
-	// Wait for either all worker goroutines to finish or an error to occur
-	workerDone := make(chan struct{})
-	go func() {
-		err := eg.Wait()
-		if err != nil {
-			workerErrChan <- err
-		}
-		close(workerDone)
-	}()
-
-	select {
-	case err := <-workerErrChan:
+	if err := eg.Wait(); err != nil {
 		return err
-	case <-workerDone:
-		// All worker provisioning completed successfully
 	}
 
 	return nil
@@ -592,6 +576,7 @@ func (p *AzureProvider) prepareDeploymentParams(
 		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.Location),
 		"location":                 machine.Location,
 		"securityType":             "TrustedLaunch",
+		"allowedPorts":             m.Deployment.AllowedPorts,
 	}
 }
 

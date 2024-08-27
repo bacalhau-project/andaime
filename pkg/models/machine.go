@@ -10,6 +10,7 @@ import (
 	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
 type Machine struct {
@@ -48,6 +49,32 @@ type Machine struct {
 
 	stateMutex sync.RWMutex
 	done       bool
+}
+
+func NewMachine(
+	location string,
+	vmSize string,
+	diskSizeGB int32,
+) *Machine {
+	newID := utils.CreateShortID()
+	returnMachine := &Machine{
+		ID:         newID,
+		Name:       fmt.Sprintf("%s-vm", newID),
+		StartTime:  time.Now(),
+		Location:   location,
+		VMSize:     vmSize,
+		DiskSizeGB: diskSizeGB,
+	}
+
+	for _, service := range RequiredServices {
+		returnMachine.SetServiceState(service.Name, ServiceStateNotStarted)
+	}
+
+	for _, resource := range RequiredAzureResources {
+		returnMachine.SetResource(resource.GetResourceLowerString(), AzureResourceStateNotStarted)
+	}
+
+	return returnMachine
 }
 
 // Logging methods
@@ -160,9 +187,19 @@ func (m *Machine) GetResourceState(resourceName string) AzureResourceState {
 func (m *Machine) SetResourceState(resourceName string, state AzureResourceState) {
 	m.stateMutex.Lock()
 	defer m.stateMutex.Unlock()
-	if resource, ok := m.machineResources[resourceName]; ok {
+	if m.machineResources == nil {
+		m.machineResources = make(map[string]MachineResource)
+	}
+
+	resourceNameLower := strings.ToLower(resourceName)
+	if resource, ok := m.machineResources[resourceNameLower]; ok {
 		resource.ResourceState = state
-		m.machineResources[resourceName] = resource
+		m.machineResources[resourceNameLower] = resource
+	} else {
+		m.machineResources[resourceNameLower] = MachineResource{
+			ResourceName:  resourceName,
+			ResourceState: state,
+		}
 	}
 }
 
