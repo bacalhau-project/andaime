@@ -251,6 +251,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 	m.Deployment = &models.Deployment{
 		Name:     "test-deployment",
 		Machines: make(map[string]*models.Machine),
+		Tags:     map[string]*string{"test": ptr.String("value")},
 	}
 
 	for _, machineName := range testMachines {
@@ -260,11 +261,16 @@ func TestPollAndUpdateResources(t *testing.T) {
 	}
 
 	// Create a provider with a mock client
+	mockClient := new(MockAzureClient)
 	provider := &AzureProvider{
-		Client:      &MockAzureClient{},
-		Config:      mockConfig,
-		updateQueue: make(chan UpdateAction, 100),
+		Client:              mockClient,
+		Config:              mockConfig,
+		updateQueue:         make(chan UpdateAction, 100),
+		servicesProvisioned: false,
 	}
+
+	// Defer the assertion of expectations
+	defer mockClient.AssertExpectations(t)
 
 	// Start the update processor
 	ctx, cancel := context.WithCancel(context.Background())
@@ -277,15 +283,19 @@ func TestPollAndUpdateResources(t *testing.T) {
 		mockResponse := []interface{}{}
 
 		// Generate mock response for each machine and its resources
+		allResourcesSucceeded := true
 		for _, machineName := range testMachines {
 			for _, resourceType := range requiredResources {
 				resource := generateMockResource(machineName, resourceType)
 				mockResponse = append(mockResponse, resource)
+				if resource.(map[string]interface{})["provisioningState"] != "Succeeded" {
+					allResourcesSucceeded = false
+				}
 			}
 		}
 
 		// Set up mock client expectation
-		provider.Client.(*MockAzureClient).On("GetResources", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mockClient.On("ListAllResourcesInSubscription", mock.Anything, mock.Anything, mock.Anything).
 			Return(mockResponse, nil).
 			Once()
 
@@ -304,11 +314,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 			machine := m.Deployment.Machines[machineName]
 			for _, resourceType := range requiredResources {
 				state := machine.GetResourceState(resourceType.ShortResourceName)
-				assert.Contains(
-					t,
-					[]string{"", "Creating", "Updating", "Succeeded", "Failed"},
-					state,
-				)
+				assert.Contains(t, []string{"", "Creating", "Updating", "Succeeded", "Failed"}, state)
 
 				switch resourceType.ShortResourceName {
 				case "IP":
@@ -325,25 +331,28 @@ func TestPollAndUpdateResources(t *testing.T) {
 					}
 				case "DISK":
 					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(
-							t,
-							machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue,
-						)
+						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
 					}
 				case "VNET", "SNET", "NSG":
 					if state == models.AzureResourceStateSucceeded {
-						assert.NotEmpty(
-							t,
-							machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue,
-						)
+						assert.NotEmpty(t, machine.GetMachineResources()[resourceType.ShortResourceName].ResourceValue)
 					}
 				}
 			}
 		}
-	}
 
-	// Verify that the mock expectations were met
-	provider.Client.(*MockAzureClient).AssertExpectations(t)
+		// Check if services provisioning started
+		if allResourcesSucceeded && !provider.servicesProvisioned {
+			assert.True(t, provider.servicesProvisioned)
+			// Add assertions for service states
+			for _, machineName := range testMachines {
+				machine := m.Deployment.Machines[machineName]
+				for _, service := range models.RequiredServices {
+					assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState(service.Name))
+				}
+			}
+		}
+	}
 }
 
 func generateMockResource(
