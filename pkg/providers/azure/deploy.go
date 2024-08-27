@@ -203,12 +203,15 @@ func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string)
 	)
 
 	m.Deployment.Machines[machineName].SetServiceState("SSH", models.ServiceStateUpdating)
-	sshErr := sshConfig.WaitForSSH(3, time.Second*10)
+	sshErr := sshConfig.WaitForSSH(3, time.Second*10) //nolint:gomnd
 	if sshErr != nil {
-		m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
+		err := m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
 			machine.SetServiceState("SSH", models.ServiceStateFailed)
 			machine.StatusMessage = "Permanently failed deploying SSH"
 		})
+		if err != nil {
+			return err
+		}
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machineName,
@@ -764,7 +767,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	err = os.WriteFile(
 		"status.txt",
 		resourceBytes,
-		0600,
+		0600, //nolint:gomnd
 	)
 
 	var statusUpdates []*models.DisplayStatus
@@ -998,6 +1001,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 
 func parseResourceID(resourceID string) (string, error) {
 	parts := strings.Split(resourceID, "/")
+	//nolint:gomnd
 	if len(parts) < 9 {
 		return "", fmt.Errorf("invalid resource ID format")
 	}

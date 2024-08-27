@@ -21,8 +21,33 @@ import (
 
 type UpdateAction struct {
 	MachineName string
-	UpdateFunc  func(*models.Machine)
+	UpdateData  UpdatePayload
+	UpdateFunc  func(*models.Machine,
+		UpdatePayload,
+	)
 }
+
+type UpdatePayload struct {
+	UpdateType    UpdateType
+	ServiceType   models.ServiceType
+	ServiceState  models.ServiceState
+	ResourceType  models.AzureResourceTypes
+	ResourceState models.AzureResourceState
+}
+
+func (u *UpdatePayload) String() string {
+	if u.UpdateType == UpdateTypeResource {
+		return fmt.Sprintf("%s: %s", u.UpdateType, u.ResourceType.ResourceString)
+	}
+	return fmt.Sprintf("%s: %s", u.UpdateType, u.ServiceType.Name)
+}
+
+type UpdateType string
+
+const (
+	UpdateTypeResource UpdateType = "resource"
+	UpdateTypeService  UpdateType = "service"
+)
 
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
@@ -51,8 +76,10 @@ type AzureProvider struct {
 	goroutineCounter    int64
 	updateQueue         chan UpdateAction
 	updateMutex         sync.Mutex
-	servicesProvisioned bool
-	serviceMutex        sync.Mutex
+	updateProcessorDone chan struct{}
+	serviceMutex        sync.Mutex //nolint:unused
+	servicesProvisioned bool       //nolint:unused
+	log                 func(string)
 }
 
 var AzureProviderFunc = NewAzureProvider
@@ -123,9 +150,9 @@ func NewAzureProvider() (AzureProviderer, error) {
 		SSHPort:     sshPort,
 		updateQueue: make(chan UpdateAction, 100), // Buffer size of 100, adjust as needed
 	}
-	
+
 	go provider.startUpdateProcessor(context.Background())
-	
+
 	return provider, nil
 }
 
@@ -162,28 +189,76 @@ func (p *AzureProvider) SetConfig(config *viper.Viper) {
 }
 
 func (p *AzureProvider) startUpdateProcessor(ctx context.Context) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
+	l := logger.Get()
+	if p == nil {
+		l.Debug("startUpdateProcessor: Provider is nil")
+		return
+	}
+	p.updateProcessorDone = make(chan struct{})
+	l.Debug("startUpdateProcessor: Started")
+	defer close(p.updateProcessorDone)
+	defer l.Debug("startUpdateProcessor: Finished")
+	for {
+		select {
+		case <-ctx.Done():
+			l.Debug("startUpdateProcessor: Context cancelled")
+			return
+		case update, ok := <-p.updateQueue:
+			if !ok {
+				l.Debug("startUpdateProcessor: Update queue closed")
 				return
-			case action := <-p.updateQueue:
-				p.updateMutex.Lock()
-				m := display.GetGlobalModelFunc()
-				if machine, ok := m.Deployment.Machines[action.MachineName]; ok {
-					action.UpdateFunc(machine)
-				}
-				p.updateMutex.Unlock()
 			}
+			l.Debug(
+				fmt.Sprintf(
+					"startUpdateProcessor: Processing update for %s, %s",
+					update.MachineName,
+					update.UpdateData.ResourceType,
+				),
+			)
+			p.processUpdate(update)
 		}
-	}()
+	}
 }
 
-func (p *AzureProvider) queueUpdate(machineName string, updateFunc func(*models.Machine)) {
+func (p *AzureProvider) queueUpdate(machineName string,
+	resourceType models.AzureResourceTypes,
+	resourceState models.AzureResourceState,
+	updateFunc func(*models.Machine,
+		UpdatePayload)) {
 	p.updateQueue <- UpdateAction{
 		MachineName: machineName,
-		UpdateFunc:  updateFunc,
+		UpdateData: UpdatePayload{
+			UpdateType:    UpdateTypeResource,
+			ResourceType:  resourceType,
+			ResourceState: resourceState,
+		},
+		UpdateFunc: updateFunc,
 	}
+}
+
+func (p *AzureProvider) processUpdate(update UpdateAction) {
+	l := logger.Get()
+	p.updateMutex.Lock()
+	defer p.updateMutex.Unlock()
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil || m.Deployment.Machines == nil {
+		l.Debug("processUpdate: Global model, deployment, or machines is nil")
+		return
+	}
+
+	machine, ok := m.Deployment.Machines[update.MachineName]
+	if !ok {
+		l.Debug(fmt.Sprintf("processUpdate: Machine %s not found", update.MachineName))
+		return
+	}
+
+	if update.UpdateFunc == nil {
+		l.Error("processUpdate: UpdateFunc is nil")
+		return
+	}
+	update.UpdateFunc(machine, update.UpdateData)
+
 }
 
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
@@ -323,8 +398,10 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 }
 
 func (p *AzureProvider) logDeploymentStatus() {
+	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m.Deployment == nil {
+		l.Debug("Deployment is nil")
 		writeToDebugLog("Deployment is nil")
 		return
 	}
@@ -472,14 +549,23 @@ func (p *AzureProvider) provisionServices(ctx context.Context) {
 	for _, machine := range m.Deployment.Machines {
 		for _, service := range models.RequiredServices {
 			if err := p.provisionService(ctx, machine, service); err != nil {
-				l.Errorf("Failed to provision %s for machine %s: %v", service.Name, machine.Name, err)
+				l.Errorf(
+					"Failed to provision %s for machine %s: %v",
+					service.Name,
+					machine.Name,
+					err,
+				)
 				return
 			}
 		}
 	}
 }
 
-func (p *AzureProvider) provisionService(ctx context.Context, machine *models.Machine, service models.ServiceType) error {
+func (p *AzureProvider) provisionService(
+	_ context.Context,
+	machine *models.Machine,
+	service models.ServiceType,
+) error {
 	l := logger.Get()
 	l.Infof("Provisioning %s for machine %s", service.Name, machine.Name)
 
