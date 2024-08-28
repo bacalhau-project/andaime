@@ -167,7 +167,9 @@ tmpl
 tostring
 tview
 typecheck
+uaenorth
 uksouth
+ukwest
 unbuffered
 unconvert
 UNIQID

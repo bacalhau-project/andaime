@@ -134,12 +134,6 @@ func runDeployment(
 	return nil
 }
 
-func updateOrchestratorIP(deployment *models.Deployment) {
-	for i := range deployment.Machines {
-		deployment.Machines[i].OrchestratorIP = deployment.OrchestratorIP
-	}
-}
-
 func setDeploymentBasicInfo(d *models.Deployment) {
 	d.SSHUser = viper.GetString("general.ssh_user")
 	d.SSHPort = viper.GetInt("general.ssh_port")
@@ -265,9 +259,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	}
 
 	orchestratorIP := deployment.OrchestratorIP
-
 	var orchestratorLocations []string
-	var uniqueLocations []string
 	for _, rawMachine := range rawMachines {
 		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
 			// We're doing some checking here to make sure that the orchestrator node not
@@ -278,12 +270,9 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 			for i := 0; i < rawMachine.Parameters.Count; i++ {
 				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
-				uniqueLocations = append(uniqueLocations, rawMachine.Location)
 			}
 		}
 	}
-
-	uniqueLocations = utils.RemoveDuplicates(uniqueLocations)
 
 	if len(orchestratorLocations) > 1 {
 		return fmt.Errorf("multiple orchestrator nodes found")
@@ -303,11 +292,14 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			}
 		}
 
-		thisVMType := rawMachine.Parameters.Type
-		if thisVMType == "" {
-			thisVMType = defaultType
+		var thisVMType string
+		if rawMachine.Parameters != nil {
+			thisVMType = rawMachine.Parameters.Type
+			if thisVMType == "" {
+				thisVMType = defaultType
+			}
 		}
-		azureClient, err := azure.NewAzureClient(deployment.SubscriptionID)
+		azureClient, err := azure.NewAzureClientFunc(deployment.SubscriptionID)
 		if err != nil {
 			return fmt.Errorf("failed to create Azure client: %w", err)
 		}
@@ -388,7 +380,9 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	}
 
 	deployment.Machines = newMachines
-	deployment.UniqueLocations = uniqueLocations
+	for k := range locations {
+		deployment.Locations = append(deployment.Locations, k)
+	}
 
 	return nil
 }

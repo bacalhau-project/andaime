@@ -6,8 +6,6 @@ import (
 
 // AzureProvider wraps the Azure deployment functionality
 type Providerer interface {
-	GetClient() interface{}
-	SetClient(client interface{})
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 }

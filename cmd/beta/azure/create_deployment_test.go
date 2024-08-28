@@ -12,14 +12,39 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
+
+type MockAzureClient struct {
+	mock.Mock
+	azure.AzureClienter
+}
+
+func (m *MockAzureClient) ValidateMachineType(
+	ctx context.Context,
+	location, machineType string,
+) (bool, error) {
+	args := m.Called(ctx, location, machineType)
+	return args.Bool(0), args.Error(1)
+}
 
 func TestProcessMachinesConfig(t *testing.T) {
 	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
+
+	mockAzureClient := new(MockAzureClient)
+	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+
+	origNewAzureClientFunc := azure.NewAzureClientFunc
+	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
+	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
+		return mockAzureClient, nil
+	}
 
 	deployment := &models.Deployment{
 		SSHPrivateKeyPath: testPrivateKeyPath,
@@ -107,7 +132,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 				assert.Len(t, deployment.Machines, tt.expectedNodes)
 
 				if tt.expectedNodes > 0 {
-					assert.NotEmpty(t, deployment.UniqueLocations)
+					assert.NotEmpty(t, deployment.Locations, "Locations should not be empty")
 				}
 
 				// Check if orchestrator node is set when expected
@@ -187,6 +212,16 @@ func TestInitializeDeployment(t *testing.T) {
 	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
 	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
 
+	mockAzureClient := new(MockAzureClient)
+	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+
+	origNewAzureClientFunc := azure.NewAzureClientFunc
+	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
+	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
+		return mockAzureClient, nil
+	}
+
 	// Run subtests
 	t.Run("PrepareDeployment", func(t *testing.T) {
 		ctx := context.Background()
@@ -211,8 +246,8 @@ func TestInitializeDeployment(t *testing.T) {
 		eastus2Count := 0
 		westusCount := 0
 		brazilsouthCount := 0
-		euwestCount := 0
-		asiawestCount := 0
+		ukwestCount := 0
+		uaenorthCount := 0
 
 		for _, machine := range localModel.Deployment.Machines {
 			switch machine.Location {
@@ -234,11 +269,11 @@ func TestInitializeDeployment(t *testing.T) {
 					machine.VMSize,
 					"Expected brazilsouth machines to be Standard_DS1_v8",
 				)
-			case "euwest":
-				euwestCount++
-				assert.True(t, machine.Orchestrator, "Expected euwest machine to be orchestrator")
-			case "asiawest":
-				asiawestCount++
+			case "ukwest":
+				ukwestCount++
+				assert.True(t, machine.Orchestrator, "Expected ukwest machine to be orchestrator")
+			case "uaenorth":
+				uaenorthCount++
 			}
 		}
 
@@ -246,8 +281,8 @@ func TestInitializeDeployment(t *testing.T) {
 		assert.Equal(t, 2, eastus2Count, "Expected 2 machines in eastus2")
 		assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
 		assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
-		assert.Equal(t, 1, euwestCount, "Expected 1 machine in euwest")
-		assert.Equal(t, 1, asiawestCount, "Expected 1 machine in asiawest")
+		assert.Equal(t, 1, ukwestCount, "Expected 1 machine in ukwest")
+		assert.Equal(t, 1, uaenorthCount, "Expected 1 machine in uaenorth")
 
 		// Verify that only one orchestrator exists
 		orchestratorCount := 0
@@ -275,6 +310,9 @@ func TestPrepareDeployment(t *testing.T) {
 	viper.Set("azure.subscription_id", "test-subscription-id")
 	viper.Set("azure.resource_group_name", "test-rg")
 	viper.Set("azure.resource_group_location", "")
+	viper.Set("azure.default_count_per_zone", 1)
+	viper.Set("azure.default_machine_type", "Standard_D2s_v3")
+	viper.Set("azure.disk_size_gb", 30)
 	viper.Set("azure.machines", []map[string]interface{}{
 		{
 			"location": "eastus",
@@ -290,6 +328,16 @@ func TestPrepareDeployment(t *testing.T) {
 	viper.SetConfigFile(tempConfigFile.Name())
 
 	display.SetGlobalModel(display.InitialModel())
+
+	mockAzureClient := new(MockAzureClient)
+	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+
+	origNewAzureClientFunc := azure.NewAzureClientFunc
+	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
+	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
+		return mockAzureClient, nil
+	}
 
 	// Execute
 	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)

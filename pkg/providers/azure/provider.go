@@ -208,14 +208,6 @@ func (p *AzureProvider) initializeDisplayModel() {
 	}
 }
 
-func (p *AzureProvider) GetClient() interface{} {
-	return p.Client
-}
-
-func (p *AzureProvider) SetClient(client interface{}) {
-	p.Client = client
-}
-
 func (p *AzureProvider) GetAzureClient() AzureClienter {
 	return p.Client.(AzureClienter)
 }

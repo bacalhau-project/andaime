@@ -184,7 +184,6 @@ type Deployment struct {
 	Locations             []string
 	OrchestratorIP        string
 	Machines              map[string]*Machine
-	UniqueLocations       []string
 	ProjectID             string
 	UniqueID              string
 	Tags                  map[string]*string

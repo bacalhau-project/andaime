@@ -16,10 +16,10 @@ azure:
     - location: brazilsouth
       parameters:
         type: Standard_DS1_v8
-    - location: euwest
+    - location: ukwest
       parameters:
         orchestrator: true
-    - location: asiawest
+    - location: uaenorth
 general:
   project_id: andaime-project
   ssh_public_key_path: ./testdata/dummy_keys/id_ed25519.pub

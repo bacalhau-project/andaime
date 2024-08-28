@@ -303,7 +303,7 @@ func TestDeployResources(t *testing.T) {
 
 			fmt.Printf("Running test: %s\n", tt.name)
 
-			mockAzureClient := &MockAzureClient{}
+			mockAzureClient := new(MockAzureClient)
 
 			provider := &AzureProvider{
 				Client: mockAzureClient,
@@ -350,7 +350,7 @@ func TestDeployResources(t *testing.T) {
 
 			m := setupTestDisplayModel()
 			m.Deployment = &models.Deployment{
-				UniqueLocations:       tt.locations,
+				Locations:             tt.locations,
 				Machines:              make(map[string]*models.Machine),
 				SSHPrivateKeyMaterial: string(testSSHPrivateKeyMaterial),
 				SSHPort:               66000,

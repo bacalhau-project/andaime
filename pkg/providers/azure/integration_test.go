@@ -65,7 +65,7 @@ func setupTest(t *testing.T) *testSetup {
 		"worker2": {Name: "worker2", PublicIP: "1.2.3.6", Location: "westus"},
 	}
 	m.Deployment.ResourceGroupLocation = "eastus"
-	m.Deployment.UniqueLocations = []string{"eastus", "eastus2", "westus"}
+	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
 
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
