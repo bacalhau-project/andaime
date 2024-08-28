@@ -233,6 +233,7 @@ type rawMachine struct {
 }
 
 func ProcessMachinesConfig(deployment *models.Deployment) error {
+	l := logger.Get()
 	locations := make(map[string]bool)
 
 	rawMachines := []rawMachine{}
@@ -242,8 +243,21 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	}
 
 	defaultCount := viper.GetInt("azure.default_count_per_zone")
+	if defaultCount == 0 {
+		l.Error("azure.default_count_per_zone is empty")
+		return fmt.Errorf("azure.default_count_per_zone is empty")
+	}
 	defaultType := viper.GetString("azure.default_machine_type")
+	if defaultType == "" {
+		l.Error("azure.default_machine_type is empty")
+		return fmt.Errorf("azure.default_machine_type is empty")
+	}
+
 	defaultDiskSize := viper.GetInt("azure.disk_size_gb")
+	if defaultDiskSize == 0 {
+		l.Error("azure.disk_size_gb is empty")
+		return fmt.Errorf("azure.disk_size_gb is empty")
+	}
 
 	privateKeyBytes, err := readPrivateKey(deployment.SSHPrivateKeyPath)
 	if err != nil {
@@ -289,37 +303,40 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			}
 		}
 
+		thisVMType := rawMachine.Parameters.Type
+		if thisVMType == "" {
+			thisVMType = defaultType
+		}
+		azureClient, err := azure.NewAzureClient(deployment.SubscriptionID)
+		if err != nil {
+			return fmt.Errorf("failed to create Azure client: %w", err)
+		}
+
+		fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
+		valid, err := azureClient.ValidateMachineType(
+			context.Background(),
+			rawMachine.Location,
+			thisVMType,
+		)
+		if !valid || err != nil {
+			allBadMachineLocationCombos = append(
+				allBadMachineLocationCombos,
+				badMachineLocationCombo{
+					location: rawMachine.Location,
+					vmSize:   thisVMType,
+				},
+			)
+			fmt.Println("❌")
+			continue
+		}
+		fmt.Println("✅")
+
 		countOfMachines := getCountOfMachines(count, defaultCount)
 		for i := 0; i < countOfMachines; i++ {
-			azureClient, err := azure.NewAzureClient(deployment.SubscriptionID)
-			if err != nil {
-				return fmt.Errorf("failed to create Azure client: %w", err)
-			}
-
-			valid, err := azureClient.ValidateMachineType(
-				context.Background(),
-				rawMachine.Location,
-				rawMachine.Parameters.Type,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to validate machine type: %w", err)
-			}
-
-			if !valid {
-				allBadMachineLocationCombos = append(
-					allBadMachineLocationCombos,
-					badMachineLocationCombo{
-						location: rawMachine.Location,
-						vmSize:   rawMachine.Parameters.Type,
-					},
-				)
-				continue
-			}
-
 			newMachine, err := createNewMachine(
 				rawMachine.Location,
 				int32(defaultDiskSize),
-				defaultType,
+				thisVMType,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)

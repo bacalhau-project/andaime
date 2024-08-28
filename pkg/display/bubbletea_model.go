@@ -500,11 +500,18 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 
 	if status.Name != "" {
 		m.updateMachineStatus(status.Name, status)
-		
+
 		// Explicitly update progress
 		if machine, ok := m.Deployment.Machines[status.Name]; ok {
 			progress, total := machine.ResourcesComplete()
-			logger.WriteToDebugLog(fmt.Sprintf("UpdateStatus: Machine: %s, Progress: %d, Total: %d", status.Name, progress, total))
+			logger.WriteToDebugLog(
+				fmt.Sprintf(
+					"UpdateStatus: Machine: %s, Progress: %d, Total: %d",
+					status.Name,
+					progress,
+					total,
+				),
+			)
 		}
 	}
 }
@@ -519,17 +526,34 @@ func (m *DisplayModel) renderTable(headerStyle, cellStyle lipgloss.Style) string
 	}
 
 	// Get an ordered list of machine names
-	orderedMachineNames := []string{}
+	machineSlice := []struct {
+		Location string
+		Name     string
+	}{}
 	for _, machine := range m.Deployment.Machines {
 		if machine.Name != "" {
-			orderedMachineNames = append(orderedMachineNames, machine.Name)
+			machineSlice = append(machineSlice, struct {
+				Location string
+				Name     string
+			}{
+				Location: machine.Location,
+				Name:     machine.Name,
+			})
 		}
 	}
-	slices.SortFunc(orderedMachineNames, func(a, b string) int { return strings.Compare(a, b) })
+	slices.SortFunc(machineSlice, func(a, b struct {
+		Location string
+		Name     string
+	}) int {
+		if a.Location != b.Location {
+			return strings.Compare(a.Location, b.Location)
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 
-	for _, machineName := range orderedMachineNames {
+	for _, machineName := range machineSlice {
 		tableStr += m.renderRow(
-			m.getMachineRowData(m.Deployment.Machines[machineName]),
+			m.getMachineRowData(m.Deployment.Machines[machineName.Name]),
 			cellStyle,
 			false,
 		)
@@ -581,7 +605,9 @@ func (m *DisplayModel) getMachineRowData(machine *models.Machine) []string {
 		DisplayColumns[4].Width-ProgressBarPadding,
 	)
 
-	logger.WriteToDebugLog(fmt.Sprintf("Machine: %s, Progress: %d, Total: %d", machine.Name, progress, total))
+	logger.WriteToDebugLog(
+		fmt.Sprintf("Machine: %s, Progress: %d, Total: %d", machine.Name, progress, total),
+	)
 	for _, service := range machine.GetMachineServices() {
 		logger.WriteToDebugLog(fmt.Sprintf("Service: %s, State: %v", service.Name, service.State))
 	}
