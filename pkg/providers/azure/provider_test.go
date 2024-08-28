@@ -676,13 +676,74 @@ func generateMockResource(
 }
 
 func TestRandomServiceUpdates(t *testing.T) {
-	// Create a new logger instance for this test
-	testLogger := logger.Get()
-	log := func(msg string) {
-		testLogger.Debugf("%v: %s", time.Now().Format("15:04:05.000"), msg)
+	// ... (keep existing test code)
+}
+
+func TestProcessMachinesConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		machinesConfig []models.MachineConfig
+		mockSkus       map[string][]string
+		expectedError  string
+	}{
+		{
+			name: "All SKUs available",
+			machinesConfig: []models.MachineConfig{
+				{Name: "vm1", Location: "eastus", VMSize: "Standard_D2_v2"},
+				{Name: "vm2", Location: "westus", VMSize: "Standard_D4_v3"},
+			},
+			mockSkus: map[string][]string{
+				"eastus": {"Standard_D2_v2", "Standard_D4_v3"},
+				"westus": {"Standard_D2_v2", "Standard_D4_v3"},
+			},
+			expectedError: "",
+		},
+		{
+			name: "SKU not available in location",
+			machinesConfig: []models.MachineConfig{
+				{Name: "vm1", Location: "eastus", VMSize: "Standard_D2_v2"},
+				{Name: "vm2", Location: "westus", VMSize: "Standard_D4_v3"},
+			},
+			mockSkus: map[string][]string{
+				"eastus": {"Standard_D2_v2"},
+				"westus": {"Standard_D2_v2"},
+			},
+			expectedError: "SKU Standard_D4_v3 is not available in location westus",
+		},
 	}
 
-	log("Test started")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := new(MockAzureClient)
+			provider := &AzureProvider{
+				Client: mockClient,
+			}
+
+			for location, skus := range tt.mockSkus {
+				mockClient.On("ListAvailableSkus", mock.Anything, location).Return(skus, nil)
+			}
+
+			display.SetGlobalModel(display.InitialModel())
+			err := provider.ProcessMachinesConfig(context.Background(), tt.machinesConfig)
+
+			if tt.expectedError != "" {
+				assert.EqualError(t, err, tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				m := display.GetGlobalModelFunc()
+				assert.Equal(t, len(tt.machinesConfig), len(m.Deployment.Machines))
+				for _, config := range tt.machinesConfig {
+					machine, exists := m.Deployment.Machines[config.Name]
+					assert.True(t, exists)
+					assert.Equal(t, config.Location, machine.Location)
+					assert.Equal(t, config.VMSize, machine.Parameters["vmSize"])
+				}
+			}
+
+			mockClient.AssertExpectations(t)
+		})
+	}
+}
 
 	// Create a new Viper instance for this test
 	testConfig := viper.New()
