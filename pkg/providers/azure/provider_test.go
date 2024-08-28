@@ -16,6 +16,7 @@ import (
 	"github.com/aws/smithy-go/ptr"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -422,14 +423,13 @@ type MockResourceGraphClient struct {
 func TestPollAndUpdateResources(t *testing.T) {
 	setupUpdateTest(t)
 	defer teardownTest(t)
+	l := logger.Get()
 
-	t.Logf("TestPollAndUpdateResources started")
 	start := time.Now()
 	log := func(msg string) {
-		t.Logf("%v: %s", time.Since(start).Round(time.Millisecond), msg)
+		l.Debugf("%v: %s", time.Since(start).Round(time.Millisecond), msg)
 	}
-
-	log("Test started")
+	log("TestPollAndUpdateResources started")
 	mockConfig := viper.New()
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
 
@@ -482,13 +482,13 @@ func TestPollAndUpdateResources(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	t.Logf("Starting update processor goroutine")
+	log("Starting update processor goroutine")
 	processorDone := make(chan struct{})
 	go func() {
 		log("Update processor started")
 		provider.startUpdateProcessor(ctx)
 		processorDone <- struct{}{}
-		t.Logf("Update processor goroutine finished")
+		log("Update processor goroutine finished")
 	}()
 
 	mockClient.On("GetResources", mock.Anything,
@@ -521,11 +521,13 @@ func TestPollAndUpdateResources(t *testing.T) {
 						models.AzureResourceStateRunning,
 						models.AzureResourceStateSucceeded,
 					} {
-						t.Logf(
-							"Sending update for machine %s, resource type %s, state %d",
-							machine,
-							resourceType.ResourceString,
-							state,
+						log(
+							fmt.Sprintf(
+								"Sending update for machine %s, resource type %s, state %d",
+								machine,
+								resourceType.ResourceString,
+								state,
+							),
 						)
 						select {
 						case provider.updateQueue <- NewUpdateAction(
@@ -538,10 +540,12 @@ func TestPollAndUpdateResources(t *testing.T) {
 						):
 							atomic.AddInt32(&updatesSent, 1)
 						case <-ctx.Done():
-							t.Logf(
-								"Context cancelled while sending update for %s, %s",
-								machine,
-								resourceType.ResourceString,
+							log(
+								fmt.Sprintf(
+									"Context cancelled while sending update for %s, %s",
+									machine,
+									resourceType.ResourceString,
+								),
 							)
 							return
 						}
@@ -588,11 +592,13 @@ func TestPollAndUpdateResources(t *testing.T) {
 				machine,
 				resourceType.ResourceString,
 			)
-			t.Logf(
-				"Final state for machine %s, resource %s: %d",
-				machine,
-				resourceType.ResourceString,
-				state,
+			log(
+				fmt.Sprintf(
+					"Final state for machine %s, resource %s: %d",
+					machine,
+					resourceType.ResourceString,
+					state,
+				),
 			)
 		}
 	}
@@ -672,9 +678,9 @@ func generateMockResource(
 func TestRandomServiceUpdates(t *testing.T) {
 	setupUpdateTest(t)
 	defer teardownTest(t)
-
+	l := logger.Get()
 	log := func(msg string) {
-		t.Logf("%v: %s", time.Now().Format("15:04:05.000"), msg)
+		l.Debugf("%v: %s", time.Now().Format("15:04:05.000"), msg)
 	}
 
 	log("Test started")

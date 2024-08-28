@@ -54,6 +54,7 @@ type UpdatePayload struct {
 	ServiceState  models.ServiceState
 	ResourceType  models.AzureResourceTypes
 	ResourceState models.AzureResourceState
+	Complete      bool
 }
 
 func (u *UpdatePayload) String() string {
@@ -68,6 +69,7 @@ type UpdateType string
 const (
 	UpdateTypeResource UpdateType = "resource"
 	UpdateTypeService  UpdateType = "service"
+	UpdateTypeComplete UpdateType = "complete"
 )
 
 // AzureProvider wraps the Azure deployment functionality
@@ -82,8 +84,12 @@ type AzureProviderer interface {
 
 	StartResourcePolling(ctx context.Context)
 	DeployResources(ctx context.Context) error
+	ProvisionMachines(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
+
+	DeployOrchestrator(ctx context.Context) error
+	DeployWorker(ctx context.Context, machineName string) error
 }
 
 type AzureProvider struct {
@@ -278,8 +284,16 @@ func (p *AzureProvider) processUpdate(update UpdateAction) {
 		l.Error("processUpdate: UpdateFunc is nil")
 		return
 	}
-	update.UpdateFunc(machine, update.UpdateData)
 
+	if update.UpdateData.UpdateType == UpdateTypeComplete {
+		machine.SetComplete()
+	} else if update.UpdateData.UpdateType == UpdateTypeResource {
+		machine.SetResourceState(update.UpdateData.ResourceType.ResourceString, update.UpdateData.ResourceState)
+	} else if update.UpdateData.UpdateType == UpdateTypeService {
+		machine.SetServiceState(update.UpdateData.ServiceType.Name, update.UpdateData.ServiceState)
+	}
+
+	update.UpdateFunc(machine, update.UpdateData)
 }
 
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
@@ -604,5 +618,83 @@ func (p *AzureProvider) provisionService(
 	}
 
 	machine.SetServiceState(service.Name, models.ServiceStateSucceeded)
+	return nil
+}
+
+func (p *AzureProvider) WaitForAllMachinesToReachState(
+	ctx context.Context,
+	targetState models.AzureResourceState,
+) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	for {
+		allReady := true
+		for _, machine := range m.Deployment.Machines {
+			state := machine.GetResourceState("Microsoft.Compute/virtualMachines")
+			if err := p.testSSHLiveness(ctx, machine.Name); err != nil {
+				return err
+			}
+			l.Debugf("Machine %s state: %d", machine.Name, state)
+			if state != targetState {
+				allReady = false
+				break
+			}
+		}
+		if allReady {
+			l.Debug("All machines have reached the target state")
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(30 * time.Second):
+			l.Debug("Waiting for machines to reach target state...")
+		}
+	}
+	return nil
+}
+func (p *AzureProvider) InstallDockerOnAllMachines(ctx context.Context) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(m.Deployment.Machines))
+	for _, machine := range m.Deployment.Machines {
+		wg.Add(1)
+		go func(machine *models.Machine) {
+			defer wg.Done()
+			l.Debugf("Installing Docker on machine %s", machine.Name)
+			if err := p.installDockerAndCorePackages(ctx, machine.Name); err != nil {
+				errChan <- fmt.Errorf("failed to install Docker on machine %s: %v", machine.Name, err)
+			}
+		}(machine)
+	}
+	wg.Wait()
+	close(errChan)
+	for err := range errChan {
+		if err != nil {
+			l.Error(err.Error())
+			return err
+		}
+	}
+	l.Debug("Docker installed on all machines successfully")
+	return nil
+}
+
+func (p *AzureProvider) installDockerAndCorePackages(
+	ctx context.Context,
+	machineName string,
+) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	machine := m.Deployment.Machines[machineName]
+	l.Debugf("Installing Docker and core packages on machine %s", machineName)
+	if err := machine.InstallDockerAndCorePackages(ctx); err != nil {
+		return fmt.Errorf(
+			"failed to install Docker and core packages on VM %s: %v",
+			machineName,
+			err,
+		)
+	}
+	l.Debugf("Docker and core packages installed successfully on machine %s", machineName)
 	return nil
 }
