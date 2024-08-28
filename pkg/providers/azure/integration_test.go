@@ -144,7 +144,7 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 			"bacalhau node list --output json --api-host")
 	}
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
@@ -183,7 +183,7 @@ func TestSSHProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(fmt.Errorf("SSH provisioning failed"))
 
 	m := display.GetGlobalModelFunc()
@@ -208,7 +208,7 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
@@ -245,7 +245,7 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 		)
 	}
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").

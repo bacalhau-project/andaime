@@ -29,7 +29,7 @@ type SSHConfig struct {
 type SSHConfiger interface {
 	SetSSHClient(client SSHClienter)
 	Connect() (SSHClienter, error)
-	WaitForSSH(retry int, timeout time.Duration) error
+	WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error
 	ExecuteCommand(ctx context.Context, command string) (string, error)
 	PushFile(ctx context.Context, remotePath string, content []byte, executable bool) error
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
@@ -102,7 +102,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 	return client, nil
 }
 
-func (c *SSHConfig) WaitForSSH(retry int, timeout time.Duration) error {
+func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
 	l := logger.Get()
 	for i := 0; i < SSHRetryAttempts; i++ {
 		l.Debugf("Attempt %d to connect via SSH\n", i+1)

@@ -63,8 +63,12 @@ func (m *MockSSHConfig) Connect() (sshutils.SSHClienter, error) { return m.MockC
 
 func (m *MockSSHConfig) Close() error { return nil }
 
-func (m *MockSSHConfig) WaitForSSH(retries int, retryDelay time.Duration) error {
-	args := m.Called(retries, retryDelay)
+func (m *MockSSHConfig) WaitForSSH(
+	ctx context.Context,
+	retries int,
+	retryDelay time.Duration,
+) error {
+	args := m.Called(ctx, retries, retryDelay)
 	return args.Error(0)
 }
 func (m *MockSSHConfig) SetSSHClient(client sshutils.SSHClienter) {}
@@ -80,6 +84,7 @@ func setupTestBacalhauDeployer(
 	machines map[string]*models.Machine,
 ) (*BacalhauDeployer, *MockSSHConfig) {
 	mockSSH := new(MockSSHConfig)
+	mockSSH.MockClient = new(sshutils.MockSSHClient)
 
 	m := display.GetGlobalModelFunc()
 	m.Deployment.Machines = machines

@@ -63,7 +63,7 @@ func (a *AzureResourceTypes) GetResourceLowerString() string {
 
 var AzureResourceTypeNIC = AzureResourceTypes{
 	ResourceString:    "Microsoft.Network/networkInterfaces",
-	ShortResourceName: "NIC",
+	ShortResourceName: "NIC ",
 }
 
 var AzureResourceTypeVNET = AzureResourceTypes{
@@ -78,12 +78,12 @@ var AzureResourceTypeSNET = AzureResourceTypes{
 
 var AzureResourceTypeNSG = AzureResourceTypes{
 	ResourceString:    "Microsoft.Network/networkSecurityGroups",
-	ShortResourceName: "NSG",
+	ShortResourceName: "NSG ",
 }
 
 var AzureResourceTypeVM = AzureResourceTypes{
 	ResourceString:    "Microsoft.Compute/virtualMachines",
-	ShortResourceName: "VM",
+	ShortResourceName: "VM  ",
 }
 
 var AzureResourceTypeDISK = AzureResourceTypes{
@@ -93,7 +93,7 @@ var AzureResourceTypeDISK = AzureResourceTypes{
 
 var AzureResourceTypeIP = AzureResourceTypes{
 	ResourceString:    "Microsoft.Network/publicIPAddresses",
-	ShortResourceName: "IP",
+	ShortResourceName: "IP  ",
 }
 
 func (a *AzureResourceTypes) GetResourceString() string {

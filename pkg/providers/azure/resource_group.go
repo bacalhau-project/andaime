@@ -27,7 +27,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 		return nil, fmt.Errorf("invalid resource group name: %s", rgName)
 	}
 
-	if !internal.IsValidLocation(rgLocation) {
+	if !internal.IsValidAzureLocation(rgLocation) {
 		return nil, fmt.Errorf("invalid resource group location: %s", rgLocation)
 	}
 

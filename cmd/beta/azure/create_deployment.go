@@ -59,6 +59,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize deployment: %w", err)
 	}
+	m.Deployment = deployment
 
 	prog := display.GetGlobalProgram()
 	prog.InitProgram(m)
@@ -72,7 +73,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			l.Debug("Deployment cancelled")
 			return
 		default:
-			deploymentErr = runDeployment(ctx, p, deployment)
+			deploymentErr = runDeployment(ctx, p)
 		}
 	}()
 
@@ -92,14 +93,14 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 func runDeployment(
 	ctx context.Context,
 	p azure.AzureProviderer,
-	deployment *models.Deployment,
 ) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	prog := display.GetGlobalProgram()
 
 	// Prepare resource group
 	l.Debug("Preparing resource group")
-	err := p.PrepareResourceGroup(ctx, deployment)
+	err := p.PrepareResourceGroup(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %w", err)
@@ -114,9 +115,7 @@ func runDeployment(
 		return fmt.Errorf("failed to deploy Bacalhau orchestrator: %w", err)
 	}
 
-	updateOrchestratorIP(deployment)
-
-	for _, machine := range deployment.Machines {
+	for _, machine := range m.Deployment.Machines {
 		if !machine.Orchestrator {
 			if err := p.DeployWorker(ctx, machine.Name); err != nil {
 				return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
@@ -254,6 +253,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	orchestratorIP := deployment.OrchestratorIP
 
 	var orchestratorLocations []string
+	var uniqueLocations []string
 	for _, rawMachine := range rawMachines {
 		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
 			// We're doing some checking here to make sure that the orchestrator node not
@@ -264,14 +264,22 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 			for i := 0; i < rawMachine.Parameters.Count; i++ {
 				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
+				uniqueLocations = append(uniqueLocations, rawMachine.Location)
 			}
 		}
 	}
+
+	uniqueLocations = utils.RemoveDuplicates(uniqueLocations)
 
 	if len(orchestratorLocations) > 1 {
 		return fmt.Errorf("multiple orchestrator nodes found")
 	}
 
+	type badMachineLocationCombo struct {
+		location string
+		vmSize   string
+	}
+	var allBadMachineLocationCombos []badMachineLocationCombo
 	newMachines := make(map[string]*models.Machine)
 	for _, rawMachine := range rawMachines {
 		count := 1
@@ -283,13 +291,41 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 		countOfMachines := getCountOfMachines(count, defaultCount)
 		for i := 0; i < countOfMachines; i++ {
-			newMachine := createNewMachine(
+			azureClient, err := azure.NewAzureClient(deployment.SubscriptionID)
+			if err != nil {
+				return fmt.Errorf("failed to create Azure client: %w", err)
+			}
+
+			valid, err := azureClient.ValidateMachineType(
+				context.Background(),
+				rawMachine.Location,
+				rawMachine.Parameters.Type,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to validate machine type: %w", err)
+			}
+
+			if !valid {
+				allBadMachineLocationCombos = append(
+					allBadMachineLocationCombos,
+					badMachineLocationCombo{
+						location: rawMachine.Location,
+						vmSize:   rawMachine.Parameters.Type,
+					},
+				)
+				continue
+			}
+
+			newMachine, err := createNewMachine(
 				rawMachine.Location,
 				int32(defaultDiskSize),
 				defaultType,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
+			if err != nil {
+				return fmt.Errorf("failed to create new machine: %w", err)
+			}
 
 			if rawMachine.Parameters != nil {
 				if rawMachine.Parameters.Type != "" {
@@ -304,9 +340,20 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			}
 
 			newMachines[newMachine.Name] = newMachine
+			newMachines[newMachine.Name].SetResourceState(
+				models.AzureResourceTypeVM.ResourceString,
+				models.AzureResourceStateNotStarted,
+			)
 		}
 
 		locations[rawMachine.Location] = true
+	}
+
+	if len(allBadMachineLocationCombos) > 0 {
+		return fmt.Errorf(
+			"invalid machine type and location combinations: %v",
+			allBadMachineLocationCombos,
+		)
 	}
 
 	// Loop for setting the orchestrator node
@@ -324,7 +371,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	}
 
 	deployment.Machines = newMachines
-	deployment.UniqueLocations = getUniqueLocations(locations)
+	deployment.UniqueLocations = uniqueLocations
 
 	return nil
 }
@@ -386,8 +433,11 @@ func createNewMachine(
 	vmSize string,
 	privateKeyBytes []byte,
 	sshPort int,
-) *models.Machine {
-	newMachine := models.NewMachine(location, vmSize, diskSizeGB)
+) (*models.Machine, error) {
+	newMachine, err := models.NewMachine(location, vmSize, diskSizeGB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new machine: %w", err)
+	}
 
 	if err := newMachine.EnsureMachineServices(); err != nil {
 		logger.Get().Errorf("Failed to ensure machine services: %v", err)
@@ -401,15 +451,7 @@ func createNewMachine(
 	newMachine.SSHPort = sshPort
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
-	return newMachine
-}
-
-func getUniqueLocations(locations map[string]bool) []string {
-	uniqueLocations := make([]string, 0, len(locations))
-	for location := range locations {
-		uniqueLocations = append(uniqueLocations, location)
-	}
-	return uniqueLocations
+	return newMachine, nil
 }
 
 // Additional helper functions
@@ -447,12 +489,6 @@ func validateDeployment(deployment *models.Deployment) error {
 		return err
 	}
 	return nil
-}
-
-func initializeDisplayModel(deployment *models.Deployment) *display.DisplayModel {
-	displayModel := display.InitialModel()
-	displayModel.Deployment = deployment
-	return displayModel
 }
 
 // PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.

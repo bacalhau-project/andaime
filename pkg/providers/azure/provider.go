@@ -76,8 +76,8 @@ const (
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
 	general.Providerer
-	GetAzureClient() AzureClient
-	SetAzureClient(client AzureClient)
+	GetAzureClient() AzureClienter
+	SetAzureClient(client AzureClienter)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 	GetSSHClient() sshutils.SSHClienter
@@ -216,11 +216,11 @@ func (p *AzureProvider) SetClient(client interface{}) {
 	p.Client = client
 }
 
-func (p *AzureProvider) GetAzureClient() AzureClient {
-	return p.Client.(AzureClient)
+func (p *AzureProvider) GetAzureClient() AzureClienter {
+	return p.Client.(AzureClienter)
 }
 
-func (p *AzureProvider) SetAzureClient(client AzureClient) {
+func (p *AzureProvider) SetAzureClient(client AzureClienter) {
 	p.Client = client
 }
 
@@ -587,38 +587,6 @@ func isValidGUID(guid string) bool {
 		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
 	)
 	return r.MatchString(guid)
-}
-
-func (p *AzureProvider) ProcessMachinesConfig(ctx context.Context, machinesConfig []models.MachineConfig) error {
-    m := display.GetGlobalModelFunc()
-    for _, config := range machinesConfig {
-        availableSkus, err := p.GetAzureClient().ListAvailableSkus(ctx, config.Location)
-        if err != nil {
-            return fmt.Errorf("failed to list available SKUs for location %s: %w", config.Location, err)
-        }
-
-        skuAvailable := false
-        for _, sku := range availableSkus {
-            if sku == config.VMSize {
-                skuAvailable = true
-                break
-            }
-        }
-
-        if !skuAvailable {
-            return fmt.Errorf("SKU %s is not available in location %s", config.VMSize, config.Location)
-        }
-
-        machine := &models.Machine{
-            Name:     config.Name,
-            Location: config.Location,
-            Parameters: models.Parameters{
-                "vmSize": config.VMSize,
-            },
-        }
-        m.Deployment.Machines[config.Name] = machine
-    }
-    return nil
 }
 
 func (p *AzureProvider) WaitForAllMachinesToReachState(

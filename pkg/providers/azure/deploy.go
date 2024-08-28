@@ -39,27 +39,26 @@ const timeBetweenIPRetries = 10 * time.Second
 // 5. Updates the global deployment object with the finalized resource group information.
 func (p *AzureProvider) PrepareResourceGroup(
 	ctx context.Context,
-	deployment *models.Deployment,
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	if deployment == nil {
+	if m.Deployment == nil {
 		return fmt.Errorf("deployment object is not initialized")
 	}
 
 	// Check if the resource group name already contains a timestamp
-	if deployment.ResourceGroupName == "" {
-		deployment.ResourceGroupName = "andaime-rg"
+	if m.Deployment.ResourceGroupName == "" {
+		m.Deployment.ResourceGroupName = "andaime-rg"
 	}
-	newRGName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	deployment.ResourceGroupName = newRGName
+	newRGName := m.Deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
+	m.Deployment.ResourceGroupName = newRGName
 
-	resourceGroupLocation := deployment.ResourceGroupLocation
+	resourceGroupLocation := m.Deployment.ResourceGroupLocation
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
-		if len(deployment.Machines) > 0 {
-			for _, machine := range deployment.Machines {
+		if len(m.Deployment.Machines) > 0 {
+			for _, machine := range m.Deployment.Machines {
 				// Break over the first machine
 				resourceGroupLocation = machine.Location
 				break
@@ -71,15 +70,15 @@ func (p *AzureProvider) PrepareResourceGroup(
 			)
 		}
 	}
-	deployment.ResourceGroupLocation = resourceGroupLocation
+	m.Deployment.ResourceGroupLocation = resourceGroupLocation
 
 	l.Debugf(
 		"Creating Resource Group - %s in location %s",
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation,
+		m.Deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupLocation,
 	)
 
-	for _, machine := range deployment.Machines {
+	for _, machine := range m.Deployment.Machines {
 		m.UpdateStatus(
 			models.NewDisplayVMStatus(
 				machine.Name,
@@ -91,16 +90,16 @@ func (p *AzureProvider) PrepareResourceGroup(
 	client := p.GetAzureClient()
 	_, err := client.GetOrCreateResourceGroup(
 		ctx,
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation,
-		deployment.Tags,
+		m.Deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to create Resource Group - %s: %v", deployment.ResourceGroupName, err)
+		l.Errorf("Failed to create Resource Group - %s: %v", m.Deployment.ResourceGroupName, err)
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
-	for _, machine := range deployment.Machines {
+	for _, machine := range m.Deployment.Machines {
 		m.UpdateStatus(
 			models.NewDisplayVMStatus(
 				machine.Name,
@@ -111,8 +110,8 @@ func (p *AzureProvider) PrepareResourceGroup(
 
 	l.Debugf(
 		"Created Resource Group - %s in location %s",
-		deployment.ResourceGroupName,
-		deployment.ResourceGroupLocation,
+		m.Deployment.ResourceGroupName,
+		m.Deployment.ResourceGroupLocation,
 	)
 
 	return nil
@@ -191,7 +190,7 @@ func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string)
 	)
 
 	m.Deployment.Machines[machineName].SetServiceState("SSH", models.ServiceStateUpdating)
-	sshErr := sshConfig.WaitForSSH(3, time.Second*10) //nolint:gomnd
+	sshErr := sshConfig.WaitForSSH(ctx, 3, time.Second*10) //nolint:gomnd
 	if sshErr != nil {
 		err := m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
 			machine.SetServiceState("SSH", models.ServiceStateFailed)

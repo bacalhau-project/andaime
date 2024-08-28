@@ -29,6 +29,7 @@ func InitializeCommands() {
 		AzureCmd.AddCommand(GetAzureListSubscriptionsCmd())
 		AzureCmd.AddCommand(GetAzureListResourcesCmd())
 		AzureCmd.AddCommand(GetAzureCreateDeploymentCmd())
+		AzureCmd.AddCommand(GetAzureListSKUsCmd())
 		AzureCmd.AddCommand(GetAzureDestroyCmd())
 	})
 }

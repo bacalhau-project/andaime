@@ -676,88 +676,7 @@ func generateMockResource(
 }
 
 func TestRandomServiceUpdates(t *testing.T) {
-	// ... (keep existing test code)
-}
-
-func TestProcessMachinesConfig(t *testing.T) {
-	tests := []struct {
-		name           string
-		machinesConfig []models.MachineConfig
-		mockSkus       map[string][]string
-		expectedError  string
-	}{
-		{
-			name: "All SKUs available",
-			machinesConfig: []models.MachineConfig{
-				{Name: "vm1", Location: "eastus", VMSize: "Standard_D2_v2"},
-				{Name: "vm2", Location: "westus", VMSize: "Standard_D4_v3"},
-			},
-			mockSkus: map[string][]string{
-				"eastus": {"Standard_D2_v2", "Standard_D4_v3"},
-				"westus": {"Standard_D2_v2", "Standard_D4_v3"},
-			},
-			expectedError: "",
-		},
-		{
-			name: "SKU not available in location",
-			machinesConfig: []models.MachineConfig{
-				{Name: "vm1", Location: "eastus", VMSize: "Standard_D2_v2"},
-				{Name: "vm2", Location: "westus", VMSize: "Standard_D4_v3"},
-			},
-			mockSkus: map[string][]string{
-				"eastus": {"Standard_D2_v2"},
-				"westus": {"Standard_D2_v2"},
-			},
-			expectedError: "SKU Standard_D4_v3 is not available in location westus",
-		},
-		{
-			name: "Error listing available SKUs",
-			machinesConfig: []models.MachineConfig{
-				{Name: "vm1", Location: "eastus", VMSize: "Standard_D2_v2"},
-			},
-			mockSkus: map[string][]string{
-				"eastus": nil,
-			},
-			expectedError: "failed to list available SKUs for location eastus: mock error",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockClient := new(MockAzureClient)
-			provider := &AzureProvider{
-				Client: mockClient,
-			}
-
-			for location, skus := range tt.mockSkus {
-				if skus == nil {
-					mockClient.On("ListAvailableSkus", mock.Anything, location).Return(nil, fmt.Errorf("mock error"))
-				} else {
-					mockClient.On("ListAvailableSkus", mock.Anything, location).Return(skus, nil)
-				}
-			}
-
-			display.SetGlobalModel(display.InitialModel())
-			err := provider.ProcessMachinesConfig(context.Background(), tt.machinesConfig)
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
-				m := display.GetGlobalModelFunc()
-				assert.Equal(t, len(tt.machinesConfig), len(m.Deployment.Machines))
-				for _, config := range tt.machinesConfig {
-					machine, exists := m.Deployment.Machines[config.Name]
-					assert.True(t, exists)
-					assert.Equal(t, config.Location, machine.Location)
-					assert.Equal(t, config.VMSize, machine.Parameters["vmSize"])
-				}
-			}
-
-			mockClient.AssertExpectations(t)
-		})
-	}
-}
+	l := logger.Get()
 
 	// Create a new Viper instance for this test
 	testConfig := viper.New()
@@ -790,7 +709,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		}
 	}
 
-	log("Deployment model initialized")
+	l.Debug("Deployment model initialized")
 
 	mockClient := new(MockAzureClient)
 	provider := &AzureProvider{
@@ -805,10 +724,10 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 	processorDone := make(chan struct{})
 	go func() {
-		log("Update processor started")
+		l.Debug("Update processor started")
 		provider.startUpdateProcessor(ctx)
 		processorDone <- struct{}{}
-		log("Update processor finished")
+		l.Debug("Update processor finished")
 	}()
 
 	var wg sync.WaitGroup
@@ -837,7 +756,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 				):
 					atomic.AddInt32(&updatesSent, 1)
 				case <-ctx.Done():
-					log(
+					l.Debug(
 						fmt.Sprintf(
 							"Context cancelled while sending update for %s, %s",
 							machine,
@@ -851,7 +770,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		}(machine)
 	}
 
-	log("Started sending updates")
+	l.Debug("Started sending updates")
 
 	wgDone := make(chan struct{})
 	go func() {
@@ -861,14 +780,14 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 	select {
 	case <-wgDone:
-		log(
+		l.Debug(
 			fmt.Sprintf(
 				"All updates sent successfully. Total updates: %d",
 				atomic.LoadInt32(&updatesSent),
 			),
 		)
 	case <-ctx.Done():
-		log(
+		l.Debug(
 			fmt.Sprintf(
 				"Test timed out while sending updates. Updates sent: %d/%d",
 				atomic.LoadInt32(&updatesSent),
@@ -878,19 +797,18 @@ func TestProcessMachinesConfig(t *testing.T) {
 		t.Fatal("Test timed out while sending updates")
 	}
 
-	log("Closing update queue")
+	l.Debug("Closing update queue")
 	close(provider.updateQueue)
 
-	log("Waiting for update processor to finish")
+	l.Debug("Waiting for update processor to finish")
 	select {
 	case <-processorDone:
-		log("Update processor finished successfully")
+		l.Debug("Update processor finished successfully")
 	case <-time.After(5 * time.Second):
-		log("Update processor did not stop in time")
 		t.Fatal("Update processor did not stop in time")
 	}
 
-	log("Checking final states")
+	l.Debug("Checking final states")
 	for _, machine := range testMachines {
 		for _, service := range allServices {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
@@ -926,5 +844,6 @@ func TestProcessMachinesConfig(t *testing.T) {
 	assert.Equal(t, len(testMachines), len(uniqueStates),
 		"Not all machines have unique service state combinations")
 
-	log("Test completed successfully")
+	l.Debug("Test completed successfully")
+
 }

@@ -9,7 +9,7 @@ import (
 var machineTypes embed.FS
 
 //go:embed locations.yaml
-var locations embed.FS
+var validAzureLocations embed.FS
 
 //go:embed arm/vm.json
 var vmARM embed.FS
@@ -26,7 +26,7 @@ func GetMachineTypes() ([]string, error) {
 }
 
 func GetLocations() ([]string, error) {
-	data, err := locations.ReadFile("locations.yaml")
+	data, err := validAzureLocations.ReadFile("locations.yaml")
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +44,7 @@ func GetARMTemplate() ([]byte, error) {
 	return data, nil
 }
 
-func IsValidLocation(location string) bool {
-	// This is a placeholder. In a real scenario, you would check against a list of valid Azure locations.
+func IsValidAzureLocation(location string) bool {
 	validLocations, err := GetLocations()
 	if err != nil {
 		return false
@@ -55,7 +54,7 @@ func IsValidLocation(location string) bool {
 	}
 
 	for _, validLocation := range validLocations {
-		if location == validLocation {
+		if strings.EqualFold(location, validLocation) {
 			return true
 		}
 	}

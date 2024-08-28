@@ -51,7 +51,7 @@ type Pollerer interface {
 	Poll(ctx context.Context) (*http.Response, error)
 }
 
-type AzureClient interface {
+type AzureClienter interface {
 	// Resource Group API
 	GetOrCreateResourceGroup(
 		ctx context.Context,
@@ -113,12 +113,24 @@ type AzureClient interface {
 		resourceGroupName string,
 		networkInterfaceName string,
 	) (*armnetwork.Interface, error)
+
+	GetSKUsByLocation(
+		ctx context.Context,
+		location string,
+	) ([]armcompute.ResourceSKU, error)
+
+	ValidateMachineType(
+		ctx context.Context,
+		location string,
+		vmSize string,
+	) (bool, error)
 }
 
 // LiveAzureClient wraps all Azure SDK calls
 type LiveAzureClient struct {
 	resourceGroupsClient *armresources.ResourceGroupsClient
 	resourceGraphClient  *armresourcegraph.Client
+	resourcesSKUClient   *armcompute.ResourceSKUsClient
 	subscriptionsClient  *armsubscription.SubscriptionsClient
 	deploymentsClient    *armresources.DeploymentsClient
 	computeClient        *armcompute.VirtualMachinesClient
@@ -133,7 +145,7 @@ func (c *LiveAzureClient) GetDeploymentsClient() *armresources.DeploymentsClient
 var NewAzureClientFunc = NewAzureClient
 
 // NewAzureClient creates a new AzureClient
-func NewAzureClient(subscriptionID string) (AzureClient, error) {
+func NewAzureClient(subscriptionID string) (AzureClienter, error) {
 	// Get credential from CLI
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
@@ -174,8 +186,14 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 		return &LiveAzureClient{}, err
 	}
 
+	resourcesSKUClient, err := armcompute.NewResourceSKUsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return &LiveAzureClient{}, err
+	}
+
 	return &LiveAzureClient{
 		resourceGroupsClient: resourceGroupsClient,
+		resourcesSKUClient:   resourcesSKUClient,
 		resourceGraphClient:  resourceGraphClient,
 		subscriptionsClient:  subscriptionsClient,
 		deploymentsClient:    deploymentsClient,
@@ -391,4 +409,68 @@ func (c *LiveAzureClient) GetPublicIPAddress(
 		return "", fmt.Errorf("failed to get public IP address: %w", err)
 	}
 	return *publicIPResponse.Properties.IPAddress, nil
+}
+
+func (c *LiveAzureClient) GetSKUsByLocation(
+	ctx context.Context,
+	location string,
+) ([]armcompute.ResourceSKU, error) {
+	filter := fmt.Sprintf("location eq '%s'", location)
+	pager := c.resourcesSKUClient.NewListPager(&armcompute.ResourceSKUsClientListOptions{
+		Filter: &filter,
+	})
+
+	var skus []armcompute.ResourceSKU
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, sku := range page.Value {
+			skus = append(skus, *sku)
+		}
+	}
+	return skus, nil
+}
+
+func (c *LiveAzureClient) ValidateMachineType(
+	ctx context.Context,
+	location string,
+	vmSize string,
+) (bool, error) {
+	// Create a filter for the specific location and VM size
+	filter := fmt.Sprintf("location eq '%s'", location)
+	pager := c.resourcesSKUClient.NewListPager(&armcompute.ResourceSKUsClientListOptions{
+		Filter: &filter,
+	})
+
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to get next page of resource SKUs: %w", err)
+		}
+
+		for _, sku := range page.Value {
+			if sku.Name != nil && *sku.Name == vmSize && sku.ResourceType != nil &&
+				*sku.ResourceType == "virtualMachines" {
+				// Check if the SKU is available in the location
+				if sku.Restrictions != nil {
+					for _, restriction := range sku.Restrictions {
+						if restriction.Type != nil &&
+							*restriction.Type == armcompute.ResourceSKURestrictionsTypeLocation {
+							return false, fmt.Errorf(
+								"VM size %s is not available in location %s",
+								vmSize,
+								location,
+							)
+						}
+					}
+				}
+				// If we found the SKU and it's not restricted, it's valid
+				return true, nil
+			}
+		}
+	}
+
+	return false, fmt.Errorf("VM size %s not found in location %s", vmSize, location)
 }

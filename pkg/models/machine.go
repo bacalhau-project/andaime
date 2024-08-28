@@ -7,7 +7,8 @@ import (
 	"sync"
 	"time"
 
-	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
+	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
@@ -55,8 +56,13 @@ func NewMachine(
 	location string,
 	vmSize string,
 	diskSizeGB int32,
-) *Machine {
+) (*Machine, error) {
 	newID := utils.CreateShortID()
+
+	if !internal_azure.IsValidAzureLocation(location) {
+		return nil, fmt.Errorf("invalid Azure location: %s", location)
+	}
+
 	returnMachine := &Machine{
 		ID:         newID,
 		Name:       fmt.Sprintf("%s-vm", newID),
@@ -74,7 +80,7 @@ func NewMachine(
 		returnMachine.SetResource(resource.GetResourceLowerString(), AzureResourceStateNotStarted)
 	}
 
-	return returnMachine
+	return returnMachine, nil
 }
 
 // Logging methods
@@ -96,6 +102,14 @@ func logTimingDetail(logger *logger.Logger, label string, start, end time.Time) 
 
 func (m *Machine) IsOrchestrator() bool {
 	return m.Orchestrator
+}
+
+func (m *Machine) SetLocation(location string) error {
+	if !internal_azure.IsValidAzureLocation(location) {
+		return fmt.Errorf("invalid Azure location: %s", location)
+	}
+	m.Location = location
+	return nil
 }
 
 func (m *Machine) SSHEnabled() bool {
@@ -315,7 +329,7 @@ func (m *Machine) installDocker(ctx context.Context) error {
 		ctx,
 		"Docker",
 		"install-docker.sh",
-		internal.GetInstallDockerScript,
+		general.GetInstallDockerScript,
 	)
 }
 
@@ -324,7 +338,7 @@ func (m *Machine) installCorePackages(ctx context.Context) error {
 		ctx,
 		"CorePackages",
 		"install-core-packages.sh",
-		internal.GetInstallCorePackagesScript,
+		general.GetInstallCorePackagesScript,
 	)
 }
 

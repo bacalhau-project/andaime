@@ -87,6 +87,8 @@ igws
 ineffassign
 Infof
 Interfacer
+invalidlocation
+invalidzone
 ipaddress
 IPID
 joho
@@ -142,6 +144,7 @@ sess
 Sessioner
 sigchanyzer
 sirupsen
+Skus
 SNET
 southcentralus
 southeastasia
