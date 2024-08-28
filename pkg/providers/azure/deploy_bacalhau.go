@@ -20,12 +20,12 @@ func NewBacalhauDeployer() *BacalhauDeployer {
 	return &BacalhauDeployer{}
 }
 
-func (p *AzureProvider) DeployBacalhauOrchestrator(ctx context.Context) error {
+func (p *AzureProvider) DeployOrchestrator(ctx context.Context) error {
 	deployer := NewBacalhauDeployer()
 	return deployer.DeployOrchestrator(ctx)
 }
 
-func (p *AzureProvider) DeployBacalhauWorker(
+func (p *AzureProvider) DeployWorker(
 	ctx context.Context,
 	machineName string,
 ) error {

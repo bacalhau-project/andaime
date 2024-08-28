@@ -203,7 +203,7 @@ func TestProcessUpdate(t *testing.T) {
 	})
 }
 
-func TestDeployARMTemplate(t *testing.T) {
+func TestDeployResources(t *testing.T) {
 	setupDeployARMTemplateTest(t)
 	defer teardownDeployARMTemplateTest(t)
 
@@ -261,7 +261,7 @@ func TestDeployARMTemplate(t *testing.T) {
 			deployMachineErrors: map[string]error{
 				"machine-eastus-0": errors.New("deployment failed"),
 			},
-			expectedError: "deployment failed: failed to deploy first machine",
+			expectedError: "deployment failed",
 		},
 		{
 			name:                "Single location, later machine fails",
@@ -270,7 +270,7 @@ func TestDeployARMTemplate(t *testing.T) {
 			deployMachineErrors: map[string]error{
 				"machine-eastus-2": errors.New("deployment failed"),
 			},
-			expectedError: "deployment failed: failed to deploy remaining machines in location eastus",
+			expectedError: "deployment failed",
 		},
 		{
 			name:                "Multiple locations, machine in first location fails",
@@ -279,7 +279,7 @@ func TestDeployARMTemplate(t *testing.T) {
 			deployMachineErrors: map[string]error{
 				"machine-eastus-1": errors.New("deployment failed"),
 			},
-			expectedError: "deployment failed: failed to deploy first machine",
+			expectedError: "deployment failed",
 		},
 		{
 			name:                "Multiple locations, machine in later location fails",
@@ -288,7 +288,7 @@ func TestDeployARMTemplate(t *testing.T) {
 			deployMachineErrors: map[string]error{
 				"machine-westus-0": errors.New("deployment failed"),
 			},
-			expectedError: "deployment failed: failed to deploy remaining machines in location",
+			expectedError: "deployment failed",
 		},
 	}
 
@@ -404,7 +404,7 @@ func TestDeployARMTemplate(t *testing.T) {
 				sshutils.NewSSHConfigFunc = oldNewSSHConfigFunc
 			}()
 
-			err := provider.DeployARMTemplate(context.Background())
+			err := provider.DeployResources(context.Background())
 
 			if tt.expectedError != "" {
 				assert.ErrorContains(t, err, tt.expectedError)

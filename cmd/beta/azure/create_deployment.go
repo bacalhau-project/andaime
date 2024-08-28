@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -95,17 +96,61 @@ func runDeployment(
 		return fmt.Errorf("failed to deploy resources: %w", err)
 	}
 
-	if err := p.DeployBacalhauOrchestrator(ctx); err != nil {
+	if err := p.DeployOrchestrator(ctx); err != nil {
+		for _, machine := range deployment.Machines {
+			machine.SetResourceState(
+				models.AzureResourceTypeVM.ResourceString,
+				models.AzureResourceStateFailed,
+			)
+		}
 		return fmt.Errorf("failed to deploy Bacalhau orchestrator: %w", err)
 	}
 
 	updateOrchestratorIP(deployment)
 
+	numberOfSimultaneousProvisionings := models.NumberOfSimultaneousProvisionings
+	workerChan := make(chan string, len(deployment.Machines))
+	errChan := make(chan error, len(deployment.Machines))
+	var wg sync.WaitGroup
+
+	// Fill the channel with worker names
 	for _, machine := range deployment.Machines {
 		if !machine.Orchestrator {
-			if err := p.DeployBacalhauWorker(ctx, machine.Name); err != nil {
-				return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
+			workerChan <- machine.Name
+		}
+	}
+	close(workerChan)
+
+	// Start worker deployments
+	for i := 0; i < numberOfSimultaneousProvisionings; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for workerName := range workerChan {
+				select {
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				default:
+					if err := p.DeployWorker(ctx, workerName); err != nil {
+						errChan <- fmt.Errorf("failed to deploy Bacalhau worker %s: %w", workerName, err)
+						return
+					}
+				}
 			}
+		}()
+	}
+
+	// Wait for all goroutines to finish
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	// Check for errors
+	for err := range errChan {
+		if err != nil {
+			return fmt.Errorf("error deploying workers: %w", err)
 		}
 	}
 

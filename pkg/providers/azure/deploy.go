@@ -65,71 +65,19 @@ func (p *AzureProvider) PrepareDeployment(ctx context.Context) error {
 	return nil
 }
 
-// ProvisionResources deploys Azure resources and provisions the machines.
-func (p *AzureProvider) ProvisionResources(ctx context.Context) error {
-	l := logger.Get()
-	l.Debug("Starting ProvisionResources")
-	m := display.GetGlobalModelFunc()
-
-	err := p.DeployARMTemplate(ctx)
-	if err != nil {
-		errMsg := fmt.Sprintf("Failed to deploy ARM template: %v", err)
-		l.Error(errMsg)
-		return fmt.Errorf(errMsg)
-	}
-
-	err = m.Deployment.UpdateViperConfig()
-	if err != nil {
-		errMsg := fmt.Sprintf("Failed to update viper config: %v", err)
-		l.Error(errMsg)
-		return fmt.Errorf(errMsg)
-	}
-
-	err = p.ProvisionMachines(ctx)
-	if err != nil {
-		errMsg := fmt.Sprintf("Failed to provision machines: %v", err)
-		l.Error(errMsg)
-		return fmt.Errorf(errMsg)
-	}
-
-	err = p.FinalizeDeployment(ctx)
-	if err != nil {
-		errMsg := fmt.Sprintf("Failed to finalize deployment: %v", err)
-		l.Error(errMsg)
-		return fmt.Errorf(errMsg)
-	}
-
-	return nil
-}
-
-// DeployResources deploys Azure resources based on the provided configuration.
-// Config should be the Azure subsection of the viper config.
-func (p *AzureProvider) DeployResources(ctx context.Context) error {
-	if err := p.PrepareDeployment(ctx); err != nil {
-		return err
-	}
-	return p.ProvisionResources(ctx)
-}
-
 func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	sshAndDockerEG := errgroup.Group{}
-	// Provision SSH and Docker for all machines
 	for _, machine := range m.Deployment.Machines {
-		internalMachine := machine
-		sshAndDockerEG.Go(func() error {
-			if err := p.provisionDocker(ctx, internalMachine.Name); err != nil {
-				l.Errorf("Failed to provision Docker for machine %s: %v", internalMachine.Name, err)
-				return err
-			}
-			return nil
-		})
-	}
+		if err := p.WaitForAllMachinesToReachState(ctx, models.AzureResourceStateSucceeded); err != nil {
+			return fmt.Errorf("failed waiting for all machines to reach succeeded state: %v", err)
+		}
 
-	if err := sshAndDockerEG.Wait(); err != nil {
-		return err
+		if err := p.provisionDocker(ctx, machine.Name); err != nil {
+			l.Errorf("Failed to provision Docker for machine %s: %v", machine.Name, err)
+			return err
+		}
 	}
 
 	bd := BacalhauDeployer{}
@@ -152,27 +100,16 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 	}
 	m.Deployment.OrchestratorIP = orchestrator.PublicIP
 
-	var eg errgroup.Group
-	eg.SetLimit(10) //nolint:gomnd
-
 	for _, machine := range m.Deployment.Machines {
 		if machine.Orchestrator {
 			continue
 		}
-		internalWorker := machine
-		eg.Go(func() error {
-			if err := bd.DeployWorker(ctx, internalWorker.Name); err != nil {
-				return fmt.Errorf("failed to provision Bacalhau worker %s: %v",
-					internalWorker.Name,
-					err,
-				)
-			}
-			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		return err
+		if err := bd.DeployWorker(ctx, machine.Name); err != nil {
+			return fmt.Errorf("failed to provision Bacalhau worker %s: %v",
+				machine.Name,
+				err,
+			)
+		}
 	}
 
 	return nil
@@ -180,8 +117,6 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 
 func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string) error {
 	m := display.GetGlobalModelFunc()
-	l := logger.Get()
-
 	// Test SSH connectivity
 	sshConfig, err := sshutils.NewSSHConfigFunc(
 		m.Deployment.Machines[machineName].PublicIP,
@@ -233,19 +168,12 @@ func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string)
 			),
 		)
 	}
-	if m.Deployment.Machines[machineName].GetServiceState("SSH") == models.ServiceStateSucceeded {
-		err := m.Deployment.Machines[machineName].InstallDockerAndCorePackages(ctx)
-		if err != nil {
-			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machineName, err)
-		}
-	}
 
 	return nil
 }
 
 func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string) error {
 	m := display.GetGlobalModelFunc()
-	l := logger.Get()
 
 	err := m.Deployment.Machines[machineName].InstallDockerAndCorePackages(ctx)
 	if err != nil {
@@ -256,7 +184,6 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string)
 		)
 	}
 
-	// Test SSH connectivity
 	sshConfig, err := sshutils.NewSSHConfigFunc(
 		m.Deployment.Machines[machineName].PublicIP,
 		m.Deployment.Machines[machineName].SSHPort,
@@ -318,18 +245,6 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string)
 	}
 
 	if !serverVersionDetected || !clientVersionDetected {
-		return fmt.Errorf("failed to get Docker server or client version: %v", versionsObject)
-	}
-	m.Deployment.Machines[machineName].SetServiceState("Docker", models.ServiceStateUpdating)
-	_, dockerErr := sshConfig.ExecuteCommand(ctx, "sudo docker version -f json")
-	if dockerErr != nil {
-		err := m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
-			machine.SetServiceState("Docker", models.ServiceStateFailed)
-			machine.StatusMessage = "Permanently failed deploying Docker"
-		})
-		if err != nil {
-			return err
-		}
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machineName,
@@ -338,7 +253,7 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string)
 				m.Deployment.Machines[machineName].StatusMessage,
 			),
 		)
-		return dockerErr
+		return fmt.Errorf("failed to detect Docker version")
 	}
 
 	// If all checks pass, continue with the existing code
@@ -352,19 +267,11 @@ func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string)
 			"Docker Successfully Deployed",
 		),
 	)
-	if m.Deployment.Machines[machineName].GetServiceState(
-		"Docker",
-	) == models.ServiceStateSucceeded {
-		err := m.Deployment.Machines[machineName].InstallDockerAndCorePackages(ctx)
-		if err != nil {
-			l.Errorf("Failed to install Docker and core packages on VM %s: %v", machineName, err)
-		}
-	}
 
 	return nil
 }
 
-func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
+func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
@@ -389,6 +296,7 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(models.NumberOfSimultaneousProvisionings)
 
 	for location, machines := range machinesByLocation {
 		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
@@ -406,96 +314,24 @@ func (p *AzureProvider) DeployARMTemplate(ctx context.Context) error {
 				return fmt.Errorf("no machines to deploy in location %s", location)
 			}
 
-			firstMachine := machines[0]
-			l.Infof("Deploying first machine %s in location %s", firstMachine.Name, location)
+			for _, machine := range machines {
+				l.Infof("Deploying machine %s in location %s", machine.Name, location)
 
-			err := p.deployMachine(ctx, firstMachine, map[string]*string{})
-			if err != nil {
-				l.Errorf(
-					"Failed to deploy first machine %s in location %s: %v",
-					firstMachine.Name,
-					location,
-					err,
-				)
-				return fmt.Errorf(
-					"failed to deploy first machine %s in location %s: %w",
-					firstMachine.Name,
-					location,
-					err,
-				)
-			}
-
-			l.Infof("Testing SSH liveness for machine %s", firstMachine.Name)
-			if err := p.testSSHLiveness(ctx, firstMachine.Name); err != nil {
-				l.Errorf("Failed to provision SSH for machine %s: %v", firstMachine.Name, err)
-				return err
-			}
-
-			l.Infof(
-				"Successfully deployed first machine %s in location %s",
-				firstMachine.Name,
-				location,
-			)
-
-			if len(machines) > 1 {
-				subG, subCtx := errgroup.WithContext(ctx)
-				for _, machine := range machines[1:] {
-					machine := machine // capture range variable
-					l.Infof("Deploying machine %s in location %s", machine.Name, location)
-
-					subG.Go(func() error {
-						l.Infof(
-							"Starting deployment for machine %s in location %s",
-							machine.Name,
-							location,
-						)
-						err := p.deployMachine(subCtx, machine, map[string]*string{})
-						if err != nil {
-							l.Errorf(
-								"Failed to deploy machine %s in location %s: %v",
-								machine.Name,
-								location,
-								err,
-							)
-							return fmt.Errorf(
-								"failed to deploy machine %s in location %s: %w",
-								machine.Name,
-								location,
-								err,
-							)
-						}
-
-						l.Infof("Testing SSH liveness for machine %s", machine.Name)
-						if err := p.testSSHLiveness(subCtx, machine.Name); err != nil {
-							l.Errorf(
-								"Failed to provision SSH for machine %s: %v",
-								machine.Name,
-								err,
-							)
-							return err
-						}
-
-						l.Infof(
-							"Successfully deployed machine %s in location %s",
-							machine.Name,
-							location,
-						)
-						return nil
-					})
-				}
-
-				if err := subG.Wait(); err != nil {
-					l.Errorf(
-						"Failed to deploy remaining machines in location %s: %v",
-						location,
-						err,
-					)
+				err := p.deployMachine(ctx, machine, map[string]*string{})
+				if err != nil {
 					return fmt.Errorf(
-						"failed to deploy remaining machines in location %s: %w",
+						"failed to deploy machine %s in location %s: %w",
+						machine.Name,
 						location,
 						err,
 					)
 				}
+
+				l.Infof(
+					"Successfully deployed machine %s in location %s",
+					machine.Name,
+					location,
+				)
 			}
 
 			l.Infof("Successfully deployed all machines in location %s", location)
@@ -548,6 +384,11 @@ func (p *AzureProvider) deployMachine(
 	if err != nil {
 		return err
 	}
+
+	m.Deployment.Machines[machine.Name].SetResourceState(
+		models.AzureResourceTypeVM.ResourceString,
+		models.AzureResourceStateSucceeded,
+	)
 
 	return nil
 }
@@ -724,7 +565,6 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 			m.Deployment.Machines[machine.Name].PublicIP = publicIP
 			m.Deployment.Machines[machine.Name].PrivateIP = privateIP
-			m.Deployment.Machines[machine.Name].StatusMessage = "Testing SSH"
 
 			if m.Deployment.Machines[machine.Name].ElapsedTime == 0 {
 				m.Deployment.Machines[machine.Name].ElapsedTime = time.Since(machine.StartTime)
@@ -732,8 +572,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			displayStatus := models.NewDisplayStatusWithText(
 				machine.Name,
 				models.AzureResourceTypeVM,
-				models.AzureResourceStatePending,
-				"Testing SSH",
+				models.AzureResourceStateSucceeded,
+				"IPs Provisioned",
 			)
 			displayStatus.PublicIP = publicIP
 			displayStatus.PrivateIP = privateIP
@@ -741,9 +581,14 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			m.UpdateStatus(
 				displayStatus,
 			)
+			m.Deployment.Machines[machine.Name].SetResourceState(
+				models.AzureResourceTypeVM.ResourceString,
+				models.AzureResourceStateSucceeded,
+			)
 			break
 		}
 	}
+
 	return nil
 }
 
@@ -1015,4 +860,26 @@ func parseResourceID(resourceID string) (string, error) {
 		return "", fmt.Errorf("invalid resource ID format")
 	}
 	return parts[8], nil
+}
+
+func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
+	l := logger.Get()
+	var workerMachines []*models.Machine
+	for _, machine := range m.Deployment.Machines {
+		if !machine.Orchestrator {
+			workerMachines = append(workerMachines, machine)
+		}
+	}
+	l.Infof("Deploying Bacalhau workers on %d machines", len(workerMachines))
+	maxSimultaneous := 5 // Adjust this value as needed
+	for i := 0; i < len(workerMachines); i += maxSimultaneous {
+		end := i + maxSimultaneous
+		if end > len(workerMachines) {
+			end = len(workerMachines)
+		}
+		l.Debugf("Deploying workers %d to %d", i, end-1)
+	}
+	l.Info("All Bacalhau workers deployed successfully")
+	return nil
 }

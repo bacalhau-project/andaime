@@ -381,14 +381,6 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				return
 			}
 
-			// Check for Bacalhau node listing failure
-			if p.checkBacalhauNodeListingFailure() {
-				l.Error("Persistent failure in listing Bacalhau nodes detected")
-				writeToDebugLog("Persistent failure in listing Bacalhau nodes detected")
-				p.CancelAllDeployments(ctx)
-				return
-			}
-
 			writeToDebugLog(
 				fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)),
 			)
@@ -516,16 +508,6 @@ func writeToDebugLog(message string) {
 	}
 }
 
-func (p *AzureProvider) checkBacalhauNodeListingFailure() bool {
-	// This is a placeholder implementation. You should replace this with actual logic
-	// to check if there have been persistent failures in listing Bacalhau nodes.
-	// For example, you could keep a counter of consecutive failures and return true
-	// if it exceeds a certain threshold.
-
-	// For now, we'll just return false to avoid breaking existing functionality.
-	return false
-}
-
 func (p *AzureProvider) CancelAllDeployments(ctx context.Context) {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -574,53 +556,6 @@ func stripAndParseJSON(input string) ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-func (p *AzureProvider) provisionServices(ctx context.Context) {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	p.serviceMutex.Lock()
-	defer p.serviceMutex.Unlock()
-
-	for _, machine := range m.Deployment.Machines {
-		for _, service := range models.RequiredServices {
-			if err := p.provisionService(ctx, machine, service); err != nil {
-				l.Errorf(
-					"Failed to provision %s for machine %s: %v",
-					service.Name,
-					machine.Name,
-					err,
-				)
-				return
-			}
-		}
-	}
-}
-
-func (p *AzureProvider) provisionService(
-	_ context.Context,
-	machine *models.Machine,
-	service models.ServiceType,
-) error {
-	l := logger.Get()
-	l.Infof("Provisioning %s for machine %s", service.Name, machine.Name)
-
-	switch service.Name {
-	case "SSH":
-		// Implement SSH provisioning
-	case "CorePackages":
-		// Implement core packages installation
-	case "Docker":
-		// Implement Docker installation
-	case "Bacalhau":
-		// Implement Bacalhau installation
-	default:
-		return fmt.Errorf("unknown service type: %s", service.Name)
-	}
-
-	machine.SetServiceState(service.Name, models.ServiceStateSucceeded)
-	return nil
-}
-
 func (p *AzureProvider) WaitForAllMachinesToReachState(
 	ctx context.Context,
 	targetState models.AzureResourceState,
@@ -651,50 +586,5 @@ func (p *AzureProvider) WaitForAllMachinesToReachState(
 			l.Debug("Waiting for machines to reach target state...")
 		}
 	}
-	return nil
-}
-func (p *AzureProvider) InstallDockerOnAllMachines(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(m.Deployment.Machines))
-	for _, machine := range m.Deployment.Machines {
-		wg.Add(1)
-		go func(machine *models.Machine) {
-			defer wg.Done()
-			l.Debugf("Installing Docker on machine %s", machine.Name)
-			if err := p.installDockerAndCorePackages(ctx, machine.Name); err != nil {
-				errChan <- fmt.Errorf("failed to install Docker on machine %s: %v", machine.Name, err)
-			}
-		}(machine)
-	}
-	wg.Wait()
-	close(errChan)
-	for err := range errChan {
-		if err != nil {
-			l.Error(err.Error())
-			return err
-		}
-	}
-	l.Debug("Docker installed on all machines successfully")
-	return nil
-}
-
-func (p *AzureProvider) installDockerAndCorePackages(
-	ctx context.Context,
-	machineName string,
-) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-	machine := m.Deployment.Machines[machineName]
-	l.Debugf("Installing Docker and core packages on machine %s", machineName)
-	if err := machine.InstallDockerAndCorePackages(ctx); err != nil {
-		return fmt.Errorf(
-			"failed to install Docker and core packages on VM %s: %v",
-			machineName,
-			err,
-		)
-	}
-	l.Debugf("Docker and core packages installed successfully on machine %s", machineName)
 	return nil
 }

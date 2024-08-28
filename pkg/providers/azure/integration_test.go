@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,7 +46,6 @@ func setupTest(t *testing.T) *testSetup {
 
 	mockAzureClient := new(MockAzureClient)
 	mockSSHConfig := new(MockSSHConfig)
-	mockSSHConfig := new(MockSSHConfig)
 
 	provider := &AzureProvider{
 		Client: mockAzureClient,
@@ -83,7 +83,6 @@ func setupTest(t *testing.T) *testSetup {
 		provider:        provider,
 		mockAzureClient: mockAzureClient,
 		mockSSHConfig:   mockSSHConfig,
-		mockSSHClient:   mockSSHClient,
 		cleanup:         cleanup,
 	}
 }
@@ -153,55 +152,44 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	setup := setupTest(t)
 	defer setup.cleanup()
 
-	fakeOrchestratorIP := "20.30.40.50"
-
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
-	setupMockVMAndNetwork(setup.mockAzureClient)
+	stringMatcher := func(command string) bool {
+		return strings.Contains(command,
+			"bacalhau node list --output json --api-host")
+	}
 
-	setup.mockSSHConfig.On("Connect").Return(nil, nil)
-	setup.mockSSHConfig.On("Close").Return(nil)
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
 		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.MatchedBy(func(ctx context.Context, command string) bool {
-		return strings.Contains(command, "bacalhau node list --output json --api-host")
-	})).Return(`[{"id": "node1"}]`, nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(stringMatcher)).
+		Return(`[{"id": "node1"}]`, nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-
-	err := setup.provider.ProvisionResources(ctx)
-	assert.NoError(t, err)
+	setup.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
 
 	m := display.GetGlobalModel()
+	for _, machine := range m.Deployment.Machines {
+		machine.SetResourceState(
+			models.AzureResourceTypeVM.ResourceString,
+			models.AzureResourceStateSucceeded,
+		)
+	}
+
+	err := setup.provider.ProvisionMachines(ctx)
+	assert.NoError(t, err)
+
 	for _, machine := range m.Deployment.Machines {
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("SSH"))
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Docker"))
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-		assert.Equal(t, fakeOrchestratorIP, machine.PublicIP)
-		assert.Equal(t, "10.0.0.4", machine.PrivateIP)
 	}
 
-	mockArmDeploymentPoller.AssertExpectations(t)
-	setup.mockAzureClient.AssertExpectations(t)
 	setup.mockSSHConfig.AssertExpectations(t)
-}
-
-func TestProvisionResourcesFailure(t *testing.T) {
-	setup := setupTest(t)
-	defer setup.cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	setup.mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&MockPoller{}, fmt.Errorf("resource provisioning failed"))
-
-	err := setup.provider.ProvisionResources(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "resource provisioning failed")
-
-	setup.mockAzureClient.AssertExpectations(t)
 }
 
 func TestSSHProvisioningFailure(t *testing.T) {
@@ -211,18 +199,21 @@ func TestSSHProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
-	setupMockVMAndNetwork(setup.mockAzureClient)
-
 	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
 		Return(fmt.Errorf("SSH provisioning failed"))
 
-	err := setup.provider.ProvisionResources(ctx)
+	m := display.GetGlobalModel()
+	for _, machine := range m.Deployment.Machines {
+		machine.SetResourceState(
+			models.AzureResourceTypeVM.ResourceString,
+			models.AzureResourceStateSucceeded,
+		)
+	}
+
+	err := setup.provider.ProvisionMachines(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SSH provisioning failed")
 
-	mockArmDeploymentPoller.AssertExpectations(t)
-	setup.mockAzureClient.AssertExpectations(t)
 	setup.mockSSHConfig.AssertExpectations(t)
 }
 
@@ -233,24 +224,26 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
-	setupMockVMAndNetwork(setup.mockAzureClient)
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
+		Return("", fmt.Errorf("failed to install Docker"))
 
-	setup.mockSSHClient.On("Connect").Return(nil)
-	setup.mockSSHClient.On("Close").Return(nil)
-	setup.mockSSHClient.Session.On("Run", mock.Anything).Return(nil)
-	setup.mockSSHClient.Session.On("CombinedOutput", "sudo docker version -f json").
-		Return([]byte(`{"Client":{"Version":"1.2.3"}}`), nil) // Missing Server version
-	setup.mockSSHClient.Session.On("CombinedOutput", mock.Anything).Return([]byte(""), nil)
+	m := display.GetGlobalModel()
+	for _, machine := range m.Deployment.Machines {
+		machine.SetResourceState(
+			models.AzureResourceTypeVM.ResourceString,
+			models.AzureResourceStateSucceeded,
+		)
+	}
 
-	err := setup.provider.ProvisionResources(ctx)
+	err := setup.provider.ProvisionMachines(ctx)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to get Docker server version")
+	assert.Contains(t, err.Error(), "failed to marshal Docker server version")
 
-	mockArmDeploymentPoller.AssertExpectations(t)
-	setup.mockAzureClient.AssertExpectations(t)
-	setup.mockSSHClient.AssertExpectations(t)
-	setup.mockSSHClient.Session.AssertExpectations(t)
+	setup.mockSSHConfig.AssertExpectations(t)
 }
 
 func TestOrchestratorProvisioningFailure(t *testing.T) {
@@ -260,8 +253,13 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
-	setupMockVMAndNetwork(setup.mockAzureClient)
+	m := display.GetGlobalModel()
+	for _, machine := range m.Deployment.Machines {
+		machine.SetResourceState(
+			models.AzureResourceTypeVM.ResourceString,
+			models.AzureResourceStateSucceeded,
+		)
+	}
 
 	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
 	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -275,19 +273,13 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 		Return(`[]`, nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
 
-	err := setup.provider.ProvisionResources(ctx)
+	err := setup.provider.ProvisionMachines(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no Bacalhau nodes found")
 
-	m := display.GetGlobalModel()
 	for _, machine := range m.Deployment.Machines {
-		if !machine.Orchestrator {
-			assert.NotEqual(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-		}
+		assert.NotEqual(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
 	}
-
-	mockArmDeploymentPoller.AssertExpectations(t)
-	setup.mockAzureClient.AssertExpectations(t)
 	setup.mockSSHConfig.AssertExpectations(t)
 }
 
