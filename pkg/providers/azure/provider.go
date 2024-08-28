@@ -173,12 +173,12 @@ func NewAzureProvider() (AzureProviderer, error) {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
 
-	sshUser := config.GetString("azure.ssh_user")
+	sshUser := config.GetString("general.ssh_user")
 	if sshUser == "" {
 		sshUser = "azureuser" // Default SSH user for Azure VMs
 	}
 
-	sshPort := config.GetInt("azure.ssh_port")
+	sshPort := config.GetInt("general.ssh_port")
 	if sshPort == 0 {
 		sshPort = 22 // Default SSH port
 	}
@@ -193,7 +193,47 @@ func NewAzureProvider() (AzureProviderer, error) {
 
 	go provider.startUpdateProcessor(context.Background())
 
+	// Initialize the display model with machines from the configuration
+	provider.initializeDisplayModel()
+
 	return provider, nil
+}
+
+func (p *AzureProvider) initializeDisplayModel() {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		l := logger.Get()
+		l.Error("Global model or deployment is nil")
+		return
+	}
+
+	machines := p.Config.Get("azure.machines").([]interface{})
+	for _, machineConfig := range machines {
+		machine := machineConfig.(map[string]interface{})
+		location := machine["location"].(string)
+		parameters := machine["parameters"].(map[string]interface{})
+
+		count := 1
+		if c, ok := parameters["count"]; ok {
+			count = c.(int)
+		}
+
+		for i := 0; i < count; i++ {
+			machineName := fmt.Sprintf("machine-%s-%d", location, i)
+			m.Deployment.Machines[machineName] = &models.Machine{
+				Name:     machineName,
+				Location: location,
+				Type: models.AzureResourceTypes{
+					ResourceString:    "Microsoft.Compute/virtualMachines",
+					ShortResourceName: "VM",
+				},
+			}
+
+			if orchestrator, ok := parameters["orchestrator"]; ok && orchestrator.(bool) {
+				m.Deployment.Machines[machineName].Orchestrator = true
+			}
+		}
+	}
 }
 
 func (p *AzureProvider) GetClient() interface{} {
