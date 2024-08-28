@@ -139,6 +139,11 @@ func NewAzureClient(subscriptionID string) (AzureClient, error) {
 	if err != nil {
 		return &LiveAzureClient{}, err
 	}
+
+	if subscriptionID == "" {
+		return &LiveAzureClient{}, fmt.Errorf("subscriptionID is required")
+	}
+
 	// Create Azure clients
 	resourceGroupsClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
 	if err != nil {

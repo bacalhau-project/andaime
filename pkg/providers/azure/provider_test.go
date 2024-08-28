@@ -377,7 +377,7 @@ func TestDeployResources(t *testing.T) {
 
 			oldNewSSHConfigFunc := sshutils.NewSSHConfigFunc
 			fakeOrchestratorIP := "1.2.3.4"
-			mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).Return(nil)
+			mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				Return(nil)
 			mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").

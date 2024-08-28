@@ -84,7 +84,7 @@ type AzureProviderer interface {
 	SetSSHClient(client sshutils.SSHClienter)
 
 	StartResourcePolling(ctx context.Context)
-	PrepareResourceGroup(ctx context.Context, deployment *models.Deployment) error
+	PrepareResourceGroup(ctx context.Context) error
 	DeployResources(ctx context.Context) error
 	ProvisionMachines(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
@@ -205,34 +205,6 @@ func (p *AzureProvider) initializeDisplayModel() {
 		l := logger.Get()
 		l.Error("Global model or deployment is nil")
 		return
-	}
-
-	machines := p.Config.Get("azure.machines").([]interface{})
-	for _, machineConfig := range machines {
-		machine := machineConfig.(map[string]interface{})
-		location := machine["location"].(string)
-		parameters := machine["parameters"].(map[string]interface{})
-
-		count := 1
-		if c, ok := parameters["count"]; ok {
-			count = c.(int)
-		}
-
-		for i := 0; i < count; i++ {
-			machineName := fmt.Sprintf("machine-%s-%d", location, i)
-			m.Deployment.Machines[machineName] = &models.Machine{
-				Name:     machineName,
-				Location: location,
-				Type: models.AzureResourceTypes{
-					ResourceString:    "Microsoft.Compute/virtualMachines",
-					ShortResourceName: "VM",
-				},
-			}
-
-			if orchestrator, ok := parameters["orchestrator"]; ok && orchestrator.(bool) {
-				m.Deployment.Machines[machineName].Orchestrator = true
-			}
-		}
 	}
 }
 
@@ -611,7 +583,9 @@ func stripAndParseJSON(input string) ([]map[string]interface{}, error) {
 }
 
 func isValidGUID(guid string) bool {
-	r := regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$")
+	r := regexp.MustCompile(
+		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
+	)
 	return r.MatchString(guid)
 }
 
