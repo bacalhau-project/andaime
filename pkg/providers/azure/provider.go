@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -161,7 +162,12 @@ func NewAzureProvider() (AzureProviderer, error) {
 	}
 	l := logger.Get()
 	l.Debugf("Using Azure subscription ID: %s", subscriptionID)
-	
+
+	// Validate the subscription ID format
+	if !isValidGUID(subscriptionID) {
+		return nil, fmt.Errorf("invalid Azure subscription ID format: %s", subscriptionID)
+	}
+
 	client, err := NewAzureClientFunc(subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -562,6 +568,11 @@ func stripAndParseJSON(input string) ([]map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+func isValidGUID(guid string) bool {
+	r := regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$")
+	return r.MatchString(guid)
 }
 
 func (p *AzureProvider) WaitForAllMachinesToReachState(
