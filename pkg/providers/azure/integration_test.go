@@ -52,7 +52,7 @@ func setupTest(t *testing.T) *testSetup {
 	}
 
 	display.SetGlobalModel(display.InitialModel())
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	m.Deployment = models.NewDeployment()
 	m.Deployment.Machines = map[string]*models.Machine{
 		"orchestrator": {
@@ -156,7 +156,7 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 		Return(nil)
 	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
 
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
@@ -186,7 +186,7 @@ func TestSSHProvisioningFailure(t *testing.T) {
 	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything).
 		Return(fmt.Errorf("SSH provisioning failed"))
 
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
@@ -215,7 +215,7 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
 		Return("", fmt.Errorf("failed to install Docker"))
 
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
@@ -237,7 +237,7 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m := display.GetGlobalModel()
+	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,

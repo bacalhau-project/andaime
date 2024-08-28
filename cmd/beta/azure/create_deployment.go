@@ -39,6 +39,13 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
+	setDefaultConfigurations()
+
+	projectID := viper.GetString("general.project_id")
+	if projectID == "" {
+		return fmt.Errorf("project ID is empty")
+	}
+
 	uniqueID := time.Now().Format("060102150405")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
@@ -47,13 +54,12 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
 
-	deployment, err := InitializeDeployment(ctx, uniqueID)
+	m := display.InitialModel()
+	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
 	if err != nil {
 		return fmt.Errorf("failed to initialize deployment: %w", err)
 	}
 
-	m := display.InitialModel()
-	m.Deployment = deployment
 	prog := display.GetGlobalProgram()
 	prog.InitProgram(m)
 
@@ -91,7 +97,16 @@ func runDeployment(
 	l := logger.Get()
 	prog := display.GetGlobalProgram()
 
-	if err := p.DeployResources(ctx); err != nil {
+	// Prepare resource group
+	l.Debug("Preparing resource group")
+	err := p.PrepareResourceGroup(ctx, deployment)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
+		return fmt.Errorf("failed to prepare resource group: %w", err)
+	}
+	l.Debug("Resource group prepared successfully")
+
+	if err = p.DeployResources(ctx); err != nil {
 		return fmt.Errorf("failed to deploy resources: %w", err)
 	}
 
@@ -124,85 +139,6 @@ func updateOrchestratorIP(deployment *models.Deployment) {
 	for i := range deployment.Machines {
 		deployment.Machines[i].OrchestratorIP = deployment.OrchestratorIP
 	}
-}
-
-func InitializeDeployment(ctx context.Context, uniqueID string) (*models.Deployment, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("deployment cancelled before starting: %w", err)
-	}
-
-	setDefaultConfigurations()
-
-	projectID := viper.GetString("general.project_id")
-	return PrepareDeployment(ctx, projectID, uniqueID)
-}
-
-func setDefaultConfigurations() {
-	viper.SetDefault("general.project_id", "default-project")
-	viper.SetDefault("general.log_path", "/var/log/andaime")
-	viper.SetDefault("general.log_level", getDefaultLogLevel())
-	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
-	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
-	viper.SetDefault("general.ssh_user", "azureuser")
-	viper.SetDefault("general.ssh_port", 22)
-	viper.SetDefault("azure.resource_group_name", "andaime-rg")
-	viper.SetDefault("azure.resource_group_location", "eastus")
-	viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
-	viper.SetDefault("azure.default_vm_size", "Standard_B2s")
-	viper.SetDefault("azure.default_disk_size_gb", globals.DefaultDiskSizeGB)
-	viper.SetDefault("azure.default_location", "eastus")
-	viper.SetDefault("azure.machines", []models.Machine{
-		{
-			Name:     "default-vm",
-			VMSize:   viper.GetString("azure.default_vm_size"),
-			Location: viper.GetString("azure.default_location"),
-			Parameters: models.Parameters{
-				Orchestrator: true,
-			},
-		},
-	})
-}
-
-func getDefaultLogLevel() string {
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		return "info"
-	}
-	return strings.ToLower(logLevel)
-}
-
-func PrepareDeployment(
-	ctx context.Context,
-	projectID, uniqueID string,
-) (*models.Deployment, error) {
-	deployment := &models.Deployment{}
-	setDeploymentBasicInfo(deployment)
-
-	var err error
-	deployment.SSHPublicKeyPath,
-		deployment.SSHPrivateKeyPath,
-		deployment.SSHPublicKeyMaterial,
-		deployment.SSHPrivateKeyMaterial,
-		err = ExtractSSHKeyPaths()
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
-	}
-
-	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
-		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
-	}
-
-	setDeploymentDetails(deployment, projectID, uniqueID)
-
-	if err := deployment.UpdateViperConfig(); err != nil {
-		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
-	}
-
-	if err := ProcessMachinesConfig(deployment); err != nil {
-		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
-	}
-
-	return deployment, nil
 }
 
 func setDeploymentBasicInfo(d *models.Deployment) {
@@ -290,7 +226,7 @@ func extractSSHKeyPath(configKeyString string) (string, error) {
 // and then convert it to the actual machine struct
 type rawMachine struct {
 	Location   string `yaml:"location"`
-	Parameters struct {
+	Parameters *struct {
 		Count        int    `yaml:"count,omitempty"`
 		Type         string `yaml:"type,omitempty"`
 		Orchestrator bool   `yaml:"orchestrator,omitempty"`
@@ -319,7 +255,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 	var orchestratorLocations []string
 	for _, rawMachine := range rawMachines {
-		if rawMachine.Parameters.Orchestrator {
+		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
 			// We're doing some checking here to make sure that the orchestrator node not
 			// specified in a way that would result in multiple orchestrator nodes
 			if rawMachine.Parameters.Count == 0 {
@@ -338,22 +274,35 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 	newMachines := make(map[string]*models.Machine)
 	for _, rawMachine := range rawMachines {
-		countOfMachines := getCountOfMachines(rawMachine.Parameters.Count, defaultCount)
-		for i := 0; i < countOfMachines; i++ {
-			diskSizeGB := defaultDiskSize
-			vmSize := defaultType
-
-			if rawMachine.Parameters.Type != "" {
-				vmSize = rawMachine.Parameters.Type
+		count := 1
+		if rawMachine.Parameters != nil {
+			if rawMachine.Parameters.Count > 0 {
+				count = rawMachine.Parameters.Count
 			}
+		}
 
+		countOfMachines := getCountOfMachines(count, defaultCount)
+		for i := 0; i < countOfMachines; i++ {
 			newMachine := createNewMachine(
 				rawMachine.Location,
-				int32(diskSizeGB),
-				vmSize,
+				int32(defaultDiskSize),
+				defaultType,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
+
+			if rawMachine.Parameters != nil {
+				if rawMachine.Parameters.Type != "" {
+					newMachine.VMSize = rawMachine.Parameters.Type
+				}
+				if rawMachine.Parameters.Orchestrator {
+					newMachine.Orchestrator = true
+				}
+			} else {
+				// Log a warning or handle the case where Parameters is nil
+				logger.Get().Warnf("Parameters for machine in location %s is nil", rawMachine.Location)
+			}
+
 			newMachines[newMachine.Name] = newMachine
 		}
 
@@ -362,15 +311,12 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 	// Loop for setting the orchestrator node
 	orchestratorFound := false
-	for name := range newMachines {
+	for name, machine := range newMachines {
 		if orchestratorIP != "" {
 			newMachines[name].OrchestratorIP = orchestratorIP
 			orchestratorFound = true
-		} else if len(orchestratorLocations) > 0 && newMachines[name].Location == orchestratorLocations[0] {
-			newMachines[name].Orchestrator = true
+		} else if machine.Orchestrator {
 			orchestratorFound = true
-		} else {
-			newMachines[name].Orchestrator = false
 		}
 	}
 	if !orchestratorFound {
@@ -426,6 +372,9 @@ func validateMachineOrchestrator(
 
 func getCountOfMachines(paramCount, defaultCount int) int {
 	if paramCount == 0 {
+		if defaultCount == 0 {
+			return 1
+		}
 		return defaultCount
 	}
 	return paramCount
@@ -504,4 +453,87 @@ func initializeDisplayModel(deployment *models.Deployment) *display.DisplayModel
 	displayModel := display.InitialModel()
 	displayModel.Deployment = deployment
 	return displayModel
+}
+
+// PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.
+func PrepareDeployment(
+	ctx context.Context,
+	projectID string,
+	uniqueID string,
+) (*models.Deployment, error) {
+	l := logger.Get()
+	l.Debug("Starting PrepareDeployment")
+
+	deployment := &models.Deployment{}
+	setDeploymentBasicInfo(deployment)
+
+	// Set the start time for the deployment
+	deployment.StartTime = time.Now()
+	l.Debugf("Deployment start time: %v", deployment.StartTime)
+
+	var err error
+	deployment.SSHPublicKeyPath,
+		deployment.SSHPrivateKeyPath,
+		deployment.SSHPublicKeyMaterial,
+		deployment.SSHPrivateKeyMaterial,
+		err = ExtractSSHKeyPaths()
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
+	}
+
+	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
+		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
+	}
+
+	setDeploymentDetails(deployment, projectID, uniqueID)
+
+	// Ensure we have a location set
+	if deployment.ResourceGroupLocation == "" {
+		deployment.ResourceGroupLocation = "eastus" // Default Azure region
+		l.Warn("No resource group location specified, using default: eastus")
+	}
+
+	if err := deployment.UpdateViperConfig(); err != nil {
+		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
+	}
+
+	if err := ProcessMachinesConfig(deployment); err != nil {
+		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
+	}
+
+	return deployment, nil
+}
+
+func setDefaultConfigurations() {
+	viper.SetDefault("general.project_id", "default-project")
+	viper.SetDefault("general.log_path", "/var/log/andaime")
+	viper.SetDefault("general.log_level", getDefaultLogLevel())
+	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
+	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
+	viper.SetDefault("general.ssh_user", "azureuser")
+	viper.SetDefault("general.ssh_port", 22)
+	viper.SetDefault("azure.resource_group_name", "andaime-rg")
+	viper.SetDefault("azure.resource_group_location", "eastus")
+	viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
+	viper.SetDefault("azure.default_vm_size", "Standard_B2s")
+	viper.SetDefault("azure.default_disk_size_gb", globals.DefaultDiskSizeGB)
+	viper.SetDefault("azure.default_location", "eastus")
+	viper.SetDefault("azure.machines", []models.Machine{
+		{
+			Name:     "default-vm",
+			VMSize:   viper.GetString("azure.default_vm_size"),
+			Location: viper.GetString("azure.default_location"),
+			Parameters: models.Parameters{
+				Orchestrator: true,
+			},
+		},
+	})
+}
+
+func getDefaultLogLevel() string {
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		return "info"
+	}
+	return strings.ToLower(logLevel)
 }

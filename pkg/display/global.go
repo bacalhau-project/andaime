@@ -36,7 +36,7 @@ func (gp *GlobalProgram) GetProgram() *GlobalProgram {
 }
 
 func (gp *GlobalProgram) Quit() {
-	m := GetGlobalModel()
+	m := GetGlobalModelFunc()
 	if m != nil {
 		m.quitChan <- true
 	}

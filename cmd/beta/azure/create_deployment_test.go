@@ -4,136 +4,25 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/bacalhau-project/andaime/internal/testutil"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestInitializeDeployment(t *testing.T) {
-	// Set up the base path for test data
-	testDataPath := os.Getenv("TEST_DATA_PATH")
-	if testDataPath == "" {
-		testDataPath = "../../.." // Adjust this based on your project structure
-	}
-
-	tempConfigFile, err := os.CreateTemp("", "azure_test_config_*.yaml")
-	assert.NoError(t, err, "Failed to create temporary config file")
-	defer os.Remove(tempConfigFile.Name()) // Clean up the temporary file after the test
-
-	configContent, err := testdata.ReadTestAzureConfig()
-	assert.NoError(t, err, "Failed to read test config")
-	_, err = tempConfigFile.Write([]byte(configContent))
-	assert.NoError(t, err, "Failed to write to temporary config file")
-	tempConfigFile.Close()
-
-	// Set up Viper to read from the temporary config file
-	viper.SetConfigFile(tempConfigFile.Name())
-	err = viper.ReadInConfig()
-	// Add
-	assert.NoError(t, err, "Failed to read config file")
-	// Update the SSH key paths in the configuration
-	viper.Set(
-		"general.ssh_public_key_path",
-		filepath.Join(testDataPath, "internal", "testdata", "dummy_keys", "id_ed25519.pub"),
-	)
-	viper.Set(
-		"general.ssh_private_key_path",
-		filepath.Join(testDataPath, "internal", "testdata", "dummy_keys", "id_ed25519"),
-	)
-	viper.Set("general.ssh_key_dir", filepath.Join(testDataPath, "testdata", "dummy_keys"))
-
-	// Call InitializeDeployment
-	ctx := context.Background()
-	uniqueID := "test123"
-	deployment, err := InitializeDeployment(ctx, uniqueID)
-	assert.NoError(t, err, "InitializeDeployment failed")
-
-	// Check the total number of machines
-	assert.Equal(t, 9, len(deployment.Machines), "Expected 9 machines in total")
-
-	// Check the number of unique locations
-	locations := make(map[string]bool)
-	for _, machine := range deployment.Machines {
-		locations[machine.Location] = true
-	}
-	assert.Equal(t, 5, len(locations), "Expected 5 unique locations")
-
-	// Check specific configurations for each location
-	eastus2Count := 0
-	westusCount := 0
-	brazilsouthCount := 0
-	euwestCount := 0
-	asiawestCount := 0
-
-	for _, machine := range deployment.Machines {
-		switch machine.Location {
-		case "eastus2":
-			eastus2Count++
-			assert.Equal(
-				t,
-				"Standard_DS1_v4",
-				machine.VMSize,
-				"Expected eastus2 machines to be Standard_DS1_v4",
-			)
-		case "westus":
-			westusCount++
-		case "brazilsouth":
-			brazilsouthCount++
-			assert.Equal(
-				t,
-				"Standard_DS1_v8",
-				machine.VMSize,
-				"Expected brazilsouth machines to be Standard_DS1_v8",
-			)
-		case "euwest":
-			euwestCount++
-			assert.True(
-				t,
-				machine.Orchestrator,
-				"Expected euwest machine to be orchestrator",
-			)
-		case "asiawest":
-			asiawestCount++
-		}
-	}
-
-	// Verify the count of machines in each location
-	assert.Equal(t, 2, eastus2Count, "Expected 2 machines in eastus2")
-	assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
-	assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
-	assert.Equal(t, 1, euwestCount, "Expected 1 machine in euwest")
-	assert.Equal(t, 1, asiawestCount, "Expected 1 machine in asiawest")
-
-	// Verify that only one orchestrator exists
-	orchestratorCount := 0
-	for _, machine := range deployment.Machines {
-		if machine.Orchestrator {
-			orchestratorCount++
-		}
-	}
-	assert.Equal(t, 1, orchestratorCount, "Expected exactly one orchestrator machine")
-}
-
 func TestProcessMachinesConfig(t *testing.T) {
-	tempPrivateKey, err := os.CreateTemp("", "dummy_private_key")
-	assert.NoError(t, err, "Failed to create temporary private key file")
-	_, err = tempPrivateKey.Write([]byte(testdata.TestPrivateSSHKeyMaterial))
-	assert.NoError(t, err, "Failed to write to temporary private key file")
-	tempPrivateKey.Close()
-	defer os.Remove(tempPrivateKey.Name())
-
-	tempPublicKey, err := os.CreateTemp("", "dummy_public_key")
-	assert.NoError(t, err, "Failed to create temporary public key file")
-	_, err = tempPublicKey.Write([]byte(testdata.TestPublicSSHKeyMaterial))
-	assert.NoError(t, err, "Failed to write to temporary public key file")
-	tempPublicKey.Close()
-	defer os.Remove(tempPublicKey.Name())
+	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	defer cleanupPublicKey()
+	defer cleanupPrivateKey()
 
 	deployment := &models.Deployment{
-		SSHPrivateKeyPath: tempPrivateKey.Name(),
+		SSHPrivateKeyPath: testPrivateKeyPath,
 		SSHPort:           22,
 	}
 
@@ -244,4 +133,183 @@ func TestProcessMachinesConfig(t *testing.T) {
 			}
 		})
 	}
+}
+func TestInitializeDeployment(t *testing.T) {
+	viper.Reset()
+
+	// Save original environment
+	originalEnv := os.Environ()
+	t.Cleanup(func() {
+		os.Clearenv()
+		for _, pair := range originalEnv {
+			parts := strings.SplitN(pair, "=", 2)
+			os.Setenv(parts[0], parts[1])
+		}
+	})
+	tempDir, err := os.MkdirTemp("", "test_initialize_deployment")
+	assert.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(tempDir) })
+
+	// Set up the base path for test data
+	testDataPath := os.Getenv("TEST_DATA_PATH")
+	if testDataPath == "" {
+		testDataPath = "../../.." // Adjust this based on your project structure
+	}
+
+	// Create and populate temporary config file
+	tempConfigFile, err := os.CreateTemp(tempDir, "azure_test_config_*.yaml")
+	assert.NoError(t, err)
+	configContent, err := testdata.ReadTestAzureConfig()
+	assert.NoError(t, err)
+	_, err = tempConfigFile.Write([]byte(configContent))
+	assert.NoError(t, err)
+	tempConfigFile.Close()
+
+	// Set up Viper to read from the temporary config file
+	viper.SetConfigFile(tempConfigFile.Name())
+	err = viper.ReadInConfig()
+	assert.NoError(t, err)
+
+	// Update the SSH key paths in the configuration
+	viper.Set(
+		"general.ssh_public_key_path",
+		filepath.Join(testDataPath, "internal", "testdata", "dummy_keys", "id_ed25519.pub"),
+	)
+	viper.Set(
+		"general.ssh_private_key_path",
+		filepath.Join(testDataPath, "internal", "testdata", "dummy_keys", "id_ed25519"),
+	)
+	viper.Set("general.ssh_key_dir", filepath.Join(testDataPath, "testdata", "dummy_keys"))
+
+	// Create a local display model for this test
+	localModel := display.InitialModel()
+	origGetGlobalModel := display.GetGlobalModelFunc
+	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
+	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
+
+	// Run subtests
+	t.Run("PrepareDeployment", func(t *testing.T) {
+		ctx := context.Background()
+		uniqueID := "test123"
+		projectID := "test-project"
+		deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
+		assert.NoError(t, err)
+		assert.NotNil(t, deployment)
+		localModel.Deployment = deployment
+
+		// Check the total number of machines
+		assert.Equal(t, 9, len(localModel.Deployment.Machines), "Expected 9 machines in total")
+
+		// Check the number of unique locations
+		locations := make(map[string]bool)
+		for _, machine := range localModel.Deployment.Machines {
+			locations[machine.Location] = true
+		}
+		assert.Equal(t, 5, len(locations), "Expected 5 unique locations")
+
+		// Check specific configurations for each location
+		eastus2Count := 0
+		westusCount := 0
+		brazilsouthCount := 0
+		euwestCount := 0
+		asiawestCount := 0
+
+		for _, machine := range localModel.Deployment.Machines {
+			switch machine.Location {
+			case "eastus2":
+				eastus2Count++
+				assert.Equal(
+					t,
+					"Standard_DS1_v4",
+					machine.VMSize,
+					"Expected eastus2 machines to be Standard_DS1_v4",
+				)
+			case "westus":
+				westusCount++
+			case "brazilsouth":
+				brazilsouthCount++
+				assert.Equal(
+					t,
+					"Standard_DS1_v8",
+					machine.VMSize,
+					"Expected brazilsouth machines to be Standard_DS1_v8",
+				)
+			case "euwest":
+				euwestCount++
+				assert.True(t, machine.Orchestrator, "Expected euwest machine to be orchestrator")
+			case "asiawest":
+				asiawestCount++
+			}
+		}
+
+		// Verify the count of machines in each location
+		assert.Equal(t, 2, eastus2Count, "Expected 2 machines in eastus2")
+		assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
+		assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
+		assert.Equal(t, 1, euwestCount, "Expected 1 machine in euwest")
+		assert.Equal(t, 1, asiawestCount, "Expected 1 machine in asiawest")
+
+		// Verify that only one orchestrator exists
+		orchestratorCount := 0
+		for _, machine := range localModel.Deployment.Machines {
+			if machine.Orchestrator {
+				orchestratorCount++
+			}
+		}
+		assert.Equal(t, 1, orchestratorCount, "Expected exactly one orchestrator machine")
+	})
+}
+func TestPrepareDeployment(t *testing.T) {
+	testSSHPublicKeyPath, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	defer cleanupPublicKey()
+	defer cleanupPrivateKey()
+
+	// Setup
+	ctx := context.Background()
+	projectID := "test-project"
+	uniqueID := "test-unique-id"
+
+	// Mock viper configuration
+	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
+	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
+	viper.Set("azure.subscription_id", "test-subscription-id")
+	viper.Set("azure.resource_group_name", "test-rg")
+	viper.Set("azure.resource_group_location", "")
+	viper.Set("azure.machines", []map[string]interface{}{
+		{
+			"location": "eastus",
+			"parameters": map[string]interface{}{
+				"orchestrator": true,
+			},
+		},
+	})
+	tempConfigFile, err := os.CreateTemp("", "azure_test_config_*.yaml")
+	assert.NoError(t, err, "Failed to create temporary config file")
+	defer os.Remove(tempConfigFile.Name())
+
+	viper.SetConfigFile(tempConfigFile.Name())
+
+	display.SetGlobalModel(display.InitialModel())
+
+	// Execute
+	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
+
+	// Assert
+	assert.NoError(t, err)
+	assert.NotNil(t, deployment)
+	assert.Equal(t, projectID, deployment.ProjectID)
+	assert.Equal(t, uniqueID, deployment.UniqueID)
+	assert.Equal(t, "eastus", deployment.ResourceGroupLocation)
+	assert.NotEmpty(t, deployment.SSHPublicKeyMaterial)
+	assert.NotEmpty(t, deployment.SSHPrivateKeyMaterial)
+	assert.WithinDuration(t, time.Now(), deployment.StartTime, 5*time.Second)
+	assert.Len(t, deployment.Machines, 1)
+
+	var machine *models.Machine
+	for _, m := range deployment.Machines {
+		machine = m
+		break
+	}
+	assert.Equal(t, "eastus", machine.Location)
+	assert.True(t, machine.Orchestrator)
 }

@@ -22,37 +22,98 @@ import (
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
 
-// PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.
-func (p *AzureProvider) PrepareDeployment(ctx context.Context) error {
+// PrepareResourceGroup prepares or creates a resource group for the Azure deployment.
+// It ensures that a valid resource group name and location are set, creating them if necessary.
+//
+// Parameters:
+//   - ctx: The context.Context for the operation, used for cancellation and timeout.
+//
+// Returns:
+//   - error: An error if the resource group preparation fails, nil otherwise.
+//
+// The function performs the following steps:
+// 1. Retrieves the global deployment object.
+// 2. Ensures a resource group name is set, appending a timestamp if necessary.
+// 3. Determines the resource group location, using the first machine's location if not explicitly set.
+// 4. Creates or retrieves the resource group using the Azure client.
+// 5. Updates the global deployment object with the finalized resource group information.
+func (p *AzureProvider) PrepareResourceGroup(
+	ctx context.Context,
+	deployment *models.Deployment,
+) error {
 	l := logger.Get()
-	l.Debug("Starting PrepareDeployment")
 	m := display.GetGlobalModelFunc()
 
-	// Set the start time for the deployment
-	m.Deployment.StartTime = time.Now()
-	l.Debugf("Deployment start time: %v", m.Deployment.StartTime)
-
-	// Ensure we have a location set
-	if m.Deployment.ResourceGroupLocation == "" {
-		// Set a default location if not specified
-		m.Deployment.ResourceGroupLocation = "eastus" // You can change this to any default Azure region
-		l.Warn("No resource group location specified, using default: eastus")
+	if deployment == nil {
+		return fmt.Errorf("deployment object is not initialized")
 	}
 
-	// Prepare resource group
-	l.Debug("Preparing resource group")
-	err := p.PrepareResourceGroup(ctx)
+	// Check if the resource group name already contains a timestamp
+	if deployment.ResourceGroupName == "" {
+		deployment.ResourceGroupName = "andaime-rg"
+	}
+	newRGName := deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
+	deployment.ResourceGroupName = newRGName
+
+	resourceGroupLocation := deployment.ResourceGroupLocation
+	// If ResourceGroupLocation is not set, use the first location from the Machines
+	if resourceGroupLocation == "" {
+		if len(deployment.Machines) > 0 {
+			for _, machine := range deployment.Machines {
+				// Break over the first machine
+				resourceGroupLocation = machine.Location
+				break
+			}
+		}
+		if resourceGroupLocation == "" {
+			return fmt.Errorf(
+				"resource group location is not set and couldn't be inferred from machines",
+			)
+		}
+	}
+	deployment.ResourceGroupLocation = resourceGroupLocation
+
+	l.Debugf(
+		"Creating Resource Group - %s in location %s",
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation,
+	)
+
+	for _, machine := range deployment.Machines {
+		m.UpdateStatus(
+			models.NewDisplayVMStatus(
+				machine.Name,
+				models.AzureResourceStatePending,
+			),
+		)
+	}
+
+	client := p.GetAzureClient()
+	_, err := client.GetOrCreateResourceGroup(
+		ctx,
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation,
+		deployment.Tags,
+	)
 	if err != nil {
-		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
-		l.Debug(fmt.Sprintf("Resource group preparation error details: %v", err))
-		return fmt.Errorf("failed to prepare resource group: %v", err)
+		l.Errorf("Failed to create Resource Group - %s: %v", deployment.ResourceGroupName, err)
+		return fmt.Errorf("failed to create resource group: %w", err)
 	}
-	l.Debug("Resource group prepared successfully")
 
-	if err := m.Deployment.UpdateViperConfig(); err != nil {
-		l.Error(fmt.Sprintf("Failed to update viper config: %v", err))
-		return fmt.Errorf("failed to update viper config: %v", err)
+	for _, machine := range deployment.Machines {
+		m.UpdateStatus(
+			models.NewDisplayVMStatus(
+				machine.Name,
+				models.AzureResourceStateNotStarted,
+			),
+		)
 	}
+
+	l.Debugf(
+		"Created Resource Group - %s in location %s",
+		deployment.ResourceGroupName,
+		deployment.ResourceGroupLocation,
+	)
 
 	return nil
 }
@@ -683,98 +744,6 @@ func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
 	return nil
 }
 
-// PrepareResourceGroup prepares or creates a resource group for the Azure deployment.
-// It ensures that a valid resource group name and location are set, creating them if necessary.
-//
-// Parameters:
-//   - ctx: The context.Context for the operation, used for cancellation and timeout.
-//
-// Returns:
-//   - error: An error if the resource group preparation fails, nil otherwise.
-//
-// The function performs the following steps:
-// 1. Retrieves the global deployment object.
-// 2. Ensures a resource group name is set, appending a timestamp if necessary.
-// 3. Determines the resource group location, using the first machine's location if not explicitly set.
-// 4. Creates or retrieves the resource group using the Azure client.
-// 5. Updates the global deployment object with the finalized resource group information.
-func (p *AzureProvider) PrepareResourceGroup(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	if m.Deployment == nil {
-		return fmt.Errorf("global deployment object is not initialized")
-	}
-
-	// Check if the resource group name already contains a timestamp
-	if m.Deployment.ResourceGroupName == "" {
-		m.Deployment.ResourceGroupName = "andaime-rg"
-	}
-	newRGName := m.Deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	m.Deployment.ResourceGroupName = newRGName
-
-	resourceGroupLocation := m.Deployment.ResourceGroupLocation
-	// If ResourceGroupLocation is not set, use the first location from the Machines
-	if resourceGroupLocation == "" {
-		if len(m.Deployment.Machines) > 0 {
-			for _, machine := range m.Deployment.Machines {
-				// Break over the first machine
-				resourceGroupLocation = machine.Location
-				break
-			}
-		}
-		if resourceGroupLocation == "" {
-			return fmt.Errorf(
-				"resource group location is not set and couldn't be inferred from machines",
-			)
-		}
-	}
-	m.Deployment.ResourceGroupLocation = resourceGroupLocation
-
-	l.Debugf(
-		"Creating Resource Group - %s in location %s",
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
-	)
-
-	for _, machine := range m.Deployment.Machines {
-		m.UpdateStatus(
-			models.NewDisplayVMStatus(
-				machine.Name,
-				models.AzureResourceStatePending,
-			),
-		)
-	}
-
-	client := p.GetAzureClient()
-	_, err := client.GetOrCreateResourceGroup(
-		ctx,
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
-		m.Deployment.Tags,
-	)
-	if err != nil {
-		l.Errorf("Failed to create Resource Group - %s: %v", m.Deployment.ResourceGroupName, err)
-		return fmt.Errorf("failed to create resource group: %w", err)
-	}
-
-	for _, machine := range m.Deployment.Machines {
-		m.UpdateStatus(
-			models.NewDisplayVMStatus(
-				machine.Name,
-				models.AzureResourceStateNotStarted,
-			),
-		)
-	}
-
-	l.Debugf(
-		"Created Resource Group - %s in location %s",
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
-	)
-
-	return nil
-}
 func (p *AzureProvider) GetVMIPAddresses(
 	ctx context.Context,
 	resourceGroupName, vmName string,

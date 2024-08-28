@@ -676,34 +676,39 @@ func generateMockResource(
 }
 
 func TestRandomServiceUpdates(t *testing.T) {
-	setupUpdateTest(t)
-	defer teardownTest(t)
-	l := logger.Get()
+	// Create a new logger instance for this test
+	testLogger := logger.Get()
 	log := func(msg string) {
-		l.Debugf("%v: %s", time.Now().Format("15:04:05.000"), msg)
+		testLogger.Debugf("%v: %s", time.Now().Format("15:04:05.000"), msg)
 	}
 
 	log("Test started")
-	mockConfig := viper.New()
-	mockConfig.Set("azure.subscription_id", "test-subscription-id")
+
+	// Create a new Viper instance for this test
+	testConfig := viper.New()
+	testConfig.Set("azure.subscription_id", "test-subscription-id")
+
+	// Create a local display model for this test
+	localModel := &display.DisplayModel{}
+	origGetGlobalModel := display.GetGlobalModelFunc
+	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
+	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
 
 	testMachines := []string{"vm1", "vm2", "vm3"}
-
-	m := display.GetGlobalModelFunc()
 	allServices := models.RequiredServices
 
-	m.Deployment = &models.Deployment{
+	localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
 		Machines: make(map[string]*models.Machine),
 		Tags:     map[string]*string{"test": ptr.String("value")},
 	}
 
 	for _, machineName := range testMachines {
-		m.Deployment.Machines[machineName] = &models.Machine{
+		localModel.Deployment.Machines[machineName] = &models.Machine{
 			Name: machineName,
 		}
 		for _, service := range allServices {
-			m.Deployment.Machines[machineName].SetServiceState(
+			localModel.Deployment.Machines[machineName].SetServiceState(
 				service.Name,
 				models.ServiceStateNotStarted,
 			)
@@ -715,7 +720,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	mockClient := new(MockAzureClient)
 	provider := &AzureProvider{
 		Client:              mockClient,
-		Config:              mockConfig,
+		Config:              testConfig,
 		updateQueue:         make(chan UpdateAction, 100),
 		servicesProvisioned: false,
 	}
@@ -740,13 +745,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 		go func(machine string) {
 			defer wg.Done()
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-			serviceStates := make(map[string]models.ServiceState)
-			for _, service := range allServices {
-				serviceStates[service.Name] = models.ServiceState(
-					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
-				) // Exclude NotStarted state
-			}
-			for i := 0; i < 100; i++ { // Increase to 100 updates per machine
+			for i := 0; i < 100; i++ {
 				service := allServices[rng.Intn(len(allServices))]
 				newState := models.ServiceState(
 					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
@@ -772,9 +771,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 					)
 					return
 				}
-				time.Sleep(
-					time.Duration(rng.Intn(20)) * time.Millisecond,
-				) // Increase max delay to 20ms
+				time.Sleep(time.Duration(rng.Intn(20)) * time.Millisecond)
 			}
 		}(machine)
 	}
@@ -821,7 +818,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	log("Checking final states")
 	for _, machine := range testMachines {
 		for _, service := range allServices {
-			state := m.Deployment.Machines[machine].GetServiceState(service.Name)
+			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			assert.True(
 				t,
 				state >= models.ServiceStateNotStarted && state <= models.ServiceStateFailed,
@@ -838,16 +835,10 @@ func TestRandomServiceUpdates(t *testing.T) {
 	for _, machine := range testMachines {
 		stateMap[machine] = make(map[string]models.ServiceState)
 		for _, service := range allServices {
-			state := m.Deployment.Machines[machine].GetServiceState(service.Name)
+			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			stateMap[machine][service.Name] = state
-			assert.NotEqual(
-				t,
-				models.ServiceStateNotStarted,
-				state,
-				"Service %s on machine %s is still in NotStarted state",
-				service.Name,
-				machine,
-			)
+			assert.NotEqual(t, models.ServiceStateNotStarted, state,
+				"Service %s on machine %s is still in NotStarted state", service.Name, machine)
 		}
 	}
 
@@ -857,12 +848,8 @@ func TestRandomServiceUpdates(t *testing.T) {
 		uniqueStates[stateString] = true
 	}
 
-	assert.Equal(
-		t,
-		len(testMachines),
-		len(uniqueStates),
-		"Not all machines have unique service state combinations",
-	)
+	assert.Equal(t, len(testMachines), len(uniqueStates),
+		"Not all machines have unique service state combinations")
 
 	log("Test completed successfully")
 }

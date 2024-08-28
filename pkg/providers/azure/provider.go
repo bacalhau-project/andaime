@@ -83,6 +83,7 @@ type AzureProviderer interface {
 	SetSSHClient(client sshutils.SSHClienter)
 
 	StartResourcePolling(ctx context.Context)
+	PrepareResourceGroup(ctx context.Context, deployment *models.Deployment) error
 	DeployResources(ctx context.Context) error
 	ProvisionMachines(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
