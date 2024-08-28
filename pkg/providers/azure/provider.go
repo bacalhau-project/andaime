@@ -156,6 +156,12 @@ func NewAzureProvider() (AzureProviderer, error) {
 	config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
 
 	subscriptionID := config.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("azure.subscription_id is empty or not set in the configuration")
+	}
+	l := logger.Get()
+	l.Debugf("Using Azure subscription ID: %s", subscriptionID)
+	
 	client, err := NewAzureClientFunc(subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -307,6 +313,7 @@ func (p *AzureProvider) ListAllResourcesInSubscription(ctx context.Context,
 	subscriptionID string,
 	tags map[string]*string) ([]interface{}, error) {
 	l := logger.Get()
+	l.Debugf("ListAllResourcesInSubscription called with subscriptionID: %s", subscriptionID)
 	client := p.GetAzureClient()
 
 	// Check if we can use cached results
