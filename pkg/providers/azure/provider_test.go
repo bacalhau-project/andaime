@@ -710,6 +710,16 @@ func TestProcessMachinesConfig(t *testing.T) {
 			},
 			expectedError: "SKU Standard_D4_v3 is not available in location westus",
 		},
+		{
+			name: "Error listing available SKUs",
+			machinesConfig: []models.MachineConfig{
+				{Name: "vm1", Location: "eastus", VMSize: "Standard_D2_v2"},
+			},
+			mockSkus: map[string][]string{
+				"eastus": nil,
+			},
+			expectedError: "failed to list available SKUs for location eastus: mock error",
+		},
 	}
 
 	for _, tt := range tests {
@@ -720,7 +730,11 @@ func TestProcessMachinesConfig(t *testing.T) {
 			}
 
 			for location, skus := range tt.mockSkus {
-				mockClient.On("ListAvailableSkus", mock.Anything, location).Return(skus, nil)
+				if skus == nil {
+					mockClient.On("ListAvailableSkus", mock.Anything, location).Return(nil, fmt.Errorf("mock error"))
+				} else {
+					mockClient.On("ListAvailableSkus", mock.Anything, location).Return(skus, nil)
+				}
 			}
 
 			display.SetGlobalModel(display.InitialModel())
