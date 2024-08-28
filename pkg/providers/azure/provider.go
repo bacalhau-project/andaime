@@ -589,6 +589,38 @@ func isValidGUID(guid string) bool {
 	return r.MatchString(guid)
 }
 
+func (p *AzureProvider) ProcessMachinesConfig(ctx context.Context, machinesConfig []models.MachineConfig) error {
+    m := display.GetGlobalModelFunc()
+    for _, config := range machinesConfig {
+        availableSkus, err := p.GetAzureClient().ListAvailableSkus(ctx, config.Location)
+        if err != nil {
+            return fmt.Errorf("failed to list available SKUs for location %s: %w", config.Location, err)
+        }
+
+        skuAvailable := false
+        for _, sku := range availableSkus {
+            if sku == config.VMSize {
+                skuAvailable = true
+                break
+            }
+        }
+
+        if !skuAvailable {
+            return fmt.Errorf("SKU %s is not available in location %s", config.VMSize, config.Location)
+        }
+
+        machine := &models.Machine{
+            Name:     config.Name,
+            Location: config.Location,
+            Parameters: models.Parameters{
+                "vmSize": config.VMSize,
+            },
+        }
+        m.Deployment.Machines[config.Name] = machine
+    }
+    return nil
+}
+
 func (p *AzureProvider) WaitForAllMachinesToReachState(
 	ctx context.Context,
 	targetState models.AzureResourceState,
