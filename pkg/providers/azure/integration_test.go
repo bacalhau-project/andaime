@@ -45,12 +45,10 @@ func setupTest(t *testing.T) *testSetup {
 
 	mockAzureClient := new(MockAzureClient)
 	mockSSHConfig := new(MockSSHConfig)
-	mockSSHClient := new(sshutils.MockSSHClient)
-	mockSSHClient.Session = new(sshutils.MockSSHSession)
+	mockSSHConfig := new(MockSSHConfig)
 
 	provider := &AzureProvider{
-		Client:    mockAzureClient,
-		SSHClient: mockSSHClient,
+		Client: mockAzureClient,
 	}
 
 	display.SetGlobalModel(display.InitialModel())
@@ -163,15 +161,14 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	mockArmDeploymentPoller := setupMockDeployment(setup.mockAzureClient)
 	setupMockVMAndNetwork(setup.mockAzureClient)
 
-	setup.mockSSHClient.On("Connect").Return(nil)
-	setup.mockSSHClient.On("Close").Return(nil)
-	setup.mockSSHClient.Session.On("Run", mock.Anything).Return(nil)
-	setup.mockSSHClient.Session.On("CombinedOutput", "sudo docker version -f json").
-		Return([]byte(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`), nil)
-	setup.mockSSHClient.Session.On("CombinedOutput", mock.MatchedBy(func(command string) bool {
+	setup.mockSSHConfig.On("Connect").Return(nil, nil)
+	setup.mockSSHConfig.On("Close").Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
+		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.MatchedBy(func(ctx context.Context, command string) bool {
 		return strings.Contains(command, "bacalhau node list --output json --api-host")
-	})).Return([]byte(`[{"id": "node1"}]`), nil)
-	setup.mockSSHClient.Session.On("CombinedOutput", mock.Anything).Return([]byte(""), nil)
+	})).Return(`[{"id": "node1"}]`, nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
 
 	err := setup.provider.ProvisionResources(ctx)
 	assert.NoError(t, err)
@@ -187,8 +184,7 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 
 	mockArmDeploymentPoller.AssertExpectations(t)
 	setup.mockAzureClient.AssertExpectations(t)
-	setup.mockSSHClient.AssertExpectations(t)
-	setup.mockSSHClient.Session.AssertExpectations(t)
+	setup.mockSSHConfig.AssertExpectations(t)
 }
 
 func TestProvisionResourcesFailure(t *testing.T) {
