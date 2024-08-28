@@ -377,10 +377,12 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 }
 
 func (m *DisplayModel) applyBatchedUpdates() {
+	logger.WriteToDebugLog(fmt.Sprintf("Applying %d batched updates", len(m.BatchedUpdates)))
 	for _, update := range m.BatchedUpdates {
 		m.UpdateStatus(update.Status)
 	}
 	m.BatchedUpdates = nil
+	logger.WriteToDebugLog("Finished applying batched updates")
 }
 
 type batchedUpdatesAppliedMsg struct{}
@@ -498,6 +500,12 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 
 	if status.Name != "" {
 		m.updateMachineStatus(status.Name, status)
+		
+		// Explicitly update progress
+		if machine, ok := m.Deployment.Machines[status.Name]; ok {
+			progress, total := machine.ResourcesComplete()
+			logger.WriteToDebugLog(fmt.Sprintf("UpdateStatus: Machine: %s, Progress: %d, Total: %d", status.Name, progress, total))
+		}
 	}
 }
 
@@ -573,16 +581,9 @@ func (m *DisplayModel) getMachineRowData(machine *models.Machine) []string {
 		DisplayColumns[4].Width-ProgressBarPadding,
 	)
 
-	if progress < total {
-		logger.WriteToDebugLog(fmt.Sprintf("Progress: %d, Total: %d", progress, total))
-		logger.WriteToDebugLog(fmt.Sprintf("Machine: %s", machine.Name))
-		for _, service := range machine.GetMachineServices() {
-			if service.State != models.ServiceStateSucceeded {
-				logger.WriteToDebugLog(
-					fmt.Sprintf("Service: %s, State: %v", service.Name, service.State),
-				)
-			}
-		}
+	logger.WriteToDebugLog(fmt.Sprintf("Machine: %s, Progress: %d, Total: %d", machine.Name, progress, total))
+	for _, service := range machine.GetMachineServices() {
+		logger.WriteToDebugLog(fmt.Sprintf("Service: %s, State: %v", service.Name, service.State))
 	}
 	return []string{
 		machine.Name,
