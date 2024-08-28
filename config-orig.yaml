@@ -10,3 +10,15 @@ aws:
     - ap-southeast-2
     - ca-central-1
     - eu-west-2
+
+
+        - location: eastus
+          parameters:
+            count: 2
+            type: Standard_DS1_v2
+        - location: centralus
+          parameters:
+            count: 1
+            orchestrator: true
+            type: Standard_DS1_v2
+        - location: eastus2

@@ -39,14 +39,6 @@ func (p *AzureProvider) PrepareDeployment(ctx context.Context) error {
 		l.Warn("No resource group location specified, using default: eastus")
 	}
 
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		l.Info("Deployment cancelled before starting")
-		return ctx.Err()
-	default:
-	}
-
 	// Prepare resource group
 	l.Debug("Preparing resource group")
 	err := p.PrepareResourceGroup(ctx)

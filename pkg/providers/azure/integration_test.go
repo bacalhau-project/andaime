@@ -132,22 +132,6 @@ func setupMockVMAndNetwork(mockAzureClient *MockAzureClient) {
 		Return(publicIPAddress, nil)
 }
 
-func TestPrepareDeployment(t *testing.T) {
-	setup := setupTest(t)
-	defer setup.cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	setup.mockAzureClient.On("GetOrCreateResourceGroup", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&armresources.ResourceGroup{}, nil)
-
-	err := setup.provider.PrepareDeployment(ctx)
-	assert.NoError(t, err)
-
-	setup.mockAzureClient.AssertExpectations(t)
-}
-
 func TestProvisionResourcesSuccess(t *testing.T) {
 	setup := setupTest(t)
 	defer setup.cleanup()

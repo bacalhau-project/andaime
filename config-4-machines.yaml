@@ -20,6 +20,20 @@ azure:
         orchestrator: true
         type: Standard_DS1_v2
     - location: eastus2
+    - location: eastus2
+      parameters:
+        count: 2
+        type: Standard_DS1_v4
+    - location: westus
+      parameters:
+        count: 4
+    - location: brazilsouth
+      parameters:
+        type: Standard_DS1_v8
+    - location: euwest
+      parameters:
+        orchestrator: true
+    - location: asiawest
   resource_group_location: eastus
   resource_group_name: andaime-rg
   resource_prefix: andaime
