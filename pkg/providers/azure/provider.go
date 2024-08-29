@@ -86,12 +86,10 @@ type AzureProviderer interface {
 	StartResourcePolling(ctx context.Context)
 	PrepareResourceGroup(ctx context.Context) error
 	DeployResources(ctx context.Context) error
-	ProvisionMachines(ctx context.Context) error
+	ProvisionPackagesOnMachines(ctx context.Context) error
+	ProvisionBacalhau(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
-
-	DeployOrchestrator(ctx context.Context) error
-	DeployWorker(ctx context.Context, machineName string) error
 }
 
 type AzureProvider struct {
@@ -108,7 +106,6 @@ type AzureProvider struct {
 	updateProcessorDone chan struct{}
 	serviceMutex        sync.Mutex //nolint:unused
 	servicesProvisioned bool       //nolint:unused
-	log                 func(string)
 }
 
 var AzureProviderFunc = NewAzureProvider
