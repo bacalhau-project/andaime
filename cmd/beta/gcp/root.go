@@ -1,19 +1,26 @@
 package gcp
 
 import (
+	"sync"
+
 	"github.com/spf13/cobra"
 )
 
-var gcpCmd *cobra.Command
+var once sync.Once
+
+var GCPCmd = &cobra.Command{
+	Use:   "gcp",
+	Short: "GCP-related commands",
+	Long:  `Commands for interacting with Google Cloud Platform (GCP).`,
+}
+
+func InitializeCommands() {
+	once.Do(func() {
+		GCPCmd.AddCommand(createDeploymentCmd())
+	})
+}
 
 func GetGCPCmd() *cobra.Command {
-	if gcpCmd == nil {
-		gcpCmd = &cobra.Command{
-			Use:   "gcp",
-			Short: "GCP-related commands",
-			Long:  `Commands for interacting with Google Cloud Platform (GCP).`,
-		}
-		gcpCmd.AddCommand(getCreateDeploymentCmd())
-	}
-	return gcpCmd
+	InitializeCommands()
+	return GCPCmd
 }
