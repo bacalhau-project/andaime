@@ -20,19 +20,6 @@ func NewBacalhauDeployer() *BacalhauDeployer {
 	return &BacalhauDeployer{}
 }
 
-func (p *AzureProvider) DeployOrchestrator(ctx context.Context) error {
-	deployer := NewBacalhauDeployer()
-	return deployer.DeployOrchestrator(ctx)
-}
-
-func (p *AzureProvider) DeployWorker(
-	ctx context.Context,
-	machineName string,
-) error {
-	deployer := NewBacalhauDeployer()
-	return deployer.DeployWorker(ctx, machineName)
-}
-
 func (bd *BacalhauDeployer) DeployOrchestrator(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 	orchestratorMachine, err := bd.findOrchestratorMachine()

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
@@ -15,7 +14,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/blang/semver"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -117,20 +115,50 @@ func (p *AzureProvider) PrepareResourceGroup(
 	return nil
 }
 
-func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
+func (p *AzureProvider) ProvisionPackagesOnMachines(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	for _, machine := range m.Deployment.Machines {
-		if err := p.WaitForAllMachinesToReachState(ctx, models.AzureResourceStateSucceeded); err != nil {
-			return fmt.Errorf("failed waiting for all machines to reach succeeded state: %v", err)
-		}
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(models.NumberOfSimultaneousProvisionings)
 
-		if err := p.provisionDocker(ctx, machine.Name); err != nil {
-			l.Errorf("Failed to provision Docker for machine %s: %v", machine.Name, err)
-			return err
-		}
+	for _, machine := range m.Deployment.Machines {
+		internalMachine := machine
+		errGroup.Go(func() error {
+			goRoutineID := m.RegisterGoroutine(
+				fmt.Sprintf("WaitForAllMachinesToReachState-%s", internalMachine.Name),
+			)
+			defer m.DeregisterGoroutine(goRoutineID)
+
+			if err := p.WaitForAllMachinesToReachState(ctx, models.AzureResourceStateSucceeded); err != nil {
+				return fmt.Errorf(
+					"failed waiting for all machines to reach succeeded state: %v",
+					err,
+				)
+			}
+
+			if err := internalMachine.InstallDockerAndCorePackages(ctx); err != nil {
+				l.Errorf("Failed to provision Docker for machine %s: %v", machine.Name, err)
+				return err
+			}
+
+			if err := verifyDocker(ctx, machine); err != nil {
+				return err
+			}
+			return nil
+		})
 	}
+
+	if err := errGroup.Wait(); err != nil {
+		return fmt.Errorf("failed to provision packages on machines: %v", err)
+	}
+
+	return nil
+}
+
+func (p *AzureProvider) ProvisionBacalhau(ctx context.Context) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 
 	bd := BacalhauDeployer{}
 
@@ -152,16 +180,32 @@ func (p *AzureProvider) ProvisionMachines(ctx context.Context) error {
 	}
 	m.Deployment.OrchestratorIP = orchestrator.PublicIP
 
+	errGroup, ctx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(models.NumberOfSimultaneousProvisionings)
 	for _, machine := range m.Deployment.Machines {
 		if machine.Orchestrator {
 			continue
 		}
-		if err := bd.DeployWorker(ctx, machine.Name); err != nil {
-			return fmt.Errorf("failed to provision Bacalhau worker %s: %v",
-				machine.Name,
-				err,
+		internalMachine := machine
+		errGroup.Go(func() error {
+			goRoutineID := m.RegisterGoroutine(
+				fmt.Sprintf("DeployBacalhauWorker-%s", internalMachine.Name),
 			)
-		}
+			defer m.DeregisterGoroutine(goRoutineID)
+
+			if err := bd.DeployWorker(ctx, internalMachine.Name); err != nil {
+				return fmt.Errorf(
+					"failed to provision Bacalhau worker %s: %v",
+					internalMachine.Name,
+					err,
+				)
+			}
+			return nil
+		})
+	}
+
+	if err := errGroup.Wait(); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau: %v", err)
 	}
 
 	return nil
@@ -223,106 +267,6 @@ func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string)
 
 	return nil
 }
-
-func (p *AzureProvider) provisionDocker(ctx context.Context, machineName string) error {
-	m := display.GetGlobalModelFunc()
-
-	err := m.Deployment.Machines[machineName].InstallDockerAndCorePackages(ctx)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to install Docker and core packages on VM %s: %v",
-			machineName,
-			err,
-		)
-	}
-
-	sshConfig, err := sshutils.NewSSHConfigFunc(
-		m.Deployment.Machines[machineName].PublicIP,
-		m.Deployment.Machines[machineName].SSHPort,
-		m.Deployment.Machines[machineName].SSHUser,
-		[]byte(m.Deployment.SSHPrivateKeyMaterial),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %w", err)
-	}
-
-	m.UpdateStatus(
-		models.NewDisplayStatusWithText(
-			machineName,
-			models.AzureResourceTypeVM,
-			models.AzureResourceStatePending,
-			"Testing Docker",
-		),
-	)
-
-	versionsObject := map[string]interface{}{}
-	out, err := sshConfig.ExecuteCommand(ctx, "sudo docker version -f json")
-	if err != nil {
-		return fmt.Errorf("failed to execute command: %w", err)
-	}
-
-	err = json.Unmarshal([]byte(out), &versionsObject)
-	if err != nil {
-		return fmt.Errorf("failed to marshal Docker server version: %w", err)
-	}
-
-	serverVersionDetected := false
-	clientVersionDetected := false
-	if versionsObject["Server"] == nil {
-		return fmt.Errorf("failed to get Docker server version")
-	} else {
-		if serverVersion, ok := versionsObject["Server"].(map[string]interface{}); ok {
-			if version, ok := serverVersion["Version"].(string); ok {
-				// If Version is a semver, we can use it
-				if _, err := semver.Parse(version); err == nil {
-					serverVersionDetected = true
-				} else {
-					serverVersionDetected = false
-				}
-			}
-		}
-	}
-
-	if versionsObject["Client"] == nil {
-		return fmt.Errorf("failed to get Docker client version")
-	} else {
-		if clientVersion, ok := versionsObject["Client"].(map[string]interface{}); ok {
-			if version, ok := clientVersion["Version"].(string); ok {
-				// If Version is a semver, we can use it
-				if _, err := semver.Parse(version); err == nil {
-					clientVersionDetected = true
-				}
-			}
-		}
-	}
-
-	if !serverVersionDetected || !clientVersionDetected {
-		m.UpdateStatus(
-			models.NewDisplayStatusWithText(
-				machineName,
-				models.AzureResourceTypeVM,
-				models.AzureResourceStateFailed,
-				m.Deployment.Machines[machineName].StatusMessage,
-			),
-		)
-		return fmt.Errorf("failed to detect Docker version")
-	}
-
-	// If all checks pass, continue with the existing code
-	m.Deployment.Machines[machineName].StatusMessage = "Successfully Deployed"
-	m.Deployment.Machines[machineName].SetServiceState("Docker", models.ServiceStateSucceeded)
-	m.UpdateStatus(
-		models.NewDisplayStatusWithText(
-			machineName,
-			models.AzureResourceTypeVM,
-			models.AzureResourceStateSucceeded,
-			"Docker Successfully Deployed",
-		),
-	)
-
-	return nil
-}
-
 func (p *AzureProvider) DeployResources(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Deploying ARM template")
@@ -342,8 +286,8 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(models.NumberOfSimultaneousProvisionings)
+	errgroup, ctx := errgroup.WithContext(ctx)
+	errgroup.SetLimit(models.NumberOfSimultaneousProvisionings)
 
 	for location, machines := range machinesByLocation {
 		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
@@ -353,7 +297,12 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 			len(machines),
 		)
 
-		g.Go(func() error {
+		errgroup.Go(func() error {
+			goRoutineID := m.RegisterGoroutine(
+				fmt.Sprintf("DeployMachinesInLocation-%s", location),
+			)
+			defer m.DeregisterGoroutine(goRoutineID)
+
 			l.Infof("Starting deployment for location %s", location)
 
 			if len(machines) == 0 {
@@ -386,7 +335,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	if err := errgroup.Wait(); err != nil {
 		l.Errorf("Deployment failed: %v", err)
 		return fmt.Errorf("deployment failed: %w", err)
 	}
@@ -401,9 +350,13 @@ func (p *AzureProvider) deployMachine(
 	tags map[string]*string,
 ) error {
 	m := display.GetGlobalModelFunc()
+	goRoutineID := m.RegisterGoroutine(
+		fmt.Sprintf("DeployMachine-%s", machine.Name),
+	)
+
 	defer func() {
 		m := display.GetGlobalModelFunc()
-		m.DeregisterGoroutine(atomic.LoadInt64(&p.goroutineCounter))
+		m.DeregisterGoroutine(goRoutineID)
 	}()
 
 	m.UpdateStatus(
@@ -487,10 +440,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	params map[string]interface{},
 	tags map[string]*string,
 ) error {
-	id := atomic.AddInt64(&p.goroutineCounter, 1)
 	m := display.GetGlobalModelFunc()
-	m.RegisterGoroutine(fmt.Sprintf("deployTemplateWithRetry-%d", id))
-	defer m.DeregisterGoroutine(id)
+	goRoutineID := m.RegisterGoroutine(fmt.Sprintf("deployTemplateWithRetry-%s", machine.Name))
+	defer m.DeregisterGoroutine(goRoutineID)
 
 	l := logger.Get()
 	maxRetries := 3
@@ -711,10 +663,11 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 
 // finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
-	id := atomic.AddInt64(&p.goroutineCounter, 1)
 	m := display.GetGlobalModelFunc()
-	m.RegisterGoroutine(fmt.Sprintf("FinalizeDeployment-%d", id))
-	defer m.DeregisterGoroutine(id)
+	goRoutineID := m.RegisterGoroutine(
+		fmt.Sprintf("FinalizeDeployment-%s", m.Deployment.ResourceGroupName),
+	)
+	defer m.DeregisterGoroutine(goRoutineID)
 
 	l := logger.Get()
 

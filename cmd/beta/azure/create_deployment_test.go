@@ -18,25 +18,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type MockAzureClient struct {
-	mock.Mock
-	azure.AzureClienter
-}
-
-func (m *MockAzureClient) ValidateMachineType(
-	ctx context.Context,
-	location, machineType string,
-) (bool, error) {
-	args := m.Called(ctx, location, machineType)
-	return args.Bool(0), args.Error(1)
-}
-
 func TestProcessMachinesConfig(t *testing.T) {
 	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	mockAzureClient := new(MockAzureClient)
+	mockAzureClient := new(azure.MockAzureClient)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
 
@@ -212,7 +199,7 @@ func TestInitializeDeployment(t *testing.T) {
 	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
 	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
 
-	mockAzureClient := new(MockAzureClient)
+	mockAzureClient := new(azure.MockAzureClient)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
 
@@ -329,7 +316,7 @@ func TestPrepareDeployment(t *testing.T) {
 
 	display.SetGlobalModel(display.InitialModel())
 
-	mockAzureClient := new(MockAzureClient)
+	mockAzureClient := new(azure.MockAzureClient)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
 

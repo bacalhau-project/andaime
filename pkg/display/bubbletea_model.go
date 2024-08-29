@@ -142,11 +142,11 @@ func (m *DisplayModel) updateMachineStatus(
 	}
 
 	if newStatus.SSH != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState("SSH") != newStatus.SSH {
+		m.Deployment.Machines[machineName].GetServiceState("SSH") < newStatus.SSH {
 		m.Deployment.Machines[machineName].SetServiceState("SSH", newStatus.SSH)
 	}
 	if newStatus.Docker != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState("Docker") != newStatus.Docker {
+		m.Deployment.Machines[machineName].GetServiceState("Docker") < newStatus.Docker {
 		m.Deployment.Machines[machineName].SetServiceState("Docker", newStatus.Docker)
 	}
 	if newStatus.CorePackages != models.ServiceStateUnknown &&
@@ -156,7 +156,7 @@ func (m *DisplayModel) updateMachineStatus(
 		m.Deployment.Machines[machineName].SetServiceState("CorePackages", newStatus.CorePackages)
 	}
 	if newStatus.Bacalhau != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState("Bacalhau") != newStatus.Bacalhau {
+		m.Deployment.Machines[machineName].GetServiceState("Bacalhau") < newStatus.Bacalhau {
 		m.Deployment.Machines[machineName].SetServiceState("Bacalhau", newStatus.Bacalhau)
 	}
 }

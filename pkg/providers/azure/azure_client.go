@@ -124,6 +124,11 @@ type AzureClienter interface {
 		location string,
 		vmSize string,
 	) (bool, error)
+
+	ResourceGroupExists(
+		ctx context.Context,
+		resourceGroupName string,
+	) (bool, error)
 }
 
 // LiveAzureClient wraps all Azure SDK calls
@@ -473,4 +478,15 @@ func (c *LiveAzureClient) ValidateMachineType(
 	}
 
 	return false, fmt.Errorf("VM size %s not found in location %s", vmSize, location)
+}
+
+func (c *LiveAzureClient) ResourceGroupExists(
+	ctx context.Context,
+	resourceGroupName string,
+) (bool, error) {
+	_, err := c.resourceGroupsClient.Get(ctx, resourceGroupName, nil)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }

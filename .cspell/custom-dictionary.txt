@@ -155,6 +155,7 @@ stdpm
 storageaccount
 stretchr
 stylecheck
+subtests
 tablewriter
 tcell
 testdata

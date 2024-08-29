@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/sync/errgroup"
 )
 
 var originalGlobalModelFunc func() *display.DisplayModel
@@ -507,58 +508,63 @@ func TestPollAndUpdateResources(t *testing.T) {
 	assert.Equal(t, mockResponse, resources)
 	log("PollAndUpdateResources completed")
 
-	var wg sync.WaitGroup
+	errgroup, ctx := errgroup.WithContext(ctx)
+	errgroup.SetLimit(models.NumberOfSimultaneousProvisionings)
 	updatesSent := int32(0)
 	for _, machine := range testMachines {
 		for _, resourceType := range requiredResources {
-			wg.Add(1)
-			go func(machine string, resourceType models.AzureResourceTypes) {
-				defer wg.Done()
-				for i := 0; i < 10; i++ {
-					for _, state := range []models.AzureResourceState{
-						models.AzureResourceStateNotStarted,
-						models.AzureResourceStatePending,
-						models.AzureResourceStateRunning,
-						models.AzureResourceStateSucceeded,
-					} {
-						log(
-							fmt.Sprintf(
-								"Sending update for machine %s, resource type %s, state %d",
-								machine,
-								resourceType.ResourceString,
-								state,
-							),
-						)
-						select {
-						case provider.updateQueue <- NewUpdateAction(
-							machine,
-							UpdatePayload{
-								UpdateType:    UpdateTypeResource,
-								ResourceType:  resourceType,
-								ResourceState: state,
-							},
-						):
-							atomic.AddInt32(&updatesSent, 1)
-						case <-ctx.Done():
+			errgroup.Go(func() error {
+				return func(machine string, resourceType models.AzureResourceTypes) error {
+					for i := 0; i < 10; i++ {
+						for _, state := range []models.AzureResourceState{
+							models.AzureResourceStateNotStarted,
+							models.AzureResourceStatePending,
+							models.AzureResourceStateRunning,
+							models.AzureResourceStateSucceeded,
+						} {
 							log(
 								fmt.Sprintf(
-									"Context cancelled while sending update for %s, %s",
+									"Sending update for machine %s, resource type %s, state %d",
 									machine,
 									resourceType.ResourceString,
+									state,
 								),
 							)
-							return
+							select {
+							case provider.updateQueue <- NewUpdateAction(
+								machine,
+								UpdatePayload{
+									UpdateType:    UpdateTypeResource,
+									ResourceType:  resourceType,
+									ResourceState: state,
+								},
+							):
+								atomic.AddInt32(&updatesSent, 1)
+							case <-ctx.Done():
+								log(
+									fmt.Sprintf(
+										"Context cancelled while sending update for %s, %s",
+										machine,
+										resourceType.ResourceString,
+									),
+								)
+								return nil
+							}
+							time.Sleep(50 * time.Millisecond)
 						}
-						time.Sleep(50 * time.Millisecond)
 					}
-				}
-			}(machine, resourceType)
+					return nil
+				}(machine, resourceType)
+			})
 		}
 	}
 
 	log("Started sending updates")
 
-	wg.Wait()
+	if err := errgroup.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
 	log(
 		fmt.Sprintf(
 			"All updates sent successfully. Total updates: %d",

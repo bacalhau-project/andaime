@@ -111,16 +111,23 @@ func runDeployment(
 		return fmt.Errorf("failed to deploy resources: %w", err)
 	}
 
-	if err := p.DeployOrchestrator(ctx); err != nil {
-		return fmt.Errorf("failed to deploy Bacalhau orchestrator: %w", err)
+	// Go through each machine and set the resource state to succeeded - since it's
+	// already been deployed (this is basically a UI bug fix)
+	for i := range m.Deployment.Machines {
+		for k := range m.Deployment.Machines[i].GetMachineResources() {
+			m.Deployment.Machines[i].SetResourceState(
+				k,
+				models.AzureResourceStateSucceeded,
+			)
+		}
 	}
 
-	for _, machine := range m.Deployment.Machines {
-		if !machine.Orchestrator {
-			if err := p.DeployWorker(ctx, machine.Name); err != nil {
-				return fmt.Errorf("failed to deploy Bacalhau workers: %w", err)
-			}
-		}
+	if err = p.ProvisionPackagesOnMachines(ctx); err != nil {
+		return fmt.Errorf("failed to provision machines: %w", err)
+	}
+
+	if err := p.ProvisionBacalhau(ctx); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau: %w", err)
 	}
 
 	if err := p.FinalizeDeployment(ctx); err != nil {

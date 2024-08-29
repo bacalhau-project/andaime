@@ -164,7 +164,10 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 		)
 	}
 
-	err := setup.provider.ProvisionMachines(ctx)
+	err := setup.provider.ProvisionPackagesOnMachines(ctx)
+	assert.NoError(t, err)
+
+	err = setup.provider.ProvisionBacalhau(ctx)
 	assert.NoError(t, err)
 
 	for _, machine := range m.Deployment.Machines {
@@ -194,7 +197,7 @@ func TestSSHProvisioningFailure(t *testing.T) {
 		)
 	}
 
-	err := setup.provider.ProvisionMachines(ctx)
+	err := setup.provider.ProvisionPackagesOnMachines(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SSH provisioning failed")
 
@@ -223,7 +226,7 @@ func TestDockerProvisioningFailure(t *testing.T) {
 		)
 	}
 
-	err := setup.provider.ProvisionMachines(ctx)
+	err := setup.provider.ProvisionPackagesOnMachines(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to marshal Docker server version")
 
@@ -257,7 +260,12 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 		Return(`[]`, nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
 
-	err := setup.provider.ProvisionMachines(ctx)
+	err := setup.provider.ProvisionPackagesOnMachines(ctx)
+	if err != nil {
+		assert.Fail(t, "error provisioning packages on machines", err)
+	}
+
+	err = setup.provider.ProvisionBacalhau(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no Bacalhau nodes found")
 

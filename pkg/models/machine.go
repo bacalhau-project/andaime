@@ -228,9 +228,8 @@ func (m *Machine) countCompletedResources(requiredResources []AzureResourceTypes
 	totalResources := len(requiredResources)
 
 	for _, requiredResource := range requiredResources {
-		if resource := m.getResourceUnsafe(requiredResource.GetResourceLowerString()); resource.ResourceState == AzureResourceState(
-			ServiceStateSucceeded,
-		) {
+		resource := m.getResourceUnsafe(requiredResource.GetResourceLowerString())
+		if resource.ResourceState == AzureResourceStateSucceeded {
 			completedResources++
 		}
 	}
@@ -321,7 +320,12 @@ func (m *Machine) InstallDockerAndCorePackages(ctx context.Context) error {
 	if err := m.installDocker(ctx); err != nil {
 		return err
 	}
-	return m.installCorePackages(ctx)
+
+	if err := m.installCorePackages(ctx); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *Machine) installDocker(ctx context.Context) error {
