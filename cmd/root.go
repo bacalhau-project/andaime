@@ -131,8 +131,6 @@ func setupRootCommand() *cobra.Command {
 	}
 
 	setupFlags(rootCmd)
-	rootCmd.AddCommand(getMainCmd())
-
 	betaCmd := getBetaCmd(rootCmd)
 	betaCmd.AddCommand(aws.AwsCmd)
 

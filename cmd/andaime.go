@@ -1820,7 +1820,7 @@ func andaime_main(cmd string, _ ...[]string) {
 	ProcessFlags()
 
 	if command == "version" {
-		fmt.Println(VersionNumber)
+		fmt.Println(VERSION_NUMBER)
 		os.Exit(0)
 	}
 

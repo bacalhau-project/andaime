@@ -28,4 +28,9 @@ config.yaml
 omni*
 
 experimental/*
-.flox
+.flox/*
+
+claude-engineer*
+main.py
+ollama*
+experimental/*
