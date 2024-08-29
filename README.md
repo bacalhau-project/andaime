@@ -55,9 +55,13 @@ Options
 --orchestrator-ip: IP address of existing orchestrator node. Overrides --orchestrator-nodes flag
 --aws-profile: AWS profile to use for credentials (default: default)
 --target-regions: Comma-separated list of target AWS regions (default: us-east-1). Created in a round-robin order.
+--instance-type: The instance type for both the compute and orchestrator nodes
+--compute-instance-type: The instance type for the compute nodes. Overrides --instance-type for compute nodes.
+--orchestrator-instance-type: The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.
+--volume-size: The volume size of each node created (Gigabytes). Default: 8
 
---help: Show help message
-
+--help: Show help message.
+--verbose: Enable verbose logging.
 ```
 
 ## Configuration
@@ -88,6 +92,8 @@ PROJECT_NAME
 TARGET_PLATFORM
 NUMBER_OF_ORCHESTRATOR_NODES
 NUMBER_OF_COMPUTE_NODES
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
 ```
 Example:
 
@@ -108,6 +114,8 @@ export NUMBER_OF_COMPUTE_NODES=2
 # Create nodes and add them to an existing orchestrator
 ./andaime create --aws-profile="expanso" --target-regions="us-east-1,us-west-2,eu-west-1,eu-west-2,eu-west-3,ap-southeast-1,ap-southeast-2,sa-east-1,ca-central-1,eu-north-1" --compute-nodes=20 --orchestrator-ip=<ORCHESTRATOR_IP_ADDRESS>
 
+# Create a single node of a specific type, and add them to an orchestrator using environment variables to authenticate with AWS
+AWS_ACCESS_KEY_ID=<YOUR_KEY_ID> AWS_SECRET_ACCESS_KEY=<YOUR_ACCESS_KEY> ./andaime --target-regions="us-east-1" --compute-nodes=1 --instance-type="t2.large" --orchestrator-ip=<ORCHESTRATOR_IP_ADDRESS>
 
 ```
 

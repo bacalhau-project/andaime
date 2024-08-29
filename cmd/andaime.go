@@ -17,12 +17,12 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/spf13/cobra"
 )
 
-var VersionNumber string = "v0.0.1"
+var VERSION_NUMBER string = "v0.0.1-alpha"
 
 //go:embed startup_scripts/*
 var startupScriptsFS embed.FS
@@ -75,39 +75,73 @@ var (
 	ORCHESTRATOR_INSTANCE_TYPE        string
 	VALID_ARCHITECTURES               = []string{"arm64", "x86_64"}
 	BOOT_VOLUME_SIZE_FLAG             int
+	SESSION_GUIDANCE_LOGGED           = false
 )
 
-func getMainCmd() *cobra.Command {
-	mainCmd := &cobra.Command{
-		Use:   "main",
-		Short: "Main functionality for managing Bacalhau nodes",
+func GetSession(region string) *session.Session {
+
+	var sess *session.Session
+	var err error
+
+	awsAccessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+
+	if AWS_PROFILE_FLAG != "" {
+
+		if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
+			SESSION_GUIDANCE_LOGGED = true
+			fmt.Printf("\tUsing -aws-profile flag \"%s\"\n\n", AWS_PROFILE_FLAG)
+		}
+
+		sess, err = session.NewSessionWithOptions(session.Options{
+			Profile: AWS_PROFILE_FLAG,
+			Config:  aws.Config{Region: aws.String(region)},
+		})
+
+		if err != nil {
+			fmt.Printf("Error creating session for region %s: %v\n", region, err)
+			os.Exit(1)
+		}
+
+		return sess
 	}
 
-	mainCmd.AddCommand(
-		&cobra.Command{
-			Use:   "create",
-			Short: "Create resources for Bacalhau nodes",
-			Run: func(cmd *cobra.Command, args []string) {
-				andaime_main("create", args)
-			},
-		},
-		&cobra.Command{
-			Use:   "destroy",
-			Short: "Destroy resources for Bacalhau nodes",
-			Run: func(cmd *cobra.Command, args []string) {
-				andaime_main("destroy", args)
-			},
-		},
-		&cobra.Command{
-			Use:   "list",
-			Short: "List resources for Bacalhau nodes",
-			Run: func(cmd *cobra.Command, args []string) {
-				andaime_main("list", args)
-			},
-		},
-	)
+	if awsAccessKeyID != "" && awsSecretAccessKey != "" {
 
-	return mainCmd
+		if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
+			SESSION_GUIDANCE_LOGGED = true
+			fmt.Println("\tUsing environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n")
+		}
+
+		sess, err = session.NewSession(&aws.Config{
+			Region:      aws.String(region),
+			Credentials: credentials.NewStaticCredentials(awsAccessKeyID, awsSecretAccessKey, ""),
+		})
+
+		if err != nil {
+			fmt.Printf("Error creating session for region %s: %v\n", region, err)
+			os.Exit(1)
+		}
+
+		return sess
+	}
+
+	if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
+		SESSION_GUIDANCE_LOGGED = true
+		fmt.Println("\tUsing default AWS profile\n")
+	}
+
+	sess, err = session.NewSession(&aws.Config{
+		Region: aws.String(region),
+	})
+
+	if err != nil {
+		fmt.Printf("Error creating session for region %s: %v\n", region, err)
+		os.Exit(1)
+	}
+
+	return sess
+
 }
 
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
@@ -188,10 +222,7 @@ func ensureVPCAndSGsExist(regions []string) {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			instanceType := "t2.medium"
 			az, err := getAvailableZoneForInstanceType(ec2Svc, instanceType)
@@ -220,10 +251,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 			wg.Add(1)
 			go func(region string) {
 				defer wg.Done()
-				sess := session.Must(session.NewSessionWithOptions(session.Options{
-					Profile: AWS_PROFILE_FLAG,
-					Config:  aws.Config{Region: aws.String(region)},
-				}))
+				sess := GetSession(region)
 				ec2Svc := ec2.New(sess)
 				instanceInfo := createInstanceInRegion(ec2Svc, region, "orchestrator", nil)
 				orchestratorIPs = append(orchestratorIPs, instanceInfo.PublicIP)
@@ -242,10 +270,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			createInstanceInRegion(ec2Svc, region, "compute", orchestratorIPs)
 		}(regions[i%len(regions)])
@@ -513,10 +538,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			instanceInfo := createInstanceInRegion(ec2Svc, region, "compute", orchestratorIPs)
 			instanceChannel <- instanceInfo
@@ -917,10 +939,7 @@ func destroyResources() {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 			deleteTaggedResources(ec2Svc, region)
 		}(region)
@@ -931,10 +950,7 @@ func destroyResources() {
 }
 
 func getAllRegions() ([]string, error) {
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		Profile: AWS_PROFILE_FLAG,
-		Config:  aws.Config{Region: aws.String("us-east-1")},
-	}))
+	sess := GetSession("us-east-1")
 	ec2Svc := ec2.New(sess)
 	result, err := ec2Svc.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if err != nil {
@@ -1255,10 +1271,7 @@ func listResources() {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				Profile: AWS_PROFILE_FLAG,
-				Config:  aws.Config{Region: aws.String(region)},
-			}))
+			sess := GetSession(region)
 			ec2Svc := ec2.New(sess)
 
 			resources := make(map[string][]string)
@@ -1756,48 +1769,13 @@ func andaime_main(cmd string, _ ...[]string) {
 		"Set number of orchestrator nodes",
 	)
 	flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
-	flag.StringVar(
-		&TARGET_REGIONS_FLAG,
-		"target-regions",
-		"us-east-1",
-		"Comma-separated list of target AWS regions",
-	)
-	flag.StringVar(
-		&ORCHESTRATOR_IP_FLAG,
-		"orchestrator-ip",
-		"",
-		"IP address of existing orchestrator node",
-	)
-	flag.StringVar(
-		&AWS_PROFILE_FLAG,
-		"aws-profile",
-		"default",
-		"AWS profile to use for credentials",
-	)
-	flag.StringVar(
-		&INSTANCE_TYPE,
-		"instance-type",
-		"t2.medium",
-		"The instance type for both the compute and orchestrator nodes",
-	)
-	flag.StringVar(
-		&COMPUTE_INSTANCE_TYPE,
-		"compute-instance-type",
-		"",
-		"The instance type for the compute nodes. Overrides --instance-type for compute nodes.",
-	)
-	flag.StringVar(
-		&ORCHESTRATOR_INSTANCE_TYPE,
-		"orchestrator-instance-type",
-		"",
-		"The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.",
-	)
-	flag.IntVar(
-		&BOOT_VOLUME_SIZE_FLAG,
-		"volume-size",
-		8,
-		"The volume size of each node created (Gigabytes). Default: 8",
-	)
+	flag.StringVar(&TARGET_REGIONS_FLAG, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
+	flag.StringVar(&ORCHESTRATOR_IP_FLAG, "orchestrator-ip", "", "IP address of existing orchestrator node")
+	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "", "AWS profile to use for credentials")
+	flag.StringVar(&INSTANCE_TYPE, "instance-type", "t2.medium", "The instance type for both the compute and orchestrator nodes")
+	flag.StringVar(&COMPUTE_INSTANCE_TYPE, "compute-instance-type", "", "The instance type for the compute nodes. Overrides --instance-type for compute nodes.")
+	flag.StringVar(&ORCHESTRATOR_INSTANCE_TYPE, "orchestrator-instance-type", "", "The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.")
+	flag.IntVar(&BOOT_VOLUME_SIZE_FLAG, "volume-size", 8, "The volume size of each node created (Gigabytes). Default: 8")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 
 	flag.Parse()
@@ -1814,8 +1792,7 @@ func andaime_main(cmd string, _ ...[]string) {
 		os.Exit(0)
 	}
 
-	fmt.Println("\n== Andaime ==")
-	fmt.Println()
+	fmt.Println("\n== Andaime ==\n")
 
 	if command == "create" {
 
