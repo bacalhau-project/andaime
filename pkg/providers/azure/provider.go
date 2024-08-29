@@ -311,8 +311,30 @@ func (p *AzureProvider) processUpdate(update UpdateAction) {
 }
 
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
+	l := logger.Get()
 	client := p.GetAzureClient()
-	return client.DestroyResourceGroup(ctx, resourceGroupName)
+
+	// Check if the resource group exists before attempting to destroy it
+	exists, err := client.ResourceGroupExists(ctx, resourceGroupName)
+	if err != nil {
+		l.Errorf("Error checking if resource group exists: %v", err)
+		return err
+	}
+
+	if !exists {
+		l.Infof("Resource group %s does not exist, skipping destruction", resourceGroupName)
+		return nil
+	}
+
+	l.Infof("Destroying resource group %s", resourceGroupName)
+	err = client.DestroyResourceGroup(ctx, resourceGroupName)
+	if err != nil {
+		l.Errorf("Error destroying resource group %s: %v", resourceGroupName, err)
+		return err
+	}
+
+	l.Infof("Resource group %s destroyed successfully", resourceGroupName)
+	return nil
 }
 
 // Updates the deployment with the latest resource state
