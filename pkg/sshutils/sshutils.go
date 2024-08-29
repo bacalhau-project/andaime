@@ -122,7 +122,7 @@ func isValidPrivateKey(key string) bool {
 
 var MockSSHKeyReader = func(path string) ([]byte, error) {
 	// if the key path ends in .pub, we assume it's the public key
-	isPublicKey := len(path) > 4 && path[len(path)-4:] == ".pub" //nolint:gomnd
+	isPublicKey := len(path) > 4 && path[len(path)-4:] == ".pub" //nolint:mnd
 
 	if isPublicKey {
 		return []byte(testdata.TestPublicSSHKeyMaterial), nil

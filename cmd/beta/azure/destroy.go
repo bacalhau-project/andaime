@@ -28,8 +28,9 @@ type Deployment struct {
 var DestroyCmd = &cobra.Command{
 	Use:   "destroy",
 	Short: "List and destroy deployments",
-	Long:  `List all active deployments by Resource Group in config.yaml, and allow the user to select one for destruction. Deployments that are already being destroyed will not be listed.`,
-	RunE:  runDestroy,
+	Long: `List all active deployments by Resource Group in config.yaml, and allow the user to select one for destruction. 
+			Deployments that are already being destroyed will not be listed.`,
+	RunE: runDestroy,
 }
 
 func GetAzureDestroyCmd() *cobra.Command {
@@ -41,6 +42,7 @@ func GetAzureDestroyCmd() *cobra.Command {
 	return DestroyCmd
 }
 
+//nolint:funlen,gocyclo,unused
 func runDestroy(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
 	l.Debug("Starting runDestroy function")

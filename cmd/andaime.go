@@ -22,7 +22,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
-var VERSION_NUMBER string = "v0.0.1-alpha"
+var VersionNumber string = "v0.0.1-alpha"
+
+const (
+	DefaultNumberOfOrchestratorNodes = 1
+	DefaultNumberOfComputeNodes      = 2
+	RetryTimeout                     = 2 * time.Second
+)
 
 //go:embed startup_scripts/*
 var startupScriptsFS embed.FS
@@ -47,54 +53,52 @@ type TemplateData struct {
 }
 
 var (
-	VERBOSE_MODE_FLAG bool = false
-	PROJECT_SETTINGS       = map[string]interface{}{
+	VerboseModeFlag bool = false
+	ProjectSettings      = map[string]interface{}{
 		"ProjectName":               "bacalhau-by-andaime",
 		"TargetPlatform":            "aws",
-		"NumberOfOrchestratorNodes": 1,
-		"NumberOfComputeNodes":      2,
+		"NumberOfOrchestratorNodes": 1, //nolint:mnd
+		"NumberOfComputeNodes":      2, //nolint:mnd
 	}
 
-	SET_BY = map[string]string{
+	SetBy = map[string]string{
 		"ProjectName":               "default",
 		"TargetPlatform":            "default",
 		"NumberOfOrchestratorNodes": "default",
 		"NumberOfComputeNodes":      "default",
 	}
-	PROJECT_NAME_FLAG                 string
-	TARGET_PLATFORM_FLAG              string
-	NUMBER_OF_ORCHESTRATOR_NODES_FLAG int
-	NUMBER_OF_COMPUTE_NODES_FLAG      int
-	TARGET_REGIONS_FLAG               string
-	ORCHESTRATOR_IP_FLAG              string
-	command                           string
-	helpFlag                          bool
-	AWS_PROFILE_FLAG                  string
-	INSTANCE_TYPE                     string
-	COMPUTE_INSTANCE_TYPE             string
-	ORCHESTRATOR_INSTANCE_TYPE        string
-	VALID_ARCHITECTURES               = []string{"arm64", "x86_64"}
-	BOOT_VOLUME_SIZE_FLAG             int
-	SESSION_GUIDANCE_LOGGED           = false
+	ProjectNameFlag               string
+	TargetPlatformFlag            string
+	NumberOfOrchestratorNodesFlag int
+	NumberOfComputeNodesFlag      int
+	TargetRegionsFlag             string
+	OrchestratorIPFlag            string
+	command                       string
+	helpFlag                      bool //nolint:unused
+	AWSProfileFlag                string
+	InstanceTypeFlag              string
+	ComputeInstanceTypeFlag       string
+	OrchestratorInstanceTypeFlag  string
+	ValidArchitectures            = []string{"arm64", "x86_64"}
+	BootVolumeSizeFlag            int
+	SessionGuidanceLogged         = false
 )
 
 func GetSession(region string) *session.Session {
-
 	var sess *session.Session
 	var err error
 
 	awsAccessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
 	awsSecretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 
-	if AWS_PROFILE_FLAG != "" {
-
-		if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
-			SESSION_GUIDANCE_LOGGED = true
-			fmt.Printf("\tUsing -aws-profile flag \"%s\"\n\n", AWS_PROFILE_FLAG)
+	if AWSProfileFlag != "" {
+		if VerboseModeFlag && !SessionGuidanceLogged {
+			SessionGuidanceLogged = true
+			fmt.Printf("\tUsing -aws-profile flag \"%s\"\n\n", AWSProfileFlag)
 		}
 
 		sess, err = session.NewSessionWithOptions(session.Options{
-			Profile: AWS_PROFILE_FLAG,
+			Profile: AWSProfileFlag,
 			Config:  aws.Config{Region: aws.String(region)},
 		})
 
@@ -107,11 +111,10 @@ func GetSession(region string) *session.Session {
 	}
 
 	if awsAccessKeyID != "" && awsSecretAccessKey != "" {
-
-		if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
-			SESSION_GUIDANCE_LOGGED = true
+		if VerboseModeFlag && !SessionGuidanceLogged {
+			SessionGuidanceLogged = true
 			fmt.Println(
-				"\tUsing environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n",
+				"\tUsing environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY",
 			)
 		}
 
@@ -128,9 +131,9 @@ func GetSession(region string) *session.Session {
 		return sess
 	}
 
-	if VERBOSE_MODE_FLAG == true && SESSION_GUIDANCE_LOGGED == false {
-		SESSION_GUIDANCE_LOGGED = true
-		fmt.Println("\tUsing default AWS profile\n")
+	if VerboseModeFlag && !SessionGuidanceLogged {
+		SessionGuidanceLogged = true
+		fmt.Println("\tUsing default AWS profile")
 	}
 
 	sess, err = session.NewSession(&aws.Config{
@@ -143,7 +146,6 @@ func GetSession(region string) *session.Session {
 	}
 
 	return sess
-
 }
 
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
@@ -192,7 +194,7 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 		return "", fmt.Errorf("no matching Ubuntu 22.04 AMIs found")
 	}
 
-	if VERBOSE_MODE_FLAG == true {
+	if VerboseModeFlag {
 		fmt.Printf("Using AMI ID: %s\n", *latestImage.ImageId)
 	}
 
@@ -200,9 +202,9 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 }
 
 func DeployOnAWS() {
-	targetRegions := strings.Split(TARGET_REGIONS_FLAG, ",")
-	noOfOrchestratorNodes := PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int)
-	noOfComputeNodes := PROJECT_SETTINGS["NumberOfComputeNodes"].(int)
+	targetRegions := strings.Split(TargetRegionsFlag, ",")
+	noOfOrchestratorNodes := ProjectSettings["NumberOfOrchestratorNodes"].(int)
+	noOfComputeNodes := ProjectSettings["NumberOfComputeNodes"].(int)
 
 	if command == "create" {
 		// Ensure VPC and Security Groups exist
@@ -247,7 +249,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 	var wg sync.WaitGroup
 	var orchestratorIPs []string
 
-	if ORCHESTRATOR_IP_FLAG == "" {
+	if OrchestratorIPFlag == "" {
 		// Create Orchestrator nodes first
 		for i := 0; i < noOfOrchestratorNodes; i++ {
 			wg.Add(1)
@@ -264,7 +266,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		// orchestratorIPsStr := formatOrchestratorIPs(orchestratorIPs)
 		fmt.Println("Orchestrator nodes created with IPs:", orchestratorIPs)
 	} else {
-		orchestratorIPs = append(orchestratorIPs, ORCHESTRATOR_IP_FLAG)
+		orchestratorIPs = append(orchestratorIPs, OrchestratorIPFlag)
 	}
 
 	// Create Compute nodes next
@@ -309,6 +311,7 @@ func getAvailableZoneForInstanceType(svc *ec2.EC2, instanceType string) (string,
 	return "", fmt.Errorf("instance type %s not available in any availability zone", instanceType)
 }
 
+//nolint:funlen,gocyclo
 func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 	retryPolicy := 3
 	for i := 0; i < retryPolicy; i++ {
@@ -323,7 +326,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
@@ -333,7 +336,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 		var vpcID *string
 
 		if len(vpcs.Vpcs) > 0 {
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("VPC already exists in region %s\n", region)
 			}
 			vpcID = vpcs.Vpcs[0].VpcId
@@ -359,7 +362,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to create VPC in region %s: %v\n", region, err)
@@ -367,7 +370,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			}
 
 			vpcID = vpcOutput.Vpc.VpcId
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Created VPC in region %s with ID %s\n", region, *vpcID)
 			}
 
@@ -394,14 +397,14 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to create subnet in region %s: %v\n", region, err)
 				return
 			}
 			subnetID := subnetOutput.Subnet.SubnetId
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Created Subnet in region %s with ID %s\n", region, *subnetID)
 			}
 
@@ -425,14 +428,14 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to create internet gateway in region %s: %v\n", region, err)
 				return
 			}
 			igwID := igwOutput.InternetGateway.InternetGatewayId
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Created Internet Gateway in region %s with ID %s\n", region, *igwID)
 			}
 
@@ -443,13 +446,13 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to attach internet gateway to VPC in region %s: %v\n", region, err)
 				return
 			}
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Attached Internet Gateway to VPC in region %s\n", region)
 			}
 
@@ -474,14 +477,14 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to create route table in region %s: %v\n", region, err)
 				return
 			}
 			routeTableID := routeTableOutput.RouteTable.RouteTableId
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Created Route Table in region %s with ID %s\n", region, *routeTableID)
 			}
 
@@ -493,13 +496,13 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to create route to internet gateway in region %s: %v\n", region, err)
 				return
 			}
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Created route to Internet Gateway in region %s\n", region)
 			}
 
@@ -510,13 +513,13 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout) //nolint:mnd
 					continue
 				}
 				fmt.Printf("Unable to associate subnet with route table in region %s: %v\n", region, err)
 				return
 			}
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag {
 				fmt.Printf("Associated Subnet with Route Table in region %s\n", region)
 			}
 		}
@@ -527,6 +530,7 @@ func createVPCAndSG(svc *ec2.EC2, region string, availabilityZone string) {
 	}
 }
 
+//nolint:funlen,gocyclo,unused
 func createInstancesRoundRobin(regions []string, instanceCount int, orchestratorIPs []string) {
 	instanceCreated := 0
 	regionIndex := 0
@@ -558,7 +562,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 		instances = append(instances, instanceInfo)
 	}
 
-	if VERBOSE_MODE_FLAG == true {
+	if VerboseModeFlag {
 		fmt.Println("Created instances:")
 		for _, instance := range instances {
 			fmt.Printf(
@@ -571,6 +575,7 @@ func createInstancesRoundRobin(regions []string, instanceCount int, orchestrator
 	}
 }
 
+//nolint:funlen,gocyclo,unused
 func createInstanceInRegion(
 	svc *ec2.EC2,
 	region string,
@@ -592,7 +597,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to find VPC in region %s: %v\n", region, err)
@@ -619,7 +624,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to find subnet in region %s: %v\n", region, err)
@@ -646,7 +651,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to find security group in region %s: %v\n", region, err)
@@ -661,12 +666,12 @@ func createInstanceInRegion(
 		// Get the instance architecture
 		instanceType := "t2.medium"
 
-		if nodeType == "orchestrator" && ORCHESTRATOR_INSTANCE_TYPE != "" {
-			instanceType = ORCHESTRATOR_INSTANCE_TYPE
+		if nodeType == "orchestrator" && OrchestratorInstanceTypeFlag != "" {
+			instanceType = OrchestratorInstanceTypeFlag
 		}
 
-		if nodeType == "compute" && COMPUTE_INSTANCE_TYPE != "" {
-			instanceType = COMPUTE_INSTANCE_TYPE
+		if nodeType == "compute" && ComputeInstanceTypeFlag != "" {
+			instanceType = ComputeInstanceTypeFlag
 		}
 
 		fmt.Printf("Chosen instance type for '%s' node: %s\n", nodeType, instanceType)
@@ -682,7 +687,7 @@ func createInstanceInRegion(
 
 		var architecture string
 		for _, arch := range instanceTypeDetails.InstanceTypes[0].ProcessorInfo.SupportedArchitectures {
-			for _, validArch := range VALID_ARCHITECTURES {
+			for _, validArch := range ValidArchitectures {
 				if *arch == validArch {
 					architecture = *arch
 					break
@@ -703,7 +708,7 @@ func createInstanceInRegion(
 		amiID, err := getUbuntuAMIId(svc, architecture)
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to find Ubuntu 22.04 AMI in region %s: %v\n", region, err)
@@ -712,12 +717,12 @@ func createInstanceInRegion(
 
 		// Read and encode startup scripts
 		templateData := TemplateData{
-			ProjectName:               PROJECT_SETTINGS["ProjectName"].(string),
-			TargetPlatform:            PROJECT_SETTINGS["TargetPlatform"].(string),
-			NumberOfOrchestratorNodes: PROJECT_SETTINGS["NumberOfOrchestratorNodes"].(int),
-			NumberOfComputeNodes:      PROJECT_SETTINGS["NumberOfComputeNodes"].(int),
-			TargetRegions:             TARGET_REGIONS_FLAG,
-			AwsProfile:                AWS_PROFILE_FLAG,
+			ProjectName:               ProjectSettings["ProjectName"].(string),
+			TargetPlatform:            ProjectSettings["TargetPlatform"].(string),
+			NumberOfOrchestratorNodes: ProjectSettings["NumberOfOrchestratorNodes"].(int),
+			NumberOfComputeNodes:      ProjectSettings["NumberOfComputeNodes"].(int),
+			TargetRegions:             TargetRegionsFlag,
+			AwsProfile:                AWSProfileFlag,
 			NodeType:                  nodeType,
 		}
 
@@ -732,7 +737,7 @@ func createInstanceInRegion(
 		}
 		encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
 
-		bootVolumeSize := int64(BOOT_VOLUME_SIZE_FLAG) // Example: 50 GiB
+		bootVolumeSize := int64(BootVolumeSizeFlag) // Example: 50 GiB
 
 		// Create EC2 Instance
 		runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
@@ -779,7 +784,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to create instance in region %s: %v\n", region, err)
@@ -817,7 +822,7 @@ func createInstanceInRegion(
 			publicIP = *instance.PublicIpAddress
 		}
 
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag {
 			fmt.Printf(
 				"Compute node created in %s, with Instance ID '%s' and public IP address: %s\n",
 				region,
@@ -850,7 +855,7 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout) //nolint:mnd
 				continue
 			}
 			fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
@@ -880,7 +885,7 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to create security group in region %s: %v\n", region, err)
@@ -908,7 +913,7 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf(
@@ -920,7 +925,7 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 				return nil
 			}
 		}
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag == true {
 			fmt.Printf("Created security group in region %s\n", region)
 		}
 		return sgID
@@ -981,7 +986,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to describe instances in region %s: %v\n", region, err)
@@ -1001,13 +1006,13 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to terminate instances in region %s: %v\n", region, err)
 				return
 			}
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Printf("Terminated instances in region %s\n", region)
 			}
 
@@ -1036,7 +1041,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
@@ -1050,7 +1055,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf(
@@ -1061,7 +1066,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				)
 				continue
 			}
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
 			}
 		}
@@ -1077,7 +1082,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(2 * time.Second)
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
@@ -1117,7 +1122,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					)
 					continue
 				}
-				if VERBOSE_MODE_FLAG == true {
+				if VerboseModeFlag == true {
 					fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
 				}
 			}
@@ -1156,7 +1161,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					)
 					continue
 				}
-				if VERBOSE_MODE_FLAG == true {
+				if VerboseModeFlag == true {
 					fmt.Printf(
 						"Deleted route table %s in region %s\n",
 						*routeTable.RouteTableId,
@@ -1198,7 +1203,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					)
 					continue
 				}
-				if VERBOSE_MODE_FLAG == true {
+				if VerboseModeFlag == true {
 					fmt.Printf(
 						"Detached internet gateway %s from VPC %s in region %s\n",
 						*igw.InternetGatewayId,
@@ -1220,7 +1225,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					)
 					continue
 				}
-				if VERBOSE_MODE_FLAG == true {
+				if VerboseModeFlag == true {
 					fmt.Printf(
 						"Deleted internet gateway %s in region %s\n",
 						*igw.InternetGatewayId,
@@ -1234,13 +1239,13 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to delete VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
 				continue
 			}
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
 			}
 		}
@@ -1295,7 +1300,6 @@ func listResources() {
 
 	fmt.Println("\n== Resources Report ==")
 	for region, resources := range resourcesByRegion {
-
 		fmt.Println("\n=======================")
 		fmt.Println("||")
 		fmt.Printf("|| Resources in region: %s\n", region)
@@ -1338,7 +1342,7 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
@@ -1359,7 +1363,7 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to describe subnets in region %s: %v\n", region, err)
@@ -1380,7 +1384,7 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to describe internet gateways in region %s: %v\n", region, err)
@@ -1401,7 +1405,7 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to describe route tables in region %s: %v\n", region, err)
@@ -1422,7 +1426,7 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
@@ -1450,7 +1454,7 @@ func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []str
 			})
 			if err != nil {
 				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(RetryTimeout)
 					continue
 				}
 				fmt.Printf("Unable to describe instances in region %s: %v\n", region, err)
@@ -1549,67 +1553,56 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 }
 
 func ProcessEnvVars() {
-
 	if os.Getenv("PROJECT_NAME") != "" {
-
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "PROJECT_NAME" from environment variable`)
 		}
 
-		PROJECT_SETTINGS["ProjectName"] = os.Getenv("PROJECT_NAME")
-		SET_BY["ProjectName"] = "environment variable"
-
+		ProjectSettings["ProjectName"] = os.Getenv("PROJECT_NAME")
+		SetBy["ProjectName"] = "environment variable"
 	}
 
 	if os.Getenv("TARGET_PLATFORM") != "" {
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "TARGET_PLATFORM" from environment variable`)
 		}
 
-		PROJECT_SETTINGS["TargetPlatform"] = os.Getenv("TARGET_PLATFORM")
-		SET_BY["TargetPlatform"] = "environment variable"
-
+		ProjectSettings["TargetPlatform"] = os.Getenv("TARGET_PLATFORM")
+		SetBy["TargetPlatform"] = "environment variable"
 	}
 
 	if os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES") != "" {
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from environment variable`)
 		}
 
-		PROJECT_SETTINGS["NumberOfOrchestratorNodes"], _ = strconv.Atoi(
+		ProjectSettings["NumberOfOrchestratorNodes"], _ = strconv.Atoi(
 			os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES"),
 		)
-		SET_BY["NumberOfOrchestratorNodes"] = "environment variable"
-
+		SetBy["NumberOfOrchestratorNodes"] = "environment variable"
 	}
 
 	if os.Getenv("NUMBER_OF_COMPUTE_NODES") != "" {
-
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from environment variable`)
 		}
 
-		PROJECT_SETTINGS["NumberOfComputeNodes"], _ = strconv.Atoi(
+		ProjectSettings["NumberOfComputeNodes"], _ = strconv.Atoi(
 			os.Getenv("NUMBER_OF_COMPUTE_NODES"),
 		)
-		SET_BY["NumberOfComputeNodes"] = "environment variable"
-
+		SetBy["NumberOfComputeNodes"] = "environment variable"
 	}
-
 }
 
 func ProcessConfigFile() error {
-
 	_, err := os.Stat("./config.json")
 
 	if os.IsNotExist(err) {
-
-		if VERBOSE_MODE_FLAG == true {
+		if VerboseModeFlag == true {
 			fmt.Println("./config.json does not exist. Skipping...")
 		}
 
 		return nil
-
 	}
 
 	config_file, config_err := os.ReadFile("./config.json")
@@ -1620,7 +1613,6 @@ func ProcessConfigFile() error {
 	}
 
 	if config_file != nil {
-
 		var configJson map[string]interface{}
 
 		config_err = json.Unmarshal(config_file, &configJson)
@@ -1630,108 +1622,91 @@ func ProcessConfigFile() error {
 		}
 
 		if configJson["PROJECT_NAME"] != nil {
-
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Println(`Setting "PROJECT_NAME" from configuration file`)
 			}
 
-			PROJECT_SETTINGS["ProjectName"] = configJson["PROJECT_NAME"].(string)
-			SET_BY["ProjectName"] = "configuration file"
-
+			ProjectSettings["ProjectName"] = configJson["PROJECT_NAME"].(string)
+			SetBy["ProjectName"] = "configuration file"
 		}
 
 		if configJson["TARGET_PLATFORM"] != nil {
-
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Println(`Setting "TARGET_PLATFORM" from configuration file`)
 			}
 
-			PROJECT_SETTINGS["TargetPlatform"] = configJson["TARGET_PLATFORM"].(string)
-			SET_BY["TargetPlatform"] = "configuration file"
-
+			ProjectSettings["TargetPlatform"] = configJson["TARGET_PLATFORM"].(string)
+			SetBy["TargetPlatform"] = "configuration file"
 		}
 
 		if configJson["NUMBER_OF_ORCHESTRATOR_NODES"] != nil {
-
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from configuration file`)
 			}
 
-			PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = int(
+			ProjectSettings["NumberOfOrchestratorNodes"] = int(
 				configJson["NUMBER_OF_ORCHESTRATOR_NODES"].(float64),
 			)
-			SET_BY["NumberOfOrchestratorNodes"] = "configuration file"
+			SetBy["NumberOfOrchestratorNodes"] = "configuration file"
 		}
 
 		if configJson["NUMBER_OF_COMPUTE_NODES"] != nil {
-
-			if VERBOSE_MODE_FLAG == true {
+			if VerboseModeFlag == true {
 				fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from configuration file`)
 			}
 
-			PROJECT_SETTINGS["NumberOfComputeNodes"] = int(
+			ProjectSettings["NumberOfComputeNodes"] = int(
 				configJson["NUMBER_OF_COMPUTE_NODES"].(float64),
 			)
-			SET_BY["NumberOfComputeNodes"] = "configuration file"
-
+			SetBy["NumberOfComputeNodes"] = "configuration file"
 		}
-
 	}
 
 	return config_err
-
 }
 
 func ProcessFlags() {
-
-	if PROJECT_NAME_FLAG != "" {
-
-		if VERBOSE_MODE_FLAG == true {
+	if ProjectNameFlag != "" {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "PROJECT_NAME" by flag`)
 		}
 
-		PROJECT_SETTINGS["ProjectName"] = PROJECT_NAME_FLAG
-		SET_BY["ProjectName"] = "flag --project-name"
-
+		ProjectSettings["ProjectName"] = ProjectNameFlag
+		SetBy["ProjectName"] = "flag --project-name"
 	}
 
-	if TARGET_PLATFORM_FLAG != "" {
-
-		if VERBOSE_MODE_FLAG == true {
+	if TargetPlatformFlag != "" {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "TARGET_PLATFORM" by flag`)
 		}
-
-		PROJECT_SETTINGS["TargetPlatform"] = TARGET_PLATFORM_FLAG
-		SET_BY["TargetPlatform"] = "flag --target-platform"
-
+		ProjectSettings["TargetPlatform"] = TargetPlatformFlag
+		SetBy["TargetPlatform"] = "flag --target-platform"
 	}
 
-	if NUMBER_OF_ORCHESTRATOR_NODES_FLAG != -1 {
-		if VERBOSE_MODE_FLAG == true {
+	if NumberOfOrchestratorNodesFlag != -1 {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" by flag`)
 		}
 
-		PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = NUMBER_OF_ORCHESTRATOR_NODES_FLAG
-		SET_BY["NumberOfOrchestratorNodes"] = "flag --orchestrator-nodes"
+		ProjectSettings["NumberOfOrchestratorNodes"] = NumberOfOrchestratorNodesFlag
+		SetBy["NumberOfOrchestratorNodes"] = "flag --orchestrator-nodes"
 
-		if NUMBER_OF_ORCHESTRATOR_NODES_FLAG > 1 {
-			PROJECT_SETTINGS["NumberOfOrchestratorNodes"] = 1
+		if NumberOfOrchestratorNodesFlag > 1 {
+			ProjectSettings["NumberOfOrchestratorNodes"] = 1
 		}
-
 	}
 
-	if NUMBER_OF_COMPUTE_NODES_FLAG != -1 {
-
-		if VERBOSE_MODE_FLAG == true {
+	if NumberOfComputeNodesFlag != -1 {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES_FLAG" by flag`)
 		}
 
-		PROJECT_SETTINGS["NumberOfComputeNodes"] = NUMBER_OF_COMPUTE_NODES_FLAG
-		SET_BY["NumberOfComputeNodes"] = "flag --compute-nodes"
+		ProjectSettings["NumberOfComputeNodes"] = NumberOfComputeNodesFlag
+		SetBy["NumberOfComputeNodes"] = "flag --compute-nodes"
 	}
 
-	if ORCHESTRATOR_IP_FLAG != "" {
-		if VERBOSE_MODE_FLAG == true {
+	if OrchestratorIPFlag != "" {
+		if VerboseModeFlag == true {
 			fmt.Println(`Setting "ORCHESTRATOR_IP" by flag`)
 		}
 	}
@@ -1757,53 +1732,53 @@ func andaime_main(cmd string, _ ...[]string) {
 	}
 
 	flag.BoolVar(
-		&VERBOSE_MODE_FLAG,
+		&VerboseModeFlag,
 		"verbose",
 		false,
 		"Generate verbose output throughout execution",
 	)
-	flag.StringVar(&PROJECT_NAME_FLAG, "project-name", "", "Set project name")
-	flag.StringVar(&TARGET_PLATFORM_FLAG, "target-platform", "", "Set target platform")
+	flag.StringVar(&ProjectNameFlag, "project-name", "", "Set project name")
+	flag.StringVar(&TargetPlatformFlag, "target-platform", "", "Set target platform")
 	flag.IntVar(
-		&NUMBER_OF_ORCHESTRATOR_NODES_FLAG,
+		&NumberOfOrchestratorNodesFlag,
 		"orchestrator-nodes",
 		-1,
 		"Set number of orchestrator nodes",
 	)
-	flag.IntVar(&NUMBER_OF_COMPUTE_NODES_FLAG, "compute-nodes", -1, "Set number of compute nodes")
+	flag.IntVar(&NumberOfComputeNodesFlag, "compute-nodes", -1, "Set number of compute nodes")
 	flag.StringVar(
-		&TARGET_REGIONS_FLAG,
+		&TargetRegionsFlag,
 		"target-regions",
 		"us-east-1",
 		"Comma-separated list of target AWS regions",
 	)
 	flag.StringVar(
-		&ORCHESTRATOR_IP_FLAG,
+		&OrchestratorIPFlag,
 		"orchestrator-ip",
 		"",
 		"IP address of existing orchestrator node",
 	)
-	flag.StringVar(&AWS_PROFILE_FLAG, "aws-profile", "", "AWS profile to use for credentials")
+	flag.StringVar(&AWSProfileFlag, "aws-profile", "", "AWS profile to use for credentials")
 	flag.StringVar(
-		&INSTANCE_TYPE,
+		&InstanceTypeFlag,
 		"instance-type",
 		"t2.medium",
 		"The instance type for both the compute and orchestrator nodes",
 	)
 	flag.StringVar(
-		&COMPUTE_INSTANCE_TYPE,
+		&ComputeInstanceTypeFlag,
 		"compute-instance-type",
 		"",
 		"The instance type for the compute nodes. Overrides --instance-type for compute nodes.",
 	)
 	flag.StringVar(
-		&ORCHESTRATOR_INSTANCE_TYPE,
+		&OrchestratorInstanceTypeFlag,
 		"orchestrator-instance-type",
 		"",
 		"The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.",
 	)
 	flag.IntVar(
-		&BOOT_VOLUME_SIZE_FLAG,
+		&BootVolumeSizeFlag,
 		"volume-size",
 		8,
 		"The volume size of each node created (Gigabytes). Default: 8",
@@ -1820,40 +1795,38 @@ func andaime_main(cmd string, _ ...[]string) {
 	ProcessFlags()
 
 	if command == "version" {
-		fmt.Println(VERSION_NUMBER)
+		fmt.Println(VersionNumber)
 		os.Exit(0)
 	}
 
-	fmt.Println("\n== Andaime ==\n")
+	fmt.Print("\n== Andaime ==\n")
 
 	if command == "create" {
-
 		fmt.Println("Project configuration:")
 		fmt.Println("=======================")
 		fmt.Println("")
 		fmt.Printf(
 			"\tProject name: \"%s\" (set by %s)\n",
-			PROJECT_SETTINGS["ProjectName"],
-			SET_BY["ProjectName"],
+			ProjectSettings["ProjectName"],
+			SetBy["ProjectName"],
 		)
 		fmt.Printf(
 			"\tTarget Platform: \"%s\" (set by %s)\n",
-			PROJECT_SETTINGS["TargetPlatform"],
-			SET_BY["TargetPlatform"],
+			ProjectSettings["TargetPlatform"],
+			SetBy["TargetPlatform"],
 		)
 		fmt.Printf(
 			"\tNo. of Orchestrator Nodes: %d (set by %s)\n",
-			PROJECT_SETTINGS["NumberOfOrchestratorNodes"],
-			SET_BY["NumberOfOrchestratorNodes"],
+			ProjectSettings["NumberOfOrchestratorNodes"],
+			SetBy["NumberOfOrchestratorNodes"],
 		)
 		fmt.Printf(
 			"\tNo. of Compute Nodes: %d (set by %s)\n",
-			PROJECT_SETTINGS["NumberOfComputeNodes"],
-			SET_BY["NumberOfComputeNodes"],
+			ProjectSettings["NumberOfComputeNodes"],
+			SetBy["NumberOfComputeNodes"],
 		)
-		fmt.Printf("\tAWS Profile: \"%s\"\n", AWS_PROFILE_FLAG)
+		fmt.Printf("\tAWS Profile: \"%s\"\n", AWSProfileFlag)
 		fmt.Print("\n")
-
 	}
 
 	if command == "list" {
@@ -1864,7 +1837,7 @@ func andaime_main(cmd string, _ ...[]string) {
 		fmt.Println("Destroying resources...")
 	}
 
-	if PROJECT_SETTINGS["TargetPlatform"] == "aws" {
+	if ProjectSettings["TargetPlatform"] == "aws" {
 		DeployOnAWS()
 	}
 }

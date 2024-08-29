@@ -3,12 +3,8 @@
   "manifest": {
     "version": 1,
     "install": {
-      "go": {
-        "pkg-path": "go",
-        "version": "^1.22.2"
-      },
-      "golangci-lint": {
-        "pkg-path": "golangci-lint"
+      "go_1_22": {
+        "pkg-path": "go_1_22"
       },
       "pip": {
         "pkg-path": "python312Packages.pip"
@@ -39,24 +35,24 @@
   },
   "packages": [
     {
-      "attr_path": "go",
+      "attr_path": "go_1_22",
       "broken": false,
       "derivation": "/nix/store/qjh0ikk8fbibyav8b3sj0hq8q5jil115-go-1.22.5.drv",
       "description": "Go Programming language",
-      "install_id": "go",
+      "install_id": "go_1_22",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "go-1.22.5",
-      "pname": "go",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "pname": "go_1_22",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.22.5",
+      "version": "go-1.22.5",
       "outputs_to_install": [
         "out"
       ],
@@ -68,24 +64,24 @@
       "priority": 5
     },
     {
-      "attr_path": "go",
+      "attr_path": "go_1_22",
       "broken": false,
       "derivation": "/nix/store/34dg42frf60c0pl843m96cy4rzvdcahp-go-1.22.5.drv",
       "description": "Go Programming language",
-      "install_id": "go",
+      "install_id": "go_1_22",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "go-1.22.5",
-      "pname": "go",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "pname": "go_1_22",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.22.5",
+      "version": "go-1.22.5",
       "outputs_to_install": [
         "out"
       ],
@@ -97,24 +93,24 @@
       "priority": 5
     },
     {
-      "attr_path": "go",
+      "attr_path": "go_1_22",
       "broken": false,
       "derivation": "/nix/store/6cmd8rj05vil6d8a6dbhz050d8adpawc-go-1.22.5.drv",
       "description": "Go Programming language",
-      "install_id": "go",
+      "install_id": "go_1_22",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "go-1.22.5",
-      "pname": "go",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "pname": "go_1_22",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.22.5",
+      "version": "go-1.22.5",
       "outputs_to_install": [
         "out"
       ],
@@ -126,145 +122,29 @@
       "priority": 5
     },
     {
-      "attr_path": "go",
+      "attr_path": "go_1_22",
       "broken": false,
       "derivation": "/nix/store/fzpmnqymzz5acwpd3l7aw7fqczaf3wbg-go-1.22.5.drv",
       "description": "Go Programming language",
-      "install_id": "go",
+      "install_id": "go_1_22",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "go-1.22.5",
-      "pname": "go",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "pname": "go_1_22",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.22.5",
+      "version": "go-1.22.5",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
         "out": "/nix/store/kqf4gwhq1yrchvmvqjh4adc4y9hxp9xk-go-1.22.5"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "golangci-lint",
-      "broken": false,
-      "derivation": "/nix/store/zncapfqqakxj2j1qhqcvk44m38wcxisv-golangci-lint-1.59.1.drv",
-      "description": "Fast linters Runner for Go",
-      "install_id": "golangci-lint",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "name": "golangci-lint-1.59.1",
-      "pname": "golangci-lint",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.59.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/k3rnfx753gnx5v8l3i4sx1g1al2ds0di-golangci-lint-1.59.1"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "golangci-lint",
-      "broken": false,
-      "derivation": "/nix/store/8kcx8401mx83ma34n6i1334q52v3fzpc-golangci-lint-1.59.1.drv",
-      "description": "Fast linters Runner for Go",
-      "install_id": "golangci-lint",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "name": "golangci-lint-1.59.1",
-      "pname": "golangci-lint",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.59.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/29908ar68rrr9jzdhzcrlkbfk30gnihf-golangci-lint-1.59.1"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "golangci-lint",
-      "broken": false,
-      "derivation": "/nix/store/aqjf0bikz1w8chy0cw8i1r24pp9iszkb-golangci-lint-1.59.1.drv",
-      "description": "Fast linters Runner for Go",
-      "install_id": "golangci-lint",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "name": "golangci-lint-1.59.1",
-      "pname": "golangci-lint",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.59.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/v7882fqgdy46a7l432q11f3xmbln80rc-golangci-lint-1.59.1"
-      },
-      "system": "x86_64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "golangci-lint",
-      "broken": false,
-      "derivation": "/nix/store/0wjh0g1maabqa260jdvppjz82hg26srl-golangci-lint-1.59.1.drv",
-      "description": "Fast linters Runner for Go",
-      "install_id": "golangci-lint",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "name": "golangci-lint-1.59.1",
-      "pname": "golangci-lint",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.59.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/1m1i9zhrgdw2192803n6wf2k7g86y6d5-golangci-lint-1.59.1"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -277,13 +157,13 @@
       "description": "PyPA recommended tool for installing Python packages",
       "install_id": "pip",
       "license": "[ MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3.12-pip-24.0",
       "pname": "pip",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -309,13 +189,13 @@
       "description": "PyPA recommended tool for installing Python packages",
       "install_id": "pip",
       "license": "[ MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3.12-pip-24.0",
       "pname": "pip",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -341,13 +221,13 @@
       "description": "PyPA recommended tool for installing Python packages",
       "install_id": "pip",
       "license": "[ MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3.12-pip-24.0",
       "pname": "pip",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -373,13 +253,13 @@
       "description": "PyPA recommended tool for installing Python packages",
       "install_id": "pip",
       "license": "[ MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3.12-pip-24.0",
       "pname": "pip",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -405,13 +285,13 @@
       "description": "High-level dynamically-typed programming language",
       "install_id": "python312Full",
       "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3-3.12.4",
       "pname": "python312Full",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -434,13 +314,13 @@
       "description": "High-level dynamically-typed programming language",
       "install_id": "python312Full",
       "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3-3.12.4",
       "pname": "python312Full",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -464,13 +344,13 @@
       "description": "High-level dynamically-typed programming language",
       "install_id": "python312Full",
       "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3-3.12.4",
       "pname": "python312Full",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],
@@ -493,13 +373,13 @@
       "description": "High-level dynamically-typed programming language",
       "install_id": "python312Full",
       "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=cb9a96f23c491c081b38eab96d22fa958043c9fa",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=a58bc8ad779655e790115244571758e8de055e3d",
       "name": "python3-3.12.4",
       "pname": "python312Full",
-      "rev": "cb9a96f23c491c081b38eab96d22fa958043c9fa",
-      "rev_count": 662544,
-      "rev_date": "2024-08-04T23:25:57Z",
-      "scrape_date": "2024-08-07T02:06:32Z",
+      "rev": "a58bc8ad779655e790115244571758e8de055e3d",
+      "rev_count": 665011,
+      "rev_date": "2024-08-11T07:55:43Z",
+      "scrape_date": "2024-08-14T02:08:40Z",
       "stabilities": [
         "unstable"
       ],

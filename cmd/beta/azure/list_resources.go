@@ -77,6 +77,7 @@ var AzureListResourcesCmd = &cobra.Command{
 	},
 }
 
+//nolint:gochecknoinits
 func init() {
 	AzureListResourcesCmd.Flags().Bool("all", false, "List resources from the entire subscription")
 	AzureListResourcesCmd.Flags().

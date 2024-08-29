@@ -34,17 +34,17 @@ func GenerateRandomLogEntry() string {
 		"Thread", "Process", "Daemon", "Service", "Middleware",
 	}
 
-	numWords := rand.IntN(5) + 3 //nolint:gomnd,gosec
+	numWords := rand.IntN(5) + 3 //nolint:mnd,gosec
 	var logWords []string
 	for i := 0; i < numWords; i++ {
-		logWords = append(logWords, words[rand.IntN(len(words))]) //nolint:gomnd,gosec
+		logWords = append(logWords, words[rand.IntN(len(words))]) //nolint:mnd,gosec
 	}
 
 	return strings.Join(logWords, " ")
 }
 
 func CreateRandomStatus() *models.DisplayStatus {
-	id := fmt.Sprintf("i-%06d", rand.IntN(1000000)) //nolint:gomnd,gosec
+	id := fmt.Sprintf("i-%06d", rand.IntN(1000000)) //nolint:mnd,gosec
 	newDisplayStatus := models.NewDisplayVMStatus(
 		id,
 		models.AzureResourceStateNotStarted,
@@ -63,7 +63,7 @@ func GetRandomStatus(statuses map[string]*models.DisplayStatus) *models.DisplayS
 	if len(statuses) == 0 {
 		return nil
 	}
-	i := rand.IntN(len(statuses)) //nolint:gomnd,gosec
+	i := rand.IntN(len(statuses)) //nolint:mnd,gosec
 	for _, status := range statuses {
 		if i == 0 {
 			return status
@@ -84,16 +84,16 @@ func RandomRegion() string {
 		"ap-southeast-1",
 		"ap-northeast-1",
 	}
-	return regions[rand.IntN(len(regions))] //nolint:gomnd,gosec
+	return regions[rand.IntN(len(regions))] //nolint:mnd,gosec
 }
 
 func RandomZone() string {
-	return "zone-" + string(rune('a'+rand.IntN(3))) //nolint:gomnd,gosec
+	return "zone-" + string(rune('a'+rand.IntN(3))) //nolint:mnd,gosec
 }
 
 func RandomStatus() string {
 	statuses := []string{"Pending", "Running", "Stopping", "Stopped", "Terminated"}
-	return statuses[rand.IntN(len(statuses))] //nolint:gomnd,gosec
+	return statuses[rand.IntN(len(statuses))] //nolint:mnd,gosec
 }
 
 func GetRandomDetailedStatus(status string) string {
@@ -116,9 +116,9 @@ func GetRandomDetailedStatus(status string) string {
 func RandomIP() string {
 	return fmt.Sprintf(
 		"%d.%d.%d.%d",
-		rand.IntN(256), //nolint:gomnd,gosec
-		rand.IntN(256), //nolint:gomnd,gosec
-		rand.IntN(256), //nolint:gomnd,gosec
-		rand.IntN(256), //nolint:gomnd,gosec
+		rand.IntN(256), //nolint:mnd,gosec
+		rand.IntN(256), //nolint:mnd,gosec
+		rand.IntN(256), //nolint:mnd,gosec
+		rand.IntN(256), //nolint:mnd,gosec
 	)
 }

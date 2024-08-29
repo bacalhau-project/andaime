@@ -32,6 +32,7 @@ centralus
 chans
 charmbracelet
 Clienter
+cloudresourcemanager
 Cmds
 compinit
 Configer
@@ -74,6 +75,7 @@ goimports
 golangci
 gomnd
 gomock
+googleapi
 goprintffuncname
 gosec
 gosimple

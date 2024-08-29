@@ -80,7 +80,7 @@ func setupSignalHandling() (context.Context, context.CancelFunc) {
 		l := logger.Get()
 		l.Info("Interrupt received, cancelling execution...")
 		cancel()
-		time.Sleep(2 * time.Second)
+		time.Sleep(RetryTimeout)
 		l.Info("Forcing exit")
 		os.Exit(0)
 	}()

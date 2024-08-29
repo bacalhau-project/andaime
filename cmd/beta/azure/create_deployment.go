@@ -21,6 +21,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const (
+	RetryTimeout   = 2 * time.Second
+	DefaultSSHPort = 22
+)
+
 var createAzureDeploymentCmd = &cobra.Command{
 	Use:   "create-deployment",
 	Short: "Create a deployment in Azure",
@@ -135,7 +140,7 @@ func runDeployment(
 	}
 
 	l.Info("Deployment finalized")
-	time.Sleep(2 * time.Second)
+	time.Sleep(RetryTimeout)
 	prog.Quit()
 
 	return nil
@@ -233,6 +238,7 @@ type rawMachine struct {
 	} `yaml:"parameters"`
 }
 
+//nolint:funlen,gocyclo,unused
 func ProcessMachinesConfig(deployment *models.Deployment) error {
 	l := logger.Get()
 	locations := make(map[string]bool)
@@ -412,29 +418,6 @@ func readPrivateKey(path string) ([]byte, error) {
 
 	return privateKeyBytes, nil
 }
-
-func validateMachineOrchestrator(
-	machine *models.Machine,
-	orchestratorNode *models.Machine,
-	deployment *models.Deployment,
-) error {
-	if machine.Orchestrator {
-		if orchestratorNode != nil {
-			return fmt.Errorf("multiple orchestrator nodes found")
-		}
-		if deployment.OrchestratorIP != "" {
-			return fmt.Errorf("orchestrator node and deployment.OrchestratorIP cannot both be set")
-		}
-		return nil
-	}
-
-	if deployment.OrchestratorIP != "" && orchestratorNode != nil {
-		return fmt.Errorf("orchestrator node and deployment.OrchestratorIP cannot both be set")
-	}
-
-	return nil
-}
-
 func getCountOfMachines(paramCount, defaultCount int) int {
 	if paramCount == 0 {
 		if defaultCount == 0 {
@@ -470,43 +453,6 @@ func createNewMachine(
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 	return newMachine, nil
-}
-
-// Additional helper functions
-
-func validateResourceGroup(deployment *models.Deployment) error {
-	if deployment.ResourceGroupLocation == "" {
-		return fmt.Errorf("resource group location is empty")
-	}
-	if deployment.ResourceGroupName == "" {
-		return fmt.Errorf("resource group name is empty")
-	}
-	return nil
-}
-
-func validateAllowedPorts(deployment *models.Deployment) error {
-	if len(deployment.AllowedPorts) == 0 {
-		return fmt.Errorf("no allowed ports found in configuration")
-	}
-	return nil
-}
-
-func initializeAzureProvider() (azure.AzureProviderer, error) {
-	azureProvider, err := azure.AzureProviderFunc()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
-	}
-	return azureProvider, nil
-}
-
-func validateDeployment(deployment *models.Deployment) error {
-	if err := validateResourceGroup(deployment); err != nil {
-		return err
-	}
-	if err := validateAllowedPorts(deployment); err != nil {
-		return err
-	}
-	return nil
 }
 
 // PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.
@@ -565,7 +511,7 @@ func setDefaultConfigurations() {
 	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
 	viper.SetDefault("general.ssh_user", "azureuser")
-	viper.SetDefault("general.ssh_port", 22)
+	viper.SetDefault("general.ssh_port", DefaultSSHPort)
 	viper.SetDefault("azure.resource_group_name", "andaime-rg")
 	viper.SetDefault("azure.resource_group_location", "eastus")
 	viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)

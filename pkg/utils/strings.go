@@ -41,12 +41,12 @@ func ParseStringToIntOrZero(row string) int {
 
 // GenerateUniqueID generates a unique ID of length 8
 func GenerateUniqueID() string {
-	return generateID(8) //nolint:gomnd
+	return generateID(8) //nolint:mnd
 }
 
 // CreateShortID generates a short ID of length 6
 func CreateShortID() string {
-	return generateID(6) //nolint:gomnd
+	return generateID(6) //nolint:mnd
 }
 
 func generateID(length int) string {
@@ -73,7 +73,7 @@ func ExpandPath(path string) (string, error) {
 	return path, nil
 }
 
-//nolint:gomnd
+//nolint:mnd
 func GenerateUniqueName(projectID, uniqueID string) string {
 	// Take the first 4 characters of projectID and uniqueID
 	shortProjectID := projectID

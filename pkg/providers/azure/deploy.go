@@ -234,7 +234,9 @@ func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string)
 	)
 
 	m.Deployment.Machines[machineName].SetServiceState("SSH", models.ServiceStateUpdating)
-	sshErr := sshConfig.WaitForSSH(ctx, 3, time.Second*10) //nolint:gomnd
+
+	//nolint:mnd
+	sshErr := sshConfig.WaitForSSH(ctx, 3, time.Second*10)
 	if sshErr != nil {
 		err := m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
 			machine.SetServiceState("SSH", models.ServiceStateFailed)
@@ -433,6 +435,7 @@ func (p *AzureProvider) prepareDeploymentParams(
 	}
 }
 
+//nolint:funlen
 func (p *AzureProvider) deployTemplateWithRetry(
 	ctx context.Context,
 	machine *models.Machine,
@@ -611,7 +614,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 
 	// All resources
 	// Write status for pending or complete to a file
-	//nolint:gomnd
+	//nolint:mnd
 	resourceBytes, err := json.Marshal(resources)
 	if err != nil {
 		l.Errorf("Failed to marshal resources: %v", err)
@@ -620,7 +623,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	err = os.WriteFile(
 		"status.txt",
 		resourceBytes,
-		0600, //nolint:gomnd
+		0600, //nolint:mnd
 	)
 
 	var statusUpdates []*models.DisplayStatus
@@ -763,7 +766,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 
 func parseResourceID(resourceID string) (string, error) {
 	parts := strings.Split(resourceID, "/")
-	//nolint:gomnd
+	//nolint:mnd
 	if len(parts) < 9 {
 		return "", fmt.Errorf("invalid resource ID format")
 	}

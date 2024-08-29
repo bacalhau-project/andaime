@@ -21,6 +21,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	UpdateQueueSize         = 100
+	ResourcePollingInterval = 2 * time.Second
+	DebugFilePath           = "/tmp/andaime-debug.log"
+	DebugFilePermissions    = 0644
+	WaitingForMachinesTime  = 1 * time.Minute
+)
+
 type UpdateAction struct {
 	MachineName string
 	UpdateData  UpdatePayload
@@ -101,7 +109,6 @@ type AzureProvider struct {
 	SSHPort             int
 	lastResourceQuery   time.Time
 	cachedResources     []interface{}
-	goroutineCounter    int64
 	updateQueue         chan UpdateAction
 	updateMutex         sync.Mutex
 	updateProcessorDone chan struct{}
@@ -186,7 +193,7 @@ func NewAzureProvider() (AzureProviderer, error) {
 		Config:      config,
 		SSHUser:     sshUser,
 		SSHPort:     sshPort,
-		updateQueue: make(chan UpdateAction, 100), // Buffer size of 100, adjust as needed
+		updateQueue: make(chan UpdateAction, UpdateQueueSize),
 	}
 
 	go provider.startUpdateProcessor(context.Background())
@@ -259,22 +266,6 @@ func (p *AzureProvider) startUpdateProcessor(ctx context.Context) {
 			)
 			p.processUpdate(update)
 		}
-	}
-}
-
-func (p *AzureProvider) queueUpdate(machineName string,
-	resourceType models.AzureResourceTypes,
-	resourceState models.AzureResourceState,
-	updateFunc func(*models.Machine,
-		UpdatePayload)) {
-	p.updateQueue <- UpdateAction{
-		MachineName: machineName,
-		UpdateData: UpdatePayload{
-			UpdateType:    UpdateTypeResource,
-			ResourceType:  resourceType,
-			ResourceState: resourceState,
-		},
-		UpdateFunc: updateFunc,
 	}
 }
 
@@ -381,7 +372,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	writeToDebugLog("Starting StartResourcePolling")
 
-	resourceTicker := time.NewTicker(5 * time.Second)
+	resourceTicker := time.NewTicker(ResourcePollingInterval)
 
 	quit := make(chan struct{})
 	go func() {
@@ -532,7 +523,11 @@ var _ AzureProviderer = &AzureProvider{}
 
 func writeToDebugLog(message string) {
 	debugFilePath := "/tmp/andaime-debug.log"
-	debugFile, err := os.OpenFile(debugFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugFile, err := os.OpenFile(
+		debugFilePath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0644, //nolint:mnd
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening debug log file %s: %v\n", debugFilePath, err)
 		return
@@ -628,7 +623,7 @@ func (p *AzureProvider) WaitForAllMachinesToReachState(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(30 * time.Second):
+		case <-time.After(WaitingForMachinesTime):
 			l.Debug("Waiting for machines to reach target state...")
 		}
 	}
@@ -642,7 +637,7 @@ func verifyDocker(ctx context.Context, mach *models.Machine) error {
 		mach.PublicIP,
 		mach.SSHPort,
 		mach.SSHUser,
-		[]byte(mach.SSHPrivateKeyMaterial),
+		mach.SSHPrivateKeyMaterial,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create SSH config: %w", err)

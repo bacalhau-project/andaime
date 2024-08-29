@@ -69,10 +69,10 @@ func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
 	mockDialer := &MockSSHDialer{}
 	configInterface, err := NewSSHConfigFunc(
 		"example.com",
-		22, //nolint:gomnd
+		22, //nolint:mnd
 		"testuser",
 		testSSHPrivateKeyMaterial,
-	) //nolint:gomnd
+	) //nolint:mnd
 	if err != nil {
 		panic(err)
 	}

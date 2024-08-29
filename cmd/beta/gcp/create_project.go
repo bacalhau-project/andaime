@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"github.com/spf13/cobra"
-	resourcemanagerpb "google.golang.org/genproto/googleapis/cloud/resourcemanager/v3"
+	"google.golang.org/api/cloudresourcemanager/v1"
+	"google.golang.org/api/googleapi"
 )
 
 func createProjectCmd() *cobra.Command {
@@ -23,36 +23,40 @@ func createProjectCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&projectID, "project-id", "i", "", "The ID of the project to create")
-	cmd.Flags().StringVarP(&projectName, "project-name", "n", "", "The name of the project to create")
-	cmd.MarkFlagRequired("project-id")
-	cmd.MarkFlagRequired("project-name")
+	cmd.Flags().
+		StringVarP(&projectName, "project-name", "n", "", "The name of the project to create")
+	err := cmd.MarkFlagRequired("project-id")
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	err = cmd.MarkFlagRequired("project-name")
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
 
 	return cmd
 }
 
 func runCreateProject(projectID, projectName string) error {
 	ctx := context.Background()
-	c, err := cloudresourcemanager.NewProjectsClient(ctx)
+	c, err := cloudresourcemanager.NewService(ctx)
 	if err != nil {
-		return fmt.Errorf("NewProjectsClient: %v", err)
-	}
-	defer c.Close()
-
-	req := &resourcemanagerpb.CreateProjectRequest{
-		Project: &resourcemanagerpb.Project{
-			ProjectId: projectID,
-			DisplayName: projectName,
-		},
+		return fmt.Errorf("NewService: %v", err)
 	}
 
-	op, err := c.CreateProject(ctx, req)
-	if err != nil {
-		return fmt.Errorf("CreateProject: %v", err)
+	req := &cloudresourcemanager.Project{
+		ProjectId: projectID,
+		Name:      projectName,
 	}
 
-	resp, err := op.Wait(ctx)
+	createCallResponse := c.Projects.Create(req)
+	opts := []googleapi.CallOption{}
+
+	resp, err := createCallResponse.Do(opts...)
 	if err != nil {
-		return fmt.Errorf("Wait: %v", err)
+		return fmt.Errorf("do: %v", err)
 	}
 
 	fmt.Printf("Created project: %s\n", resp.Name)

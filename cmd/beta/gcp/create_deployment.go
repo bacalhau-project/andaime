@@ -1,12 +1,17 @@
 package gcp
 
 import (
+	"context"
 	"fmt"
+	"log"
 
 	"github.com/spf13/cobra"
+
+	"google.golang.org/api/cloudresourcemanager/v1"
+	"google.golang.org/api/option"
 )
 
-func getCreateDeploymentCmd() *cobra.Command {
+func createDeploymentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-deployment",
 		Short: "Create a new deployment in GCP",
@@ -21,20 +26,29 @@ func getCreateDeploymentCmd() *cobra.Command {
 
 func runCreateDeployment() error {
 	fmt.Println("Creating deployment in GCP...")
-	// TODO: Implement the actual deployment creation logic
+
+	ctx := context.Background()
+	service, err := cloudresourcemanager.NewService(
+		ctx,
+		option.WithCredentialsFile("path/to/your/credentials.json"),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create Resource Manager service: %v", err)
+	}
+
+	projectsService := cloudresourcemanager.NewProjectsService(service)
+	project := &cloudresourcemanager.Project{
+		ProjectId: "your-new-project-id",
+		Name:      "Your New Project Name",
+	}
+
+	operation, err := projectsService.Create(project).Do()
+	if err != nil {
+		log.Fatalf("Failed to create project: %v", err)
+	}
+
+	fmt.Printf("Project creation operation: %s\n", operation.Name)
+	// You'll likely need to wait for the operation to complete
+	// before the project is fully usable.
 	return nil
-}
-package gcp
-
-import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-)
-
-func TestGetCreateDeploymentCmd(t *testing.T) {
-	cmd := getCreateDeploymentCmd()
-	assert.NotNil(t, cmd)
-	assert.Equal(t, "create-deployment", cmd.Use)
-	assert.Equal(t, "Create a new deployment in GCP", cmd.Short)
 }

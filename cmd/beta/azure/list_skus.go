@@ -70,7 +70,7 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 	})
 
 	// Create table
-	//nolint:gomnd
+	//nolint:mnd
 	columns := []table.Column{
 		{Title: "Name", Width: 30},
 		{Title: "Family", Width: 30},

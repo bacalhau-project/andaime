@@ -38,7 +38,7 @@ type DisplayColumn struct {
 
 // DisplayColumns defines the structure of the display table
 //
-//nolint:gomnd
+//nolint:mnd
 var DisplayColumns = []DisplayColumn{
 	{Title: "Name", Width: 10},
 	{Title: "Type", Width: 6},
