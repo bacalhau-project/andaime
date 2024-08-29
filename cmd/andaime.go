@@ -138,7 +138,7 @@ func GetSession(region string) *session.Session {
 	})
 
 	if err != nil {
-		fmt.Printf("Error creating session for region %s: %v\n", region, err)
+		fmt.Printf("Error creating session for region %s: %v\n\n", region, err)
 		os.Exit(1)
 	}
 
@@ -168,7 +168,7 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	// Call DescribeImages to find matching AMIs
 	result, err := svc.DescribeImages(describeImagesInput)
 	if err != nil {
-		fmt.Printf("Failed to describe images, %v", err)
+		fmt.Printf("Failed to describe images, %v\n", err)
 		return "", err
 	}
 
