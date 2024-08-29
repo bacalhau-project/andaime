@@ -3,6 +3,7 @@ module github.com/bacalhau-project/andaime
 go 1.22
 
 require (
+	cloud.google.com/go/resourcemanager v1.9.5
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.13.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute v1.0.0
@@ -27,6 +28,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.25.0
 	golang.org/x/sync v0.8.0
+	google.golang.org/genproto/googleapis/cloud/resourcemanager/v3 v3.0.0
 	sigs.k8s.io/yaml v1.4.0
 )
 
