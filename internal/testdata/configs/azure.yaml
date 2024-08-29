@@ -1,0 +1,26 @@
+azure:
+  subscription_id: FAKE-SUBSCRIPTION-ID
+  resource_group_name: FAKE-RESOURCE-GROUP-NAME
+  resource_group_location: eastus
+  default_count_per_zone: 1
+  default_machine_type: Standard_DS1_v2
+  disk_size_gb: 30
+  machines:
+    - location: eastus2
+      parameters:
+        count: 2
+        type: Standard_DS1_v4
+    - location: westus
+      parameters:
+        count: 4
+    - location: brazilsouth
+      parameters:
+        type: Standard_DS1_v8
+    - location: ukwest
+      parameters:
+        orchestrator: true
+    - location: uaenorth
+general:
+  project_id: andaime-project
+  ssh_public_key_path: ./testdata/dummy_keys/id_ed25519.pub
+  ssh_private_key_path: ./testdata/dummy_keys/id_ed25519
