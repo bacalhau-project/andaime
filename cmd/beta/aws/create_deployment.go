@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
+//nolint:unused
 var createDeploymentCmd = &cobra.Command{
 	Use:   "deployment",
 	Short: "Create a deployment in AWS",
@@ -16,6 +17,7 @@ var createDeploymentCmd = &cobra.Command{
 	RunE:  executeCreateDeployment,
 }
 
+//nolint:unused
 func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
 

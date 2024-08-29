@@ -12,6 +12,8 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+const DefaultInstancesPerRegion = 5
+
 type Config struct {
 	TagPrefix string                    `yaml:"tag_prefix"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
@@ -33,7 +35,21 @@ func loadConfig(filename string) (Config, error) {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	// Constants
+	const (
+		MinimumArgCount        = 2
+		MinimumArgCountForTest = 3
+		MinArgsForDelete       = 3
+	)
+
+	if len(os.Args) < MinimumArgCount {
+		fmt.Println("Usage:")
+		fmt.Println("  andaime deploy")
+		fmt.Println("  andaime delete <deployment-tag>")
+		os.Exit(1)
+	}
+
+	if len(os.Args) < MinimumArgCountForTest {
 		fmt.Println("Usage:")
 		fmt.Println("  andaime deploy")
 		fmt.Println("  andaime delete <deployment-tag>")
@@ -51,7 +67,7 @@ func main() {
 			log.Fatalf("Error deploying: %v", err)
 		}
 	case "delete":
-		if len(os.Args) < 3 {
+		if len(os.Args) < MinArgsForDelete {
 			log.Fatal("Please provide the deployment tag to delete")
 		}
 		if err := deleteDeployment(cfg, os.Args[2]); err != nil {
@@ -71,10 +87,10 @@ func deploy(cfg Config) error {
 				// You'll need to implement this function in the aws package
 				instances, err := awsprovider.CreateSpotInstancesInRegion(
 					context.TODO(),
-					"us-west-2", // You might want to make this configurable
-					[]string{},  // orchestrators
-					"",          // token
-					5,           // instancesPerRegion
+					"us-west-2",               // You might want to make this configurable
+					[]string{},                // orchestrators
+					"",                        // token
+					DefaultInstancesPerRegion, // instancesPerRegion
 					*providerConfig.AWS,
 				)
 				if err != nil {

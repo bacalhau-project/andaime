@@ -1,8 +1,10 @@
+//nolint:unused
 package cmd
 
 import (
 	"context"
-	rand "math/rand/v2"
+	"crypto/rand"
+	"math/big"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -11,6 +13,12 @@ import (
 )
 
 var totalTasks = 20
+
+// Constants
+const (
+	LogTickerInterval = 2 * time.Second
+	MaxRandomDuration = 10
+)
 
 func generateEvents(ctx context.Context, logChan chan<- string) {
 	log := logger.Get()
@@ -24,7 +32,7 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 		statuses[newStatus.ID] = newStatus
 	}
 
-	logTicker := time.NewTicker(2 * time.Second)
+	logTicker := time.NewTicker(LogTickerInterval)
 	defer logTicker.Stop()
 
 	for {
@@ -46,9 +54,12 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 		}
 	}
 }
+
 func updateRandomStatus(status *models.DisplayStatus) bool {
 	oldStatus := *status
-	status.ElapsedTime += time.Duration(rand.IntN(10)) * time.Second
+	max := big.NewInt(MaxRandomDuration)
+	n, _ := rand.Int(rand.Reader, max)
+	status.ElapsedTime += time.Duration(n.Int64()) * time.Second
 	status.StatusMessage = testutils.RandomStatus()
 	status.DetailedStatus = testutils.GetRandomDetailedStatus(status.StatusMessage)
 	return oldStatus != *status // Return true if there's a change

@@ -14,6 +14,7 @@ var listCmd = &cobra.Command{
 	Long:  `List various AWS resources including deployments.`,
 }
 
+//nolint:gochecknoinits
 func init() {
 	listCmd.AddCommand(listDeploymentsCmd)
 	// Add more 'list' subcommands as needed

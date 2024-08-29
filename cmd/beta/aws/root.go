@@ -10,8 +10,7 @@ var AwsCmd = &cobra.Command{
 	Long:  `Commands for interacting with AWS resources.`,
 }
 
-func init() {
-	// Add all AWS-related subcommands
-	AwsCmd.AddCommand(createDeploymentCmd)
-	// AwsCmd.AddCommand(GetAwsDestroyCmd())
+func SetupAWSCommands(rootCmd *cobra.Command) {
+	// Add AWS-specific commands to rootCmd
+	// This function would be called from the main setup in cmd/root.go
 }

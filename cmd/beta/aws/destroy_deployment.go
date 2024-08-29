@@ -14,7 +14,7 @@ var destroyCmd = &cobra.Command{
 	Long:  `Destroy various AWS resources including deployments.`,
 }
 
-func init() {
+func SetupDestroyDeploymentCommand(rootCmd *cobra.Command) {
 	destroyCmd.AddCommand(destroyDeploymentCmd)
 	// Add more 'destroy' subcommands as needed
 }

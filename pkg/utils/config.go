@@ -18,6 +18,10 @@ type Config struct {
 	} `yaml:"aws"`
 }
 
+const (
+	ConfigFilePermissions = 0600
+)
+
 func DeleteKeyFromConfig(key string) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -53,7 +57,8 @@ func DeleteKeyFromConfig(key string) error {
 	delete(current, parts[len(parts)-1])
 
 	// Clean up empty maps
-	for i := len(parts) - 2; i >= 0; i-- {
+	const parentDirIndex = 2
+	for i := len(parts) - parentDirIndex; i >= 0; i-- {
 		parent := configMap
 		for _, part := range parts[:i] {
 			parent = parent[part].(map[string]interface{})
@@ -70,7 +75,7 @@ func DeleteKeyFromConfig(key string) error {
 		return err
 	}
 
-	if err := os.WriteFile(file, content, 0644); err != nil {
+	if err := os.WriteFile(file, content, ConfigFilePermissions); err != nil {
 		return err
 	}
 

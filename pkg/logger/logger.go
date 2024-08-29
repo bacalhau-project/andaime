@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 	"sync"
@@ -16,6 +17,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	LogFilePermissions     = 0600
+	DebugFilePermissions   = 0600
+	InfoLogLevel           = "info"
+	ProfileFilePermissions = 0600
+)
+
 var (
 	profileFilePath string
 )
@@ -23,7 +31,6 @@ var (
 var (
 	globalLogger *zap.Logger
 	once         sync.Once
-	outputFormat string        = "text"
 	DEBUG        zapcore.Level = zapcore.DebugLevel
 	INFO         zapcore.Level = zapcore.InfoLevel
 	WARN         zapcore.Level = zapcore.WarnLevel
@@ -33,11 +40,17 @@ var (
 	GlobalEnableFileLogger    bool
 	GlobalEnableBufferLogger  bool
 	GlobalLogPath             string = "/tmp/andaime.log"
-	GlobalLogLevel            string = "info"
+	GlobalLogLevel            string = InfoLogLevel
 	GlobalInstantSync         bool
 	GlobalLoggedBuffer        strings.Builder
 	GlobalLoggedBufferSize    int = 8192
 	GlobalLogFile             *os.File
+
+	logFilePermissions     = fs.FileMode(LogFilePermissions)
+	debugFilePermissions   = fs.FileMode(DebugFilePermissions)
+	profileFilePermissions = fs.FileMode(ProfileFilePermissions)
+
+	outputFormat = "text" //nolint:unused
 )
 
 // Logger is a wrapper around zap.Logger
@@ -55,7 +68,7 @@ func InitLoggerOutputs() {
 	GlobalEnableFileLogger = true
 	GlobalEnableBufferLogger = false
 	GlobalLogPath = "/tmp/andaime.log"
-	GlobalLogLevel = "info"
+	GlobalLogLevel = InfoLogLevel
 	GlobalInstantSync = false
 
 	if viper.IsSet("general.log_path") {
@@ -118,7 +131,7 @@ func InitProduction() {
 		}
 
 		if GlobalLogLevel == "" {
-			GlobalLogLevel = "info"
+			GlobalLogLevel = InfoLogLevel
 		}
 		logLevel := getZapLevel(GlobalLogLevel)
 		atom := zap.NewAtomicLevelAt(logLevel)
@@ -144,7 +157,7 @@ func InitProduction() {
 			GlobalLogFile, err = os.OpenFile(
 				GlobalLogPath,
 				os.O_CREATE|os.O_WRONLY|os.O_APPEND,
-				0666,
+				logFilePermissions,
 			)
 			if err == nil {
 				fileWriter := zapcore.AddSync(GlobalLogFile)
@@ -419,7 +432,11 @@ func GetLastLines(n int) []string {
 
 func writeToDebugLog(message string) {
 	debugFilePath := "/tmp/andaime-debug.log"
-	debugFile, err := os.OpenFile(debugFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugFile, err := os.OpenFile(
+		debugFilePath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		debugFilePermissions,
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening debug log file %s: %v\n", debugFilePath, err)
 		return
@@ -443,7 +460,11 @@ func WriteProfileInfo(info string) {
 		profileFilePath = fmt.Sprintf("/tmp/andaime-profile-%s.log", timestamp)
 	}
 
-	file, err := os.OpenFile(profileFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(
+		profileFilePath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		profileFilePermissions,
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening profile log file %s: %v\n", profileFilePath, err)
 		return

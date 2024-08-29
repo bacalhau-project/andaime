@@ -28,6 +28,11 @@ const (
 	DefaultNumberOfOrchestratorNodes = 1
 	DefaultNumberOfComputeNodes      = 2
 	RetryTimeout                     = 2 * time.Second
+	FileNameSplitParts               = 2
+	FilePermissions                  = 0644
+	DefaultBootVolumeSize            = 8
+	configFileSource                 = "configuration file"
+	environmentVarSource             = "environment variable"
 )
 
 //go:embed startup_scripts/*
@@ -597,7 +602,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout) //nolint:mnd
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to find VPC in region %s: %v\n", region, err)
@@ -624,7 +629,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout) //nolint:mnd
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to find subnet in region %s: %v\n", region, err)
@@ -651,7 +656,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout) //nolint:mnd
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to find security group in region %s: %v\n", region, err)
@@ -708,7 +713,7 @@ func createInstanceInRegion(
 		amiID, err := getUbuntuAMIId(svc, architecture)
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout) //nolint:mnd
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to find Ubuntu 22.04 AMI in region %s: %v\n", region, err)
@@ -784,7 +789,7 @@ func createInstanceInRegion(
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout) //nolint:mnd
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to create instance in region %s: %v\n", region, err)
@@ -855,7 +860,7 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 		})
 		if err != nil {
 			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout) //nolint:mnd
+				time.Sleep(RetryTimeout)
 				continue
 			}
 			fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
@@ -925,7 +930,7 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 				return nil
 			}
 		}
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Printf("Created security group in region %s\n", region)
 		}
 		return sgID
@@ -973,6 +978,304 @@ func getAllRegions() ([]string, error) {
 }
 
 func deleteTaggedResources(svc *ec2.EC2, region string) {
+	deleteVPCs(svc, region)
+	deleteSecurityGroups(svc, region)
+	deleteInstances(svc, region)
+}
+
+func deleteVPCs(svc *ec2.EC2, region string) {
+	vpcs := describeVPCs(svc, region)
+	for _, vpc := range vpcs {
+		deleteSubnets(svc, vpc, region)
+		deleteRouteTables(svc, vpc, region)
+		detachAndDeleteInternetGateways(svc, vpc, region)
+		deleteVPC(svc, vpc, region)
+	}
+}
+
+func describeVPCs(svc *ec2.EC2, region string) []*ec2.Vpc {
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		// Describe VPCs with the tag "project=andaime"
+		vpcs, err := svc.DescribeVpcs(&ec2.DescribeVpcsInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("tag:project"),
+					Values: []*string{aws.String("andaime")},
+				},
+			},
+		})
+		if err != nil {
+			if isRetryableError(err) && i < retryPolicy-1 {
+				time.Sleep(RetryTimeout)
+				continue
+			}
+			fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
+			return nil
+		}
+		return vpcs.Vpcs
+	}
+	return nil
+}
+
+func deleteSubnets(svc *ec2.EC2, vpc *ec2.Vpc, region string) {
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		// Describe subnets
+		subnets, err := svc.DescribeSubnets(&ec2.DescribeSubnetsInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("vpc-id"),
+					Values: []*string{vpc.VpcId},
+				},
+			},
+		})
+		if err != nil {
+			if isRetryableError(err) && i < retryPolicy-1 {
+				time.Sleep(RetryTimeout)
+				continue
+			}
+			fmt.Printf(
+				"Unable to describe subnets for VPC %s in region %s: %v\n",
+				*vpc.VpcId,
+				region,
+				err,
+			)
+			return
+		}
+		for _, subnet := range subnets.Subnets {
+			_, err = svc.DeleteSubnet(&ec2.DeleteSubnetInput{
+				SubnetId: subnet.SubnetId,
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(RetryTimeout)
+					continue
+				}
+				fmt.Printf(
+					"Unable to delete subnet %s in region %s: %v\n",
+					*subnet.SubnetId,
+					region,
+					err,
+				)
+				continue
+			}
+			if VerboseModeFlag {
+				fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
+			}
+		}
+		break
+	}
+}
+
+func deleteRouteTables(svc *ec2.EC2, vpc *ec2.Vpc, region string) {
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		// Describe route tables
+		routeTables, err := svc.DescribeRouteTables(&ec2.DescribeRouteTablesInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("vpc-id"),
+					Values: []*string{vpc.VpcId},
+				},
+			},
+		})
+		if err != nil {
+			if isRetryableError(err) && i < retryPolicy-1 {
+				time.Sleep(RetryTimeout)
+				continue
+			}
+			fmt.Printf(
+				"Unable to describe route tables for VPC %s in region %s: %v\n",
+				*vpc.VpcId,
+				region,
+				err,
+			)
+			return
+		}
+		for _, routeTable := range routeTables.RouteTables {
+			if len(routeTable.Associations) > 0 && *routeTable.Associations[0].Main {
+				continue // Skip the main route table
+			}
+			_, err = svc.DeleteRouteTable(&ec2.DeleteRouteTableInput{
+				RouteTableId: routeTable.RouteTableId,
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(RetryTimeout)
+					continue
+				}
+				fmt.Printf(
+					"Unable to delete route table %s in region %s: %v\n",
+					*routeTable.RouteTableId,
+					region,
+					err,
+				)
+				continue
+			}
+			if VerboseModeFlag {
+				fmt.Printf(
+					"Deleted route table %s in region %s\n",
+					*routeTable.RouteTableId,
+					region,
+				)
+			}
+		}
+		break
+	}
+}
+
+func detachAndDeleteInternetGateways(svc *ec2.EC2, vpc *ec2.Vpc, region string) {
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		// Describe Internet Gateways
+		igws, err := svc.DescribeInternetGateways(&ec2.DescribeInternetGatewaysInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("attachment.vpc-id"),
+					Values: []*string{vpc.VpcId},
+				},
+			},
+		})
+		if err != nil {
+			if isRetryableError(err) && i < retryPolicy-1 {
+				time.Sleep(RetryTimeout)
+				continue
+			}
+			fmt.Printf(
+				"Unable to describe internet gateways for VPC %s in region %s: %v\n",
+				*vpc.VpcId,
+				region,
+				err,
+			)
+			return
+		}
+		for _, igw := range igws.InternetGateways {
+			_, err = svc.DetachInternetGateway(&ec2.DetachInternetGatewayInput{
+				InternetGatewayId: igw.InternetGatewayId,
+				VpcId:             vpc.VpcId,
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(RetryTimeout)
+					continue
+				}
+				fmt.Printf(
+					"Unable to detach internet gateway %s from VPC %s in region %s: %v\n",
+					*igw.InternetGatewayId,
+					*vpc.VpcId,
+					region,
+					err,
+				)
+				continue
+			}
+			if VerboseModeFlag {
+				fmt.Printf(
+					"Detached internet gateway %s from VPC %s in region %s\n",
+					*igw.InternetGatewayId,
+					*vpc.VpcId,
+					region,
+				)
+			}
+
+			// Delete Internet Gateway
+			_, err = svc.DeleteInternetGateway(&ec2.DeleteInternetGatewayInput{
+				InternetGatewayId: igw.InternetGatewayId,
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(RetryTimeout)
+					continue
+				}
+				fmt.Printf(
+					"Unable to delete internet gateway %s in region %s: %v\n",
+					*igw.InternetGatewayId,
+					region,
+					err,
+				)
+				continue
+			}
+			if VerboseModeFlag {
+				fmt.Printf(
+					"Deleted internet gateway %s in region %s\n",
+					*igw.InternetGatewayId,
+					region,
+				)
+			}
+		}
+		break
+	}
+}
+
+func deleteVPC(svc *ec2.EC2, vpc *ec2.Vpc, region string) {
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		_, err := svc.DeleteVpc(&ec2.DeleteVpcInput{
+			VpcId: vpc.VpcId,
+		})
+		if err != nil {
+			if isRetryableError(err) && i < retryPolicy-1 {
+				time.Sleep(RetryTimeout)
+				continue
+			}
+			fmt.Printf("Unable to delete VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
+			return
+		}
+		if VerboseModeFlag {
+			fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
+		}
+		break
+	}
+}
+
+func deleteSecurityGroups(svc *ec2.EC2, region string) {
+	retryPolicy := 3
+	for i := 0; i < retryPolicy; i++ {
+		// Describe security groups with the tag "project=andaime"
+		sgs, err := svc.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("tag:project"),
+					Values: []*string{aws.String("andaime")},
+				},
+			},
+		})
+		if err != nil {
+			if isRetryableError(err) && i < retryPolicy-1 {
+				time.Sleep(RetryTimeout)
+				continue
+			}
+			fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
+			return
+		}
+
+		// Delete security groups
+		for _, sg := range sgs.SecurityGroups {
+			_, err = svc.DeleteSecurityGroup(&ec2.DeleteSecurityGroupInput{
+				GroupId: sg.GroupId,
+			})
+			if err != nil {
+				if isRetryableError(err) && i < retryPolicy-1 {
+					time.Sleep(RetryTimeout)
+					continue
+				}
+				fmt.Printf(
+					"Unable to delete security group %s in region %s: %v\n",
+					*sg.GroupId,
+					region,
+					err,
+				)
+				continue
+			}
+			if VerboseModeFlag {
+				fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
+			}
+		}
+		break
+	}
+}
+
+func deleteInstances(svc *ec2.EC2, region string) {
 	retryPolicy := 3
 	for i := 0; i < retryPolicy; i++ {
 		// Describe instances with the tag "project=andaime"
@@ -1012,7 +1315,7 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 				fmt.Printf("Unable to terminate instances in region %s: %v\n", region, err)
 				return
 			}
-			if VerboseModeFlag == true {
+			if VerboseModeFlag {
 				fmt.Printf("Terminated instances in region %s\n", region)
 			}
 
@@ -1027,226 +1330,6 @@ func deleteTaggedResources(svc *ec2.EC2, region string) {
 					err,
 				)
 				return
-			}
-		}
-
-		// Describe security groups with the tag "project=andaime"
-		sgs, err := svc.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
-			Filters: []*ec2.Filter{
-				{
-					Name:   aws.String("tag:project"),
-					Values: []*string{aws.String("andaime")},
-				},
-			},
-		})
-		if err != nil {
-			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout)
-				continue
-			}
-			fmt.Printf("Unable to describe security groups in region %s: %v\n", region, err)
-			return
-		}
-
-		// Delete security groups
-		for _, sg := range sgs.SecurityGroups {
-			_, err = svc.DeleteSecurityGroup(&ec2.DeleteSecurityGroupInput{
-				GroupId: sg.GroupId,
-			})
-			if err != nil {
-				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(RetryTimeout)
-					continue
-				}
-				fmt.Printf(
-					"Unable to delete security group %s in region %s: %v\n",
-					*sg.GroupId,
-					region,
-					err,
-				)
-				continue
-			}
-			if VerboseModeFlag == true {
-				fmt.Printf("Deleted security group %s in region %s\n", *sg.GroupId, region)
-			}
-		}
-
-		// Describe VPCs with the tag "project=andaime"
-		vpcs, err := svc.DescribeVpcs(&ec2.DescribeVpcsInput{
-			Filters: []*ec2.Filter{
-				{
-					Name:   aws.String("tag:project"),
-					Values: []*string{aws.String("andaime")},
-				},
-			},
-		})
-		if err != nil {
-			if isRetryableError(err) && i < retryPolicy-1 {
-				time.Sleep(RetryTimeout)
-				continue
-			}
-			fmt.Printf("Unable to describe VPCs in region %s: %v\n", region, err)
-			return
-		}
-
-		// Delete VPCs
-		for _, vpc := range vpcs.Vpcs {
-			// Describe and delete subnets
-			subnets, err := svc.DescribeSubnets(&ec2.DescribeSubnetsInput{
-				Filters: []*ec2.Filter{
-					{
-						Name:   aws.String("vpc-id"),
-						Values: []*string{vpc.VpcId},
-					},
-				},
-			})
-			if err != nil {
-				fmt.Printf(
-					"Unable to describe subnets for VPC %s in region %s: %v\n",
-					*vpc.VpcId,
-					region,
-					err,
-				)
-				continue
-			}
-			for _, subnet := range subnets.Subnets {
-				_, err = svc.DeleteSubnet(&ec2.DeleteSubnetInput{
-					SubnetId: subnet.SubnetId,
-				})
-				if err != nil {
-					fmt.Printf(
-						"Unable to delete subnet %s in region %s: %v\n",
-						*subnet.SubnetId,
-						region,
-						err,
-					)
-					continue
-				}
-				if VerboseModeFlag == true {
-					fmt.Printf("Deleted subnet %s in region %s\n", *subnet.SubnetId, region)
-				}
-			}
-
-			// Describe and delete route tables
-			routeTables, err := svc.DescribeRouteTables(&ec2.DescribeRouteTablesInput{
-				Filters: []*ec2.Filter{
-					{
-						Name:   aws.String("vpc-id"),
-						Values: []*string{vpc.VpcId},
-					},
-				},
-			})
-			if err != nil {
-				fmt.Printf(
-					"Unable to describe route tables for VPC %s in region %s: %v\n",
-					*vpc.VpcId,
-					region,
-					err,
-				)
-				continue
-			}
-			for _, routeTable := range routeTables.RouteTables {
-				if len(routeTable.Associations) > 0 && *routeTable.Associations[0].Main {
-					continue // Skip the main route table
-				}
-				_, err = svc.DeleteRouteTable(&ec2.DeleteRouteTableInput{
-					RouteTableId: routeTable.RouteTableId,
-				})
-				if err != nil {
-					fmt.Printf(
-						"Unable to delete route table %s in region %s: %v\n",
-						*routeTable.RouteTableId,
-						region,
-						err,
-					)
-					continue
-				}
-				if VerboseModeFlag == true {
-					fmt.Printf(
-						"Deleted route table %s in region %s\n",
-						*routeTable.RouteTableId,
-						region,
-					)
-				}
-			}
-
-			// Detach Internet Gateway
-			igws, err := svc.DescribeInternetGateways(&ec2.DescribeInternetGatewaysInput{
-				Filters: []*ec2.Filter{
-					{
-						Name:   aws.String("attachment.vpc-id"),
-						Values: []*string{vpc.VpcId},
-					},
-				},
-			})
-			if err != nil {
-				fmt.Printf(
-					"Unable to describe internet gateways for VPC %s in region %s: %v\n",
-					*vpc.VpcId,
-					region,
-					err,
-				)
-				continue
-			}
-			for _, igw := range igws.InternetGateways {
-				_, err = svc.DetachInternetGateway(&ec2.DetachInternetGatewayInput{
-					InternetGatewayId: igw.InternetGatewayId,
-					VpcId:             vpc.VpcId,
-				})
-				if err != nil {
-					fmt.Printf(
-						"Unable to detach internet gateway %s from VPC %s in region %s: %v\n",
-						*igw.InternetGatewayId,
-						*vpc.VpcId,
-						region,
-						err,
-					)
-					continue
-				}
-				if VerboseModeFlag == true {
-					fmt.Printf(
-						"Detached internet gateway %s from VPC %s in region %s\n",
-						*igw.InternetGatewayId,
-						*vpc.VpcId,
-						region,
-					)
-				}
-
-				// Delete Internet Gateway
-				_, err = svc.DeleteInternetGateway(&ec2.DeleteInternetGatewayInput{
-					InternetGatewayId: igw.InternetGatewayId,
-				})
-				if err != nil {
-					fmt.Printf(
-						"Unable to delete internet gateway %s in region %s: %v\n",
-						*igw.InternetGatewayId,
-						region,
-						err,
-					)
-					continue
-				}
-				if VerboseModeFlag == true {
-					fmt.Printf(
-						"Deleted internet gateway %s in region %s\n",
-						*igw.InternetGatewayId,
-						region,
-					)
-				}
-			}
-
-			_, err = svc.DeleteVpc(&ec2.DeleteVpcInput{
-				VpcId: vpc.VpcId,
-			})
-			if err != nil {
-				if isRetryableError(err) && i < retryPolicy-1 {
-					time.Sleep(RetryTimeout)
-					continue
-				}
-				fmt.Printf("Unable to delete VPC %s in region %s: %v\n", *vpc.VpcId, region, err)
-				continue
-			}
-			if VerboseModeFlag == true {
-				fmt.Printf("Deleted VPC %s in region %s\n", *vpc.VpcId, region)
 			}
 		}
 		break
@@ -1326,6 +1409,7 @@ func listResources() {
 	fmt.Printf("%d nodes in %d regions\n", totalNodes, totalRegions)
 }
 
+//nolint:gocyclo,funlen
 func listTaggedResources(svc *ec2.EC2, resourceType string, region string) []string {
 	var resourceList []string
 	retryPolicy := 3
@@ -1508,8 +1592,8 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 
 	for _, file := range files {
 		if !file.IsDir() {
-			parts := strings.SplitN(file.Name(), "_", 2)
-			if len(parts) < 2 {
+			parts := strings.SplitN(file.Name(), "_", FileNameSplitParts)
+			if len(parts) < FileNameSplitParts {
 				continue
 			}
 			order, err := strconv.Atoi(parts[0])
@@ -1554,43 +1638,43 @@ func readStartupScripts(dir string, templateData TemplateData) (string, error) {
 
 func ProcessEnvVars() {
 	if os.Getenv("PROJECT_NAME") != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "PROJECT_NAME" from environment variable`)
 		}
 
 		ProjectSettings["ProjectName"] = os.Getenv("PROJECT_NAME")
-		SetBy["ProjectName"] = "environment variable"
+		SetBy["ProjectName"] = environmentVarSource
 	}
 
 	if os.Getenv("TARGET_PLATFORM") != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "TARGET_PLATFORM" from environment variable`)
 		}
 
 		ProjectSettings["TargetPlatform"] = os.Getenv("TARGET_PLATFORM")
-		SetBy["TargetPlatform"] = "environment variable"
+		SetBy["TargetPlatform"] = environmentVarSource
 	}
 
 	if os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES") != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from environment variable`)
 		}
 
 		ProjectSettings["NumberOfOrchestratorNodes"], _ = strconv.Atoi(
 			os.Getenv("NUMBER_OF_ORCHESTRATOR_NODES"),
 		)
-		SetBy["NumberOfOrchestratorNodes"] = "environment variable"
+		SetBy["NumberOfOrchestratorNodes"] = environmentVarSource
 	}
 
 	if os.Getenv("NUMBER_OF_COMPUTE_NODES") != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from environment variable`)
 		}
 
 		ProjectSettings["NumberOfComputeNodes"], _ = strconv.Atoi(
 			os.Getenv("NUMBER_OF_COMPUTE_NODES"),
 		)
-		SetBy["NumberOfComputeNodes"] = "environment variable"
+		SetBy["NumberOfComputeNodes"] = environmentVarSource
 	}
 }
 
@@ -1598,76 +1682,76 @@ func ProcessConfigFile() error {
 	_, err := os.Stat("./config.json")
 
 	if os.IsNotExist(err) {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println("./config.json does not exist. Skipping...")
 		}
 
 		return nil
 	}
 
-	config_file, config_err := os.ReadFile("./config.json")
+	configFile, configErr := os.ReadFile("./config.json")
 
-	if config_err != nil {
-		fmt.Println("Could not read configuration file:", config_err)
-		return config_err
+	if configErr != nil {
+		fmt.Println("Could not read configuration file:", configErr)
+		return configErr
 	}
 
-	if config_file != nil {
-		var configJson map[string]interface{}
+	if configFile != nil {
+		var configJSON map[string]interface{}
 
-		config_err = json.Unmarshal(config_file, &configJson)
+		configErr = json.Unmarshal(configFile, &configJSON)
 
-		if config_err != nil {
-			return config_err
+		if configErr != nil {
+			return configErr
 		}
 
-		if configJson["PROJECT_NAME"] != nil {
-			if VerboseModeFlag == true {
+		if configJSON["PROJECT_NAME"] != nil {
+			if VerboseModeFlag {
 				fmt.Println(`Setting "PROJECT_NAME" from configuration file`)
 			}
 
-			ProjectSettings["ProjectName"] = configJson["PROJECT_NAME"].(string)
-			SetBy["ProjectName"] = "configuration file"
+			ProjectSettings["ProjectName"] = configJSON["PROJECT_NAME"].(string)
+			SetBy["ProjectName"] = configFileSource
 		}
 
-		if configJson["TARGET_PLATFORM"] != nil {
-			if VerboseModeFlag == true {
+		if configJSON["TARGET_PLATFORM"] != nil {
+			if VerboseModeFlag {
 				fmt.Println(`Setting "TARGET_PLATFORM" from configuration file`)
 			}
 
-			ProjectSettings["TargetPlatform"] = configJson["TARGET_PLATFORM"].(string)
-			SetBy["TargetPlatform"] = "configuration file"
+			ProjectSettings["TargetPlatform"] = configJSON["TARGET_PLATFORM"].(string)
+			SetBy["TargetPlatform"] = configFileSource
 		}
 
-		if configJson["NUMBER_OF_ORCHESTRATOR_NODES"] != nil {
-			if VerboseModeFlag == true {
+		if configJSON["NUMBER_OF_ORCHESTRATOR_NODES"] != nil {
+			if VerboseModeFlag {
 				fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" from configuration file`)
 			}
 
 			ProjectSettings["NumberOfOrchestratorNodes"] = int(
-				configJson["NUMBER_OF_ORCHESTRATOR_NODES"].(float64),
+				configJSON["NUMBER_OF_ORCHESTRATOR_NODES"].(float64),
 			)
-			SetBy["NumberOfOrchestratorNodes"] = "configuration file"
+			SetBy["NumberOfOrchestratorNodes"] = configFileSource
 		}
 
-		if configJson["NUMBER_OF_COMPUTE_NODES"] != nil {
-			if VerboseModeFlag == true {
+		if configJSON["NUMBER_OF_COMPUTE_NODES"] != nil {
+			if VerboseModeFlag {
 				fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES" from configuration file`)
 			}
 
 			ProjectSettings["NumberOfComputeNodes"] = int(
-				configJson["NUMBER_OF_COMPUTE_NODES"].(float64),
+				configJSON["NUMBER_OF_COMPUTE_NODES"].(float64),
 			)
-			SetBy["NumberOfComputeNodes"] = "configuration file"
+			SetBy["NumberOfComputeNodes"] = configFileSource
 		}
 	}
 
-	return config_err
+	return configErr
 }
 
 func ProcessFlags() {
 	if ProjectNameFlag != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "PROJECT_NAME" by flag`)
 		}
 
@@ -1676,7 +1760,7 @@ func ProcessFlags() {
 	}
 
 	if TargetPlatformFlag != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "TARGET_PLATFORM" by flag`)
 		}
 		ProjectSettings["TargetPlatform"] = TargetPlatformFlag
@@ -1684,7 +1768,7 @@ func ProcessFlags() {
 	}
 
 	if NumberOfOrchestratorNodesFlag != -1 {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "NUMBER_OF_ORCHESTRATOR_NODES" by flag`)
 		}
 
@@ -1697,7 +1781,7 @@ func ProcessFlags() {
 	}
 
 	if NumberOfComputeNodesFlag != -1 {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "NUMBER_OF_COMPUTE_NODES_FLAG" by flag`)
 		}
 
@@ -1706,12 +1790,14 @@ func ProcessFlags() {
 	}
 
 	if OrchestratorIPFlag != "" {
-		if VerboseModeFlag == true {
+		if VerboseModeFlag {
 			fmt.Println(`Setting "ORCHESTRATOR_IP" by flag`)
 		}
 	}
 }
-func andaime_main(cmd string, _ ...[]string) {
+
+//nolint:gocyclo,funlen,unused
+func andaimeMain(cmd string, _ ...[]string) {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")
@@ -1780,7 +1866,7 @@ func andaime_main(cmd string, _ ...[]string) {
 	flag.IntVar(
 		&BootVolumeSizeFlag,
 		"volume-size",
-		8,
+		DefaultBootVolumeSize,
 		"The volume size of each node created (Gigabytes). Default: 8",
 	)
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")

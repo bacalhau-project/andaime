@@ -21,11 +21,19 @@ import (
 
 // Constants
 const (
-	LogLines           = 10
-	AzureTotalSteps    = 7
-	StatusLength       = 30
-	TickerInterval     = 100 * time.Millisecond
-	ProgressBarPadding = 2
+	LogLines                     = 10
+	AzureTotalSteps              = 7
+	StatusLength                 = 30
+	TickerInterval               = 100 * time.Millisecond
+	ProgressBarPadding           = 2
+	secondsPerMinute             = 60
+	updateTimesBufferSize        = 10
+	millisecondsPerSecond        = 1000
+	bytesPerMegabyte             = 1024 * 1024
+	sleepDuration                = 100 * time.Millisecond
+	CPUUsagePercentageMultiplier = 100
+	MillisecondsPerTenth         = 100
+	TenthsPerSecond              = 10
 )
 
 // DisplayColumn represents a column in the display table
@@ -70,16 +78,30 @@ func (m *DisplayModel) updateLogCmd() tea.Cmd {
 	}
 }
 
-func (m *DisplayModel) updateMachineStatus(
-	machineName string,
-	newStatus *models.DisplayStatus,
-) {
-	l := logger.Get()
-	if _, ok := m.Deployment.Machines[machineName]; !ok {
-		l.Debugf("Machine %s not found, skipping update", machineName)
+func (m *DisplayModel) updateMachineStatus(machineName string, newStatus *models.DisplayStatus) {
+	if !m.machineExists(machineName) {
 		return
 	}
 
+	m.updateStatusMessage(machineName, newStatus)
+	m.updateLocation(machineName, newStatus)
+	m.updateIPs(machineName, newStatus)
+	m.updateElapsedTime(machineName, newStatus)
+	m.updateOrchestratorStatus(machineName, newStatus)
+	m.updateServiceStates(machineName, newStatus)
+}
+
+func (m *DisplayModel) machineExists(machineName string) bool {
+	l := logger.Get()
+	if _, ok := m.Deployment.Machines[machineName]; !ok {
+		l.Debugf("Machine %s not found, skipping update", machineName)
+		return false
+	}
+	return true
+}
+
+func (m *DisplayModel) updateStatusMessage(machineName string, newStatus *models.DisplayStatus) {
+	l := logger.Get()
 	if newStatus.StatusMessage != "" {
 		trimmedStatus := strings.TrimSpace(newStatus.StatusMessage)
 		if len(trimmedStatus) > StatusLength-3 {
@@ -99,7 +121,10 @@ func (m *DisplayModel) updateMachineStatus(
 			}
 		}
 	}
+}
 
+func (m *DisplayModel) updateLocation(machineName string, newStatus *models.DisplayStatus) {
+	l := logger.Get()
 	if newStatus.Location != "" {
 		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
 			m.Location = newStatus.Location
@@ -108,6 +133,10 @@ func (m *DisplayModel) updateMachineStatus(
 			l.Errorf("Error updating machine status: %v", err)
 		}
 	}
+}
+
+func (m *DisplayModel) updateIPs(machineName string, newStatus *models.DisplayStatus) {
+	l := logger.Get()
 	if newStatus.PublicIP != "" {
 		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
 			m.PublicIP = newStatus.PublicIP
@@ -124,6 +153,10 @@ func (m *DisplayModel) updateMachineStatus(
 			l.Errorf("Error updating machine status: %v", err)
 		}
 	}
+}
+
+func (m *DisplayModel) updateElapsedTime(machineName string, newStatus *models.DisplayStatus) {
+	l := logger.Get()
 	if newStatus.ElapsedTime > 0 && !m.Deployment.Machines[machineName].Complete() {
 		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
 			m.ElapsedTime = newStatus.ElapsedTime
@@ -132,6 +165,13 @@ func (m *DisplayModel) updateMachineStatus(
 			l.Errorf("Error updating machine status: %v", err)
 		}
 	}
+}
+
+func (m *DisplayModel) updateOrchestratorStatus(
+	machineName string,
+	newStatus *models.DisplayStatus,
+) {
+	l := logger.Get()
 	if newStatus.Orchestrator {
 		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
 			m.Orchestrator = newStatus.Orchestrator
@@ -140,7 +180,9 @@ func (m *DisplayModel) updateMachineStatus(
 			l.Errorf("Error updating machine status: %v", err)
 		}
 	}
+}
 
+func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models.DisplayStatus) {
 	if newStatus.SSH != models.ServiceStateUnknown &&
 		m.Deployment.Machines[machineName].GetServiceState("SSH") < newStatus.SSH {
 		m.Deployment.Machines[machineName].SetServiceState("SSH", newStatus.SSH)
@@ -252,9 +294,9 @@ func InitialModel() *DisplayModel {
 		TextBox:          []string{"Resource Status Monitor"},
 		LastUpdate:       time.Now(),
 		DebugMode:        os.Getenv("DEBUG_DISPLAY") == "1",
-		UpdateTimes:      make([]time.Duration, 100),
+		UpdateTimes:      make([]time.Duration, updateTimesBufferSize),
 		UpdateTimesIndex: 0,
-		UpdateTimesSize:  100,
+		UpdateTimesSize:  updateTimesBufferSize,
 		quitChan:         make(chan bool),
 		keyEventChan:     make(chan tea.KeyMsg),
 		logger:           logger.Get(),
@@ -296,7 +338,12 @@ func (m *DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	msgStart := time.Now()
 	defer func() {
 		_ = msgStart
-		// l.Debugf("Message processed: %T, Start: %s, End: %s", msg, msgStart.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
+		// l.Debugf(
+		//     "Message processed: %T, Start: %s, End: %s",
+		//     msg,
+		//     msgStart.Format(time.RFC3339Nano),
+		//     time.Now().Format(time.RFC3339Nano),
+		// )
 	}()
 
 	if m.Quitting {
@@ -392,12 +439,12 @@ func getCPUUsage() float64 {
 	var startUsage float64
 	startTime = time.Now()
 	startUsage, _ = getCPUTime()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(sleepDuration)
 	endTime := time.Now()
 	endUsage, _ := getCPUTime()
 
 	cpuUsage := (endUsage - startUsage) / endTime.Sub(startTime).Seconds()
-	return cpuUsage * 100 // Return as percentage
+	return cpuUsage * CPUUsagePercentageMultiplier // Return as percentage
 }
 
 func getCPUTime() (float64, error) {
@@ -465,9 +512,9 @@ func (m *DisplayModel) View() string {
 
 	performanceInfo := fmt.Sprintf(
 		"Avg Update Time: %.2fms, CPU Usage: %.2f%%, Memory Usage: %d MB, Circular Buffer Size: %d, Goroutines: %d",
-		avgUpdateTime.Seconds()*1000,
+		avgUpdateTime.Seconds()*millisecondsPerSecond,
 		m.CPUUsage,
-		m.MemoryUsage/1024/1024,
+		m.MemoryUsage/bytesPerMegabyte,
 		m.UpdateTimesSize,
 		atomic.LoadInt64(&m.goroutineCount),
 	)
@@ -668,8 +715,8 @@ func renderProgressBar(progress, total, width int) string {
 
 func formatElapsedTime(d time.Duration) string {
 	minutes := int(d.Minutes())
-	seconds := int(d.Seconds()) % 60
-	tenths := int(d.Milliseconds()/100) % 10
+	seconds := int(d.Seconds()) % secondsPerMinute
+	tenths := int(d.Milliseconds()/MillisecondsPerTenth) % TenthsPerSecond
 
 	if minutes > 0 {
 		return fmt.Sprintf("%dm%02d.%ds", minutes, seconds, tenths)

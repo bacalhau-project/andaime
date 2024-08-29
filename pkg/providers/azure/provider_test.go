@@ -1007,10 +1007,10 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			if state < models.ServiceStateNotStarted || state > models.ServiceStateFailed {
 				return fmt.Errorf(
-					"Unexpected final state for machine %s, service %s: %v",
+					"Unexpected final state for machine %s, service %s: %s",
 					machine,
-					service,
-					state,
+					service.Name,
+					string(state),
 				)
 			}
 		}
@@ -1024,7 +1024,11 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			stateMap[machine][service.Name] = state
 			if state == models.ServiceStateNotStarted {
-				return fmt.Errorf("Service %s on machine %s is still in NotStarted state", service.Name, machine)
+				return fmt.Errorf(
+					"Service %s on machine %s is still in NotStarted state",
+					service.Name,
+					machine,
+				)
 			}
 		}
 	}
@@ -1036,7 +1040,11 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 	}
 
 	if len(uniqueStates) != len(testMachines) {
-		return fmt.Errorf("Not all machines have unique service state combinations: got %d, want %d", len(uniqueStates), len(testMachines))
+		return fmt.Errorf(
+			"Not all machines have unique service state combinations: got %d, want %d",
+			len(uniqueStates),
+			len(testMachines),
+		)
 	}
 
 	l.Debug("Test completed successfully")

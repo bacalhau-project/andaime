@@ -99,7 +99,11 @@ func setupPanicHandling() {
 }
 
 func logPanic(l *logger.Logger, r interface{}) {
-	debugLog, err := os.OpenFile("/tmp/andaime.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugLog, err := os.OpenFile(
+		"/tmp/andaime.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		FilePermissions,
+	)
 	if err == nil {
 		defer debugLog.Close()
 		l.Errorf("Panic occurred: %v\n", r)
@@ -117,7 +121,8 @@ func setupRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "andaime",
 		Short: "Andaime is a tool for managing cloud resources",
-		Long:  `Andaime is a comprehensive tool for managing cloud resources, including deploying and managing Bacalhau nodes across multiple cloud providers.`,
+		Long: `Andaime is a comprehensive tool for managing cloud resources,
+       including deploying and managing Bacalhau nodes across multiple cloud providers.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := cmd.ParseFlags(os.Args[1:]); err != nil {
 				return err
@@ -153,7 +158,10 @@ func setupFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
 	cmd.PersistentFlags().StringVar(&targetPlatform, "target-platform", "", "Set target platform")
 	cmd.PersistentFlags().
-		IntVar(&numberOfOrchestratorNodes, "orchestrator-nodes", numberOfDefaultOrchestratorNodes, "Set number of orchestrator nodes")
+		IntVar(&numberOfOrchestratorNodes,
+			"orchestrator-nodes",
+			numberOfDefaultOrchestratorNodes,
+			"Set number of orchestrator nodes")
 	cmd.PersistentFlags().
 		IntVar(&numberOfComputeNodes, "compute-nodes", numberOfDefaultComputeNodes, "Set number of compute nodes")
 	cmd.PersistentFlags().

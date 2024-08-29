@@ -21,7 +21,8 @@ func DumpGoroutines() {
 	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
 
 	// Log stack traces for all goroutines
-	buf := make([]byte, 1<<20)
+	const debugBufferSize = 1 << 20
+	buf := make([]byte, debugBufferSize)
 	stackLen := runtime.Stack(buf, true)
 	l.Debugf("Full goroutine dump:\n%s", buf[:stackLen])
 }

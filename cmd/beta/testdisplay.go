@@ -15,6 +15,12 @@ import (
 
 const statusLength = 30
 
+// Constants
+const (
+	StatusUpdateInterval = 100 * time.Millisecond
+	RandomWordsCount     = 3
+)
+
 var words = []string{
 	"apple", "banana", "cherry", "date", "elderberry",
 	"fig", "grape", "honeydew", "kiwi", "lemon",
@@ -76,7 +82,7 @@ func runTestDisplay() error {
 		}
 
 		wordTicker := time.NewTicker(1 * time.Second)
-		timeTicker := time.NewTicker(100 * time.Millisecond)
+		timeTicker := time.NewTicker(StatusUpdateInterval)
 		defer wordTicker.Stop()
 		defer timeTicker.Stop()
 
@@ -84,7 +90,7 @@ func runTestDisplay() error {
 			select {
 			case <-wordTicker.C:
 				for _, machine := range m.Deployment.Machines {
-					rawStatus := getRandomWords(3)
+					rawStatus := getRandomWords(RandomWordsCount)
 					statusMessage := ""
 					if len(rawStatus) > statusLength {
 						statusMessage = rawStatus[:statusLength]
