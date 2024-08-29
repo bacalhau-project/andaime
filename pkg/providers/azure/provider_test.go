@@ -1024,7 +1024,7 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			stateMap[machine][service.Name] = state
 			if state == models.ServiceStateNotStarted {
-				return fmt.Errorf("Service %v on machine %s is still in NotStarted state", service, machine)
+				return fmt.Errorf("Service %s on machine %s is still in NotStarted state", service.Name, machine)
 			}
 		}
 	}
