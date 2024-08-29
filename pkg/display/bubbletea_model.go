@@ -472,6 +472,8 @@ func (m *DisplayModel) View() string {
 		atomic.LoadInt64(&m.goroutineCount),
 	)
 
+	legendInfo := "Legend: ⬛️ = Waiting for other VMs in region, ⌛️/↻ = In Process, ✅/✓ = Success, ❌ = Failure"
+
 	// logger.WriteProfileInfo(performanceInfo)
 
 	// profileFilePath := logger.GetProfileFilePath()
@@ -484,6 +486,7 @@ func (m *DisplayModel) View() string {
 		textBoxStyle.Render(logContent),
 		infoStyle.Render(infoText),
 		infoStyle.Render(performanceInfo),
+		infoStyle.Render(legendInfo),
 	)
 }
 
