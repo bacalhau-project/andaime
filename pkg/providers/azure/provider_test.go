@@ -1010,7 +1010,7 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 					"Unexpected final state for machine %s, service %s: %s",
 					machine,
 					service.Name,
-					string(state),
+					fmt.Sprintf("%d", state),
 				)
 			}
 		}
