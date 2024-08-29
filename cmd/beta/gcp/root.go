@@ -17,6 +17,7 @@ var GCPCmd = &cobra.Command{
 func InitializeCommands() {
 	once.Do(func() {
 		GCPCmd.AddCommand(createDeploymentCmd())
+		GCPCmd.AddCommand(createProjectCmd())
 	})
 }
 
