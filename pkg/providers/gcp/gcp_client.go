@@ -247,7 +247,9 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 			}
 
 			if allResourcesProvisioned && c.allMachinesComplete(m) {
-				l.Debug("All resources provisioned and machines completed, stopping resource polling")
+				l.Debug(
+					"All resources provisioned and machines completed, stopping resource polling",
+				)
 				return nil
 			}
 
@@ -286,17 +288,15 @@ func (c *LiveGCPClient) FinalizeDeployment(ctx context.Context) error {
 	// TODO: Implement deployment finalization logic
 	return fmt.Errorf("FinalizeDeployment not implemented")
 }
-func (c *LiveGCPClient) ListAllResourcesInProject(ctx context.Context, projectID string) ([]interface{}, error) {
+
+func (c *LiveGCPClient) ListAllResourcesInProject(
+	ctx context.Context,
+	projectID string,
+) ([]interface{}, error) {
 	l := logger.Get()
 	l.Debugf("Listing all resources in project: %s", projectID)
 
-	client, err := resourcemanager.NewProjectsClient(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create projects client: %v", err)
-	}
-	defer client.Close()
-
-	req := &resourcemanagerpb.SearchResourcesRequest{
+	req := &resourcemanagerpb.SearchProjectsRequest{
 		Scope: fmt.Sprintf("projects/%s", projectID),
 	}
 
