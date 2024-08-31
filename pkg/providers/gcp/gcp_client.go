@@ -8,11 +8,16 @@ import (
 
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	ResourcePollingInterval = 2 * time.Second
 )
 
 type GCPClienter interface {
@@ -203,8 +208,61 @@ func (c *LiveGCPClient) ListProjects(
 }
 
 func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
-	// TODO: Implement resource polling logic
-	return fmt.Errorf("StartResourcePolling not implemented")
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	resourceTicker := time.NewTicker(ResourcePollingInterval)
+	defer resourceTicker.Stop()
+
+	for {
+		select {
+		case <-resourceTicker.C:
+			if m.Quitting {
+				l.Debug("Quitting detected, stopping resource polling")
+				return nil
+			}
+
+			resources, err := c.ListAllResourcesInSubscription(ctx, c.projectID, nil)
+			if err != nil {
+				l.Errorf("Failed to poll and update resources: %v", err)
+				return err
+			}
+
+			l.Debugf("Poll: Found %d resources", len(resources))
+
+			allResourcesProvisioned := true
+			for _, resource := range resources {
+				resourceMap := resource.(map[string]interface{})
+				provisioningState := resourceMap["state"].(string)
+				l.Debugf(
+					"Resource: %s - State: %s",
+					resourceMap["name"].(string),
+					provisioningState,
+				)
+				if provisioningState != "READY" {
+					allResourcesProvisioned = false
+				}
+			}
+
+			if allResourcesProvisioned && c.allMachinesComplete(m) {
+				l.Debug("All resources provisioned and machines completed, stopping resource polling")
+				return nil
+			}
+
+		case <-ctx.Done():
+			l.Debug("Context cancelled, exiting resource polling")
+			return ctx.Err()
+		}
+	}
+}
+
+func (c *LiveGCPClient) allMachinesComplete(m *display.Model) bool {
+	for _, machine := range m.Deployment.Machines {
+		if !machine.Complete() {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *LiveGCPClient) DeployResources(ctx context.Context) error {
