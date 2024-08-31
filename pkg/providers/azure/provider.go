@@ -116,7 +116,7 @@ type AzureProvider struct {
 	servicesProvisioned bool       //nolint:unused
 }
 
-var AzureProviderFunc = NewAzureProvider
+var NewAzureProviderFunc = NewAzureProvider
 
 // NewAzureProvider creates a new AzureProvider instance
 func NewAzureProvider() (AzureProviderer, error) {

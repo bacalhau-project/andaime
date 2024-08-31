@@ -1,6 +1,9 @@
 package utils
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 // ToPtr returns a pointer to the given value
 func ToPtr[T any](v T) *T {
@@ -35,4 +38,15 @@ func RemoveDuplicates(s []string) []string {
 		}
 	}
 	return result
+}
+
+func GetSafeDiskSize(i int) int32 {
+	if i > math.MaxInt32 {
+		i = math.MaxInt32
+	} else if i < math.MinInt32 {
+		i = math.MinInt32
+	}
+
+	//nolint:gosec
+	return int32(i)
 }

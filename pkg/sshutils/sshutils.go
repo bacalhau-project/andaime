@@ -3,6 +3,7 @@ package sshutils
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -129,4 +131,77 @@ var MockSSHKeyReader = func(path string) ([]byte, error) {
 	} else {
 		return []byte(testdata.TestPrivateSSHKeyMaterial), nil
 	}
+}
+
+func ExtractSSHKeyPaths() (string, string, string, string, error) {
+	publicKeyPath, err := extractSSHKeyPath("general.ssh_public_key_path")
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("failed to extract public key material: %w", err)
+	}
+
+	privateKeyPath, err := extractSSHKeyPath("general.ssh_private_key_path")
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("failed to extract private key material: %w", err)
+	}
+
+	publicKeyData, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("failed to read public key file: %w", err)
+	}
+
+	privateKeyData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("failed to read private key file: %w", err)
+	}
+
+	return publicKeyPath, privateKeyPath, strings.TrimSpace(
+			string(publicKeyData),
+		), strings.TrimSpace(
+			string(privateKeyData),
+		), nil
+}
+
+func extractSSHKeyPath(configKeyString string) (string, error) {
+	keyPath := viper.GetString(configKeyString)
+	if keyPath == "" {
+		return "", fmt.Errorf("%s is empty", configKeyString)
+	}
+
+	if strings.HasPrefix(keyPath, "~") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get user home directory: %w", err)
+		}
+		keyPath = filepath.Join(homeDir, keyPath[1:])
+	}
+
+	absoluteKeyPath, err := filepath.Abs(keyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute path for key file: %w", err)
+	}
+
+	if _, err := os.Stat(absoluteKeyPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("key file does not exist: %s", absoluteKeyPath)
+	}
+
+	return absoluteKeyPath, nil
+}
+
+func ReadPrivateKey(path string) ([]byte, error) {
+	privateKeyFile, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open private key file: %w", err)
+	}
+	defer privateKeyFile.Close()
+
+	privateKeyBytes, err := io.ReadAll(privateKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key file: %w", err)
+	}
+
+	if _, err = ssh.ParsePrivateKey(privateKeyBytes); err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	return privateKeyBytes, nil
 }

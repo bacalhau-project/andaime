@@ -46,14 +46,14 @@ func main() {
 		fmt.Println("Usage:")
 		fmt.Println("  andaime deploy")
 		fmt.Println("  andaime delete <deployment-tag>")
-		os.Exit(1)
+		return
 	}
 
 	if len(os.Args) < MinimumArgCountForTest {
 		fmt.Println("Usage:")
 		fmt.Println("  andaime deploy")
 		fmt.Println("  andaime delete <deployment-tag>")
-		os.Exit(1)
+		return
 	}
 
 	cfg, err := loadConfig("config.yaml")

@@ -48,7 +48,7 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("location is required")
 	}
 
-	p, err := azure.NewAzureProvider()
+	p, err := azure.NewAzureProviderFunc()
 	if err != nil {
 		return err
 	}

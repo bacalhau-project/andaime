@@ -32,6 +32,31 @@ func EnsureAzureTags(tags map[string]*string, projectID, uniqueID string) map[st
 	return tags
 }
 
+func EnsureGCPLabels(labels map[string]string, projectID, uniqueID string) map[string]string {
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if _, ok := labels["andaime"]; !ok {
+		labels["andaime"] = "true"
+	}
+	if _, ok := labels["deployed-by"]; !ok {
+		labels["deployed-by"] = "andaime"
+	}
+	if _, ok := labels["andaime-resource-tracking"]; !ok {
+		labels["andaime-resource-tracking"] = "true"
+	}
+	if _, ok := labels["unique-id"]; !ok {
+		labels["unique-id"] = uniqueID
+	}
+	if _, ok := labels["project-id"]; !ok {
+		labels["project-id"] = projectID
+	}
+	if _, ok := labels["andaime-project"]; !ok {
+		labels["andaime-project"] = fmt.Sprintf("%s-%s", uniqueID, projectID)
+	}
+	return labels
+}
+
 func StructToMap(obj interface{}) (map[string]interface{}, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
@@ -45,4 +70,14 @@ func StructToMap(obj interface{}) (map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+func GetCountOfMachines(paramCount, defaultCount int) int {
+	if paramCount == 0 {
+		if defaultCount == 0 {
+			return 1
+		}
+		return defaultCount
+	}
+	return paramCount
 }

@@ -134,7 +134,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	if destroyAll {
 		// Query the subscription for any remaining resource groups with the CreatedBy tag
-		azureProvider, err := azure.NewAzureProvider()
+		azureProvider, err := azure.NewAzureProviderFunc()
 		if err != nil {
 			l.Errorf("Failed to create Azure provider: %v", err)
 			return fmt.Errorf("failed to create Azure provider: %v", err)
@@ -254,7 +254,7 @@ func destroyDeployment(dep Deployment) error {
 	started := false
 
 	if dep.Type == "Azure" {
-		azureProvider, err := azure.NewAzureProvider()
+		azureProvider, err := azure.NewAzureProviderFunc()
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)

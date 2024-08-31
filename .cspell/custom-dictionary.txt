@@ -5,6 +5,7 @@ Alloc
 Andaime
 andaimeconfig
 apitype
+apiv
 armcompute
 armnetwork
 armresourcegraph
@@ -18,6 +19,7 @@ awserr
 awsprovider
 azcore
 azidentity
+azurepackage
 azureprovider
 azureuser
 azureutils
@@ -61,7 +63,11 @@ Fini
 forbidigo
 funcs
 funlen
+gcloud
+gcppackage
+gcpuser
 gdamore
+genproto
 gochecknoinit
 gochecknoinits
 goconst
@@ -76,6 +82,7 @@ golangci
 gomnd
 gomock
 googleapi
+googleapis
 goprintffuncname
 gosec
 gosimple
@@ -137,6 +144,7 @@ resliced
 resourcegraph
 resourcegroupname
 resourcemanager
+resourcemanagerpb
 resourcename
 Retryable
 rgname

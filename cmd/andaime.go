@@ -109,7 +109,7 @@ func GetSession(region string) *session.Session {
 
 		if err != nil {
 			fmt.Printf("Error creating session for region %s: %v\n", region, err)
-			os.Exit(1)
+			return nil
 		}
 
 		return sess
@@ -130,7 +130,7 @@ func GetSession(region string) *session.Session {
 
 		if err != nil {
 			fmt.Printf("Error creating session for region %s: %v\n", region, err)
-			os.Exit(1)
+			return nil
 		}
 
 		return sess
@@ -147,7 +147,7 @@ func GetSession(region string) *session.Session {
 
 	if err != nil {
 		fmt.Printf("Error creating session for region %s: %v\n\n", region, err)
-		os.Exit(1)
+		return nil
 	}
 
 	return sess

@@ -9,6 +9,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,8 +20,10 @@ func RotateServiceStates(i int) models.ServiceState {
 
 func TestDisplayLayout(t *testing.T) {
 	// Initialize the display model
-	m := display.GetGlobalModelFunc()
 
+	viper.Set("general.project_id", "test-project")
+	viper.Set("general.unique_id", "test-unique-id")
+	m := display.GetGlobalModelFunc()
 	// Add test machines
 	testMachines := map[string]*models.Machine{
 		"test1": {

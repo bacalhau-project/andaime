@@ -3,9 +3,7 @@ package azure
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +16,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -54,13 +51,14 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	uniqueID := time.Now().Format("060102150405")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
-	p, err := azure.AzureProviderFunc()
+	p, err := azure.NewAzureProviderFunc()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
 
-	m := display.InitialModel()
-	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
+	viper.Set("general.unique_id", uniqueID)
+	deployment, err := PrepareDeployment(ctx)
+	m := display.InitialModel(deployment)
 	if err != nil {
 		return fmt.Errorf("failed to initialize deployment: %w", err)
 	}
@@ -146,7 +144,7 @@ func runDeployment(
 	return nil
 }
 
-func setDeploymentBasicInfo(d *models.Deployment) {
+func setDeploymentBasicInfo(d *models.Deployment) error {
 	d.SSHUser = viper.GetString("general.ssh_user")
 	d.SSHPort = viper.GetInt("general.ssh_port")
 	d.OrchestratorIP = viper.GetString("general.orchestrator_ip")
@@ -154,77 +152,16 @@ func setDeploymentBasicInfo(d *models.Deployment) {
 	d.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 	d.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
 	d.DefaultVMSize = viper.GetString("azure.default_vm_size")
-	d.DefaultDiskSizeGB = int32(viper.GetInt("azure.default_disk_size_gb"))
+
+	defaultDiskSize := viper.GetInt("azure.default_disk_size_gb")
+	d.DefaultDiskSizeGB = utils.GetSafeDiskSize(defaultDiskSize)
 	d.DefaultLocation = viper.GetString("azure.default_location")
-	d.SubscriptionID = getSubscriptionID()
-}
-
-func setDeploymentDetails(d *models.Deployment, projectID, uniqueID string) {
-	d.ProjectID = projectID
-	d.UniqueID = uniqueID
-	d.Tags = utils.EnsureAzureTags(make(map[string]*string), projectID, uniqueID)
-
-	if d.ResourceGroupName == "" {
-		d.ResourceGroupName = viper.GetString("azure.resource_group_name")
-	}
-
-	if d.Name == "" {
-		d.Name = fmt.Sprintf("Azure Deployment - %s", uniqueID)
-	}
-}
-
-func ExtractSSHKeyPaths() (string, string, string, string, error) {
-	publicKeyPath, err := extractSSHKeyPath("general.ssh_public_key_path")
+	subscriptionID, err := getSubscriptionID()
 	if err != nil {
-		return "", "", "", "", fmt.Errorf("failed to extract public key material: %w", err)
+		return fmt.Errorf("failed to get subscription ID: %w", err)
 	}
-
-	privateKeyPath, err := extractSSHKeyPath("general.ssh_private_key_path")
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("failed to extract private key material: %w", err)
-	}
-
-	publicKeyData, err := os.ReadFile(publicKeyPath)
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("failed to read public key file: %w", err)
-	}
-
-	privateKeyData, err := os.ReadFile(privateKeyPath)
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("failed to read private key file: %w", err)
-	}
-
-	return publicKeyPath, privateKeyPath, strings.TrimSpace(
-			string(publicKeyData),
-		), strings.TrimSpace(
-			string(privateKeyData),
-		), nil
-}
-
-func extractSSHKeyPath(configKeyString string) (string, error) {
-	keyPath := viper.GetString(configKeyString)
-	if keyPath == "" {
-		return "", fmt.Errorf("%s is empty", configKeyString)
-	}
-
-	if strings.HasPrefix(keyPath, "~") {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("failed to get user home directory: %w", err)
-		}
-		keyPath = filepath.Join(homeDir, keyPath[1:])
-	}
-
-	absoluteKeyPath, err := filepath.Abs(keyPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to get absolute path for key file: %w", err)
-	}
-
-	if _, err := os.Stat(absoluteKeyPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("key file does not exist: %s", absoluteKeyPath)
-	}
-
-	return absoluteKeyPath, nil
+	d.SubscriptionID = subscriptionID
+	return nil
 }
 
 // We're going to use a temporary machine struct to unmarshal from the config file
@@ -266,7 +203,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 		return fmt.Errorf("azure.disk_size_gb is empty")
 	}
 
-	privateKeyBytes, err := readPrivateKey(deployment.SSHPrivateKeyPath)
+	privateKeyBytes, err := sshutils.ReadPrivateKey(deployment.SSHPrivateKeyPath)
 	if err != nil {
 		return err
 	}
@@ -336,11 +273,11 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 		}
 		fmt.Println("✅")
 
-		countOfMachines := getCountOfMachines(count, defaultCount)
+		countOfMachines := utils.GetCountOfMachines(count, defaultCount)
 		for i := 0; i < countOfMachines; i++ {
 			newMachine, err := createNewMachine(
 				rawMachine.Location,
-				int32(defaultDiskSize),
+				utils.GetSafeDiskSize(defaultDiskSize),
 				thisVMType,
 				privateKeyBytes,
 				deployment.SSHPort,
@@ -400,34 +337,6 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	return nil
 }
 
-func readPrivateKey(path string) ([]byte, error) {
-	privateKeyFile, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open private key file: %w", err)
-	}
-	defer privateKeyFile.Close()
-
-	privateKeyBytes, err := io.ReadAll(privateKeyFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read private key file: %w", err)
-	}
-
-	if _, err = ssh.ParsePrivateKey(privateKeyBytes); err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	return privateKeyBytes, nil
-}
-func getCountOfMachines(paramCount, defaultCount int) int {
-	if paramCount == 0 {
-		if defaultCount == 0 {
-			return 1
-		}
-		return defaultCount
-	}
-	return paramCount
-}
-
 func createNewMachine(
 	location string,
 	diskSizeGB int32,
@@ -458,25 +367,35 @@ func createNewMachine(
 // PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.
 func PrepareDeployment(
 	ctx context.Context,
-	projectID string,
-	uniqueID string,
 ) (*models.Deployment, error) {
 	l := logger.Get()
 	l.Debug("Starting PrepareDeployment")
 
-	deployment := &models.Deployment{}
-	setDeploymentBasicInfo(deployment)
+	projectID := viper.GetString("general.project_id")
+	if projectID == "" {
+		return nil, fmt.Errorf("general.project_id is not set")
+	}
+	uniqueID := viper.GetString("general.unique_id")
+	if uniqueID == "" {
+		return nil, fmt.Errorf("general.unique_id is not set")
+	}
+	deployment, err := models.NewDeployment()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new deployment: %w", err)
+	}
+	if err := setDeploymentBasicInfo(deployment); err != nil {
+		return nil, fmt.Errorf("failed to set deployment basic info: %w", err)
+	}
 
 	// Set the start time for the deployment
 	deployment.StartTime = time.Now()
 	l.Debugf("Deployment start time: %v", deployment.StartTime)
 
-	var err error
 	deployment.SSHPublicKeyPath,
 		deployment.SSHPrivateKeyPath,
 		deployment.SSHPublicKeyMaterial,
 		deployment.SSHPrivateKeyMaterial,
-		err = ExtractSSHKeyPaths()
+		err = sshutils.ExtractSSHKeyPaths()
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
 	}
@@ -484,8 +403,6 @@ func PrepareDeployment(
 	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
 		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
 	}
-
-	setDeploymentDetails(deployment, projectID, uniqueID)
 
 	// Ensure we have a location set
 	if deployment.ResourceGroupLocation == "" {

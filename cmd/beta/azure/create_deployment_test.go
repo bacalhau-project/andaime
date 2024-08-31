@@ -33,10 +33,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 		return mockAzureClient, nil
 	}
 
-	deployment := &models.Deployment{
-		SSHPrivateKeyPath: testPrivateKeyPath,
-		SSHPort:           22,
-	}
+	viper.Set("general.project_id", "test-project")
+	viper.Set("general.unique_id", "test-unique-id")
+	deployment, err := models.NewDeployment()
+	assert.NoError(t, err)
+	deployment.SSHPrivateKeyPath = testPrivateKeyPath
+	deployment.SSHPort = 22
 
 	tests := []struct {
 		name                string
@@ -106,7 +108,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 			viper.Reset()
 			viper.Set("azure.machines", tt.machinesConfig)
 			viper.Set("azure.default_count_per_zone", 1)
-			viper.Set("azure.default_machine_type", "Standard_D2s_v3")
+			viper.Set("azure.default_machine_type", "Standard_DS4_v2")
 			viper.Set("azure.disk_size_gb", 30)
 			viper.Set("general.orchestrator_ip", tt.orchestratorIP)
 
@@ -194,7 +196,9 @@ func TestInitializeDeployment(t *testing.T) {
 	viper.Set("general.ssh_key_dir", filepath.Join(testDataPath, "testdata", "dummy_keys"))
 
 	// Create a local display model for this test
-	localModel := display.InitialModel()
+	deployment, err := models.NewDeployment()
+	assert.NoError(t, err)
+	localModel := display.InitialModel(deployment)
 	origGetGlobalModel := display.GetGlobalModelFunc
 	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
 	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
@@ -212,9 +216,9 @@ func TestInitializeDeployment(t *testing.T) {
 	// Run subtests
 	t.Run("PrepareDeployment", func(t *testing.T) {
 		ctx := context.Background()
-		uniqueID := "test123"
-		projectID := "test-project"
-		deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
+		viper.Set("general.project_id", "test-project")
+		viper.Set("general.unique_id", "test-unique-id")
+		deployment, err := PrepareDeployment(ctx)
 		assert.NoError(t, err)
 		assert.NotNil(t, deployment)
 		localModel.Deployment = deployment
@@ -230,7 +234,7 @@ func TestInitializeDeployment(t *testing.T) {
 		assert.Equal(t, 5, len(locations), "Expected 5 unique locations")
 
 		// Check specific configurations for each location
-		eastus2Count := 0
+		eastusCount := 0
 		westusCount := 0
 		brazilsouthCount := 0
 		ukwestCount := 0
@@ -238,13 +242,13 @@ func TestInitializeDeployment(t *testing.T) {
 
 		for _, machine := range localModel.Deployment.Machines {
 			switch machine.Location {
-			case "eastus2":
-				eastus2Count++
+			case "eastus":
+				eastusCount++
 				assert.Equal(
 					t,
 					"Standard_DS1_v4",
 					machine.VMSize,
-					"Expected eastus2 machines to be Standard_DS1_v4",
+					"Expected eastus machines to be Standard_DS1_v4",
 				)
 			case "westus":
 				westusCount++
@@ -265,7 +269,7 @@ func TestInitializeDeployment(t *testing.T) {
 		}
 
 		// Verify the count of machines in each location
-		assert.Equal(t, 2, eastus2Count, "Expected 2 machines in eastus2")
+		assert.Equal(t, 2, eastusCount, "Expected 2 machines in eastus")
 		assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
 		assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
 		assert.Equal(t, 1, ukwestCount, "Expected 1 machine in ukwest")
@@ -282,14 +286,26 @@ func TestInitializeDeployment(t *testing.T) {
 	})
 }
 func TestPrepareDeployment(t *testing.T) {
-	testSSHPublicKeyPath, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	testSSHPublicKeyPath,
+		cleanupPublicKey,
+		testPrivateKeyPath,
+		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
+	mockAzureClient := new(azure.MockAzureClient)
+	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+
+	origNewAzureClientFunc := azure.NewAzureClientFunc
+	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
+	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
+		return mockAzureClient, nil
+	}
+	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
+
 	// Setup
 	ctx := context.Background()
-	projectID := "test-project"
-	uniqueID := "test-unique-id"
 
 	// Mock viper configuration
 	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
@@ -298,8 +314,8 @@ func TestPrepareDeployment(t *testing.T) {
 	viper.Set("azure.resource_group_name", "test-rg")
 	viper.Set("azure.resource_group_location", "")
 	viper.Set("azure.default_count_per_zone", 1)
-	viper.Set("azure.default_machine_type", "Standard_D2s_v3")
-	viper.Set("azure.disk_size_gb", 30)
+	viper.Set("azure.default_machine_type", "Standard_DS4_v2")
+	viper.Set("azure.disk_size_gb", int32(30))
 	viper.Set("azure.machines", []map[string]interface{}{
 		{
 			"location": "eastus",
@@ -314,26 +330,18 @@ func TestPrepareDeployment(t *testing.T) {
 
 	viper.SetConfigFile(tempConfigFile.Name())
 
-	display.SetGlobalModel(display.InitialModel())
-
-	mockAzureClient := new(azure.MockAzureClient)
-	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
-		Return(true, nil)
-
-	origNewAzureClientFunc := azure.NewAzureClientFunc
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
-		return mockAzureClient, nil
-	}
-
 	// Execute
-	deployment, err := PrepareDeployment(ctx, projectID, uniqueID)
+	viper.Set("general.project_id", "test-project")
+	viper.Set("general.unique_id", "test-unique-id")
+	deployment, err := PrepareDeployment(ctx)
+	assert.NotNil(t, deployment)
+	assert.NoError(t, err)
 
+	display.SetGlobalModel(display.InitialModel(deployment))
 	// Assert
 	assert.NoError(t, err)
-	assert.NotNil(t, deployment)
-	assert.Equal(t, projectID, deployment.ProjectID)
-	assert.Equal(t, uniqueID, deployment.UniqueID)
+	assert.Equal(t, "test-project", deployment.ProjectID)
+	assert.Contains(t, deployment.UniqueID, "test-project")
 	assert.Equal(t, "eastus", deployment.ResourceGroupLocation)
 	assert.NotEmpty(t, deployment.SSHPublicKeyMaterial)
 	assert.NotEmpty(t, deployment.SSHPrivateKeyMaterial)

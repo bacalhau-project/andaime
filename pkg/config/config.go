@@ -67,8 +67,6 @@ func validateConfigValues(v *viper.Viper) error {
 		errors = append(errors, azureErrors...)
 	}
 
-	// Add validation for other cloud providers here (AWS, GCP, etc.)
-
 	if len(errors) > 0 {
 		return fmt.Errorf("config validation errors: %s", strings.Join(errors, "; "))
 	}

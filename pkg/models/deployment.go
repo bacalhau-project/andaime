@@ -177,16 +177,27 @@ type Parameters struct {
 }
 
 type Deployment struct {
-	mu                    sync.RWMutex
-	Name                  string
+	mu   sync.RWMutex
+	Name string
+
+	// Azure specific
 	ResourceGroupName     string
 	ResourceGroupLocation string
-	Locations             []string
-	OrchestratorIP        string
-	Machines              map[string]*Machine
-	ProjectID             string
-	UniqueID              string
-	Tags                  map[string]*string
+
+	// GCP specific
+	OrganizationID string
+
+	// ProjectID is the project ID for the deployment - works on multiple clouds
+	ProjectID string
+
+	Locations      []string
+	OrchestratorIP string
+	Machines       map[string]*Machine
+	UniqueID       string
+
+	Tags   map[string]*string
+	Labels map[string]string
+
 	AllowedPorts          []int
 	SSHUser               string
 	SSHPort               int
@@ -210,12 +221,21 @@ type Disk struct {
 	State  armcompute.DiskState
 }
 
-func NewDeployment() *Deployment {
+func NewDeployment() (*Deployment, error) {
+	projectID := viper.GetString("general.project_id")
+	if projectID == "" {
+		return nil, fmt.Errorf("project ID is empty")
+	}
+
+	uniqueID := time.Now().Format("060102150405")
+
 	return &Deployment{
 		StartTime: time.Now(),
 		Machines:  make(map[string]*Machine),
 		Tags:      make(map[string]*string),
-	}
+		ProjectID: projectID,
+		UniqueID:  fmt.Sprintf("%s-%s", projectID, uniqueID),
+	}, nil
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {

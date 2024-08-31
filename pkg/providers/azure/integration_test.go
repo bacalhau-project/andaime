@@ -51,9 +51,11 @@ func setupTest(t *testing.T) *testSetup {
 		Client: mockAzureClient,
 	}
 
-	display.SetGlobalModel(display.InitialModel())
+	deployment, err := models.NewDeployment()
+	assert.NoError(t, err)
+
+	display.SetGlobalModel(display.InitialModel(deployment))
 	m := display.GetGlobalModelFunc()
-	m.Deployment = models.NewDeployment()
 	m.Deployment.Machines = map[string]*models.Machine{
 		"orchestrator": {
 			Name:         "orchestrator",

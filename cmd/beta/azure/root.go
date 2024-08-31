@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -34,7 +35,7 @@ func InitializeCommands() {
 	})
 }
 
-func getSubscriptionID() string {
+func getSubscriptionID() (string, error) {
 	log := logger.Get()
 
 	azureCfg := viper.Sub("azure")
@@ -45,7 +46,7 @@ func getSubscriptionID() string {
 			os.Stderr,
 			"Please ensure your config file includes an 'azure' section with a 'subscription_id'.\n",
 		)
-		os.Exit(1)
+		return "", errors.New("azure configuration not found in config file")
 	}
 
 	subID := azureCfg.GetString("subscription_id")
@@ -60,8 +61,8 @@ func getSubscriptionID() string {
 			`Please set it in your config file under azure.subscription_id or as an 
 AZURE_SUBSCRIPTION_ID environment variable.`,
 		)
-		os.Exit(1)
+		return "", errors.New("no azure subscription ID found")
 	}
 
-	return subID
+	return subID, nil
 }

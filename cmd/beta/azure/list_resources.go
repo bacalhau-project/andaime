@@ -27,7 +27,7 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		log.Info("Listing Azure resources...")
 
-		azureProvider, err := azure.AzureProviderFunc()
+		azureProvider, err := azure.NewAzureProviderFunc()
 		if err != nil {
 			log.Fatalf("Failed to create Azure provider: %v", err)
 		}
@@ -47,14 +47,18 @@ var AzureListResourcesCmd = &cobra.Command{
 		startTime := time.Now()
 
 		var resources []interface{}
+		subscriptionID, err := getSubscriptionID()
+		if err != nil {
+			log.Fatalf("Failed to get subscription ID: %v", err)
+		}
 		if allFlag {
 			resources, err = azureProvider.GetAzureClient().
 				ListAllResourcesInSubscription(cmd.Context(),
-					getSubscriptionID(),
+					subscriptionID,
 					tags)
 		} else {
 			resources, err = azureProvider.GetAzureClient().GetResources(cmd.Context(),
-				getSubscriptionID(),
+				subscriptionID,
 				resourceGroup,
 				tags)
 		}

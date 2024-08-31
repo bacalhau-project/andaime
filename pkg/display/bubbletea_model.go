@@ -277,7 +277,11 @@ var GetGlobalModelFunc func() *DisplayModel = GetGlobalModel
 func GetGlobalModel() *DisplayModel {
 	if globalModelInstance == nil {
 		globalModelOnce.Do(func() {
-			globalModelInstance = InitialModel()
+			deployment, err := models.NewDeployment()
+			if err != nil {
+				panic(err)
+			}
+			globalModelInstance = InitialModel(deployment)
 		})
 	}
 	return globalModelInstance
@@ -288,9 +292,9 @@ func SetGlobalModel(m *DisplayModel) {
 }
 
 // InitialModel creates and returns a new DisplayModel
-func InitialModel() *DisplayModel {
+func InitialModel(deployment *models.Deployment) *DisplayModel {
 	model := &DisplayModel{
-		Deployment:       models.NewDeployment(),
+		Deployment:       deployment,
 		TextBox:          []string{"Resource Status Monitor"},
 		LastUpdate:       time.Now(),
 		DebugMode:        os.Getenv("DEBUG_DISPLAY") == "1",

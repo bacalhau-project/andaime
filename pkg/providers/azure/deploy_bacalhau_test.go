@@ -11,6 +11,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -136,6 +137,7 @@ func TestFindOrchestratorMachine(t *testing.T) {
 		},
 	}
 
+	viper.Set("general.project_id", "test-project")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deployer, _ := setupTestBacalhauDeployer(tt.machines)
@@ -154,10 +156,12 @@ func TestFindOrchestratorMachine(t *testing.T) {
 }
 
 func TestSetupNodeConfigMetadata(t *testing.T) {
+	viper.Set("general.project_id", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
+
 	m.Deployment.Machines = map[string]*models.Machine{
-		"test": {Name: "test", VMSize: "Standard_D2s_v3", Location: "eastus"},
+		"test": {Name: "test", VMSize: "Standard_DS4_v2", Location: "eastus2"},
 	}
 	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
 
@@ -176,6 +180,7 @@ func TestSetupNodeConfigMetadata(t *testing.T) {
 }
 
 func TestInstallBacalhau(t *testing.T) {
+	viper.Set("general.project_id", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 	m.Deployment.Machines = map[string]*models.Machine{
@@ -198,6 +203,7 @@ func TestInstallBacalhau(t *testing.T) {
 }
 
 func TestInstallBacalhauRun(t *testing.T) {
+	viper.Set("general.project_id", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 	m.Deployment.Machines = map[string]*models.Machine{
@@ -220,6 +226,7 @@ func TestInstallBacalhauRun(t *testing.T) {
 }
 
 func TestSetupBacalhauService(t *testing.T) {
+	viper.Set("general.project_id", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 	m.Deployment.Machines = map[string]*models.Machine{
@@ -382,7 +389,7 @@ func TestDeployOrchestrator(t *testing.T) {
 	ip := "1.2.3.4"
 	location := "eastus"
 	orchestrators := "0.0.0.0"
-	vmSize := "Standard_D2s_v3"
+	vmSize := "Standard_DS4_v2"
 
 	expectedLines := map[string][]string{
 		"get-node-config-metadata.sh": {

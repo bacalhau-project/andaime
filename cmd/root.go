@@ -11,9 +11,12 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
+	"github.com/bacalhau-project/andaime/cmd/beta/azure"
+	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azurepackage "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	gcppackage "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
@@ -37,9 +40,14 @@ var (
 	numberOfDefaultComputeNodes      = 2
 )
 
+var shouldInitAWSFlag bool
+var shouldInitAzureFlag bool
+var shouldInitGCPFlag bool
+
 type cloudProvider struct {
 	awsProvider   awsprovider.AWSProviderer
-	azureProvider azure.AzureProviderer
+	azureProvider azurepackage.AzureProviderer
+	gcpProvider   gcppackage.GCPProviderer
 }
 
 func Execute() error {
@@ -138,6 +146,8 @@ func setupRootCommand() *cobra.Command {
 	setupFlags(rootCmd)
 	betaCmd := getBetaCmd(rootCmd)
 	betaCmd.AddCommand(aws.AwsCmd)
+	betaCmd.AddCommand(azure.GetAzureCmd())
+	betaCmd.AddCommand(gcp.GetGCPCmd())
 
 	initializeCloudProviders()
 
@@ -208,7 +218,7 @@ func setupConfigFile() {
 		l.Error(
 			"Unable to determine home directory. Please specify a config file using the --config flag.",
 		)
-		os.Exit(1)
+		return
 	}
 
 	viper.AddConfigPath(home)
@@ -226,24 +236,31 @@ func validateOutputFormat() {
 	}
 }
 
-func initializeCloudProviders() *cloudProvider {
+func initializeCloudProviders() (*cloudProvider, error) {
 	cp := &cloudProvider{}
 
 	if shouldInitAWS() {
 		if err := initAWSProvider(cp); err != nil {
 			logger.Get().Errorf("Failed to initialize AWS provider: %v", err)
-			os.Exit(1)
+			return nil, err
 		}
 	}
 
 	if shouldInitAzure() {
 		if err := initAzureProvider(cp); err != nil {
 			logger.Get().Errorf("Failed to initialize Azure provider: %v", err)
-			os.Exit(1)
+			return nil, err
 		}
 	}
 
-	return cp
+	if shouldInitGCP() {
+		if err := initGCPProvider(cp); err != nil {
+			logger.Get().Errorf("Failed to initialize GCP provider: %v", err)
+			return nil, err
+		}
+	}
+
+	return cp, nil
 }
 
 func initAWSProvider(c *cloudProvider) error {
@@ -256,7 +273,7 @@ func initAWSProvider(c *cloudProvider) error {
 }
 
 func initAzureProvider(c *cloudProvider) error {
-	azureProvider, err := azure.NewAzureProvider()
+	azureProvider, err := azurepackage.NewAzureProviderFunc()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
@@ -264,12 +281,23 @@ func initAzureProvider(c *cloudProvider) error {
 	return nil
 }
 
+func initGCPProvider(c *cloudProvider) error {
+	gcpProvider, err := gcppackage.NewGCPProviderFunc()
+	if err != nil {
+		return fmt.Errorf("failed to initialize GCP provider: %w", err)
+	}
+	c.gcpProvider = gcpProvider
+	return nil
+}
+
 func shouldInitAWS() bool {
-	// TODO: Implement logic to detect if AWS should be instantiated
-	return true
+	return viper.IsSet("aws")
 }
 
 func shouldInitAzure() bool {
-	// TODO: Implement logic to detect if Azure should be instantiated
-	return true
+	return viper.IsSet("azure")
+}
+
+func shouldInitGCP() bool {
+	return viper.IsSet("gcp")
 }

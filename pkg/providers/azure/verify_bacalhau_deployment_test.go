@@ -1,8 +1,8 @@
 package azure
 
 import (
-	"testing"
 	"reflect"
+	"testing"
 )
 
 func TestStripAndParseJSON(t *testing.T) {
@@ -28,13 +28,13 @@ func TestStripAndParseJSON(t *testing.T) {
 					"VCPU_COUNT":       "1",
 				},
 				"BacalhauVersion": map[string]interface{}{
-					"Major":       "1",
-					"Minor":       "4",
-					"GitVersion":  "v1.4.0",
-					"GitCommit":   "081eabfba0d723fbd3889d8e4e59c1ffc126ad0f",
-					"BuildDate":   "2024-06-28T10:14:58Z",
-					"GOOS":        "linux",
-					"GOARCH":      "amd64",
+					"Major":      "1",
+					"Minor":      "4",
+					"GitVersion": "v1.4.0",
+					"GitCommit":  "081eabfba0d723fbd3889d8e4e59c1ffc126ad0f",
+					"BuildDate":  "2024-06-28T10:14:58Z",
+					"GOOS":       "linux",
+					"GOARCH":     "amd64",
 				},
 			},
 			"Membership": "APPROVED",
@@ -48,6 +48,10 @@ func TestStripAndParseJSON(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("Parsed JSON does not match expected output.\nGot: %+v\nWant: %+v", result, expected)
+		t.Errorf(
+			"Parsed JSON does not match expected output.\nGot: %+v\nWant: %+v",
+			result,
+			expected,
+		)
 	}
 }

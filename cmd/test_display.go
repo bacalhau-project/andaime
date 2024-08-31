@@ -21,7 +21,7 @@ const (
 )
 
 func generateEvents(ctx context.Context, logChan chan<- string) {
-	log := logger.Get()
+	l := logger.Get()
 
 	statuses := make(map[string]*models.DisplayStatus)
 	ticker := time.NewTicker(1 * time.Second)
@@ -43,7 +43,7 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 			}
 		case <-logTicker.C:
 			logEntry := testutils.GenerateRandomLogEntry()
-			log.Infof(logEntry)
+			l.Infof(logEntry)
 			select {
 			case logChan <- logEntry:
 			case <-ctx.Done():
