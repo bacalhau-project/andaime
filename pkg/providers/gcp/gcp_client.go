@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"cloud.google.com/go/asset/apiv1"
+	"cloud.google.com/go/asset/apiv1/assetpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -26,6 +28,7 @@ type GCPClienter interface {
 		ctx context.Context,
 		req *resourcemanagerpb.ListProjectsRequest,
 	) ([]*resourcemanagerpb.Project, error)
+	ListAllResourcesInProject(ctx context.Context, projectID string) ([]interface{}, error)
 	StartResourcePolling(ctx context.Context) error
 	DeployResources(ctx context.Context) error
 	ProvisionPackagesOnMachines(ctx context.Context) error
@@ -296,13 +299,18 @@ func (c *LiveGCPClient) ListAllResourcesInProject(
 	l := logger.Get()
 	l.Debugf("Listing all resources in project: %s", projectID)
 
-	req := &resourcemanagerpb.SearchProjectsRequest{
+	client, err := asset.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create asset client: %v", err)
+	}
+	defer client.Close()
+
+	req := &assetpb.SearchAllResourcesRequest{
 		Scope: fmt.Sprintf("projects/%s", projectID),
 	}
 
-	it := client.SearchResources(ctx, req)
 	var resources []interface{}
-
+	it := client.SearchAllResources(ctx, req)
 	for {
 		resource, err := it.Next()
 		if err == iterator.Done {
@@ -315,7 +323,7 @@ func (c *LiveGCPClient) ListAllResourcesInProject(
 		resourceMap := map[string]interface{}{
 			"name":  resource.GetName(),
 			"type":  resource.GetAssetType(),
-			"state": resource.GetState().String(),
+			"state": resource.GetState(),
 		}
 		resources = append(resources, resourceMap)
 	}
