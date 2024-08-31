@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"cloud.google.com/go/asset/apiv1"
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
@@ -240,7 +239,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 				l.Debugf("Resource: %s (Type: %s) - State: %s", resourceName, resourceType, state)
 
 				// Update the resource state in the deployment model
-				if err := m.UpdateResourceState(resourceName, resourceType, state); err != nil {
+				if err := m.Deployment.UpdateResourceState(resourceName, resourceType, state); err != nil {
 					l.Errorf("Failed to update resource state: %v", err)
 				}
 
