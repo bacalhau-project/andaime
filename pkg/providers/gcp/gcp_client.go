@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
+	"cloud.google.com/go/asset/apiv1"
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -328,6 +331,31 @@ func (c *LiveGCPClient) ListAllResourcesInProject(
 	}
 
 	return resources, nil
+}
+
+// UpdateResourceState updates the state of a resource in the deployment
+func (c *LiveGCPClient) UpdateResourceState(resourceName, resourceType, state string) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Find the machine that owns this resource
+	for _, machine := range m.Deployment.Machines {
+		if strings.HasPrefix(resourceName, machine.Name) {
+			// Update the resource state for this machine
+			if machine.Resources == nil {
+				machine.Resources = make(map[string]models.Resource)
+			}
+			machine.Resources[resourceType] = models.Resource{
+				ResourceState: models.AzureResourceState(state),
+				ResourceValue: resourceName,
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("resource %s not found in any machine", resourceName)
 }
 
 // UpdateResourceState updates the state of a resource in the deployment
