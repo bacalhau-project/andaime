@@ -218,7 +218,8 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 				return nil
 			}
 
-			resources, err := c.ListResources(ctx, m.Deployment.ProjectID, nil)
+			// Query all resources in the project
+			resources, err := c.ListAllResourcesInProject(ctx, m.Deployment.ProjectID)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 				return err
@@ -229,21 +230,24 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 			allResourcesProvisioned := true
 			for _, resource := range resources {
 				resourceMap := resource.(map[string]interface{})
-				provisioningState := resourceMap["state"].(string)
-				l.Debugf(
-					"Resource: %s - State: %s",
-					resourceMap["name"].(string),
-					provisioningState,
-				)
-				if provisioningState != "READY" {
+				resourceType := resourceMap["type"].(string)
+				resourceName := resourceMap["name"].(string)
+				state := resourceMap["state"].(string)
+
+				l.Debugf("Resource: %s (Type: %s) - State: %s", resourceName, resourceType, state)
+
+				// Update the resource state in the deployment model
+				if err := m.UpdateResourceState(resourceName, resourceType, state); err != nil {
+					l.Errorf("Failed to update resource state: %v", err)
+				}
+
+				if state != "READY" {
 					allResourcesProvisioned = false
 				}
 			}
 
 			if allResourcesProvisioned && c.allMachinesComplete(m) {
-				l.Debug(
-					"All resources provisioned and machines completed, stopping resource polling",
-				)
+				l.Debug("All resources provisioned and machines completed, stopping resource polling")
 				return nil
 			}
 
@@ -281,4 +285,40 @@ func (c *LiveGCPClient) ProvisionBacalhau(ctx context.Context) error {
 func (c *LiveGCPClient) FinalizeDeployment(ctx context.Context) error {
 	// TODO: Implement deployment finalization logic
 	return fmt.Errorf("FinalizeDeployment not implemented")
+}
+func (c *LiveGCPClient) ListAllResourcesInProject(ctx context.Context, projectID string) ([]interface{}, error) {
+	l := logger.Get()
+	l.Debugf("Listing all resources in project: %s", projectID)
+
+	client, err := resourcemanager.NewProjectsClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create projects client: %v", err)
+	}
+	defer client.Close()
+
+	req := &resourcemanagerpb.SearchResourcesRequest{
+		Scope: fmt.Sprintf("projects/%s", projectID),
+	}
+
+	it := client.SearchResources(ctx, req)
+	var resources []interface{}
+
+	for {
+		resource, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to list resources: %v", err)
+		}
+
+		resourceMap := map[string]interface{}{
+			"name":  resource.GetName(),
+			"type":  resource.GetAssetType(),
+			"state": resource.GetState().String(),
+		}
+		resources = append(resources, resourceMap)
+	}
+
+	return resources, nil
 }
