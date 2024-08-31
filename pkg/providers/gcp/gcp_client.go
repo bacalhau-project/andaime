@@ -239,7 +239,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 				l.Debugf("Resource: %s (Type: %s) - State: %s", resourceName, resourceType, state)
 
 				// Update the resource state in the deployment model
-				if err := m.Deployment.UpdateResourceState(resourceName, resourceType, state); err != nil {
+				if err := c.UpdateResourceState(resourceName, resourceType, state); err != nil {
 					l.Errorf("Failed to update resource state: %v", err)
 				}
 
@@ -328,4 +328,29 @@ func (c *LiveGCPClient) ListAllResourcesInProject(
 	}
 
 	return resources, nil
+}
+
+// UpdateResourceState updates the state of a resource in the deployment
+func (c *LiveGCPClient) UpdateResourceState(resourceName, resourceType, state string) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Find the machine that owns this resource
+	for _, machine := range m.Deployment.Machines {
+		if strings.HasPrefix(resourceName, machine.Name) {
+			// Update the resource state for this machine
+			if machine.Resources == nil {
+				machine.Resources = make(map[string]models.Resource)
+			}
+			machine.Resources[resourceType] = models.Resource{
+				ResourceState: models.AzureResourceState(state),
+				ResourceValue: resourceName,
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("resource %s not found in any machine", resourceName)
 }
