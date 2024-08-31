@@ -21,7 +21,7 @@ func RotateServiceStates(i int) models.ServiceState {
 func TestDisplayLayout(t *testing.T) {
 	// Initialize the display model
 
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	viper.Set("general.unique_id", "test-unique-id")
 	m := display.GetGlobalModelFunc()
 	// Add test machines

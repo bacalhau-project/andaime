@@ -10,19 +10,5 @@ azure:
   resource_group_prefix: andaime-rg
   subscription_id: 00000000-43fc-4fbe-8dee-21e125a9dafc
 general:
-  project_id: andaime-project
+  project_prefix: andaime
   ssh_public_key_path: ~/.ssh/id_rsa.pub
-machines:
-  eastus:
-    zone1:
-      - count: 2
-        type: Standard_DS1_v2
-      - count: 1
-        type: Standard_DS2_v2
-    zone2:
-      - count: 1
-        type: Standard_DS1_v2
-  westus2:
-    zone1:
-      - count: 1
-        type: Standard_DS2_v2

@@ -13,6 +13,7 @@ armresources
 armsubscription
 armsubscriptions
 asiawest
+assetpb
 autorest
 awsconfig
 awserr
@@ -34,6 +35,7 @@ centralus
 chans
 charmbracelet
 Clienter
+cloudfunctions
 cloudresourcemanager
 Cmds
 compinit
@@ -68,6 +70,7 @@ gcppackage
 gcpuser
 gdamore
 genproto
+gerr
 gochecknoinit
 gochecknoinits
 goconst
@@ -117,6 +120,7 @@ nanosec
 nats
 networkinterface
 networkinterfaces
+networkmanagement
 networksecuritygroup
 networksecuritygroups
 noctx
@@ -150,6 +154,7 @@ Retryable
 rgname
 rivo
 Sdump
+servicenetworking
 sess
 Sessioner
 sigchanyzer
@@ -165,6 +170,7 @@ stdpm
 storageaccount
 stretchr
 stylecheck
+Subnetworks
 subtests
 tablewriter
 tcell

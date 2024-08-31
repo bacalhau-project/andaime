@@ -43,9 +43,9 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	setDefaultConfigurations()
 
-	projectID := viper.GetString("general.project_id")
-	if projectID == "" {
-		return fmt.Errorf("project ID is empty")
+	projectPrefix := viper.GetString("general.project_prefix")
+	if projectPrefix == "" {
+		return fmt.Errorf("project prefix is empty")
 	}
 
 	uniqueID := time.Now().Format("060102150405")
@@ -371,9 +371,9 @@ func PrepareDeployment(
 	l := logger.Get()
 	l.Debug("Starting PrepareDeployment")
 
-	projectID := viper.GetString("general.project_id")
-	if projectID == "" {
-		return nil, fmt.Errorf("general.project_id is not set")
+	projectPrefix := viper.GetString("general.project_prefix")
+	if projectPrefix == "" {
+		return nil, fmt.Errorf("general.project_prefix is not set")
 	}
 	uniqueID := viper.GetString("general.unique_id")
 	if uniqueID == "" {
@@ -422,7 +422,7 @@ func PrepareDeployment(
 }
 
 func setDefaultConfigurations() {
-	viper.SetDefault("general.project_id", "default-project")
+	viper.SetDefault("general.project_prefix", "andaime")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
 	viper.SetDefault("general.log_level", getDefaultLogLevel())
 	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")

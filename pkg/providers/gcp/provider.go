@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -98,11 +99,22 @@ type GCPProviderer interface {
 	ListProjects(
 		ctx context.Context,
 	) ([]*resourcemanagerpb.Project, error)
+	ListAllAssetsInProject(
+		ctx context.Context,
+		projectID string,
+	) ([]*assetpb.Asset, error)
 	DeployResources(ctx context.Context) error
 	ProvisionPackagesOnMachines(ctx context.Context) error
 	ProvisionBacalhau(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	StartResourcePolling(ctx context.Context)
+	CheckAuthentication(ctx context.Context) error
+	EnableAPI(ctx context.Context, projectID, apiName string) error
+	CreateVPCNetwork(ctx context.Context, projectID, networkName string) error
+	CreateSubnet(ctx context.Context, projectID, networkName, subnetName, cidr string) error
+	CreateFirewallRules(ctx context.Context, projectID, networkName string) error
+	CreateStorageBucket(ctx context.Context, projectID, bucketName string) error
+	CreateVM(ctx context.Context, projectID string, vmConfig map[string]string) (string, error)
 }
 
 type GCPProvider struct {
@@ -165,7 +177,7 @@ func NewGCPProvider() (GCPProviderer, error) {
 	config.Set("general.ssh_public_key_path", expandedPublicKeyPath)
 	config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
 
-	client, err := NewGCPClientFunc(context.Background(), organizationID)
+	client, err := GetGCPClient(context.Background(), organizationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP client: %w", err)
 	}
@@ -236,7 +248,10 @@ func (p *GCPProvider) ListProjects(
 }
 
 func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
-	p.Client.StartResourcePolling(ctx)
+	l := logger.Get()
+	if err := p.Client.StartResourcePolling(ctx); err != nil {
+		l.Errorf("Failed to start resource polling: %v", err)
+	}
 }
 
 func (p *GCPProvider) DeployResources(ctx context.Context) error {
@@ -253,4 +268,62 @@ func (p *GCPProvider) ProvisionBacalhau(ctx context.Context) error {
 
 func (p *GCPProvider) FinalizeDeployment(ctx context.Context) error {
 	return p.Client.FinalizeDeployment(ctx)
+}
+
+func (p *GCPProvider) ListAllAssetsInProject(
+	ctx context.Context,
+	projectID string,
+) ([]*assetpb.Asset, error) {
+	return p.Client.ListAllAssetsInProject(ctx, projectID)
+}
+
+func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
+	return p.Client.CheckAuthentication(ctx)
+}
+
+func (p *GCPProvider) EnableAPI(ctx context.Context, projectID, apiName string) error {
+	return p.Client.EnableAPI(ctx, projectID, apiName)
+}
+
+func (p *GCPProvider) CreateVPCNetwork(ctx context.Context, projectID, networkName string) error {
+	return p.Client.CreateVPCNetwork(ctx, projectID, networkName)
+}
+
+func (p *GCPProvider) CreateSubnet(
+	ctx context.Context,
+	projectID, networkName, subnetName, cidr string,
+) error {
+	return p.Client.CreateSubnet(ctx, projectID, networkName, subnetName, cidr)
+}
+
+func (p *GCPProvider) CreateFirewallRules(
+	ctx context.Context,
+	projectID, networkName string,
+) error {
+	return p.Client.CreateFirewallRules(ctx, projectID, networkName)
+}
+
+func (p *GCPProvider) CreateStorageBucket(ctx context.Context, projectID, bucketName string) error {
+	return p.Client.CreateStorageBucket(ctx, projectID, bucketName)
+}
+
+func (p *GCPProvider) CreateVM(
+	ctx context.Context,
+	projectID string,
+	vmConfig map[string]string,
+) (string, error) {
+	return p.Client.CreateVM(ctx, projectID, vmConfig)
+}
+
+var (
+	gcpClientInstance GCPClienter
+	gcpClientOnce     sync.Once
+)
+
+func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, error) {
+	var err error
+	gcpClientOnce.Do(func() {
+		gcpClientInstance, err = NewGCPClient(ctx, organizationID)
+	})
+	return gcpClientInstance, err
 }

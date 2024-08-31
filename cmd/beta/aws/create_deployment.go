@@ -10,7 +10,7 @@ import (
 )
 
 //nolint:unused
-var createDeploymentCmd = &cobra.Command{
+var CreateDeploymentCmd = &cobra.Command{
 	Use:   "deployment",
 	Short: "Create a deployment in AWS",
 	Long:  `Create a deployment in AWS using the configuration specified in the config file.`,

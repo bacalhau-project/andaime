@@ -21,9 +21,9 @@ var AzureListResourcesCmd = &cobra.Command{
 		log := logger.Get()
 		log.SetVerbose(verbose)
 
-		projectID := viper.GetString("general.project_id")
+		projectPrefix := viper.GetString("general.project_prefix")
 		uniqueID := viper.GetString("general.unique_id")
-		tags := azure.GenerateTags(projectID, uniqueID)
+		tags := azure.GenerateTags(projectPrefix, uniqueID)
 
 		log.Info("Listing Azure resources...")
 

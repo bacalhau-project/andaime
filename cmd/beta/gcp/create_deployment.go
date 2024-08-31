@@ -23,7 +23,7 @@ import (
 const DefaultSSHPort = 22
 const RetryTimeout = 10 * time.Second
 
-func createDeploymentCmd() *cobra.Command {
+func GetCreateDeploymentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-deployment",
 		Short: "Create a new deployment in GCP",
@@ -65,7 +65,7 @@ func runCreateDeployment(cmd *cobra.Command, _ []string) error {
 	d.Labels = utils.EnsureGCPLabels(make(map[string]string), d.ProjectID, d.UniqueID)
 
 	if d.ProjectID == "" {
-		d.ProjectID = viper.GetString("gcp.project_prefix")
+		d.ProjectID = viper.GetString("general.project_prefix")
 	}
 
 	if d.Name == "" {
@@ -157,7 +157,7 @@ func setDeploymentBasicInfo(d *models.Deployment) error {
 	d.SSHPort = viper.GetInt("general.ssh_port")
 	d.OrchestratorIP = viper.GetString("general.orchestrator_ip")
 	d.OrganizationID = viper.GetString("gcp.organization_id")
-	d.ProjectID = viper.GetString("gcp.project_prefix")
+	d.ProjectID = viper.GetString("general.project_prefix")
 	d.AllowedPorts = viper.GetIntSlice("gcp.allowed_ports")
 	d.DefaultVMSize = viper.GetString("gcp.default_vm_size")
 
@@ -423,13 +423,14 @@ func PrepareDeployment(
 }
 
 func setDefaultConfigurations() {
-	viper.SetDefault("general.project_id", "default-project")
+	viper.SetDefault("general.project_prefix", "andaime")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
 	viper.SetDefault("general.log_level", getDefaultLogLevel())
 	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
 	viper.SetDefault("general.ssh_user", "azureuser")
 	viper.SetDefault("general.ssh_port", DefaultSSHPort)
+	viper.SetDefault("general.project_prefix", "andaime-project")
 	viper.SetDefault("gcp.project_name", "andaime-project")
 	viper.SetDefault("gcp.allowed_ports", globals.DefaultAllowedPorts)
 	viper.SetDefault("gcp.default_vm_size", "n4-standard-4")

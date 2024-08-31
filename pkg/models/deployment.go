@@ -222,19 +222,20 @@ type Disk struct {
 }
 
 func NewDeployment() (*Deployment, error) {
-	projectID := viper.GetString("general.project_id")
+	projectID := viper.GetString("general.project_prefix")
 	if projectID == "" {
-		return nil, fmt.Errorf("project ID is empty")
+		return nil, fmt.Errorf("project prefix is empty")
 	}
 
 	uniqueID := time.Now().Format("060102150405")
+	projectID = fmt.Sprintf("%s-%s", projectID, uniqueID)
 
 	return &Deployment{
 		StartTime: time.Now(),
 		Machines:  make(map[string]*Machine),
 		Tags:      make(map[string]*string),
 		ProjectID: projectID,
-		UniqueID:  fmt.Sprintf("%s-%s", projectID, uniqueID),
+		UniqueID:  uniqueID,
 	}, nil
 }
 

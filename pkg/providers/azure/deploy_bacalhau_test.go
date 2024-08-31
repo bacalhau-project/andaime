@@ -137,7 +137,7 @@ func TestFindOrchestratorMachine(t *testing.T) {
 		},
 	}
 
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deployer, _ := setupTestBacalhauDeployer(tt.machines)
@@ -156,7 +156,7 @@ func TestFindOrchestratorMachine(t *testing.T) {
 }
 
 func TestSetupNodeConfigMetadata(t *testing.T) {
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 
@@ -180,7 +180,7 @@ func TestSetupNodeConfigMetadata(t *testing.T) {
 }
 
 func TestInstallBacalhau(t *testing.T) {
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 	m.Deployment.Machines = map[string]*models.Machine{
@@ -203,7 +203,7 @@ func TestInstallBacalhau(t *testing.T) {
 }
 
 func TestInstallBacalhauRun(t *testing.T) {
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 	m.Deployment.Machines = map[string]*models.Machine{
@@ -226,7 +226,7 @@ func TestInstallBacalhauRun(t *testing.T) {
 }
 
 func TestSetupBacalhauService(t *testing.T) {
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 	m.Deployment.Machines = map[string]*models.Machine{

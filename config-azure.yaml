@@ -40,7 +40,7 @@ azure:
 general:
   log_level: info
   log_path: /tmp/andaime.log
-  project_id: andaime-project
+  project_prefix: andaime
   ssh_port: 22
   ssh_private_key_path: /Users/daaronch/.ssh/id_rsa
   ssh_public_key_path: /Users/daaronch/.ssh/id_rsa.pub

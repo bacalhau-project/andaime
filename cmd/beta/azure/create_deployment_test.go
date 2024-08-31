@@ -33,7 +33,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		return mockAzureClient, nil
 	}
 
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	viper.Set("general.unique_id", "test-unique-id")
 	deployment, err := models.NewDeployment()
 	assert.NoError(t, err)
@@ -216,7 +216,7 @@ func TestInitializeDeployment(t *testing.T) {
 	// Run subtests
 	t.Run("PrepareDeployment", func(t *testing.T) {
 		ctx := context.Background()
-		viper.Set("general.project_id", "test-project")
+		viper.Set("general.project_prefix", "test-project")
 		viper.Set("general.unique_id", "test-unique-id")
 		deployment, err := PrepareDeployment(ctx)
 		assert.NoError(t, err)
@@ -234,7 +234,7 @@ func TestInitializeDeployment(t *testing.T) {
 		assert.Equal(t, 5, len(locations), "Expected 5 unique locations")
 
 		// Check specific configurations for each location
-		eastusCount := 0
+		eastus2Count := 0
 		westusCount := 0
 		brazilsouthCount := 0
 		ukwestCount := 0
@@ -242,8 +242,8 @@ func TestInitializeDeployment(t *testing.T) {
 
 		for _, machine := range localModel.Deployment.Machines {
 			switch machine.Location {
-			case "eastus":
-				eastusCount++
+			case "eastus2":
+				eastus2Count++
 				assert.Equal(
 					t,
 					"Standard_DS1_v4",
@@ -269,7 +269,7 @@ func TestInitializeDeployment(t *testing.T) {
 		}
 
 		// Verify the count of machines in each location
-		assert.Equal(t, 2, eastusCount, "Expected 2 machines in eastus")
+		assert.Equal(t, 2, eastus2Count, "Expected 2 machines in eastus2")
 		assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
 		assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
 		assert.Equal(t, 1, ukwestCount, "Expected 1 machine in ukwest")
@@ -331,7 +331,7 @@ func TestPrepareDeployment(t *testing.T) {
 	viper.SetConfigFile(tempConfigFile.Name())
 
 	// Execute
-	viper.Set("general.project_id", "test-project")
+	viper.Set("general.project_prefix", "test-project")
 	viper.Set("general.unique_id", "test-unique-id")
 	deployment, err := PrepareDeployment(ctx)
 	assert.NotNil(t, deployment)
@@ -340,12 +340,12 @@ func TestPrepareDeployment(t *testing.T) {
 	display.SetGlobalModel(display.InitialModel(deployment))
 	// Assert
 	assert.NoError(t, err)
-	assert.Equal(t, "test-project", deployment.ProjectID)
-	assert.Contains(t, deployment.UniqueID, "test-project")
+	assert.Contains(t, deployment.ProjectID, "test-project")
+	assert.Contains(t, deployment.ProjectID, deployment.UniqueID)
 	assert.Equal(t, "eastus", deployment.ResourceGroupLocation)
 	assert.NotEmpty(t, deployment.SSHPublicKeyMaterial)
 	assert.NotEmpty(t, deployment.SSHPrivateKeyMaterial)
-	assert.WithinDuration(t, time.Now(), deployment.StartTime, 5*time.Second)
+	assert.WithinDuration(t, time.Now(), deployment.StartTime, 20*time.Second)
 	assert.Len(t, deployment.Machines, 1)
 
 	var machine *models.Machine

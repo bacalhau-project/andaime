@@ -32,7 +32,7 @@ func TestConfigFileReading(t *testing.T) {
 		}
 
 		// Check if some expected keys are present
-		expectedKeys := []string{"general.project_id", "azure.subscription_id"}
+		expectedKeys := []string{"general.project_prefix", "azure.subscription_id"}
 		for _, key := range expectedKeys {
 			if !v.IsSet(key) {
 				t.Errorf("Expected key %s not found in config", key)
@@ -52,7 +52,7 @@ func TestConfigFileReading(t *testing.T) {
 		// Write an incomplete config to the temp file
 		incompleteConfig := []byte(`
 general:
-  project_id: "test-project"
+  project_prefix: "test-project"
 azure:
   subscription_id: "test-subscription"
 `)
@@ -103,7 +103,7 @@ azure:
 		// Write a config with invalid values to the temp file
 		invalidConfig := []byte(`
 general:
-  project_id: "test-project"
+  project_prefix: "test-project"
 azure:
   subscription_id: "test-subscription"
   resource_group: "test-group"
@@ -157,7 +157,7 @@ azure:
 		// Write a minimal valid config to the temp file
 		minimalConfig := []byte(fmt.Sprintf(`
 general:
-  project_id: "test-project"
+  project_prefix: "test-project"
   ssh_public_key_path: "%s"
 azure:
   subscription_id: "test-subscription"
@@ -208,7 +208,7 @@ azure:
 
 		invalidConfig := []byte(`
 general:
-  project_id: "test-project"
+  project_prefix: "test-project"
   ssh_public_key_path: "~/.ssh/id_rsa.pub"
 azure:
   subscription_id: "test-subscription"
@@ -251,7 +251,7 @@ func TestLoadConfig(t *testing.T) {
 	// Write test configuration to the temp file
 	testConfig := []byte(fmt.Sprintf(`
 general:
-  project_id: "test-project"
+  project_prefix: "test-project"
   ssh_public_key_path: "%s"		
 aws:
   regions:

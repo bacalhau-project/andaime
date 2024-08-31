@@ -3,6 +3,7 @@ module github.com/bacalhau-project/andaime
 go 1.22.6
 
 require (
+	cloud.google.com/go/asset v1.20.0
 	cloud.google.com/go/resourcemanager v1.10.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.14.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
@@ -35,11 +36,14 @@ require (
 
 require (
 	cloud.google.com/go v0.115.1 // indirect
+	cloud.google.com/go/accesscontextmanager v1.9.0 // indirect
 	cloud.google.com/go/auth v0.9.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	cloud.google.com/go/iam v1.2.0 // indirect
 	cloud.google.com/go/longrunning v0.6.0 // indirect
+	cloud.google.com/go/orgpolicy v1.13.0 // indirect
+	cloud.google.com/go/osconfig v1.14.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/internal v1.1.2 // indirect
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
