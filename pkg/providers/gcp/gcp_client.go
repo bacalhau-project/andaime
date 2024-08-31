@@ -16,10 +16,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	ResourcePollingInterval = 2 * time.Second
-)
-
 type GCPClienter interface {
 	EnsureProject(
 		ctx context.Context,
@@ -222,7 +218,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 				return nil
 			}
 
-			resources, err := c.ListAllResourcesInSubscription(ctx, c.projectID, nil)
+			resources, err := c.ListResources(ctx, m.Deployment.ProjectID, nil)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 				return err
@@ -245,7 +241,9 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 			}
 
 			if allResourcesProvisioned && c.allMachinesComplete(m) {
-				l.Debug("All resources provisioned and machines completed, stopping resource polling")
+				l.Debug(
+					"All resources provisioned and machines completed, stopping resource polling",
+				)
 				return nil
 			}
 
@@ -256,7 +254,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 	}
 }
 
-func (c *LiveGCPClient) allMachinesComplete(m *display.Model) bool {
+func (c *LiveGCPClient) allMachinesComplete(m *display.DisplayModel) bool {
 	for _, machine := range m.Deployment.Machines {
 		if !machine.Complete() {
 			return false
