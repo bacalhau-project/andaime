@@ -154,10 +154,3 @@ issues:
     - .*go/pkg/mod # Exclude external modules
   exclude-files:
     - /nix/.*
-run:
-  skip-files:
-    - "internal/testdata/configs/config.yaml"
-
-linters:
-  disable:
-    - exportloopref
