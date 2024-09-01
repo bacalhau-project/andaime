@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"google.golang.org/api/cloudresourcemanager/v1"
-	"google.golang.org/api/cloudbilling/v1"
 	"google.golang.org/api/compute/v1"
 )
 
-// ... (existing code)
+// GCPProvider represents the GCP provider
+type GCPProvider struct {
+	config *Config
+}
+
+// Config represents the configuration for GCP provider
+type Config struct {
+	ProjectID string
+}
 
 func (p *GCPProvider) CreateComputeInstance(instanceName, machineType, zone string) error {
     computeService, err := compute.NewService(context.Background())
@@ -51,7 +57,7 @@ func (p *GCPProvider) CreateComputeInstance(instanceName, machineType, zone stri
     }
 
     // Wait for the instance creation to complete
-    err = p.waitForZoneOperation(computeService, p.config.ProjectID, zone, op.Name)
+    err = p.waitForZoneOperation(computeService, zone, op.Name)
     if err != nil {
         return fmt.Errorf("failed to wait for instance creation: %v", err)
     }
@@ -59,7 +65,14 @@ func (p *GCPProvider) CreateComputeInstance(instanceName, machineType, zone stri
     return nil
 }
 
-func (p *GCPProvider) waitForZoneOperation(computeService *compute.Service, projectID, zone, operationName string) error {
+// NewGCPProvider creates a new GCPProvider instance
+func NewGCPProvider(config *Config) *GCPProvider {
+    return &GCPProvider{
+        config: config,
+    }
+}
+
+func (p *GCPProvider) waitForZoneOperation(computeService *compute.Service, zone, operationName string) error {
     for {
         op, err := computeService.ZoneOperations.Get(projectID, zone, operationName).Do()
         if err != nil {
