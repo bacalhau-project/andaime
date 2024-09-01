@@ -13,4 +13,4 @@ general:
   project_prefix: andaime
   ssh_public_key_path: ~/.ssh/id_rsa.pub
 gcp:
-  billing_account_id: YOUR_BILLING_ACCOUNT_ID
+  billing_account_id: "XXXXXX-XXXXXX-XXXXXX"
