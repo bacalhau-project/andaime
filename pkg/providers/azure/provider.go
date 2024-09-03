@@ -217,7 +217,10 @@ func (p *AzureProvider) initializeDisplayModel() {
 }
 
 func (p *AzureProvider) GetAzureClient() AzureClienter {
-	return p.Client.(AzureClienter)
+	if client, ok := p.Client.(AzureClienter); ok {
+		return client
+	}
+	return nil
 }
 
 func (p *AzureProvider) SetAzureClient(client AzureClienter) {

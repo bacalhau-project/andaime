@@ -35,7 +35,16 @@ func (cl *SSHClient) Close() error {
 
 func (cl *SSHClient) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
 	checker := NewSSHLivenessChecker()
+	if checker == nil {
+		return fmt.Errorf("failed to create SSH liveness checker")
+	}
 	return checker.TestConnectivity(ip, user, port, privateKeyPath)
+}
+
+// NewSSHLivenessChecker creates a new SSHLivenessChecker
+func NewSSHLivenessChecker() *SSHLivenessChecker {
+	// Implement this function based on your SSHLivenessChecker structure
+	return &SSHLivenessChecker{}
 }
 
 type SSHClientWrapper struct {

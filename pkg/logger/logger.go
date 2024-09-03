@@ -246,24 +246,29 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 	return &Logger{l.Logger.With(fields...), l.verbose}
 }
 
-func (l *Logger) Debug(msg string) {
-	l.Logger.Debug(msg)
+func (l *Logger) Debug(msg string, fields ...zap.Field) {
+	l.Logger.Debug(msg, fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Info(msg string) {
-	l.Logger.Info(msg)
+func (l *Logger) Info(msg string, fields ...zap.Field) {
+	l.Logger.Info(msg, fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Warn(msg string) {
-	l.Logger.Warn(msg)
+func (l *Logger) Warn(msg string, fields ...zap.Field) {
+	l.Logger.Warn(msg, fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Error(msg string) {
-	l.Logger.Error(msg)
+func (l *Logger) Error(msg string, fields ...zap.Field) {
+	l.Logger.Error(msg, fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Fatal(msg string) {
-	l.Logger.Fatal(msg)
+func (l *Logger) Fatal(msg string, fields ...zap.Field) {
+	l.Logger.Fatal(msg, fields...)
+	// No need to sync here as Fatal will exit the program
 }
 
 func (l *Logger) Debugf(format string, args ...interface{}) {
