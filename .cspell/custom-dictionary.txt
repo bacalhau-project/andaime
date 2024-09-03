@@ -134,6 +134,7 @@ noctx
 noinit
 nolint
 nolintlint
+NOPASSWD
 northeurope
 NSGID
 nsgs
@@ -205,6 +206,7 @@ unmarshaling
 unmarshalling
 unpadded
 Upsert
+usermod
 utod
 VCPU
 virtualenvs

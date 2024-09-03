@@ -2,10 +2,12 @@ package gcp
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func GetCreateVMCmd() *cobra.Command {
@@ -29,6 +31,7 @@ func GetCreateVMCmd() *cobra.Command {
 	return cmd
 }
 
+// This is only for doing one offs - the create-deployment will not use this function.
 func createVM(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("project ID is required")
@@ -46,9 +49,25 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	sshUser := viper.GetString("general.ssh_user")
+	if sshUser == "" {
+		return fmt.Errorf("ssh user is not set")
+	}
+
+	publicKeyPath := viper.GetString("general.ssh_public_key_path")
+	publicKeyMaterial, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return err
+	}
+
+	if publicKeyMaterial == nil {
+		return fmt.Errorf("public key material is nil, read from file %s", publicKeyPath)
+	}
+
 	vmConfig := map[string]string{
-		"zone": zone,
-		// Add any VM configuration parameters here
+		"zone":              zone,
+		"sshUser":           sshUser,
+		"PublicKeyMaterial": string(publicKeyMaterial),
 	}
 
 	vmName, err := provider.CreateVM(ctx, projectID, vmConfig)

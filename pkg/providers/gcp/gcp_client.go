@@ -1,8 +1,11 @@
 package gcp
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"html/template"
 	"log"
 	"strconv"
 	"strings"
@@ -20,6 +23,7 @@ import (
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
 	"cloud.google.com/go/storage"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/cenkalti/backoff/v4"
@@ -846,7 +850,7 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Generate a unique VM name
-	uniqueID := fmt.Sprintf("%s-%s", projectID, time.Now().Format("20060102150405"))
+	uniqueID := fmt.Sprintf("%s-%s", projectID, time.Now().Format("0601021504"))
 	vmName := fmt.Sprintf("%s-vm", uniqueID)
 
 	// Get default values from config
@@ -879,15 +883,37 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Get the SSH user from the deployment model
-	sshUser := m.Deployment.SSHUser
+	sshUser := vmConfig["sshUser"]
 
-	// Create a startup script to configure the sudoers file
-	startupScript := fmt.Sprintf(
-		"sudo useradd -m %s && sudo usermod -aG sudo %s && echo '%s ALL=(ALL) NOPASSWD:ALL' | sudo EDITOR='tee -a' visudo",
-		sshUser,
-		sshUser,
-		sshUser,
-	)
+	if sshUser == "" {
+		return "", fmt.Errorf("SSH user is not set in the deployment model")
+	}
+
+	publicKeyMaterial := vmConfig["PublicKeyMaterial"]
+	if publicKeyMaterial == "" {
+		return "", fmt.Errorf("public key material is not set in the deployment model")
+	}
+
+	publicKeyMaterialB64 := base64.StdEncoding.EncodeToString([]byte(publicKeyMaterial))
+
+	startupScriptTemplate, err := gcp.GetStartupScript()
+	if err != nil {
+		return "", fmt.Errorf("failed to get startup script: %v", err)
+	}
+
+	tmpl, err := template.New("startup_script").Parse(startupScriptTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse startup script template: %w", err)
+	}
+
+	var scriptBuffer bytes.Buffer
+	err = tmpl.Execute(&scriptBuffer, map[string]interface{}{
+		"SSHUser":              sshUser,
+		"PublicKeyMaterialB64": publicKeyMaterialB64,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to execute startup script template: %w", err)
+	}
 
 	instance := &computepb.Instance{
 		Name: &vmName,
@@ -930,7 +956,7 @@ func (c *LiveGCPClient) CreateVM(
 			Items: []*computepb.Items{
 				{
 					Key:   to.Ptr("startup-script"),
-					Value: to.Ptr(startupScript),
+					Value: to.Ptr(scriptBuffer.String()),
 				},
 			},
 		},
@@ -938,7 +964,7 @@ func (c *LiveGCPClient) CreateVM(
 
 	req := &computepb.InsertInstanceRequest{
 		Project:          projectID,
-		Zone:             zone, // Use the provided zone
+		Zone:             zone,
 		InstanceResource: instance,
 	}
 
@@ -961,7 +987,6 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	ctx context.Context,
 	projectID, networkName string,
 ) (*computepb.Network, error) {
-	networkName = "default" // Use the default network
 	network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 		Project: projectID,
 		Network: networkName,
