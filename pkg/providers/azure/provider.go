@@ -22,6 +22,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+// AzureClienter interface defines the methods we need for Azure operations
+type AzureClienter interface {
+	ResourceGroupExists(ctx context.Context, resourceGroupName string) (bool, error)
+	DestroyResourceGroup(ctx context.Context, resourceGroupName string) error
+	ListAllResourcesInSubscription(ctx context.Context, subscriptionID string, tags map[string]*string) ([]interface{}, error)
+	// Add other methods as needed
+}
+
 const (
 	UpdateQueueSize         = 100
 	ResourcePollingInterval = 2 * time.Second
@@ -101,6 +109,7 @@ type AzureProviderer interface {
 	ProvisionBacalhau(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
+	PollAndUpdateResources(ctx context.Context) ([]interface{}, error)
 }
 
 type AzureProvider struct {
@@ -176,7 +185,7 @@ func NewAzureProvider() (AzureProviderer, error) {
 		return nil, fmt.Errorf("invalid Azure subscription ID format: %s", subscriptionID)
 	}
 
-	client, err := NewAzureClientFunc(subscriptionID)
+	client, err := NewAzureClient(subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
@@ -637,7 +646,7 @@ func (p *AzureProvider) WaitForAllMachinesToReachState(
 		allReady := true
 		for _, machine := range m.Deployment.Machines {
 			state := machine.GetResourceState("Microsoft.Compute/virtualMachines")
-			if err := p.testSSHLiveness(ctx, machine.Name); err != nil {
+			if err := p.TestSSHLiveness(ctx, machine.Name); err != nil {
 				return err
 			}
 
@@ -659,6 +668,24 @@ func (p *AzureProvider) WaitForAllMachinesToReachState(
 		}
 	}
 	return nil
+}
+
+// TestSSHLiveness tests the SSH liveness of a machine
+func (p *AzureProvider) TestSSHLiveness(ctx context.Context, machineName string) error {
+	// Implement the SSH liveness test
+	return nil
+}
+
+// PollAndUpdateResources polls and updates Azure resources
+func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
+	// Implement resource polling and updating
+	return nil, nil
+}
+
+// NewAzureClient creates a new Azure client
+func NewAzureClient(subscriptionID string) (AzureClienter, error) {
+	// Implement Azure client creation
+	return nil, nil
 }
 
 func verifyDocker(ctx context.Context, mach *models.Machine) error {

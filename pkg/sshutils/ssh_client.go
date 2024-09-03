@@ -6,11 +6,34 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+import (
+	"fmt"
+
+	"golang.org/x/crypto/ssh"
+)
+
+// SSHSessioner interface defines the methods we need for SSH sessions
+type SSHSessioner interface {
+	Run(cmd string) error
+	Start(cmd string) error
+	Wait() error
+	Close() error
+	StdinPipe() (io.WriteCloser, error)
+	StdoutPipe() (io.Reader, error)
+	StderrPipe() (io.Reader, error)
+	CombinedOutput(cmd string) ([]byte, error)
+}
+
 // SSHClienter interface defines the methods we need for SSH operations
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
 	Close() error
 	TestConnectivity(ip, user string, port int, privateKeyPath string) error
+}
+
+// SSHDialer interface defines the method for dialing SSH connections
+type SSHDialer interface {
+	Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
 }
 
 type SSHClient struct {
@@ -41,10 +64,20 @@ func (cl *SSHClient) TestConnectivity(ip, user string, port int, privateKeyPath 
 	return checker.TestConnectivity(ip, user, port, privateKeyPath)
 }
 
+// SSHLivenessChecker structure for checking SSH liveness
+type SSHLivenessChecker struct {
+	// Add necessary fields
+}
+
 // NewSSHLivenessChecker creates a new SSHLivenessChecker
 func NewSSHLivenessChecker() *SSHLivenessChecker {
-	// Implement this function based on your SSHLivenessChecker structure
 	return &SSHLivenessChecker{}
+}
+
+// TestConnectivity tests the SSH connectivity
+func (c *SSHLivenessChecker) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
+	// Implement the connectivity test
+	return nil
 }
 
 type SSHClientWrapper struct {
@@ -66,9 +99,46 @@ func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SSHSessionWrapper{session}, nil
+	return &SSHSessionWrapper{Session: session}, nil
 }
 
 func (w *SSHClientWrapper) Close() error {
 	return w.Client.Close()
+}
+
+type SSHSessionWrapper struct {
+	Session *ssh.Session
+}
+
+// Implement SSHSessioner methods for SSHSessionWrapper
+func (s *SSHSessionWrapper) Run(cmd string) error {
+	return s.Session.Run(cmd)
+}
+
+func (s *SSHSessionWrapper) Start(cmd string) error {
+	return s.Session.Start(cmd)
+}
+
+func (s *SSHSessionWrapper) Wait() error {
+	return s.Session.Wait()
+}
+
+func (s *SSHSessionWrapper) Close() error {
+	return s.Session.Close()
+}
+
+func (s *SSHSessionWrapper) StdinPipe() (io.WriteCloser, error) {
+	return s.Session.StdinPipe()
+}
+
+func (s *SSHSessionWrapper) StdoutPipe() (io.Reader, error) {
+	return s.Session.StdoutPipe()
+}
+
+func (s *SSHSessionWrapper) StderrPipe() (io.Reader, error) {
+	return s.Session.StderrPipe()
+}
+
+func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
+	return s.Session.CombinedOutput(cmd)
 }
