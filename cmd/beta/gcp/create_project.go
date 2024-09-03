@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -19,7 +20,7 @@ func GetCreateProjectCmd() *cobra.Command {
 			if organizationID == "" {
 				return fmt.Errorf("organization_id is not set in the configuration")
 			}
-			return createProject(projectID)
+			return createProject(cmd.Context(), projectID)
 		},
 	}
 
@@ -29,20 +30,26 @@ func GetCreateProjectCmd() *cobra.Command {
 	return cmd
 }
 
-func createProject(projectID string) error {
-	ctx := context.Background()
+func createProject(ctx context.Context, projectID string) error {
+	m := display.GetGlobalModelFunc()
 	p, err := gcp.NewGCPProviderFunc()
 	if err != nil {
 		return handleGCPError(err)
 	}
 
+	billingAccountID := viper.GetString("gcp.billing_account_id")
+	if billingAccountID == "" {
+		return fmt.Errorf("billing_account_id is not set in the configuration")
+	}
+	m.Deployment.BillingAccountID = billingAccountID
+
 	// Use client directly instead of through a provider
-	createdProjectID, err := p.EnsureProject(ctx, projectID)
+	m.Deployment.ProjectID, err = p.EnsureProject(ctx, projectID)
 	if err != nil {
 		return handleGCPError(err)
 	}
 
-	fmt.Printf("Project created successfully: %s\n", createdProjectID)
+	fmt.Printf("Project created successfully: %s\n", m.Deployment.ProjectID)
 
 	// Enable necessary APIs
 	apisToEnable := []string{
@@ -55,9 +62,16 @@ func createProject(projectID string) error {
 		"cloudresourcemanager.googleapis.com",
 	}
 
+	// Set Billing Account
+	if err := p.SetBillingAccount(ctx); err != nil {
+		return handleGCPError(fmt.Errorf("failed to set billing account: %v", err))
+	}
+
+	fmt.Println("Billing account set successfully.")
+
 	fmt.Println("Enabling necessary APIs...")
 	for _, api := range apisToEnable {
-		if err := p.EnableAPI(ctx, createdProjectID, api); err != nil {
+		if err := p.EnableAPI(ctx, api); err != nil {
 			return handleGCPError(fmt.Errorf("failed to enable API %s: %v", api, err))
 		}
 		fmt.Printf("Enabled API: %s\n", api)
@@ -66,28 +80,23 @@ func createProject(projectID string) error {
 	// Create VPC network
 	networkName := "andaime-network"
 	fmt.Printf("Creating VPC network: %s\n", networkName)
-	if err := p.CreateVPCNetwork(ctx, createdProjectID, networkName); err != nil {
+	err = p.GetGCPClient().CreateVPCNetwork(ctx, networkName)
+	if err != nil {
 		return handleGCPError(fmt.Errorf("failed to create VPC network: %v", err))
 	}
 
-	// Create subnet
-	subnetName := "andaime-subnet"
-	subnetCIDR := "10.0.0.0/24"
-	fmt.Printf("Creating subnet: %s with CIDR %s\n", subnetName, subnetCIDR)
-	if err := p.CreateSubnet(ctx, createdProjectID, networkName, subnetName, subnetCIDR); err != nil {
-		return handleGCPError(fmt.Errorf("failed to create subnet: %v", err))
-	}
+	fmt.Printf("VPC network created successfully: %s\n", networkName)
 
 	// Create firewall rules
 	fmt.Println("Creating firewall rules...")
-	if err := p.CreateFirewallRules(ctx, createdProjectID, networkName); err != nil {
+	if err := p.CreateFirewallRules(ctx, networkName); err != nil {
 		return handleGCPError(fmt.Errorf("failed to create firewall rules: %v", err))
 	}
 
 	// Create Cloud Storage bucket
-	bucketName := fmt.Sprintf("%s-storage", createdProjectID)
+	bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
 	fmt.Printf("Creating Cloud Storage bucket: %s\n", bucketName)
-	if err := p.CreateStorageBucket(ctx, createdProjectID, bucketName); err != nil {
+	if err := p.CreateStorageBucket(ctx, bucketName); err != nil {
 		return handleGCPError(fmt.Errorf("failed to create storage bucket: %v", err))
 	}
 

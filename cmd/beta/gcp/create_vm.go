@@ -1,7 +1,6 @@
 package gcp
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
@@ -14,27 +13,31 @@ func GetCreateVMCmd() *cobra.Command {
 		Short: "Create a new VM in a GCP project",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectID := args[0]
-			return createVM(projectID)
+			return createVM(cmd, args)
 		},
 	}
 	return cmd
 }
 
-func createVM(projectID string) error {
-	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc()
+func createVM(cmd *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("project ID is required")
+	}
+	projectID := args[0]
+
+	ctx := cmd.Context()
+	provider, err := gcp.NewGCPProvider()
 	if err != nil {
-		return handleGCPError(err)
+		return err
 	}
 
-	// We don't need to pass any VM configuration now, as all values are derived from the config or generated
-	vmConfig := make(map[string]string)
+	vmConfig := map[string]string{
+		// Add any VM configuration parameters here
+	}
 
-	// Create the VM
-	vmName, err := p.CreateVM(ctx, projectID, vmConfig)
+	vmName, err := provider.CreateVM(ctx, projectID, vmConfig)
 	if err != nil {
-		return handleGCPError(err)
+		return err
 	}
 
 	fmt.Printf("VM created successfully: %s\n", vmName)

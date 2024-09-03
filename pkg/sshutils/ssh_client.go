@@ -10,6 +10,7 @@ import (
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
 	Close() error
+	TestConnectivity(ip, user string, port int, privateKeyPath string) error
 }
 
 type SSHClient struct {
@@ -32,8 +33,23 @@ func (cl *SSHClient) Close() error {
 	return cl.Client.Close()
 }
 
+func (cl *SSHClient) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
+	checker := NewSSHLivenessChecker()
+	return checker.TestConnectivity(ip, user, port, privateKeyPath)
+}
+
 type SSHClientWrapper struct {
 	*ssh.Client
+}
+
+// TestConnectivity implements SSHClienter.
+func (w *SSHClientWrapper) TestConnectivity(
+	ip string,
+	user string,
+	port int,
+	privateKeyPath string,
+) error {
+	panic("unimplemented")
 }
 
 func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {

@@ -190,6 +190,13 @@ type Deployment struct {
 	// ProjectID is the project ID for the deployment - works on multiple clouds
 	ProjectID string
 
+	// BillingAccountID is the billing account ID for the deployment - works on GCP
+	BillingAccountID string
+
+	// ServiceAccountEmail is the email of the service account for the deployment - works on GCP
+	ServiceAccountEmail    string
+	ProjectServiceAccounts map[string]ServiceAccountInfo
+
 	Locations      []string
 	OrchestratorIP string
 	Machines       map[string]*Machine
@@ -212,6 +219,11 @@ type Deployment struct {
 	EndTime               time.Time
 	SubscriptionID        string
 	deploymentMutex       sync.RWMutex
+}
+
+type ServiceAccountInfo struct {
+	Email string
+	Key   string
 }
 
 type Disk struct {

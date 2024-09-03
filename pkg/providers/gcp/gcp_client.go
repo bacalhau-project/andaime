@@ -5,18 +5,28 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	asset "cloud.google.com/go/asset/apiv1"
 	"cloud.google.com/go/asset/apiv1/assetpb"
+	billing "cloud.google.com/go/billing/apiv1"
+	"cloud.google.com/go/billing/apiv1/billingpb"
+	compute "cloud.google.com/go/compute/apiv1"
+	"cloud.google.com/go/compute/apiv1/computepb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	serviceusage "cloud.google.com/go/serviceusage/apiv1"
+	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
+	"cloud.google.com/go/storage"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudresourcemanager/v1"
-	"google.golang.org/api/compute/v1"
-	"google.golang.org/api/googleapi"
+	"google.golang.org/api/iam/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -44,57 +54,172 @@ type GCPClienter interface {
 	FinalizeDeployment(ctx context.Context) error
 	CheckAuthentication(ctx context.Context) error
 	EnableAPI(ctx context.Context, projectID, apiName string) error
-	CreateVPCNetwork(ctx context.Context, projectID, networkName string) error
-	CreateSubnet(ctx context.Context, projectID, networkName, subnetName, cidr string) error
-	CreateFirewallRules(ctx context.Context, projectID, networkName string) error
-	CreateStorageBucket(ctx context.Context, projectID, bucketName string) error
-	CreateVM(ctx context.Context, projectID string, vmConfig map[string]string) (string, error)
+	CreateVPCNetwork(ctx context.Context, networkName string) error
+	CreateFirewallRules(ctx context.Context, networkName string) error
+	CreateStorageBucket(ctx context.Context, bucketName string) error
+	CreateVM(ctx context.Context, vmConfig map[string]string) (string, error)
 	waitForOperation(
 		ctx context.Context,
-		service *compute.Service,
 		project, zone, operation string,
+	) error
+	SetBillingAccount(ctx context.Context, projectID, billingAccountID string) error
+	ListBillingAccounts(ctx context.Context) ([]string, error)
+	CreateServiceAccount(
+		ctx context.Context,
+		projectID string,
+		saName string,
+	) (*iam.ServiceAccount, error)
+	CreateServiceAccountKey(
+		ctx context.Context,
+		projectID, serviceAccountEmail string,
+	) (*iam.ServiceAccountKey, error)
+	waitForRegionalOperation(
+		ctx context.Context,
+		project, region, operation string,
+	) error
+	IsAPIEnabled(ctx context.Context, projectID, apiName string) (bool, error)
+	GetVMExternalIP(ctx context.Context, projectID, zone, vmName string) (string, error)
+	waitForGlobalOperation(
+		ctx context.Context,
+		project, operation string,
 	) error
 }
 
 type LiveGCPClient struct {
-	parentString  string
-	projectClient *resourcemanager.ProjectsClient
-	assetClient   *asset.Client
+	parentString           string
+	projectClient          *resourcemanager.ProjectsClient
+	assetClient            *asset.Client
+	cloudBillingClient     *billing.CloudBillingClient
+	iamService             *iam.Service
+	serviceUsageClient     *serviceusage.Client
+	computeClient          *compute.InstancesClient
+	networksClient         *compute.NetworksClient
+	firewallsClient        *compute.FirewallsClient
+	zoneOperationsClient   *compute.ZoneOperationsClient
+	globalOperationsClient *compute.GlobalOperationsClient
+	regionOperationsClient *compute.RegionOperationsClient
 }
 
 var NewGCPClientFunc = NewGCPClient
 
-func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, error) {
+type CloseableClient interface {
+	Close() error
+}
+
+func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func(), error) {
 	l := logger.Get()
 
-	log.Println("DEBUG: Creating projects client")
-	projectClient, err := resourcemanager.NewProjectsClient(ctx, option.WithCredentialsFile(""))
+	// Centralized credential handling (adjust as needed)
+	creds, err := google.FindDefaultCredentials(ctx)
 	if err != nil {
-		l.Errorf("Failed to create projects client: %v", err)
-		return nil, fmt.Errorf("failed to create projects client: %v", err)
+		return nil, nil, fmt.Errorf("failed to find default credentials: %v", err)
 	}
 
+	clientOpts := []option.ClientOption{
+		option.WithCredentials(creds),
+	}
+
+	// List of clients to be cleaned up
+	clientList := []CloseableClient{}
+
+	// Create clients using the helper function
+	projectClient, err := resourcemanager.NewProjectsClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, projectClient)
+
+	assetClient, err := asset.NewClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, assetClient)
+
+	cloudBillingClient, err := billing.NewCloudBillingClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, cloudBillingClient)
+
+	serviceUsageClient, err := serviceusage.NewClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, serviceUsageClient)
+	computeClient, err := compute.NewInstancesRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, computeClient)
+	// Credential check and parent string setup (replace with your actual implementation)
 	if err := checkCredentials(ctx, projectClient, organizationID); err != nil {
 		l.Errorf("Credential check failed: %v", err)
-		return nil, err
+		// Close clients on error
+		for _, client := range clientList {
+			client.Close()
+		}
+		return nil, nil, err
 	}
+
+	firewallsClient, err := compute.NewFirewallsRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, firewallsClient)
+
+	networksClient, err := compute.NewNetworksRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, networksClient)
+
+	zoneOperationsClient, err := compute.NewZoneOperationsRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, zoneOperationsClient)
+
+	globalOperationsClient, err := compute.NewGlobalOperationsRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, globalOperationsClient)
+
+	regionOperationsClient, err := compute.NewRegionOperationsRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, regionOperationsClient)
 
 	parentString := fmt.Sprintf("organizations/%s", organizationID)
 
-	assetClient, err := asset.NewClient(ctx, option.WithCredentialsFile(""))
-	if err != nil {
-		l.Errorf("Failed to create asset client: %v", err)
-		return nil, fmt.Errorf("failed to create asset client: %v", err)
+	// Cleanup function to close all clients
+	cleanup := func() {
+		l.Debug("Cleaning up GCP client")
+		for _, client := range clientList {
+			client.Close()
+		}
 	}
 
 	log.Println("DEBUG: GCP client initialized successfully")
-	return &LiveGCPClient{
-		parentString:  parentString,
-		projectClient: projectClient,
-		assetClient:   assetClient,
-	}, nil
-}
 
+	// Populate your LiveGCPClient struct (replace with your actual implementation)
+	liveGCPClient := &LiveGCPClient{
+		parentString:           parentString,
+		projectClient:          projectClient,
+		assetClient:            assetClient,
+		cloudBillingClient:     cloudBillingClient,
+		serviceUsageClient:     serviceUsageClient,
+		computeClient:          computeClient,
+		networksClient:         networksClient,
+		firewallsClient:        firewallsClient,
+		zoneOperationsClient:   zoneOperationsClient,
+		globalOperationsClient: globalOperationsClient,
+		regionOperationsClient: regionOperationsClient,
+	}
+
+	return liveGCPClient, cleanup, nil
+}
 func checkCredentials(
 	ctx context.Context,
 	client *resourcemanager.ProjectsClient,
@@ -188,6 +313,33 @@ func (c *LiveGCPClient) EnsureProject(
 	}
 
 	l.Debugf("Created project: %s (Display Name: %s)", project.ProjectId, project.DisplayName)
+
+	// Create service account after project creation
+	serviceAccount, err := c.CreateServiceAccount(ctx, project.ProjectId, "andaime-sa")
+	if err != nil {
+		l.Errorf("Failed to create service account: %v", err)
+		return "", fmt.Errorf("create service account: %v", err)
+	}
+
+	// Generate a key for the service account
+	serviceAccountKey, err := c.CreateServiceAccountKey(
+		ctx,
+		project.ProjectId,
+		serviceAccount.Email,
+	)
+	if err != nil {
+		l.Errorf("Failed to create service account key: %v", err)
+		return "", fmt.Errorf("create service account key: %v", err)
+	}
+
+	// Store the service account email and key in the config
+	viper.Set("gcp.service_account_email", serviceAccount.Email)
+	viper.Set("gcp.service_account_key", serviceAccountKey.PrivateKeyData)
+	if err := viper.WriteConfig(); err != nil {
+		l.Errorf("Failed to write config: %v", err)
+		return "", fmt.Errorf("write config: %v", err)
+	}
+
 	return project.ProjectId, nil
 }
 
@@ -401,51 +553,180 @@ func (c *LiveGCPClient) CheckAuthentication(ctx context.Context) error {
 }
 
 func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string) error {
-	return fmt.Errorf("EnableAPI not implemented")
+	l := logger.Get()
+	l.Infof("Enabling API %s for project %s", apiName, projectID)
+
+	serviceName := fmt.Sprintf("projects/%s/services/%s", projectID, apiName)
+	_, err := c.serviceUsageClient.EnableService(ctx, &serviceusagepb.EnableServiceRequest{
+		Name: serviceName,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to enable API %s: %v", apiName, err)
+	}
+
+	l.Infof("Successfully enabled API: %s", apiName)
+	return nil
 }
 
-func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, projectID, networkName string) error {
-	return fmt.Errorf("CreateVPCNetwork not implemented")
+func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	projectID := m.Deployment.ProjectID
+
+	l.Infof("Enabling Compute Engine API for project: %s", projectID)
+	err := c.EnableAPI(ctx, projectID, "compute.googleapis.com")
+	if err != nil {
+		return fmt.Errorf("failed to enable Compute Engine API: %v", err)
+	}
+
+	// Define exponential backoff
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 5 * time.Minute
+
+	operation := func() error {
+		network := &computepb.Network{
+			Name:                  &networkName,
+			AutoCreateSubnetworks: to.Ptr(true), // This creates a subnet mode network
+			RoutingConfig: &computepb.NetworkRoutingConfig{
+				RoutingMode: to.Ptr("GLOBAL"),
+			},
+		}
+
+		op, err := c.networksClient.Insert(ctx, &computepb.InsertNetworkRequest{
+			Project:         projectID,
+			NetworkResource: network,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create network: %v", err)
+		}
+
+		err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+		if err != nil {
+			return fmt.Errorf("failed to wait for VPC network creation: %v", err)
+		}
+
+		return nil
+	}
+
+	err = backoff.Retry(operation, b)
+	if err != nil {
+		return fmt.Errorf("failed to create VPC network after retries: %v", err)
+	}
+
+	l.Infof("VPC network %s created successfully", networkName)
+	return nil
 }
 
-func (c *LiveGCPClient) CreateSubnet(
-	ctx context.Context,
-	projectID, networkName, subnetName, cidr string,
-) error {
-	return fmt.Errorf("CreateSubnet not implemented")
+func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName string) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	projectID := m.Deployment.ProjectID
+	l.Debugf("Creating firewall rules in project: %s", projectID)
+
+	// Get allowed ports from the configuration
+	allowedPorts := viper.GetIntSlice("gcp.allowed_ports")
+	if len(allowedPorts) == 0 {
+		return fmt.Errorf("no allowed ports specified in the configuration")
+	}
+
+	var allowedPortsStr []string
+	for _, port := range allowedPorts {
+		allowedPortsStr = append(allowedPortsStr, strconv.Itoa(port))
+	}
+
+	// Create a firewall rule to allow incoming traffic on the specified ports
+	firewallRule := &computepb.Firewall{
+		Name:    to.Ptr(fmt.Sprintf("%s-allow-incoming", networkName)),
+		Network: to.Ptr(fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)),
+		Allowed: []*computepb.Allowed{
+			{
+				IPProtocol: to.Ptr("tcp"),
+				Ports:      allowedPortsStr,
+			},
+		},
+		SourceRanges: []string{"0.0.0.0/0"}, // Allow from any source IP
+		Direction:    to.Ptr("INGRESS"),
+	}
+
+	op, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
+		Project:          projectID,
+		FirewallResource: firewallRule,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create firewall rule: %v", err)
+	}
+
+	err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+	if err != nil {
+		return fmt.Errorf("failed to wait for firewall rule creation: %v", err)
+	}
+
+	l.Infof("Firewall rules created successfully for network: %s", networkName)
+	return nil
 }
 
-func (c *LiveGCPClient) CreateFirewallRules(
-	ctx context.Context,
-	projectID, networkName string,
-) error {
-	return fmt.Errorf("CreateFirewallRules not implemented")
-}
+func (c *LiveGCPClient) CreateStorageBucket(ctx context.Context, bucketName string) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
 
-func (c *LiveGCPClient) CreateStorageBucket(
-	ctx context.Context,
-	projectID, bucketName string,
-) error {
-	return fmt.Errorf("CreateStorageBucket not implemented")
+	projectID := m.Deployment.ProjectID
+	l.Debugf("Creating storage bucket %s in project: %s", bucketName, projectID)
+
+	storageClient, err := storage.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create storage client: %v", err)
+	}
+	defer storageClient.Close()
+
+	bucket := storageClient.Bucket(bucketName)
+
+	// Check if the bucket already exists
+	_, err = bucket.Attrs(ctx)
+	if err == nil {
+		l.Infof("Bucket %s already exists", bucketName)
+		return nil
+	}
+	if err != storage.ErrBucketNotExist {
+		return fmt.Errorf("failed to check bucket existence: %v", err)
+	}
+
+	// Bucket doesn't exist, so create it
+	err = bucket.Create(ctx, projectID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create storage bucket: %v", err)
+	}
+
+	l.Infof("Storage bucket %s created successfully", bucketName)
+	return nil
 }
 
 func (c *LiveGCPClient) CreateVM(
 	ctx context.Context,
-	projectID string,
 	vmConfig map[string]string,
 ) (string, error) {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return "", fmt.Errorf("global model or deployment is nil")
+	}
+
+	projectID := m.Deployment.ProjectID
 	l.Debugf("Creating VM in project: %s", projectID)
 
 	// Ensure the necessary APIs are enabled
 	if err := c.EnableAPI(ctx, projectID, "compute.googleapis.com"); err != nil {
 		return "", fmt.Errorf("failed to enable Compute Engine API: %v", err)
-	}
-
-	// Create Compute Engine service client
-	computeService, err := compute.NewService(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to create Compute Engine service client: %v", err)
 	}
 
 	// Generate a unique VM name
@@ -460,7 +741,7 @@ func (c *LiveGCPClient) CreateVM(
 
 	// Create or get the network
 	networkName := fmt.Sprintf("%s-network", projectID)
-	network, err := c.getOrCreateNetwork(ctx, computeService, projectID, networkName)
+	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get or create network: %v", err)
 	}
@@ -471,53 +752,59 @@ func (c *LiveGCPClient) CreateVM(
 		return "", fmt.Errorf("failed to convert default disk size to int64: %v", err)
 	}
 
-	instance := &compute.Instance{
-		Name: vmName,
-		MachineType: fmt.Sprintf(
+	instance := &computepb.Instance{
+		Name: &vmName,
+		MachineType: to.Ptr(fmt.Sprintf(
 			"zones/%s/machineTypes/%s",
 			defaultZone,
 			defaultMachineType,
-		),
-		Disks: []*compute.AttachedDisk{
+		)),
+		Disks: []*computepb.AttachedDisk{
 			{
-				AutoDelete: true,
-				Boot:       true,
-				Type:       "PERSISTENT",
-				InitializeParams: &compute.AttachedDiskInitializeParams{
-					DiskSizeGb:  defaultDiskSizeGBInt,
-					SourceImage: defaultSourceImage,
+				AutoDelete: to.Ptr(true),
+				Boot:       to.Ptr(true),
+				Type:       to.Ptr("PERSISTENT"),
+				InitializeParams: &computepb.AttachedDiskInitializeParams{
+					DiskSizeGb:  to.Ptr(defaultDiskSizeGBInt),
+					SourceImage: to.Ptr(defaultSourceImage),
 				},
 			},
 		},
-		NetworkInterfaces: []*compute.NetworkInterface{
+		NetworkInterfaces: []*computepb.NetworkInterface{
 			{
 				Network: network.SelfLink,
-				AccessConfigs: []*compute.AccessConfig{
+				AccessConfigs: []*computepb.AccessConfig{
 					{
-						Type: "ONE_TO_ONE_NAT",
-						Name: "External NAT",
+						Type: to.Ptr("ONE_TO_ONE_NAT"),
+						Name: to.Ptr("External NAT"),
 					},
 				},
 			},
 		},
-		ServiceAccounts: []*compute.ServiceAccount{
+		ServiceAccounts: []*computepb.ServiceAccount{
 			{
-				Email: "default",
+				Email: to.Ptr("default"),
 				Scopes: []string{
-					compute.ComputeScope,
+					"https://www.googleapis.com/auth/compute",
 				},
 			},
 		},
 	}
 
+	req := &computepb.InsertInstanceRequest{
+		Project:          projectID,
+		Zone:             defaultZone,
+		InstanceResource: instance,
+	}
+
 	// Create the VM instance
-	op, err := computeService.Instances.Insert(projectID, defaultZone, instance).Do()
+	op, err := c.computeClient.Insert(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to create VM instance: %v", err)
 	}
 
 	// Wait for the operation to complete
-	err = c.waitForOperation(ctx, computeService, projectID, defaultZone, op.Name)
+	err = c.waitForOperation(ctx, projectID, defaultZone, op.Name())
 	if err != nil {
 		return "", fmt.Errorf("failed to wait for VM creation: %v", err)
 	}
@@ -527,10 +814,12 @@ func (c *LiveGCPClient) CreateVM(
 
 func (c *LiveGCPClient) getOrCreateNetwork(
 	ctx context.Context,
-	computeService *compute.Service,
 	projectID, networkName string,
-) (*compute.Network, error) {
-	network, err := computeService.Networks.Get(projectID, networkName).Do()
+) (*computepb.Network, error) {
+	network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+		Project: projectID,
+		Network: networkName,
+	})
 	if err == nil {
 		return network, nil
 	}
@@ -540,35 +829,45 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	}
 
 	// Network doesn't exist, create it
-	network = &compute.Network{
-		Name:                  networkName,
-		AutoCreateSubnetworks: true,
+	network = &computepb.Network{
+		Name:                  &networkName,
+		AutoCreateSubnetworks: to.Ptr(true),
 	}
 
-	op, err := computeService.Networks.Insert(projectID, network).Do()
+	req := &computepb.InsertNetworkRequest{
+		Project:         projectID,
+		NetworkResource: network,
+	}
+
+	op, err := c.networksClient.Insert(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %v", err)
 	}
 
-	err = c.waitForGlobalOperation(ctx, computeService, projectID, op.Name)
+	err = c.waitForGlobalOperation(ctx, projectID, op.Name())
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for network creation: %v", err)
 	}
 
-	return computeService.Networks.Get(projectID, networkName).Do()
+	return c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+		Project: projectID,
+		Network: networkName,
+	})
 }
 
 func (c *LiveGCPClient) waitForGlobalOperation(
 	ctx context.Context,
-	service *compute.Service,
 	project, operation string,
 ) error {
 	for {
-		op, err := service.GlobalOperations.Get(project, operation).Do()
+		op, err := c.globalOperationsClient.Get(ctx, &computepb.GetGlobalOperationRequest{
+			Project:   project,
+			Operation: operation,
+		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get operation status: %v", err)
 		}
-		if op.Status == "DONE" {
+		if *op.Status == computepb.Operation_DONE {
 			if op.Error != nil {
 				return fmt.Errorf("operation failed: %v", op.Error.Errors)
 			}
@@ -583,23 +882,21 @@ func (c *LiveGCPClient) waitForGlobalOperation(
 	}
 }
 
-func isNotFoundError(err error) bool {
-	gerr, ok := err.(*googleapi.Error)
-	return ok && gerr.Code == 404
-}
-
 func (c *LiveGCPClient) waitForOperation(
 	ctx context.Context,
-	service *compute.Service,
 	project, zone, operation string,
 ) error {
 	for {
-		op, err := service.ZoneOperations.Get(project, zone, operation).Context(ctx).Do()
+		op, err := c.zoneOperationsClient.Get(ctx, &computepb.GetZoneOperationRequest{
+			Project:   project,
+			Zone:      zone,
+			Operation: operation,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to get operation status: %v", err)
 		}
 
-		if op.Status == "DONE" {
+		if *op.Status == computepb.Operation_DONE {
 			if op.Error != nil {
 				return fmt.Errorf("operation failed: %v", op.Error.Errors)
 			}
@@ -615,4 +912,197 @@ func (c *LiveGCPClient) waitForOperation(
 			time.Sleep(ResourcePollingInterval)
 		}
 	}
+}
+
+func (c *LiveGCPClient) SetBillingAccount(
+	ctx context.Context,
+	projectID, billingAccountID string,
+) error {
+	l := logger.Get()
+	l.Infof("Setting billing account %s for project %s", billingAccountID, projectID)
+
+	billingAccountName := getBillingAccountName(billingAccountID)
+
+	req := &billingpb.UpdateProjectBillingInfoRequest{
+		Name: fmt.Sprintf("projects/%s", projectID),
+		ProjectBillingInfo: &billingpb.ProjectBillingInfo{
+			ProjectId:          projectID,
+			BillingAccountName: billingAccountName,
+		},
+	}
+
+	_, err := c.cloudBillingClient.UpdateProjectBillingInfo(ctx, req)
+	if err != nil {
+		l.Errorf("Failed to update billing info: %v", err)
+		return fmt.Errorf("failed to update billing info: %v", err)
+	}
+
+	return nil
+}
+
+func getBillingAccountName(billingAccountID string) string {
+	if strings.HasPrefix(billingAccountID, "billingAccounts/") {
+		return billingAccountID
+	}
+	return fmt.Sprintf("billingAccounts/%s", billingAccountID)
+}
+
+func (c *LiveGCPClient) ListBillingAccounts(ctx context.Context) ([]string, error) {
+	l := logger.Get()
+	l.Debug("Listing billing accounts")
+
+	req := &billingpb.ListBillingAccountsRequest{}
+	it := c.cloudBillingClient.ListBillingAccounts(ctx, req)
+
+	var billingAccounts []string
+	for {
+		resp, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			l.Errorf("Failed to list billing accounts: %v", err)
+			return nil, fmt.Errorf("failed to list billing accounts: %v", err)
+		}
+		billingAccounts = append(billingAccounts, resp.Name)
+	}
+
+	return billingAccounts, nil
+}
+
+func (c *LiveGCPClient) CreateServiceAccount(
+	ctx context.Context,
+	projectID string,
+	saName string,
+) (*iam.ServiceAccount, error) {
+	l := logger.Get()
+	l.Infof("Ensuring service account exists for project %s", projectID)
+
+	service, err := iam.NewService(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("iam.NewService: %w", err)
+	}
+
+	request := &iam.CreateServiceAccountRequest{
+		AccountId: fmt.Sprintf("%s-%s", projectID, saName),
+	}
+	createAccountCall := service.Projects.ServiceAccounts.Create(
+		"projects/"+projectID,
+		request,
+	)
+
+	account, err := createAccountCall.Do()
+	if err != nil {
+		// Check if the error is due to the account already existing
+		if strings.Contains(err.Error(), "already exists") {
+			// Get the existing account and return it
+			account, err := c.iamService.Projects.ServiceAccounts.Get("projects/" + projectID + "/serviceAccounts/" + saName).
+				Do()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get existing service account: %w", err)
+			}
+			return account, nil
+		}
+		return nil, fmt.Errorf("createAccountCall.Do: %w", err)
+	}
+
+	return account, nil
+}
+
+func (c *LiveGCPClient) CreateServiceAccountKey(
+	ctx context.Context,
+	projectID, serviceAccountEmail string,
+) (*iam.ServiceAccountKey, error) {
+	l := logger.Get()
+	l.Infof("Creating service account key for %s in project %s", serviceAccountEmail, projectID)
+
+	key, err := c.iamService.Projects.ServiceAccounts.Keys.Create(
+		fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail),
+		&iam.CreateServiceAccountKeyRequest{},
+	).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create service account key: %v", err)
+	}
+
+	return key, nil
+}
+
+func (c *LiveGCPClient) waitForRegionalOperation(
+	ctx context.Context,
+	project, region, operation string,
+) error {
+	for {
+		op, err := c.regionOperationsClient.Get(ctx, &computepb.GetRegionOperationRequest{
+			Project:   project,
+			Region:    region,
+			Operation: operation,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get operation status: %v", err)
+		}
+
+		if *op.Status == computepb.Operation_DONE {
+			if op.Error != nil {
+				return fmt.Errorf("operation failed: %v", op.Error.Errors)
+			}
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			time.Sleep(ResourcePollingInterval)
+		}
+	}
+}
+
+func isNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "notFound")
+}
+
+func (c *LiveGCPClient) IsAPIEnabled(
+	ctx context.Context,
+	projectID, apiName string,
+) (bool, error) {
+	l := logger.Get()
+	l.Infof("Checking if API %s is enabled for project %s", apiName, projectID)
+
+	if projectID == "" {
+		return false, fmt.Errorf("project ID is empty")
+	}
+
+	serviceName := fmt.Sprintf("projects/%s/services/%s", projectID, apiName)
+	service, err := c.serviceUsageClient.GetService(ctx, &serviceusagepb.GetServiceRequest{
+		Name: serviceName,
+	})
+	if err != nil {
+		if isNotFoundError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check if API is enabled: %v", err)
+	}
+
+	return service.State == serviceusagepb.State_ENABLED, nil
+}
+
+func (c *LiveGCPClient) GetVMExternalIP(
+	ctx context.Context,
+	projectID, zone, vmName string,
+) (string, error) {
+	l := logger.Get()
+	l.Infof("Getting external IP address for VM %s in project %s", vmName, projectID)
+
+	req := &computepb.GetInstanceRequest{
+		Project:  projectID,
+		Zone:     zone,
+		Instance: vmName,
+	}
+
+	instance, err := c.computeClient.Get(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get VM: %v", err)
+	}
+
+	return *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP, nil
 }

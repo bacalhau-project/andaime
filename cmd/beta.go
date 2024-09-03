@@ -30,8 +30,8 @@ func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
 		}
 		rootCmd.AddCommand(betaCmd)
 
-		betaCmd.AddCommand(azure.GetAzureCmd())
 		betaCmd.AddCommand(beta.GetTestDisplayCmd())
+		betaCmd.AddCommand(azure.GetAzureCmd())
 		betaCmd.AddCommand(gcp.GetGCPCmd())
 		// betaCmd.AddCommand(azure.GetAwsCmd())
 	})

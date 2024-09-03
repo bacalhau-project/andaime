@@ -62,8 +62,6 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	l.Debugf("Flags: name=%s, index=%d, destroyAll=%v", name, index, destroyAll)
 
-	// Read config.yaml
-	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	err = viper.ReadInConfig()

@@ -2,19 +2,24 @@ package gcp
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
+	"google.golang.org/api/iam/v1"
 )
 
 const (
@@ -103,22 +108,38 @@ type GCPProviderer interface {
 		ctx context.Context,
 		projectID string,
 	) ([]*assetpb.Asset, error)
+	SetBillingAccount(ctx context.Context) error
 	DeployResources(ctx context.Context) error
 	ProvisionPackagesOnMachines(ctx context.Context) error
 	ProvisionBacalhau(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
 	StartResourcePolling(ctx context.Context)
 	CheckAuthentication(ctx context.Context) error
-	EnableAPI(ctx context.Context, projectID, apiName string) error
-	CreateVPCNetwork(ctx context.Context, projectID, networkName string) error
-	CreateSubnet(ctx context.Context, projectID, networkName, subnetName, cidr string) error
-	CreateFirewallRules(ctx context.Context, projectID, networkName string) error
-	CreateStorageBucket(ctx context.Context, projectID, bucketName string) error
-	CreateVM(ctx context.Context, projectID string, vmConfig map[string]string) (string, error)
+	EnableAPI(ctx context.Context, apiName string) error
+	EnableRequiredAPIs(ctx context.Context) error
+	CreateVPCNetwork(
+		ctx context.Context,
+		networkName string,
+	) error
+	CreateFirewallRules(
+		ctx context.Context,
+		networkName string,
+	) error
+	CreateStorageBucket(
+		ctx context.Context,
+		bucketName string,
+	) error
+	CreateVM(
+		ctx context.Context,
+		projectID string,
+		vmConfig map[string]string,
+	) (string, error)
+	ListBillingAccounts(ctx context.Context) ([]string, error)
 }
 
 type GCPProvider struct {
 	Client              GCPClienter
+	CleanupClient       func()
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
@@ -177,7 +198,7 @@ func NewGCPProvider() (GCPProviderer, error) {
 	config.Set("general.ssh_public_key_path", expandedPublicKeyPath)
 	config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
 
-	client, err := GetGCPClient(context.Background(), organizationID)
+	client, cleanup, err := NewGCPClientFunc(context.Background(), organizationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP client: %w", err)
 	}
@@ -193,14 +214,64 @@ func NewGCPProvider() (GCPProviderer, error) {
 	}
 
 	provider := &GCPProvider{
-		Client:      client,
-		Config:      config,
-		SSHUser:     sshUser,
-		SSHPort:     sshPort,
-		updateQueue: make(chan UpdateAction, UpdateQueueSize),
+		Client:        client,
+		CleanupClient: cleanup,
+		Config:        config,
+		SSHUser:       sshUser,
+		SSHPort:       sshPort,
+		updateQueue:   make(chan UpdateAction, UpdateQueueSize),
+	}
+
+	// Load deployment data from config
+	err = provider.loadDeploymentFromConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load deployment from config: %w", err)
 	}
 
 	return provider, nil
+}
+
+func (p *GCPProvider) loadDeploymentFromConfig() error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Load project ID
+	m.Deployment.ProjectID = p.Config.GetString("gcp.project_id")
+
+	// Load billing account ID
+	m.Deployment.BillingAccountID = p.Config.GetString("gcp.billing_account_id")
+
+	// Load service account email
+	m.Deployment.ServiceAccountEmail = p.Config.GetString("gcp.service_account_email")
+
+	// Load allowed ports
+	m.Deployment.AllowedPorts = p.Config.GetIntSlice("gcp.allowed_ports")
+
+	// Initialize the ProjectServiceAccounts map if it's nil
+	if m.Deployment.ProjectServiceAccounts == nil {
+		m.Deployment.ProjectServiceAccounts = make(map[string]models.ServiceAccountInfo)
+	}
+
+	// Load project-specific data
+	projectsMap := p.Config.GetStringMap("gcp.projects")
+	for projectID, projectData := range projectsMap {
+		if projectDataMap, ok := projectData.(map[string]interface{}); ok {
+			if saData, ok := projectDataMap["service_account"].(map[string]interface{}); ok {
+				email, _ := saData["email"].(string)
+				key, _ := saData["key"].(string)
+				if email != "" && key != "" {
+					m.Deployment.ProjectServiceAccounts[projectID] = models.ServiceAccountInfo{
+						Email: email,
+						Key:   key,
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *GCPProvider) GetConfig() *viper.Viper {
@@ -231,7 +302,92 @@ func (p *GCPProvider) EnsureProject(
 	ctx context.Context,
 	projectID string,
 ) (string, error) {
-	return p.Client.EnsureProject(ctx, projectID)
+	// Create the project
+	createdProjectID, err := p.Client.EnsureProject(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+
+	// Set the project ID in the deployment model
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		m.Deployment.ProjectID = createdProjectID
+	}
+
+	// Create a service account for the project
+	err = p.createServiceAccount(ctx, createdProjectID)
+	if err != nil {
+		return "", err
+	}
+
+	// Create firewall rules for the project
+	err = p.CreateFirewallRules(ctx, "default")
+	if err != nil {
+		return "", fmt.Errorf("failed to create firewall rules: %v", err)
+	}
+
+	return createdProjectID, nil
+}
+
+func (p *GCPProvider) createServiceAccount(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	l.Infof("Creating service account for project %s", projectID)
+
+	// Create a new service account
+	saName := "andaime-sa"
+	sa, err := p.Client.CreateServiceAccount(ctx, projectID, saName)
+	if err != nil {
+		return fmt.Errorf("failed to create service account: %v", err)
+	}
+
+	l.Infof("Service account created or found: %s", sa.Email)
+
+	// Ensure the service account exists before creating a key
+	retryBackoff := backoff.NewExponentialBackOff()
+	retryBackoff.MaxElapsedTime = 1 * time.Minute
+
+	var key *iam.ServiceAccountKey
+	err = backoff.Retry(func() error {
+		var innerErr error
+		key, innerErr = p.Client.CreateServiceAccountKey(ctx, projectID, sa.Email)
+		if innerErr != nil {
+			l.Warnf("Failed to create service account key, retrying: %v", innerErr)
+			return innerErr // This will trigger a retry
+		}
+		return nil // Success, stop retrying
+	}, retryBackoff)
+
+	if err != nil {
+		return fmt.Errorf("failed to create service account key after retries: %v", err)
+	}
+
+	// Decode the private key
+	decodedPrivateKey, err := base64.StdEncoding.DecodeString(key.PrivateKeyData)
+	if err != nil {
+		return fmt.Errorf("failed to decode private key: %v", err)
+	}
+
+	// Store the service account details in the config
+	p.Config.Set(fmt.Sprintf("gcp.projects.%s.service_account.email", projectID), sa.Email)
+	p.Config.Set(
+		fmt.Sprintf("gcp.projects.%s.service_account.key", projectID),
+		string(decodedPrivateKey),
+	)
+
+	// Update the deployment model
+	m.Deployment.ServiceAccountEmail = sa.Email
+
+	// Save the updated config
+	err = p.Config.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("failed to save config: %v", err)
+	}
+
+	l.Infof("Service account credentials stored in config for project %s", projectID)
+
+	return nil
 }
 
 func (p *GCPProvider) DestroyProject(
@@ -281,30 +437,152 @@ func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
 	return p.Client.CheckAuthentication(ctx)
 }
 
-func (p *GCPProvider) EnableAPI(ctx context.Context, projectID, apiName string) error {
-	return p.Client.EnableAPI(ctx, projectID, apiName)
+func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	projectID := m.Deployment.ProjectID
+	if projectID == "" {
+		return fmt.Errorf("project ID is not set in the deployment")
+	}
+
+	requiredAPIs := []string{
+		"compute.googleapis.com",
+		"networkmanagement.googleapis.com",
+		"storage-api.googleapis.com",
+		"file.googleapis.com",
+		"storage.googleapis.com",
+	}
+
+	for _, api := range requiredAPIs {
+		err := p.EnableAPI(ctx, api)
+		if err != nil {
+			return fmt.Errorf("failed to enable API %s: %v", api, err)
+		}
+		l.Infof("Enabled API: %s for project %s", api, projectID)
+	}
+
+	return nil
 }
 
-func (p *GCPProvider) CreateVPCNetwork(ctx context.Context, projectID, networkName string) error {
-	return p.Client.CreateVPCNetwork(ctx, projectID, networkName)
+func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	projectID := m.Deployment.ProjectID
+	if projectID == "" {
+		return fmt.Errorf("project ID is not set in the deployment")
+	}
+
+	l.Infof("Checking API status: %s for project: %s", apiName, projectID)
+
+	// First, check if the API is already enabled
+	enabled, err := p.Client.IsAPIEnabled(ctx, projectID, apiName)
+	if err != nil {
+		l.Warnf("Failed to check API status: %v", err)
+	} else if enabled {
+		l.Infof("API %s is already enabled", apiName)
+		return nil
+	}
+
+	l.Infof("Attempting to enable API: %s for project: %s", apiName, projectID)
+
+	err = p.Client.EnableAPI(ctx, projectID, apiName)
+	if err != nil {
+		if strings.Contains(err.Error(), "permission denied") {
+			l.Warnf(
+				"Failed to enable API %s due to permission issues. You may need to enable it manually: %v",
+				apiName,
+				err,
+			)
+			return nil
+		}
+		l.Errorf("Failed to enable API %s: %v", apiName, err)
+		return fmt.Errorf("failed to enable API %s: %v", apiName, err)
+	}
+
+	l.Infof("Successfully enabled API: %s", apiName)
+	return nil
 }
 
-func (p *GCPProvider) CreateSubnet(
+func (p *GCPProvider) CreateVPCNetwork(
 	ctx context.Context,
-	projectID, networkName, subnetName, cidr string,
+	networkName string,
 ) error {
-	return p.Client.CreateSubnet(ctx, projectID, networkName, subnetName, cidr)
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	l.Infof("Creating VPC network %s in project %s", networkName, m.Deployment.ProjectID)
+
+	// First, ensure that the Compute Engine API is enabled
+	err := p.EnableAPI(ctx, "compute.googleapis.com")
+	if err != nil {
+		return fmt.Errorf("failed to enable Compute Engine API: %v", err)
+	}
+
+	// Define the exponential backoff strategy
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 3 * time.Minute
+
+	// Define the operation to retry
+	operation := func() error {
+		l.Infof("Attempting to create VPC network %s...", networkName)
+		err := p.Client.CreateVPCNetwork(ctx, networkName)
+		if err != nil {
+			if strings.Contains(err.Error(), "Compute Engine API has not been used") {
+				l.Infof("Compute Engine API is not yet active. Retrying...")
+				return err // This error will trigger a retry
+			}
+			return backoff.Permanent(err) // This error will not trigger a retry
+		}
+		return nil
+	}
+
+	// Define the notify function to keep the user updated
+	notify := func(err error, duration time.Duration) {
+		l.Infof("Attempt to create VPC network failed. Retrying in %v: %v", duration, err)
+	}
+
+	// Execute the operation with backoff
+	err = backoff.RetryNotify(operation, b, notify)
+
+	if err != nil {
+		l.Errorf("Failed to create VPC network after multiple attempts: %v", err)
+		return fmt.Errorf("failed to create VPC network: %v", err)
+	}
+
+	l.Infof("VPC network %s created successfully", networkName)
+	return nil
 }
 
 func (p *GCPProvider) CreateFirewallRules(
 	ctx context.Context,
-	projectID, networkName string,
+	networkName string,
 ) error {
-	return p.Client.CreateFirewallRules(ctx, projectID, networkName)
+	l := logger.Get()
+	l.Infof("Creating firewall rules for network: %s", networkName)
+
+	err := p.Client.CreateFirewallRules(ctx, networkName)
+	if err != nil {
+		return fmt.Errorf("failed to create firewall rules: %v", err)
+	}
+
+	l.Infof("Firewall rules created successfully for network: %s", networkName)
+	return nil
 }
 
-func (p *GCPProvider) CreateStorageBucket(ctx context.Context, projectID, bucketName string) error {
-	return p.Client.CreateStorageBucket(ctx, projectID, bucketName)
+func (p *GCPProvider) CreateStorageBucket(
+	ctx context.Context,
+	bucketName string,
+) error {
+	return p.Client.CreateStorageBucket(ctx, bucketName)
 }
 
 func (p *GCPProvider) CreateVM(
@@ -312,7 +590,98 @@ func (p *GCPProvider) CreateVM(
 	projectID string,
 	vmConfig map[string]string,
 ) (string, error) {
-	return p.Client.CreateVM(ctx, projectID, vmConfig)
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	// Set the project ID in the deployment model
+	if m != nil && m.Deployment != nil {
+		m.Deployment.ProjectID = projectID
+		l.Infof("Set project ID in deployment: %s", projectID)
+	} else {
+		return "", fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Enable required APIs
+	err := p.EnableRequiredAPIs(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to enable required APIs: %v", err)
+	}
+
+	// Create the VM
+	vmName, err := p.Client.CreateVM(ctx, vmConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to create VM: %v", err)
+	}
+
+	// Get the VM's external IP address
+	vmIP, err := p.Client.GetVMExternalIP(ctx, projectID, vmConfig["zone"], vmName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get VM external IP: %v", err)
+	}
+
+	// Get the SSH private key material
+	sshPrivateKeyMaterial, err := p.getSSHPrivateKeyMaterial()
+	if err != nil {
+		return "", fmt.Errorf("failed to get SSH private key material: %v", err)
+	}
+
+	// Test SSH connectivity
+	err = p.testSSHConnectivity(ctx, p.SSHUser, vmIP, p.SSHPort, sshPrivateKeyMaterial)
+	if err != nil {
+		return "", fmt.Errorf("failed to test SSH connectivity: %v", err)
+	}
+
+	return vmName, nil
+}
+
+func (p *GCPProvider) testSSHConnectivity(
+	ctx context.Context,
+	username, ipAddress string,
+	port int,
+	sshPrivateKeyMaterial string,
+) error {
+	l := logger.Get()
+
+	l.Infof("Testing SSH connectivity to %s@%s:%d", username, ipAddress, port)
+
+	checker := sshutils.NewSSHLivenessChecker()
+	err := checker.CheckSSHLiveness(ctx, ipAddress, username, sshPrivateKeyMaterial, port)
+	if err != nil {
+		return fmt.Errorf("failed to connect via SSH: %v", err)
+	}
+
+	l.Infof("Successfully connected to %s@%s:%d via SSH", username, ipAddress, port)
+	return nil
+}
+
+func (p *GCPProvider) getSSHPrivateKeyMaterial() (string, error) {
+	privateKeyPath := p.Config.GetString("general.ssh_private_key_path")
+	if privateKeyPath == "" {
+		return "", fmt.Errorf("SSH private key path is not set")
+	}
+
+	privateKeyBytes, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read private key file: %v", err)
+	}
+
+	return string(privateKeyBytes), nil
+}
+
+func (p *GCPProvider) ListBillingAccounts(ctx context.Context) ([]string, error) {
+	return p.Client.ListBillingAccounts(ctx)
+}
+
+func (p *GCPProvider) SetBillingAccount(ctx context.Context) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	l.Infof(
+		"Setting billing account to %s for project %s",
+		m.Deployment.BillingAccountID,
+		m.Deployment.ProjectID,
+	)
+
+	return p.Client.SetBillingAccount(ctx, m.Deployment.ProjectID, m.Deployment.BillingAccountID)
 }
 
 var (
@@ -320,10 +689,11 @@ var (
 	gcpClientOnce     sync.Once
 )
 
-func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, error) {
+func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, func(), error) {
 	var err error
+	var cleanup func()
 	gcpClientOnce.Do(func() {
-		gcpClientInstance, err = NewGCPClient(ctx, organizationID)
+		gcpClientInstance, cleanup, err = NewGCPClient(ctx, organizationID)
 	})
-	return gcpClientInstance, err
+	return gcpClientInstance, cleanup, err
 }

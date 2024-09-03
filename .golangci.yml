@@ -63,7 +63,7 @@ linters:
     - depguard
     - dogsled
     - errcheck
-    - exportloopref
+    - copyloopvar
     - funlen
     - gochecknoinits
     - goconst

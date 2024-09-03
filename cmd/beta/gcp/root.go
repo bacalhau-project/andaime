@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -32,6 +33,13 @@ var GCPCmd = &cobra.Command{
 			return handleGCPError(err)
 		}
 
+		m := display.GetGlobalModelFunc()
+		if !viper.IsSet("gcp.billing_account_id") {
+			return fmt.Errorf("gcp.billing_account_id is required")
+		}
+		billingAccountID := viper.GetString("gcp.billing_account_id")
+		m.Deployment.BillingAccountID = billingAccountID
+
 		return nil
 	},
 }
@@ -43,8 +51,7 @@ func InitializeCommands() {
 		GCPCmd.AddCommand(GetCreateProjectCmd())
 		GCPCmd.AddCommand(GetDestroyProjectCmd())
 		GCPCmd.AddCommand(GetListAllAssetsInProjectCmd())
-		GCPCmd.AddCommand(GetCreateVMCmd()) // Add this line
-		// Add other commands here
+		GCPCmd.AddCommand(GetCreateVMCmd())
 	})
 }
 

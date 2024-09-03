@@ -38,6 +38,11 @@ func (m *MockSSHClient) Close() error {
 	return args.Error(0)
 }
 
+func (m *MockSSHClient) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
+	args := m.Called(ip, user, port, privateKeyPath)
+	return args.Error(0)
+}
+
 func GetTypedMockClient(t *testing.T, log *logger.Logger) (*MockSSHClient, SSHConfiger) {
 	mockSSHClient, sshConfig := NewMockSSHClient(NewMockSSHDialer())
 	return mockSSHClient, sshConfig
