@@ -33,6 +33,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const maximumProjectIDLength = 18
+const maximumUniqueProjectIDLength = 26
+
 type GCPClienter interface {
 	EnsureProject(
 		ctx context.Context,
@@ -67,7 +70,6 @@ type GCPClienter interface {
 	CreateServiceAccount(
 		ctx context.Context,
 		projectID string,
-		saName string,
 	) (*iam.ServiceAccount, error)
 	CreateServiceAccountKey(
 		ctx context.Context,
@@ -82,6 +84,14 @@ type GCPClienter interface {
 	waitForGlobalOperation(
 		ctx context.Context,
 		project, operation string,
+	) error
+	getVMZone(
+		ctx context.Context,
+		projectID, vmName string,
+	) (string, error)
+	checkFirewallRuleExists(
+		ctx context.Context,
+		projectID, ruleName string,
 	) error
 }
 
@@ -98,6 +108,7 @@ type LiveGCPClient struct {
 	zoneOperationsClient   *compute.ZoneOperationsClient
 	globalOperationsClient *compute.GlobalOperationsClient
 	regionOperationsClient *compute.RegionOperationsClient
+	zonesListClient        *compute.ZonesClient
 }
 
 var NewGCPClientFunc = NewGCPClient
@@ -191,7 +202,19 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 	}
 	clientList = append(clientList, regionOperationsClient)
 
+	iamClient, err := iam.NewService(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	// iamClient doesn't need to be closed so we don't add it to the clientList
+
 	parentString := fmt.Sprintf("organizations/%s", organizationID)
+
+	zonesClient, err := compute.NewZonesRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, zonesClient)
 
 	// Cleanup function to close all clients
 	cleanup := func() {
@@ -209,6 +232,7 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		projectClient:          projectClient,
 		assetClient:            assetClient,
 		cloudBillingClient:     cloudBillingClient,
+		iamService:             iamClient,
 		serviceUsageClient:     serviceUsageClient,
 		computeClient:          computeClient,
 		networksClient:         networksClient,
@@ -216,6 +240,7 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		zoneOperationsClient:   zoneOperationsClient,
 		globalOperationsClient: globalOperationsClient,
 		regionOperationsClient: regionOperationsClient,
+		zonesListClient:        zonesClient,
 	}
 
 	return liveGCPClient, cleanup, nil
@@ -267,8 +292,26 @@ func (c *LiveGCPClient) EnsureProject(
 ) (string, error) {
 	l := logger.Get()
 
-	timestamp := time.Now().Format("0601021504") // yymmddhhmm
+	// Check if the project ID is too long
+	if len(projectID) > maximumProjectIDLength {
+		return "", fmt.Errorf(
+			"project ID is too long, it should be less than %d characters -- %s...",
+			maximumProjectIDLength,
+			projectID[:maximumProjectIDLength],
+		)
+	}
+
+	timestamp := time.Now().Format("01021504") // mmddhhmm
 	uniqueProjectID := fmt.Sprintf("%s-%s", projectID, timestamp)
+
+	// Check if the unique project ID is too long
+	if len(uniqueProjectID) > maximumUniqueProjectIDLength {
+		return "", fmt.Errorf(
+			"unique project ID is too long, it should be less than %d characters -- %s...",
+			maximumUniqueProjectIDLength,
+			uniqueProjectID[:maximumUniqueProjectIDLength],
+		)
+	}
 
 	l.Debugf("Ensuring project: %s", uniqueProjectID)
 
@@ -314,8 +357,28 @@ func (c *LiveGCPClient) EnsureProject(
 
 	l.Debugf("Created project: %s (Display Name: %s)", project.ProjectId, project.DisplayName)
 
+	// Set the billing account for the project
+	billingAccountID := viper.GetString("gcp.billing_account_id")
+	if err := c.SetBillingAccount(ctx, project.ProjectId, billingAccountID); err != nil {
+		return "", fmt.Errorf("failed to set billing account: %v", err)
+	}
+
+	// Enable necessary APIs
+	apisToEnable := []string{
+		"compute.googleapis.com",
+		"storage.googleapis.com",
+		"iam.googleapis.com",
+		"serviceusage.googleapis.com",
+	}
+
+	for _, api := range apisToEnable {
+		if err := c.EnableAPI(ctx, project.ProjectId, api); err != nil {
+			return "", fmt.Errorf("failed to enable API %s: %v", api, err)
+		}
+	}
+
 	// Create service account after project creation
-	serviceAccount, err := c.CreateServiceAccount(ctx, project.ProjectId, "andaime-sa")
+	serviceAccount, err := c.CreateServiceAccount(ctx, project.ProjectId)
 	if err != nil {
 		l.Errorf("Failed to create service account: %v", err)
 		return "", fmt.Errorf("create service account: %v", err)
@@ -483,6 +546,9 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 	l := logger.Get()
 	l.Debugf("Listing all resources in project: %s", projectID)
 
+	// Chain of thought reasoning prefix
+	prefix := "To list all assets in the project, we need to query the Cloud Asset API. "
+
 	req := &assetpb.SearchAllResourcesRequest{
 		Scope: fmt.Sprintf("projects/%s", projectID),
 	}
@@ -496,6 +562,14 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 		if err != nil {
 			return nil, fmt.Errorf("failed to list resources: %v", err)
 		}
+
+		// Prefix the query with the chain of thought reasoning
+		l.Debugf(
+			"%sQuerying resource: %s (Type: %s)",
+			prefix,
+			resource.GetName(),
+			resource.GetAssetType(),
+		)
 
 		resourceAsset := &assetpb.Asset{
 			Name:       resource.GetName(),
@@ -631,45 +705,87 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	projectID := m.Deployment.ProjectID
 	l.Debugf("Creating firewall rules in project: %s", projectID)
 
+	// Enable the Compute Engine API
+	if err := c.EnableAPI(ctx, projectID, "compute.googleapis.com"); err != nil {
+		return fmt.Errorf("failed to enable Compute Engine API: %v", err)
+	}
+
 	// Get allowed ports from the configuration
 	allowedPorts := viper.GetIntSlice("gcp.allowed_ports")
 	if len(allowedPorts) == 0 {
 		return fmt.Errorf("no allowed ports specified in the configuration")
 	}
 
-	var allowedPortsStr []string
-	for _, port := range allowedPorts {
-		allowedPortsStr = append(allowedPortsStr, strconv.Itoa(port))
-	}
+	// Use the "default" network
+	networkName = "default"
 
-	// Create a firewall rule to allow incoming traffic on the specified ports
-	firewallRule := &computepb.Firewall{
-		Name:    to.Ptr(fmt.Sprintf("%s-allow-incoming", networkName)),
-		Network: to.Ptr(fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)),
-		Allowed: []*computepb.Allowed{
-			{
-				IPProtocol: to.Ptr("tcp"),
-				Ports:      allowedPortsStr,
+	// Create a firewall rule for each allowed port
+	for i, port := range allowedPorts {
+		ruleName := fmt.Sprintf("default-allow-%d", port)
+
+		// Check if the firewall rule already exists
+		if err := c.checkFirewallRuleExists(ctx, projectID, ruleName); err == nil {
+			l.Infof("Firewall rule %s already exists, skipping creation", ruleName)
+			continue
+		}
+
+		firewallRule := &computepb.Firewall{
+			Name:    &ruleName,
+			Network: to.Ptr(fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)),
+			Allowed: []*computepb.Allowed{
+				{
+					IPProtocol: to.Ptr("tcp"),
+					Ports:      []string{strconv.Itoa(port)},
+				},
 			},
-		},
-		SourceRanges: []string{"0.0.0.0/0"}, // Allow from any source IP
-		Direction:    to.Ptr("INGRESS"),
+			SourceRanges: []string{"0.0.0.0/0"}, // Allow from any source IP
+			Direction:    to.Ptr("INGRESS"),
+			Priority:     to.Ptr(int32(1000 + i)), // Assign a unique priority to each rule
+		}
+
+		// Define exponential backoff
+		b := backoff.NewExponentialBackOff()
+		b.MaxElapsedTime = 5 * time.Minute
+
+		operation := func() error {
+			op, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
+				Project:          projectID,
+				FirewallResource: firewallRule,
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "Compute Engine API has not been used") {
+					l.Infof("Compute Engine API is not yet active. Retrying...")
+					return err // This will trigger a retry
+				}
+				return backoff.Permanent(fmt.Errorf("failed to create firewall rule: %v", err))
+			}
+
+			err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+			if err != nil {
+				return fmt.Errorf("failed to wait for firewall rule creation: %v", err)
+			}
+
+			return nil
+		}
+
+		// Start a spinner to alert the user
+		spinner := display.NewSpinner(fmt.Sprintf("Creating firewall rule for port %d...", port))
+		defer spinner.Stop()
+
+		err := backoff.Retry(operation, b)
+		if err != nil {
+			spinner.Stop()
+			l.Errorf("Failed to create firewall rule for port %d after retries: %v", port, err)
+			return fmt.Errorf(
+				"failed to create firewall rule for port %d after retries: %v",
+				port,
+				err,
+			)
+		}
+		spinner.Stop()
+		l.Infof("Firewall rule created successfully for port %d", port)
 	}
 
-	op, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
-		Project:          projectID,
-		FirewallResource: firewallRule,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create firewall rule: %v", err)
-	}
-
-	err = c.waitForGlobalOperation(ctx, projectID, op.Name())
-	if err != nil {
-		return fmt.Errorf("failed to wait for firewall rule creation: %v", err)
-	}
-
-	l.Infof("Firewall rules created successfully for network: %s", networkName)
 	return nil
 }
 
@@ -734,13 +850,23 @@ func (c *LiveGCPClient) CreateVM(
 	vmName := fmt.Sprintf("%s-vm", uniqueID)
 
 	// Get default values from config
-	defaultZone := viper.GetString("gcp.default_zone")
 	defaultMachineType := viper.GetString("gcp.default_machine_type")
 	defaultDiskSizeGB := viper.GetString("gcp.default_disk_size_gb")
 	defaultSourceImage := viper.GetString("gcp.default_source_image")
 
+	// Get the zone from the vmConfig
+	zone, ok := vmConfig["zone"]
+	if !ok {
+		return "", fmt.Errorf("zone is required to create a VM")
+	}
+
+	// Validate the zone
+	if err := c.validateZone(ctx, projectID, zone); err != nil {
+		return "", fmt.Errorf("invalid zone: %v", err)
+	}
+
 	// Create or get the network
-	networkName := fmt.Sprintf("%s-network", projectID)
+	networkName := "default" // Use the default network
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get or create network: %v", err)
@@ -752,11 +878,22 @@ func (c *LiveGCPClient) CreateVM(
 		return "", fmt.Errorf("failed to convert default disk size to int64: %v", err)
 	}
 
+	// Get the SSH user from the deployment model
+	sshUser := m.Deployment.SSHUser
+
+	// Create a startup script to configure the sudoers file
+	startupScript := fmt.Sprintf(
+		"sudo useradd -m %s && sudo usermod -aG sudo %s && echo '%s ALL=(ALL) NOPASSWD:ALL' | sudo EDITOR='tee -a' visudo",
+		sshUser,
+		sshUser,
+		sshUser,
+	)
+
 	instance := &computepb.Instance{
 		Name: &vmName,
 		MachineType: to.Ptr(fmt.Sprintf(
 			"zones/%s/machineTypes/%s",
-			defaultZone,
+			zone, // Use the provided zone
 			defaultMachineType,
 		)),
 		Disks: []*computepb.AttachedDisk{
@@ -789,11 +926,19 @@ func (c *LiveGCPClient) CreateVM(
 				},
 			},
 		},
+		Metadata: &computepb.Metadata{
+			Items: []*computepb.Items{
+				{
+					Key:   to.Ptr("startup-script"),
+					Value: to.Ptr(startupScript),
+				},
+			},
+		},
 	}
 
 	req := &computepb.InsertInstanceRequest{
 		Project:          projectID,
-		Zone:             defaultZone,
+		Zone:             zone, // Use the provided zone
 		InstanceResource: instance,
 	}
 
@@ -804,7 +949,7 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Wait for the operation to complete
-	err = c.waitForOperation(ctx, projectID, defaultZone, op.Name())
+	err = c.waitForOperation(ctx, projectID, zone, op.Name())
 	if err != nil {
 		return "", fmt.Errorf("failed to wait for VM creation: %v", err)
 	}
@@ -816,6 +961,7 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	ctx context.Context,
 	projectID, networkName string,
 ) (*computepb.Network, error) {
+	networkName = "default" // Use the default network
 	network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 		Project: projectID,
 		Network: networkName,
@@ -973,7 +1119,6 @@ func (c *LiveGCPClient) ListBillingAccounts(ctx context.Context) ([]string, erro
 func (c *LiveGCPClient) CreateServiceAccount(
 	ctx context.Context,
 	projectID string,
-	saName string,
 ) (*iam.ServiceAccount, error) {
 	l := logger.Get()
 	l.Infof("Ensuring service account exists for project %s", projectID)
@@ -983,30 +1128,47 @@ func (c *LiveGCPClient) CreateServiceAccount(
 		return nil, fmt.Errorf("iam.NewService: %w", err)
 	}
 
-	request := &iam.CreateServiceAccountRequest{
-		AccountId: fmt.Sprintf("%s-%s", projectID, saName),
-	}
-	createAccountCall := service.Projects.ServiceAccounts.Create(
-		"projects/"+projectID,
-		request,
-	)
+	// Create a service account name that is a combination of the project ID and the saName
+	serviceAccountName := fmt.Sprintf("%s-%s", projectID, "sa")
 
-	account, err := createAccountCall.Do()
+	// Check if the service account name is within the allowed length
+	if len(serviceAccountName) < 6 || len(serviceAccountName) > 30 {
+		return nil, fmt.Errorf(
+			"service account name is too long or too short, it should be between 6 and 30 characters",
+		)
+	}
+
+	// First, try to get the existing service account
+	existingSA, err := c.iamService.Projects.
+		ServiceAccounts.Get(fmt.Sprintf(
+		"projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com",
+		projectID,
+		serviceAccountName,
+		projectID,
+	)).
+		Do()
 	if err != nil {
-		// Check if the error is due to the account already existing
-		if strings.Contains(err.Error(), "already exists") {
-			// Get the existing account and return it
-			account, err := c.iamService.Projects.ServiceAccounts.Get("projects/" + projectID + "/serviceAccounts/" + saName).
-				Do()
+		// If the service account does not exist, create a new one
+		if isNotFoundError(err) {
+			l.Infof("Service account %s does not exist, creating a new one", serviceAccountName)
+			request := &iam.CreateServiceAccountRequest{
+				AccountId: serviceAccountName,
+			}
+			createAccountCall := service.Projects.ServiceAccounts.Create(
+				"projects/"+projectID,
+				request,
+			)
+
+			account, err := createAccountCall.Do()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get existing service account: %w", err)
+				return nil, fmt.Errorf("createAccountCall.Do: %w", err)
 			}
 			return account, nil
 		}
-		return nil, fmt.Errorf("createAccountCall.Do: %w", err)
+		return nil, fmt.Errorf("failed to get existing service account: %w", err)
 	}
 
-	return account, nil
+	return existingSA, nil
 }
 
 func (c *LiveGCPClient) CreateServiceAccountKey(
@@ -1015,6 +1177,22 @@ func (c *LiveGCPClient) CreateServiceAccountKey(
 ) (*iam.ServiceAccountKey, error) {
 	l := logger.Get()
 	l.Infof("Creating service account key for %s in project %s", serviceAccountEmail, projectID)
+
+	// Check if the service account exists
+	_, err := c.iamService.Projects.ServiceAccounts.Get("projects/" + projectID + "/serviceAccounts/" + serviceAccountEmail).
+		Do()
+	if err != nil {
+		if isNotFoundError(err) {
+			l.Infof("Service account %s does not exist, creating a new one", serviceAccountEmail)
+			serviceAccount, err := c.CreateServiceAccount(ctx, projectID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create service account: %v", err)
+			}
+			serviceAccountEmail = serviceAccount.Email
+		} else {
+			return nil, fmt.Errorf("failed to get service account: %v", err)
+		}
+	}
 
 	key, err := c.iamService.Projects.ServiceAccounts.Keys.Create(
 		fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail),
@@ -1091,11 +1269,16 @@ func (c *LiveGCPClient) GetVMExternalIP(
 	projectID, zone, vmName string,
 ) (string, error) {
 	l := logger.Get()
-	l.Infof("Getting external IP address for VM %s in project %s", vmName, projectID)
+	l.Infof(
+		"Getting external IP address for VM %s in project %s and zone %s",
+		vmName,
+		projectID,
+		zone,
+	)
 
 	req := &computepb.GetInstanceRequest{
 		Project:  projectID,
-		Zone:     zone,
+		Zone:     zone, // Pass the zone value
 		Instance: vmName,
 	}
 
@@ -1105,4 +1288,74 @@ func (c *LiveGCPClient) GetVMExternalIP(
 	}
 
 	return *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP, nil
+}
+
+func (c *LiveGCPClient) getVMZone(
+	ctx context.Context,
+	projectID, vmName string,
+) (string, error) {
+	l := logger.Get()
+	l.Debugf("Getting zone for VM %s in project %s", vmName, projectID)
+
+	// Get the VM instance
+	instance, err := c.computeClient.Get(ctx, &computepb.GetInstanceRequest{
+		Project:  projectID,
+		Instance: vmName,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get VM instance: %v", err)
+	}
+
+	// Extract the zone from the VM instance
+	zone := instance.Zone
+	if zone == nil {
+		return "", fmt.Errorf("zone not found for VM instance %s", vmName)
+	}
+
+	// Remove the "zones/" prefix from the zone string
+	zoneStr := strings.TrimPrefix(*zone, "zones/")
+
+	l.Debugf("Found zone %s for VM %s", zoneStr, vmName)
+	return zoneStr, nil
+}
+
+func (c *LiveGCPClient) validateZone(ctx context.Context, projectID, zone string) error {
+	l := logger.Get()
+	l.Debugf("Validating zone: %s", zone)
+
+	gotZone, err := c.zonesListClient.Get(ctx, &computepb.GetZoneRequest{
+		Project: projectID,
+		Zone:    zone,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get zone: %v", err)
+	}
+	if gotZone.Name != nil && *gotZone.Name == zone {
+		return nil
+	}
+
+	return fmt.Errorf("zone %s not found", zone)
+}
+
+func (c *LiveGCPClient) checkFirewallRuleExists(
+	ctx context.Context,
+	projectID, ruleName string,
+) error {
+	l := logger.Get()
+	l.Debugf("Checking if firewall rule %s exists in project %s", ruleName, projectID)
+
+	req := &computepb.GetFirewallRequest{
+		Project:  projectID,
+		Firewall: ruleName,
+	}
+
+	_, err := c.firewallsClient.Get(ctx, req)
+	if err != nil {
+		if isNotFoundError(err) {
+			return fmt.Errorf("firewall rule %s does not exist", ruleName)
+		}
+		return fmt.Errorf("failed to check firewall rule existence: %v", err)
+	}
+
+	return nil
 }

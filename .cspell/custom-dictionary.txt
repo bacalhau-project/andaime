@@ -120,6 +120,7 @@ mapstructure
 maxint
 mgmt
 mitchellh
+mmddhhmm
 mockprivatekey
 nakedret
 nanosec
@@ -144,6 +145,7 @@ PBIP
 Pollerer
 practise
 predeclared
+progressbar
 Providerer
 Provisionings
 publicipaddress

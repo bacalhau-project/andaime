@@ -135,6 +135,7 @@ type GCPProviderer interface {
 		vmConfig map[string]string,
 	) (string, error)
 	ListBillingAccounts(ctx context.Context) ([]string, error)
+	GetVMExternalIP(ctx context.Context, projectID, zone, vmName string) (string, error)
 }
 
 type GCPProvider struct {
@@ -336,8 +337,7 @@ func (p *GCPProvider) createServiceAccount(ctx context.Context, projectID string
 	l.Infof("Creating service account for project %s", projectID)
 
 	// Create a new service account
-	saName := "andaime-sa"
-	sa, err := p.Client.CreateServiceAccount(ctx, projectID, saName)
+	sa, err := p.Client.CreateServiceAccount(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("failed to create service account: %v", err)
 	}
@@ -696,4 +696,11 @@ func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		gcpClientInstance, cleanup, err = NewGCPClient(ctx, organizationID)
 	})
 	return gcpClientInstance, cleanup, err
+}
+
+func (p *GCPProvider) GetVMExternalIP(
+	ctx context.Context,
+	projectID, zone, vmName string,
+) (string, error) {
+	return p.Client.GetVMExternalIP(ctx, projectID, zone, vmName)
 }

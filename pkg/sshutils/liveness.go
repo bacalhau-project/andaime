@@ -3,7 +3,6 @@ package sshutils
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -85,13 +84,8 @@ func getSSHConfig(user, privateKeyPath string) (*ssh.ClientConfig, error) {
 	}, nil
 }
 
-func getPrivateKey(privateKeyPath string) (ssh.Signer, error) {
-	privateKeyBytes, err := os.ReadFile(privateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read private key file: %v", err)
-	}
-
-	privateKey, err := ssh.ParsePrivateKey(privateKeyBytes)
+func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
+	privateKey, err := ssh.ParsePrivateKey([]byte(privateKeyMaterial))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %v", err)
 	}
