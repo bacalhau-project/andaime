@@ -9,6 +9,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 )
 
 // CreateResourceGroup creates a new resource group or returns an existing one
@@ -23,7 +24,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 		return nil, fmt.Errorf("azure.resource_group_name is not set in the configuration")
 	}
 
-	if !IsValidResourceGroupName(rgName) {
+	if !common.IsValidResourceGroupName(rgName) {
 		return nil, fmt.Errorf("invalid resource group name: %s", rgName)
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/blang/semver"
@@ -85,6 +86,7 @@ const (
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
 	general.Providerer
+	common.ClusterDeployer
 	GetAzureClient() AzureClienter
 	SetAzureClient(client AzureClienter)
 	GetConfig() *viper.Viper
@@ -102,6 +104,7 @@ type AzureProviderer interface {
 }
 
 type AzureProvider struct {
+	common.BaseClusterDeployer
 	Client              interface{}
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
@@ -326,6 +329,31 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 	}
 
 	l.Infof("Resource group %s destroyed successfully", resourceGroupName)
+	return nil
+}
+
+func (p *AzureProvider) CreateResources(ctx context.Context) error {
+	// TODO: Implement resource creation
+	return nil
+}
+
+func (p *AzureProvider) ProvisionSSH(ctx context.Context) error {
+	// TODO: Implement SSH provisioning
+	return nil
+}
+
+func (p *AzureProvider) SetupDocker(ctx context.Context) error {
+	// TODO: Implement Docker setup
+	return nil
+}
+
+func (p *AzureProvider) DeployOrchestrator(ctx context.Context) error {
+	// TODO: Implement orchestrator deployment
+	return nil
+}
+
+func (p *AzureProvider) DeployNodes(ctx context.Context) error {
+	// TODO: Implement node deployment
 	return nil
 }
 

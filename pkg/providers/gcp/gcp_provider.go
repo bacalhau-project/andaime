@@ -10,11 +10,14 @@ import (
 )
 
 func (p *GCPProvider) CreateComputeInstance(instanceName, machineType, zone string) error {
+	// TODO: Consider moving common instance creation logic to a shared function
 	m := display.GetGlobalModelFunc()
 	computeService, err := compute.NewService(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to create Compute Engine service: %v", err)
 	}
+
+	tags := GenerateTags(m.Deployment.ProjectID, m.Deployment.UniqueID)
 
 	instance := &compute.Instance{
 		Name:        instanceName,
@@ -30,6 +33,7 @@ func (p *GCPProvider) CreateComputeInstance(instanceName, machineType, zone stri
 				},
 			},
 		},
+		Labels: tags,
 		Disks: []*compute.AttachedDisk{
 			{
 				AutoDelete: true,

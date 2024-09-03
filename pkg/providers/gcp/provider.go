@@ -14,7 +14,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/mitchellh/go-homedir"
@@ -82,61 +81,6 @@ const (
 	UpdateTypeService  UpdateType = "service"
 	UpdateTypeComplete UpdateType = "complete"
 )
-
-// AzureProvider wraps the Azure deployment functionality
-type GCPProviderer interface {
-	general.Providerer
-	GetGCPClient() GCPClienter
-	SetGCPClient(client GCPClienter)
-	GetConfig() *viper.Viper
-	SetConfig(config *viper.Viper)
-	GetSSHClient() sshutils.SSHClienter
-	SetSSHClient(client sshutils.SSHClienter)
-
-	EnsureProject(
-		ctx context.Context,
-		projectID string,
-	) (string, error)
-	DestroyProject(
-		ctx context.Context,
-		projectID string,
-	) error
-	ListProjects(
-		ctx context.Context,
-	) ([]*resourcemanagerpb.Project, error)
-	ListAllAssetsInProject(
-		ctx context.Context,
-		projectID string,
-	) ([]*assetpb.Asset, error)
-	SetBillingAccount(ctx context.Context) error
-	DeployResources(ctx context.Context) error
-	ProvisionPackagesOnMachines(ctx context.Context) error
-	ProvisionBacalhau(ctx context.Context) error
-	FinalizeDeployment(ctx context.Context) error
-	StartResourcePolling(ctx context.Context)
-	CheckAuthentication(ctx context.Context) error
-	EnableAPI(ctx context.Context, apiName string) error
-	EnableRequiredAPIs(ctx context.Context) error
-	CreateVPCNetwork(
-		ctx context.Context,
-		networkName string,
-	) error
-	CreateFirewallRules(
-		ctx context.Context,
-		networkName string,
-	) error
-	CreateStorageBucket(
-		ctx context.Context,
-		bucketName string,
-	) error
-	CreateVM(
-		ctx context.Context,
-		projectID string,
-		vmConfig map[string]string,
-	) (string, error)
-	ListBillingAccounts(ctx context.Context) ([]string, error)
-	GetVMExternalIP(ctx context.Context, projectID, zone, vmName string) (string, error)
-}
 
 type GCPProvider struct {
 	Client              GCPClienter
