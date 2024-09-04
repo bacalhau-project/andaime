@@ -2,12 +2,7 @@ package sshutils
 
 import (
 	"fmt"
-
-	"golang.org/x/crypto/ssh"
-)
-
-import (
-	"fmt"
+	"io"
 
 	"golang.org/x/crypto/ssh"
 )

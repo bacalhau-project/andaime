@@ -112,6 +112,9 @@ type AzureProviderer interface {
 	PollAndUpdateResources(ctx context.Context) ([]interface{}, error)
 }
 
+// Ensure AzureProvider implements AzureProviderer
+var _ AzureProviderer = (*AzureProvider)(nil)
+
 type AzureProvider struct {
 	common.BaseClusterDeployer
 	Client              interface{}
@@ -559,7 +562,6 @@ func (p *AzureProvider) logDeploymentStatus() {
 	}
 }
 
-var _ AzureProviderer = &AzureProvider{}
 
 func writeToDebugLog(message string) {
 	debugFilePath := "/tmp/andaime-debug.log"
