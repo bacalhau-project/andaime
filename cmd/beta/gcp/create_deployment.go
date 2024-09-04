@@ -169,9 +169,47 @@ func PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
 	}
 
-	if err := ProcessMachinesConfig(deployment); err != nil {
+	if err := processMachinesConfig(deployment); err != nil {
 		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
 	}
 
 	return deployment, nil
+}
+
+func setDeploymentBasicInfo(deployment *models.Deployment) error {
+	projectPrefix := viper.GetString("general.project_prefix")
+	uniqueID := viper.GetString("general.unique_id")
+	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
+	deployment.ProjectID = viper.GetString("gcp.project_id")
+	deployment.Region = viper.GetString("gcp.region")
+	deployment.Zone = viper.GetString("gcp.zone")
+	return nil
+}
+
+func processMachinesConfig(deployment *models.Deployment) error {
+	machines := viper.Get("gcp.machines")
+	machinesSlice, ok := machines.([]interface{})
+	if !ok {
+		return fmt.Errorf("invalid machines configuration")
+	}
+
+	for _, m := range machinesSlice {
+		machine, ok := m.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("invalid machine configuration")
+		}
+
+		newMachine := &models.Machine{
+			Name:     machine["name"].(string),
+			VMSize:   machine["vm_size"].(string),
+			Location: machine["location"].(string),
+			Parameters: models.Parameters{
+				Orchestrator: machine["parameters"].(map[string]interface{})["orchestrator"].(bool),
+			},
+		}
+
+		deployment.Machines[newMachine.Name] = newMachine
+	}
+
+	return nil
 }
