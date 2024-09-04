@@ -162,6 +162,7 @@ resourcename
 Retryable
 rgname
 rivo
+schollz
 Sdump
 servicenetworking
 serviceusage

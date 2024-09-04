@@ -344,7 +344,7 @@ func createNewMachine(
 	privateKeyBytes []byte,
 	sshPort int,
 ) (*models.Machine, error) {
-	newMachine, err := models.NewMachine(location, vmSize, diskSizeGB)
+	newMachine, err := models.NewMachine(models.DeploymentTypeAzure, location, vmSize, diskSizeGB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new machine: %w", err)
 	}
@@ -379,7 +379,7 @@ func PrepareDeployment(
 	if uniqueID == "" {
 		return nil, fmt.Errorf("general.unique_id is not set")
 	}
-	deployment, err := models.NewDeployment()
+	deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)
 	}

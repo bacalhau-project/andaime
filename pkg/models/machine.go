@@ -8,6 +8,7 @@ import (
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
+	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -53,26 +54,30 @@ type Machine struct {
 
 	stateMutex sync.RWMutex
 	done       bool
+
+	DeploymentType DeploymentType
 }
 
 func NewMachine(
+	deploymentType DeploymentType,
 	location string,
 	vmSize string,
 	diskSizeGB int32,
 ) (*Machine, error) {
 	newID := utils.CreateShortID()
 
-	if !internal_azure.IsValidAzureLocation(location) {
-		return nil, fmt.Errorf("invalid Azure location: %s", location)
+	if !IsValidLocation(deploymentType, location) {
+		return nil, fmt.Errorf("invalid location for %s: %s", deploymentType, location)
 	}
 
 	returnMachine := &Machine{
-		ID:         newID,
-		Name:       fmt.Sprintf("%s-vm", newID),
-		StartTime:  time.Now(),
-		Location:   location,
-		VMSize:     vmSize,
-		DiskSizeGB: diskSizeGB,
+		ID:             newID,
+		Name:           fmt.Sprintf("%s-vm", newID),
+		StartTime:      time.Now(),
+		Location:       location,
+		VMSize:         vmSize,
+		DiskSizeGB:     diskSizeGB,
+		DeploymentType: deploymentType,
 	}
 
 	for _, service := range RequiredServices {
@@ -108,8 +113,17 @@ func (m *Machine) IsOrchestrator() bool {
 }
 
 func (m *Machine) SetLocation(location string) error {
-	if !internal_azure.IsValidAzureLocation(location) {
-		return fmt.Errorf("invalid Azure location: %s", location)
+	switch m.DeploymentType {
+	case DeploymentTypeAzure:
+		if !internal_azure.IsValidAzureLocation(location) {
+			return fmt.Errorf("invalid Azure location: %s", location)
+		}
+	case DeploymentTypeGCP:
+		if !internal_gcp.IsValidGCPLocation(location) {
+			return fmt.Errorf("invalid GCP location: %s", location)
+		}
+	default:
+		return fmt.Errorf("unknown deployment type: %s", m.DeploymentType)
 	}
 	m.Location = location
 	return nil
@@ -395,4 +409,16 @@ func (m *Machine) EnsureMachineServices() error {
 		m.SetServiceState(service.Name, ServiceStateNotStarted)
 	}
 	return nil
+}
+
+// Add this new function
+func IsValidLocation(deploymentType DeploymentType, location string) bool {
+	switch deploymentType {
+	case DeploymentTypeAzure:
+		return internal_azure.IsValidAzureLocation(location)
+	case DeploymentTypeGCP:
+		return internal_gcp.IsValidGCPLocation(location)
+	default:
+		return false
+	}
 }

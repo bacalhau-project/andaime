@@ -44,6 +44,27 @@ type Parameters struct {
 	Orchestrator bool
 }
 
+type ServiceAccountInfo struct {
+	Email string
+	Key   string
+}
+
+type Disk struct {
+	Name   string
+	ID     string
+	SizeGB int32
+	State  armcompute.DiskState
+}
+
+// Add this new type
+type DeploymentType string
+
+const (
+	DeploymentTypeAzure DeploymentType = "Azure"
+	DeploymentTypeGCP   DeploymentType = "GCP"
+	// Add other cloud providers as needed
+)
+
 type Deployment struct {
 	mu   sync.RWMutex
 	Name string
@@ -87,36 +108,21 @@ type Deployment struct {
 	EndTime               time.Time
 	SubscriptionID        string
 	deploymentMutex       sync.RWMutex
+
+	Cleanup func()
+	Type    DeploymentType
 }
 
-type ServiceAccountInfo struct {
-	Email string
-	Key   string
-}
-
-type Disk struct {
-	Name   string
-	ID     string
-	SizeGB int32
-	State  armcompute.DiskState
-}
-
-func NewDeployment() (*Deployment, error) {
-	projectID := viper.GetString("general.project_prefix")
-	if projectID == "" {
-		return nil, fmt.Errorf("project prefix is empty")
-	}
-
-	uniqueID := time.Now().Format("060102150405")
-	projectID = fmt.Sprintf("%s-%s", projectID, uniqueID)
-
-	return &Deployment{
+func NewDeployment(deploymentType DeploymentType) (*Deployment, error) {
+	deployment := &Deployment{
 		StartTime: time.Now(),
 		Machines:  make(map[string]*Machine),
 		Tags:      make(map[string]*string),
-		ProjectID: projectID,
-		UniqueID:  uniqueID,
-	}, nil
+		ProjectID: viper.GetString("general.project_prefix"),
+		UniqueID:  time.Now().Format("060102150405"),
+		Type:      deploymentType,
+	}
+	return deployment, nil
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {

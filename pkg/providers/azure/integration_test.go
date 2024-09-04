@@ -51,7 +51,7 @@ func setupTest(t *testing.T) *testSetup {
 		Client: mockAzureClient,
 	}
 
-	deployment, err := models.NewDeployment()
+	deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
 	assert.NoError(t, err)
 
 	display.SetGlobalModel(display.InitialModel(deployment))

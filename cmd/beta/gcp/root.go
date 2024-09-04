@@ -48,6 +48,7 @@ var initOnce sync.Once
 
 func InitializeCommands() {
 	initOnce.Do(func() {
+		GCPCmd.AddCommand(GetGCPCreateDeploymentCmd())
 		GCPCmd.AddCommand(GetCreateProjectCmd())
 		GCPCmd.AddCommand(GetDestroyProjectCmd())
 		GCPCmd.AddCommand(GetListAllAssetsInProjectCmd())

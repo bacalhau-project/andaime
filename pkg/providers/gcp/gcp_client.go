@@ -23,7 +23,7 @@ import (
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
 	"cloud.google.com/go/storage"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/bacalhau-project/andaime/internal/clouds/gcp"
+	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/cenkalti/backoff/v4"
@@ -100,6 +100,7 @@ type GCPClienter interface {
 		ctx context.Context,
 		projectID, ruleName string,
 	) error
+	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
 }
 
 type LiveGCPClient struct {
@@ -116,6 +117,7 @@ type LiveGCPClient struct {
 	globalOperationsClient *compute.GlobalOperationsClient
 	regionOperationsClient *compute.RegionOperationsClient
 	zonesListClient        *compute.ZonesClient
+	machineTypeListClient  *compute.MachineTypesClient
 }
 
 var NewGCPClientFunc = NewGCPClient
@@ -223,6 +225,12 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 	}
 	clientList = append(clientList, zonesClient)
 
+	machineTypeListClient, err := compute.NewMachineTypesRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, machineTypeListClient)
+
 	// Cleanup function to close all clients
 	cleanup := func() {
 		l.Debug("Cleaning up GCP client")
@@ -248,6 +256,7 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		globalOperationsClient: globalOperationsClient,
 		regionOperationsClient: regionOperationsClient,
 		zonesListClient:        zonesClient,
+		machineTypeListClient:  machineTypeListClient,
 	}
 
 	return liveGCPClient, cleanup, nil
@@ -898,7 +907,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 
 	publicKeyMaterialB64 := base64.StdEncoding.EncodeToString([]byte(publicKeyMaterial))
 
-	startupScriptTemplate, err := gcp.GetStartupScript()
+	startupScriptTemplate, err := internal_gcp.GetStartupScript()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get startup script: %v", err)
 	}
@@ -1394,4 +1403,33 @@ func (c *LiveGCPClient) checkFirewallRuleExists(
 	}
 
 	return nil
+}
+
+func (c *LiveGCPClient) ValidateMachineType(
+	ctx context.Context,
+	machineType, location string,
+) (bool, error) {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return false, fmt.Errorf("global model or deployment is nil")
+	}
+	projectID := m.Deployment.ProjectID
+	l.Debugf("Validating machine type %s in location %s", machineType, location)
+
+	req := &computepb.GetMachineTypeRequest{
+		Project:     projectID,
+		Zone:        location,
+		MachineType: machineType,
+	}
+
+	_, err := c.machineTypeListClient.Get(ctx, req)
+	if err != nil {
+		if isNotFoundError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to validate machine type: %v", err)
+	}
+
+	return true, nil
 }

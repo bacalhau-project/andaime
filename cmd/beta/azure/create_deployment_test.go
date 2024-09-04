@@ -35,7 +35,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 	viper.Set("general.project_prefix", "test-project")
 	viper.Set("general.unique_id", "test-unique-id")
-	deployment, err := models.NewDeployment()
+	deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
 	assert.NoError(t, err)
 	deployment.SSHPrivateKeyPath = testPrivateKeyPath
 	deployment.SSHPort = 22
@@ -196,7 +196,7 @@ func TestInitializeDeployment(t *testing.T) {
 	viper.Set("general.ssh_key_dir", filepath.Join(testDataPath, "testdata", "dummy_keys"))
 
 	// Create a local display model for this test
-	deployment, err := models.NewDeployment()
+	deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
 	assert.NoError(t, err)
 	localModel := display.InitialModel(deployment)
 	origGetGlobalModel := display.GetGlobalModelFunc

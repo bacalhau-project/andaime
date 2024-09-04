@@ -1,4 +1,4 @@
-package internal
+package internal_azure
 
 import (
 	"testing"

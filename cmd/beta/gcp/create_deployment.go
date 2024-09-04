@@ -13,6 +13,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -139,7 +140,7 @@ func PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 	if uniqueID == "" {
 		return nil, fmt.Errorf("general.unique_id is not set")
 	}
-	deployment, err := models.NewDeployment()
+	deployment, err := models.NewDeployment(models.DeploymentTypeGCP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)
 	}
@@ -167,7 +168,7 @@ func PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
 	}
 
-	if err := processMachinesConfig(deployment); err != nil {
+	if err := ProcessMachinesConfig(deployment); err != nil {
 		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
 	}
 
@@ -182,30 +183,212 @@ func setDeploymentBasicInfo(deployment *models.Deployment) error {
 	return nil
 }
 
-func processMachinesConfig(deployment *models.Deployment) error {
-	machines := viper.Get("gcp.machines")
-	machinesSlice, ok := machines.([]interface{})
-	if !ok {
-		return fmt.Errorf("invalid machines configuration")
+// We're going to use a temporary machine struct to unmarshal from the config file
+// and then convert it to the actual machine struct
+type rawMachine struct {
+	Location   string `yaml:"location"`
+	Parameters *struct {
+		Count        int    `yaml:"count,omitempty"`
+		Type         string `yaml:"type,omitempty"`
+		Orchestrator bool   `yaml:"orchestrator,omitempty"`
+	} `yaml:"parameters"`
+}
+
+//nolint:funlen,gocyclo,unused
+func ProcessMachinesConfig(deployment *models.Deployment) error {
+	l := logger.Get()
+	locations := make(map[string]bool)
+
+	rawMachines := []rawMachine{}
+
+	if err := viper.UnmarshalKey("gcp.machines", &rawMachines); err != nil {
+		return fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
-	for _, m := range machinesSlice {
-		machine, ok := m.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("invalid machine configuration")
+	defaultCount := viper.GetInt("gcp.default_count_per_zone")
+	if defaultCount == 0 {
+		l.Error("gcp.default_count_per_zone is empty")
+		return fmt.Errorf("gcp.default_count_per_zone is empty")
+	}
+	defaultType := viper.GetString("gcp.default_machine_type")
+	if defaultType == "" {
+		l.Error("gcp.default_machine_type is empty")
+		return fmt.Errorf("gcp.default_machine_type is empty")
+	}
+
+	defaultDiskSize := viper.GetInt("gcp.disk_size_gb")
+	if defaultDiskSize == 0 {
+		l.Error("gcp.disk_size_gb is empty")
+		return fmt.Errorf("gcp.disk_size_gb is empty")
+	}
+
+	orgID := viper.GetString("gcp.organization_id")
+	if orgID == "" {
+		l.Error("gcp.organization_id is empty")
+		return fmt.Errorf("gcp.organization_id is empty")
+	}
+
+	privateKeyBytes, err := sshutils.ReadPrivateKey(deployment.SSHPrivateKeyPath)
+	if err != nil {
+		return err
+	}
+
+	orchestratorIP := deployment.OrchestratorIP
+	var orchestratorLocations []string
+	for _, rawMachine := range rawMachines {
+		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
+			// We're doing some checking here to make sure that the orchestrator node not
+			// specified in a way that would result in multiple orchestrator nodes
+			if rawMachine.Parameters.Count == 0 {
+				rawMachine.Parameters.Count = defaultCount
+			}
+
+			for i := 0; i < rawMachine.Parameters.Count; i++ {
+				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
+			}
+		}
+	}
+
+	if len(orchestratorLocations) > 1 {
+		return fmt.Errorf("multiple orchestrator nodes found")
+	}
+
+	type badMachineLocationCombo struct {
+		location string
+		vmSize   string
+	}
+	var allBadMachineLocationCombos []badMachineLocationCombo
+	newMachines := make(map[string]*models.Machine)
+	for _, rawMachine := range rawMachines {
+		count := 1
+		if rawMachine.Parameters != nil {
+			if rawMachine.Parameters.Count > 0 {
+				count = rawMachine.Parameters.Count
+			}
 		}
 
-		newMachine := &models.Machine{
-			Name:     machine["name"].(string),
-			VMSize:   machine["vm_size"].(string),
-			Location: machine["location"].(string),
-			Parameters: models.Parameters{
-				Orchestrator: machine["parameters"].(map[string]interface{})["orchestrator"].(bool),
-			},
+		var thisVMType string
+		if rawMachine.Parameters != nil {
+			thisVMType = rawMachine.Parameters.Type
+			if thisVMType == "" {
+				thisVMType = defaultType
+			}
 		}
 
-		deployment.Machines[newMachine.Name] = newMachine
+		// Probably can't do this validation without a GCP client - skipping for now
+
+		// gcpClient, cleanup, err := gcp.NewGCPClientFunc(ctx, orgID)
+		// if err != nil {
+		// 	return fmt.Errorf("failed to create GCP client: %w", err)
+		// }
+		// deployment.Cleanup = cleanup
+
+		// fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
+		// valid, err := gcpClient.ValidateMachineType(
+		// 	ctx,
+		// 	rawMachine.Location,
+		// 	thisVMType,
+		// )
+		// if !valid || err != nil {
+		// 	allBadMachineLocationCombos = append(
+		// 		allBadMachineLocationCombos,
+		// 		badMachineLocationCombo{
+		// 			location: rawMachine.Location,
+		// 			vmSize:   thisVMType,
+		// 		},
+		// 	)
+		// 	fmt.Println("❌")
+		// 	continue
+		// }
+		// fmt.Println("✅")
+
+		countOfMachines := utils.GetCountOfMachines(count, defaultCount)
+		for i := 0; i < countOfMachines; i++ {
+			newMachine, err := createNewMachine(
+				rawMachine.Location,
+				utils.GetSafeDiskSize(defaultDiskSize),
+				thisVMType,
+				privateKeyBytes,
+				deployment.SSHPort,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create new machine: %w", err)
+			}
+
+			if rawMachine.Parameters != nil {
+				if rawMachine.Parameters.Type != "" {
+					newMachine.VMSize = rawMachine.Parameters.Type
+				}
+				if rawMachine.Parameters.Orchestrator {
+					newMachine.Orchestrator = true
+				}
+			} else {
+				// Log a warning or handle the case where Parameters is nil
+				logger.Get().Warnf("Parameters for machine in location %s is nil", rawMachine.Location)
+			}
+
+			newMachines[newMachine.Name] = newMachine
+			newMachines[newMachine.Name].SetResourceState(
+				models.AzureResourceTypeVM.ResourceString,
+				models.ResourceStateNotStarted,
+			)
+		}
+
+		locations[rawMachine.Location] = true
+	}
+
+	if len(allBadMachineLocationCombos) > 0 {
+		return fmt.Errorf(
+			"invalid machine type and location combinations: %v",
+			allBadMachineLocationCombos,
+		)
+	}
+
+	// Loop for setting the orchestrator node
+	orchestratorFound := false
+	for name, machine := range newMachines {
+		if orchestratorIP != "" {
+			newMachines[name].OrchestratorIP = orchestratorIP
+			orchestratorFound = true
+		} else if machine.Orchestrator {
+			orchestratorFound = true
+		}
+	}
+	if !orchestratorFound {
+		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
+	}
+
+	deployment.Machines = newMachines
+	for k := range locations {
+		deployment.Locations = append(deployment.Locations, k)
 	}
 
 	return nil
+}
+
+func createNewMachine(
+	location string,
+	diskSizeGB int32,
+	vmSize string,
+	privateKeyBytes []byte,
+	sshPort int,
+) (*models.Machine, error) {
+	newMachine, err := models.NewMachine(models.DeploymentTypeGCP, location, vmSize, diskSizeGB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new machine: %w", err)
+	}
+
+	if err := newMachine.EnsureMachineServices(); err != nil {
+		logger.Get().Errorf("Failed to ensure machine services: %v", err)
+	}
+
+	for _, service := range models.RequiredServices {
+		newMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
+	}
+
+	newMachine.SSHUser = "azureuser"
+	newMachine.SSHPort = sshPort
+	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
+
+	return newMachine, nil
 }

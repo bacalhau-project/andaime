@@ -277,7 +277,7 @@ var GetGlobalModelFunc func() *DisplayModel = GetGlobalModel
 func GetGlobalModel() *DisplayModel {
 	if globalModelInstance == nil {
 		globalModelOnce.Do(func() {
-			deployment, err := models.NewDeployment()
+			deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
 			if err != nil {
 				panic(err)
 			}

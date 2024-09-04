@@ -17,7 +17,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
-	azureutils "github.com/bacalhau-project/andaime/internal/clouds/azure"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -251,20 +250,6 @@ func (c *LiveAzureClient) DeployTemplate(
 	}
 
 	return future, nil
-}
-
-func IsValidLocation(location string) bool {
-	locations, err := azureutils.GetLocations()
-	if err != nil {
-		logger.Get().Errorf("Failed to get Azure locations: %v", err)
-		return false
-	}
-	for _, validLocation := range locations {
-		if strings.EqualFold(location, validLocation) {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *LiveAzureClient) NewSubscriptionListPager(
