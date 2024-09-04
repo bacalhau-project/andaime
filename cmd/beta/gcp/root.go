@@ -23,7 +23,7 @@ var GCPCmd = &cobra.Command{
 			return fmt.Errorf("organization_id is not set in the configuration")
 		}
 
-		p, err := gcp.NewGCPProviderFunc()
+		p, err := gcp.NewGCPProviderFunc(ctx)
 		if err != nil {
 			return err
 		}

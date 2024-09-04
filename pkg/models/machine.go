@@ -15,10 +15,13 @@ import (
 )
 
 type Machine struct {
-	ID            string
-	Name          string
-	Type          AzureResourceTypes
-	Location      string
+	ID       string
+	Name     string
+	Type     ResourceTypes
+	Location string
+	Region   string
+	Zone     string
+
 	StatusMessage string
 	Parameters    Parameters
 	PublicIP      string
@@ -77,7 +80,7 @@ func NewMachine(
 	}
 
 	for _, resource := range RequiredAzureResources {
-		returnMachine.SetResource(resource.GetResourceLowerString(), AzureResourceStateNotStarted)
+		returnMachine.SetResource(resource.GetResourceLowerString(), ResourceStateNotStarted)
 	}
 
 	return returnMachine, nil
@@ -175,13 +178,13 @@ func (m *Machine) getResourceUnsafe(resourceType string) MachineResource {
 	return MachineResource{}
 }
 
-func (m *Machine) SetResource(resourceType string, resourceState AzureResourceState) {
+func (m *Machine) SetResource(resourceType string, resourceState ResourceState) {
 	m.stateMutex.Lock()
 	defer m.stateMutex.Unlock()
 	m.setResourceUnsafe(resourceType, resourceState)
 }
 
-func (m *Machine) setResourceUnsafe(resourceType string, resourceState AzureResourceState) {
+func (m *Machine) setResourceUnsafe(resourceType string, resourceState ResourceState) {
 	if m.machineResources == nil {
 		m.machineResources = make(map[string]MachineResource)
 	}
@@ -194,11 +197,11 @@ func (m *Machine) setResourceUnsafe(resourceType string, resourceState AzureReso
 	}
 }
 
-func (m *Machine) GetResourceState(resourceName string) AzureResourceState {
+func (m *Machine) GetResourceState(resourceName string) ResourceState {
 	return m.GetResource(resourceName).ResourceState
 }
 
-func (m *Machine) SetResourceState(resourceName string, state AzureResourceState) {
+func (m *Machine) SetResourceState(resourceName string, state ResourceState) {
 	m.stateMutex.Lock()
 	defer m.stateMutex.Unlock()
 	if m.machineResources == nil {
@@ -223,13 +226,13 @@ func (m *Machine) ResourcesComplete() (int, int) {
 	return m.countCompletedResources(RequiredAzureResources)
 }
 
-func (m *Machine) countCompletedResources(requiredResources []AzureResourceTypes) (int, int) {
+func (m *Machine) countCompletedResources(requiredResources []ResourceTypes) (int, int) {
 	completedResources := 0
 	totalResources := len(requiredResources)
 
 	for _, requiredResource := range requiredResources {
 		resource := m.getResourceUnsafe(requiredResource.GetResourceLowerString())
-		if resource.ResourceState == AzureResourceStateSucceeded {
+		if resource.ResourceState == ResourceStateSucceeded {
 			completedResources++
 		}
 	}

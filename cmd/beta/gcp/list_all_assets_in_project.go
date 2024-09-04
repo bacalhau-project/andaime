@@ -33,7 +33,7 @@ func GetListAllAssetsInProjectCmd() *cobra.Command {
 
 func listAllAssetsInProject(projectID string) error {
 	ctx := context.Background()
-	provider, err := gcp.NewGCPProviderFunc()
+	provider, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return handleGCPError(err)
 	}

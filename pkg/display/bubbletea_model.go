@@ -252,7 +252,7 @@ func (m *DisplayModel) DeregisterGoroutine(id int64) {
 // DisplayMachine represents a single machine in the deployment
 type DisplayMachine struct {
 	Name          string
-	Type          models.AzureResourceTypes
+	Type          models.ResourceTypes
 	Location      string
 	StatusMessage string
 	StartTime     time.Time

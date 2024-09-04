@@ -21,7 +21,7 @@ const (
 
 type DisplayStatus struct {
 	ID              string
-	Type            AzureResourceTypes
+	Type            ResourceTypes
 	Location        string
 	StatusMessage   string
 	DetailedStatus  string
@@ -40,10 +40,36 @@ type DisplayStatus struct {
 	Bacalhau        ServiceState
 }
 
+type ResourceTypes struct {
+	ResourceString    string
+	ShortResourceName string
+}
+
+func (a *ResourceTypes) GetResourceString() string {
+	return a.ResourceString
+}
+
+func (a *ResourceTypes) GetShortResourceName() string {
+	return a.ShortResourceName
+}
+
+type ResourceState int
+
+const (
+	ResourceStateUnknown ResourceState = iota
+	ResourceStateNotStarted
+	ResourceStatePending
+	ResourceStateRunning
+	ResourceStateSucceeded
+	ResourceStateStopping
+	ResourceStateFailed
+	ResourceStateTerminated
+)
+
 func NewDisplayStatusWithText(
 	resourceID string,
-	resourceType AzureResourceTypes,
-	state AzureResourceState,
+	resourceType ResourceTypes,
+	state ResourceState,
 	text string,
 ) *DisplayStatus {
 	return &DisplayStatus{
@@ -68,7 +94,7 @@ func NewDisplayStatusWithText(
 // - state is the state of the resource (e.g. AzureResourceStateSucceeded)
 func NewDisplayVMStatus(
 	machineName string,
-	state AzureResourceState,
+	state ResourceState,
 ) *DisplayStatus {
 	return NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
 }
@@ -83,8 +109,8 @@ func NewDisplayVMStatus(
 func NewDisplayStatus(
 	machineName string,
 	resourceID string,
-	resourceType AzureResourceTypes,
-	state AzureResourceState,
+	resourceType ResourceTypes,
+	state ResourceState,
 ) *DisplayStatus {
 	return &DisplayStatus{
 		ID:   machineName,
@@ -148,8 +174,8 @@ const (
 )
 
 func CreateStateMessageWithText(
-	resource AzureResourceTypes,
-	resourceState AzureResourceState,
+	resource ResourceTypes,
+	resourceState ResourceState,
 	resourceName string,
 	text string,
 ) string {
@@ -157,24 +183,24 @@ func CreateStateMessageWithText(
 }
 
 func CreateStateMessage(
-	resource AzureResourceTypes,
-	resourceState AzureResourceState,
+	resource ResourceTypes,
+	resourceState ResourceState,
 	resourceName string,
 ) string {
 	l := logger.Get()
 	stateEmoji := ""
 	switch resourceState {
-	case AzureResourceStateNotStarted:
+	case ResourceStateNotStarted:
 		stateEmoji = DisplayEmojiNotStarted
-	case AzureResourceStatePending:
+	case ResourceStatePending:
 		stateEmoji = DisplayEmojiWaiting
-	case AzureResourceStateRunning:
+	case ResourceStateRunning:
 		stateEmoji = DisplayEmojiSuccess
-	case AzureResourceStateFailed:
+	case ResourceStateFailed:
 		stateEmoji = DisplayEmojiFailed
-	case AzureResourceStateSucceeded:
+	case ResourceStateSucceeded:
 		stateEmoji = DisplayEmojiSuccess
-	case AzureResourceStateUnknown:
+	case ResourceStateUnknown:
 		l.Debugf("Resource: %s", resource)
 		l.Debugf("Resource Name: %s", resourceName)
 		l.Debugf("Resource State: %d", resourceState)
@@ -248,6 +274,12 @@ func GetMachineNameFromResourceName(id string) string {
 	return ""
 }
 
+var RequiredServices = []ServiceType{
+	ServiceTypeSSH,
+	ServiceTypeDocker,
+	ServiceTypeBacalhau,
+}
+
 func machineNeedsUpdating(
 	deployment *Deployment,
 	machineName string,
@@ -261,7 +293,7 @@ func machineNeedsUpdating(
 	// 	resourceType,
 	// 	resourceState,
 	// )
-	currentState := ConvertFromStringToAzureResourceState(resourceState)
+	currentState := ConvertFromAzureStringToResourceState(resourceState)
 
 	needsUpdate := 0
 	if (deployment.Machines[machineName].GetResource(resourceType) == MachineResource{}) ||
@@ -299,7 +331,7 @@ func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([
 //nolint:lll
 func createStatus(machineName, resourceID, resourceType, state string) DisplayStatus {
 	azureResourceType := GetAzureResourceType(resourceType)
-	stateType := ConvertFromStringToAzureResourceState(state)
+	stateType := ConvertFromAzureStringToResourceState(state)
 
 	return *NewDisplayStatus(machineName, resourceID, azureResourceType, stateType)
 }

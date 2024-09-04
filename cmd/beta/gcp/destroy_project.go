@@ -42,7 +42,7 @@ all projects labeled with 'andaime', or list all available projects.`,
 
 func listAllProjects() error {
 	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc()
+	p, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
@@ -80,7 +80,7 @@ func listAllProjects() error {
 
 func runDestroyAllProjects() error {
 	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc()
+	p, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
@@ -141,7 +141,7 @@ func runDestroyAllProjects() error {
 
 func runDestroyProject(projectID string) error {
 	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc()
+	p, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}

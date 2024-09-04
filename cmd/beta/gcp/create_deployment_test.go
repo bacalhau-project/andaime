@@ -7,8 +7,8 @@ import (
 )
 
 func TestCreateDeploymentCmd(t *testing.T) {
-	cmd := GetCreateDeploymentCmd()
+	cmd := GetGCPCreateDeploymentCmd()
 	assert.NotNil(t, cmd)
 	assert.Equal(t, "create-deployment", cmd.Use)
-	assert.Equal(t, "Create a new deployment in GCP", cmd.Short)
+	assert.Equal(t, "Create a deployment in GCP", cmd.Short)
 }

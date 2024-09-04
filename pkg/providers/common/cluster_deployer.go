@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -29,18 +28,4 @@ type ClusterDeployer interface {
 
 	// DeployNodes deploys the Bacalhau worker nodes
 	DeployNodes(ctx context.Context) error
-
-	// DeployCluster performs the entire cluster deployment process
-	DeployCluster(ctx context.Context) error
-}
-
-// BaseClusterDeployer provides a default implementation of DeployCluster
-type BaseClusterDeployer struct{}
-
-func (b *BaseClusterDeployer) DeployCluster(ctx context.Context) error {
-	deployer, ok := interface{}(b).(ClusterDeployer)
-	if !ok {
-		return fmt.Errorf("BaseClusterDeployer does not implement ClusterDeployer")
-	}
-	return deployer.DeployCluster(ctx)
 }

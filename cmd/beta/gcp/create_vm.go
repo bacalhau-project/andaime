@@ -44,7 +44,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := cmd.Context()
-	provider, err := gcp.NewGCPProvider()
+	p, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		"PublicKeyMaterial": string(publicKeyMaterial),
 	}
 
-	vmName, err := provider.CreateVM(ctx, projectID, vmConfig)
+	vm, err := p.CreateComputeInstance(ctx, vmConfig["instanceName"])
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
@@ -82,11 +82,11 @@ func createVM(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the external IP address of the VM
-	externalIP, err := provider.GetVMExternalIP(ctx, projectID, zone, vmName)
+	externalIP, err := p.GetVMExternalIP(ctx, projectID, zone, *vm.Name)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("VM created successfully: %s (External IP: %s)\n", vmName, externalIP)
+	fmt.Printf("VM created successfully: %s (External IP: %s)\n", *vm.Name, externalIP)
 	return nil
 }

@@ -57,7 +57,7 @@ func runTestDisplay() error {
 		for i := 0; i < totalTasks; i++ {
 			newDisplayStatus := models.NewDisplayVMStatus(
 				fmt.Sprintf("testVM%d", i+1),
-				models.AzureResourceStateNotStarted,
+				models.ConvertFromAzureStringToResourceState("Not Started"),
 			)
 			newDisplayStatus.Location = testutils.RandomRegion()
 			newDisplayStatus.StatusMessage = "Initializing"

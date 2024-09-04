@@ -47,7 +47,7 @@ func CreateRandomStatus() *models.DisplayStatus {
 	id := fmt.Sprintf("i-%06d", rand.IntN(1000000)) //nolint:mnd,gosec
 	newDisplayStatus := models.NewDisplayVMStatus(
 		id,
-		models.AzureResourceStateNotStarted,
+		models.ResourceStatePending,
 	)
 	newDisplayStatus.Location = RandomZone()
 	newDisplayStatus.StatusMessage = "Initializing"

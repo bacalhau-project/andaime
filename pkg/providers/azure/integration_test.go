@@ -146,7 +146,8 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 			"bacalhau node list --output json --api-host")
 	}
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
 	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
@@ -162,7 +163,7 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
+			models.ResourceStateSucceeded,
 		)
 	}
 
@@ -195,7 +196,7 @@ func TestSSHProvisioningFailure(t *testing.T) {
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
+			models.ResourceStateSucceeded,
 		)
 	}
 
@@ -224,7 +225,7 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
+			models.ResourceStateSucceeded,
 		)
 	}
 
@@ -246,7 +247,7 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 	for _, machine := range m.Deployment.Machines {
 		machine.SetResourceState(
 			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
+			models.ResourceStateSucceeded,
 		)
 	}
 

@@ -64,7 +64,10 @@ type GCPClienter interface {
 	CreateVPCNetwork(ctx context.Context, networkName string) error
 	CreateFirewallRules(ctx context.Context, networkName string) error
 	CreateStorageBucket(ctx context.Context, bucketName string) error
-	CreateVM(ctx context.Context, vmConfig map[string]string) (string, error)
+	CreateComputeInstance(
+		ctx context.Context,
+		instanceName string,
+	) (*computepb.Instance, error)
 	waitForOperation(
 		ctx context.Context,
 		project, zone, operation string,
@@ -831,22 +834,24 @@ func (c *LiveGCPClient) CreateStorageBucket(ctx context.Context, bucketName stri
 	return nil
 }
 
-func (c *LiveGCPClient) CreateVM(
+func (c *LiveGCPClient) CreateComputeInstance(
 	ctx context.Context,
-	vmConfig map[string]string,
-) (string, error) {
+	instanceName string,
+) (*computepb.Instance, error) {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
-		return "", fmt.Errorf("global model or deployment is nil")
+		return nil, fmt.Errorf("global model or deployment is nil")
 	}
+
+	machine := m.Deployment.Machines[instanceName]
 
 	projectID := m.Deployment.ProjectID
 	l.Debugf("Creating VM in project: %s", projectID)
 
 	// Ensure the necessary APIs are enabled
 	if err := c.EnableAPI(ctx, projectID, "compute.googleapis.com"); err != nil {
-		return "", fmt.Errorf("failed to enable Compute Engine API: %v", err)
+		return nil, fmt.Errorf("failed to enable Compute Engine API: %v", err)
 	}
 
 	// Generate a unique VM name
@@ -859,51 +864,48 @@ func (c *LiveGCPClient) CreateVM(
 	defaultSourceImage := viper.GetString("gcp.default_source_image")
 
 	// Get the zone from the vmConfig
-	zone, ok := vmConfig["zone"]
-	if !ok {
-		return "", fmt.Errorf("zone is required to create a VM")
-	}
+	zone := machine.Location
 
 	// Validate the zone
 	if err := c.validateZone(ctx, projectID, zone); err != nil {
-		return "", fmt.Errorf("invalid zone: %v", err)
+		return nil, fmt.Errorf("invalid zone: %v", err)
 	}
 
 	// Create or get the network
 	networkName := "default" // Use the default network
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
-		return "", fmt.Errorf("failed to get or create network: %v", err)
+		return nil, fmt.Errorf("failed to get or create network: %v", err)
 	}
 
 	// Convert defaultDiskSizeGB to int64
 	defaultDiskSizeGBInt, err := strconv.ParseInt(defaultDiskSizeGB, 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert default disk size to int64: %v", err)
+		return nil, fmt.Errorf("failed to convert default disk size to int64: %v", err)
 	}
 
 	// Get the SSH user from the deployment model
-	sshUser := vmConfig["sshUser"]
+	sshUser := machine.SSHUser
 
 	if sshUser == "" {
-		return "", fmt.Errorf("SSH user is not set in the deployment model")
+		return nil, fmt.Errorf("SSH user is not set in the deployment model")
 	}
 
-	publicKeyMaterial := vmConfig["PublicKeyMaterial"]
+	publicKeyMaterial := m.Deployment.SSHPublicKeyMaterial
 	if publicKeyMaterial == "" {
-		return "", fmt.Errorf("public key material is not set in the deployment model")
+		return nil, fmt.Errorf("public key material is not set in the deployment model")
 	}
 
 	publicKeyMaterialB64 := base64.StdEncoding.EncodeToString([]byte(publicKeyMaterial))
 
 	startupScriptTemplate, err := gcp.GetStartupScript()
 	if err != nil {
-		return "", fmt.Errorf("failed to get startup script: %v", err)
+		return nil, fmt.Errorf("failed to get startup script: %v", err)
 	}
 
 	tmpl, err := template.New("startup_script").Parse(startupScriptTemplate)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse startup script template: %w", err)
+		return nil, fmt.Errorf("failed to parse startup script template: %w", err)
 	}
 
 	var scriptBuffer bytes.Buffer
@@ -912,7 +914,7 @@ func (c *LiveGCPClient) CreateVM(
 		"PublicKeyMaterialB64": publicKeyMaterialB64,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to execute startup script template: %w", err)
+		return nil, fmt.Errorf("failed to execute startup script template: %w", err)
 	}
 
 	instance := &computepb.Instance{
@@ -971,16 +973,25 @@ func (c *LiveGCPClient) CreateVM(
 	// Create the VM instance
 	op, err := c.computeClient.Insert(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("failed to create VM instance: %v", err)
+		return nil, fmt.Errorf("failed to create VM instance: %v", err)
 	}
 
 	// Wait for the operation to complete
 	err = c.waitForOperation(ctx, projectID, zone, op.Name())
 	if err != nil {
-		return "", fmt.Errorf("failed to wait for VM creation: %v", err)
+		return nil, fmt.Errorf("failed to wait for VM creation: %v", err)
 	}
 
-	return vmName, nil
+	instance, err = c.computeClient.Get(ctx, &computepb.GetInstanceRequest{
+		Project:  projectID,
+		Zone:     zone,
+		Instance: vmName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VM instance: %v", err)
+	}
+
+	return instance, nil
 }
 
 func (c *LiveGCPClient) getOrCreateNetwork(

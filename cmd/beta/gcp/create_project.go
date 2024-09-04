@@ -32,7 +32,7 @@ func GetCreateProjectCmd() *cobra.Command {
 
 func createProject(ctx context.Context, projectID string) error {
 	m := display.GetGlobalModelFunc()
-	p, err := gcp.NewGCPProviderFunc()
+	p, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return handleGCPError(err)
 	}

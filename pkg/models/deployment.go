@@ -2,12 +2,10 @@ package models
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 )
 
@@ -33,140 +31,10 @@ var (
 	ServiceTypeBacalhau = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
 )
 
-var RequiredAzureResources = []AzureResourceTypes{
-	AzureResourceTypeVNET,
-	AzureResourceTypeNIC,
-	AzureResourceTypeNSG,
-	AzureResourceTypeIP,
-	AzureResourceTypeDISK,
-	AzureResourceTypeVM,
-}
-
-var RequiredServices = []ServiceType{
-	ServiceTypeSSH,
-	ServiceTypeDocker,
-	ServiceTypeBacalhau,
-}
-
-var SkippedResourceTypes = []string{
-	"Microsoft.Compute/virtualMachines/extensions",
-}
-
-type AzureResourceTypes struct {
-	ResourceString    string
-	ShortResourceName string
-}
-
-func (a *AzureResourceTypes) GetResourceLowerString() string {
-	return strings.ToLower(a.ResourceString)
-}
-
-var AzureResourceTypeNIC = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/networkInterfaces",
-	ShortResourceName: "NIC ",
-}
-
-var AzureResourceTypeVNET = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/virtualNetworks",
-	ShortResourceName: "VNET",
-}
-
-var AzureResourceTypeSNET = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/subnets",
-	ShortResourceName: "SNET",
-}
-
-var AzureResourceTypeNSG = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/networkSecurityGroups",
-	ShortResourceName: "NSG ",
-}
-
-var AzureResourceTypeVM = AzureResourceTypes{
-	ResourceString:    "Microsoft.Compute/virtualMachines",
-	ShortResourceName: "VM  ",
-}
-
-var AzureResourceTypeDISK = AzureResourceTypes{
-	ResourceString:    "Microsoft.Compute/disks",
-	ShortResourceName: "DISK",
-}
-
-var AzureResourceTypeIP = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/publicIPAddresses",
-	ShortResourceName: "IP  ",
-}
-
-func (a *AzureResourceTypes) GetResourceString() string {
-	return a.ResourceString
-}
-
-func (a *AzureResourceTypes) GetShortResourceName() string {
-	return a.ShortResourceName
-}
-
-func GetAzureResourceType(resource string) AzureResourceTypes {
-	for _, r := range GetAllAzureResources() {
-		if strings.EqualFold(r.ResourceString, resource) {
-			return r
-		}
-	}
-	return AzureResourceTypes{}
-}
-
-func GetAllAzureResources() []AzureResourceTypes {
-	return []AzureResourceTypes{
-		AzureResourceTypeNIC,
-		AzureResourceTypeVNET,
-		AzureResourceTypeSNET,
-		AzureResourceTypeNSG,
-		AzureResourceTypeVM,
-		AzureResourceTypeDISK,
-		AzureResourceTypeIP,
-	}
-}
-
-func IsValidResource(resource string) bool {
-	return GetAzureResourceType(resource).ResourceString != ""
-}
-
-type AzureResourceState int
-
-const (
-	AzureResourceStateUnknown AzureResourceState = iota
-	AzureResourceStateNotStarted
-	AzureResourceStatePending
-	AzureResourceStateRunning
-	AzureResourceStateFailed
-	AzureResourceStateSucceeded
-)
-
-func ConvertFromStringToAzureResourceState(s string) AzureResourceState {
-	l := logger.Get()
-	switch s {
-	case "Not Started":
-		return AzureResourceStateNotStarted
-	case "Pending":
-		return AzureResourceStatePending
-	case "Creating":
-		return AzureResourceStatePending
-	case "Failed":
-		return AzureResourceStateFailed
-	case "Succeeded":
-		return AzureResourceStateSucceeded
-	case "Updating":
-		return AzureResourceStateSucceeded
-	case "Running":
-		return AzureResourceStateSucceeded
-	default:
-		l.Debugf("Unknown Azure Resource State: %s", s)
-		return AzureResourceStateUnknown
-	}
-}
-
 type MachineResource struct {
 	ResourceName  string
-	ResourceType  AzureResourceTypes
-	ResourceState AzureResourceState
+	ResourceType  ResourceTypes
+	ResourceState ResourceState
 	ResourceValue string
 }
 

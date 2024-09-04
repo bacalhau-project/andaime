@@ -90,8 +90,8 @@ func TestProcessUpdate(t *testing.T) {
 			machineName,
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
-				ResourceState: models.AzureResourceStateSucceeded,
+				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
 		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
@@ -101,7 +101,7 @@ func TestProcessUpdate(t *testing.T) {
 			assert.Equal(t, machineName, m.Name)
 			assert.Equal(t, UpdateTypeResource, data.UpdateType)
 			assert.Equal(t, "testResource", data.ResourceType.ResourceString)
-			assert.Equal(t, models.AzureResourceStateSucceeded, data.ResourceState)
+			assert.Equal(t, models.ResourceStateSucceeded, data.ResourceState)
 		}
 
 		provider.processUpdate(update)
@@ -121,8 +121,8 @@ func TestProcessUpdate(t *testing.T) {
 			"testMachine",
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
-				ResourceState: models.AzureResourceStateSucceeded,
+				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
 		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
@@ -145,8 +145,8 @@ func TestProcessUpdate(t *testing.T) {
 			"testMachine",
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
-				ResourceState: models.AzureResourceStateSucceeded,
+				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
 		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
@@ -163,8 +163,8 @@ func TestProcessUpdate(t *testing.T) {
 			"nonExistentMachine",
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
-				ResourceState: models.AzureResourceStateSucceeded,
+				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
 		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
@@ -194,8 +194,8 @@ func TestProcessUpdate(t *testing.T) {
 			machineName,
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.AzureResourceTypes{ResourceString: "testResource"},
-				ResourceState: models.AzureResourceStateSucceeded,
+				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
 		update.UpdateFunc = nil
@@ -451,7 +451,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 		for _, resource := range requiredResources {
 			m.Deployment.Machines[machineName].SetResourceState(
 				resource.ResourceString,
-				models.AzureResourceStateNotStarted,
+				models.ResourceStateNotStarted,
 			)
 		}
 	}
@@ -514,13 +514,13 @@ func TestPollAndUpdateResources(t *testing.T) {
 	for _, machine := range testMachines {
 		for _, resourceType := range requiredResources {
 			errgroup.Go(func() error {
-				return func(machine string, resourceType models.AzureResourceTypes) error {
+				return func(machine string, resourceType models.ResourceTypes) error {
 					for i := 0; i < 10; i++ {
-						for _, state := range []models.AzureResourceState{
-							models.AzureResourceStateNotStarted,
-							models.AzureResourceStatePending,
-							models.AzureResourceStateRunning,
-							models.AzureResourceStateSucceeded,
+						for _, state := range []models.ResourceState{
+							models.ResourceStateNotStarted,
+							models.ResourceStatePending,
+							models.ResourceStateRunning,
+							models.ResourceStateSucceeded,
 						} {
 							log(
 								fmt.Sprintf(
@@ -592,7 +592,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 			state := m.Deployment.Machines[machine].GetResourceState(resourceType.ResourceString)
 			assert.Equal(
 				t,
-				models.AzureResourceStateSucceeded,
+				models.ResourceStateSucceeded,
 				state,
 				"Unexpected final state for machine %s, resource %s",
 				machine,
@@ -614,7 +614,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 
 func generateMockResource(
 	machineName string,
-	resourceType models.AzureResourceTypes,
+	resourceType models.ResourceTypes,
 ) map[string]interface{} {
 	resource := map[string]interface{}{
 		"name":              fmt.Sprintf("%s-%s", machineName, resourceType.ShortResourceName),

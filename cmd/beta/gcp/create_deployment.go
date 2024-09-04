@@ -50,7 +50,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	uniqueID := time.Now().Format("060102150405")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
-	p, err := gcp.NewGCPProvider()
+	p, err := gcp.NewGCPProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
@@ -76,7 +76,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 			l.Debug("Deployment cancelled")
 			return
 		default:
-			deploymentErr = p.DeployCluster(ctx)
+			deploymentErr = p.CreateResources(ctx)
 		}
 	}()
 
@@ -179,8 +179,6 @@ func setDeploymentBasicInfo(deployment *models.Deployment) error {
 	uniqueID := viper.GetString("general.unique_id")
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
 	deployment.ProjectID = viper.GetString("gcp.project_id")
-	deployment.Region = viper.GetString("gcp.region")
-	deployment.Zone = viper.GetString("gcp.zone")
 	return nil
 }
 

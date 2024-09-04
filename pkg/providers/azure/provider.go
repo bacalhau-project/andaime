@@ -22,14 +22,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// AzureClienter interface defines the methods we need for Azure operations
-type AzureClienter interface {
-	ResourceGroupExists(ctx context.Context, resourceGroupName string) (bool, error)
-	DestroyResourceGroup(ctx context.Context, resourceGroupName string) error
-	ListAllResourcesInSubscription(ctx context.Context, subscriptionID string, tags map[string]*string) ([]interface{}, error)
-	// Add other methods as needed
-}
-
 const (
 	UpdateQueueSize         = 100
 	ResourcePollingInterval = 2 * time.Second
@@ -71,8 +63,8 @@ type UpdatePayload struct {
 	UpdateType    UpdateType
 	ServiceType   models.ServiceType
 	ServiceState  models.ServiceState
-	ResourceType  models.AzureResourceTypes
-	ResourceState models.AzureResourceState
+	ResourceType  models.ResourceTypes
+	ResourceState models.ResourceState
 	Complete      bool
 }
 
@@ -116,7 +108,6 @@ type AzureProviderer interface {
 var _ AzureProviderer = (*AzureProvider)(nil)
 
 type AzureProvider struct {
-	common.BaseClusterDeployer
 	Client              interface{}
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
@@ -562,7 +553,6 @@ func (p *AzureProvider) logDeploymentStatus() {
 	}
 }
 
-
 func writeToDebugLog(message string) {
 	debugFilePath := "/tmp/andaime-debug.log"
 	debugFile, err := os.OpenFile(
@@ -640,7 +630,7 @@ func isValidGUID(guid string) bool {
 
 func (p *AzureProvider) WaitForAllMachinesToReachState(
 	ctx context.Context,
-	targetState models.AzureResourceState,
+	targetState models.ResourceState,
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -674,20 +664,39 @@ func (p *AzureProvider) WaitForAllMachinesToReachState(
 
 // TestSSHLiveness tests the SSH liveness of a machine
 func (p *AzureProvider) TestSSHLiveness(ctx context.Context, machineName string) error {
-	// Implement the SSH liveness test
+	m := display.GetGlobalModelFunc()
+
+	mach, ok := m.Deployment.Machines[machineName]
+	if !ok {
+		return fmt.Errorf("machine %s not found", machineName)
+	}
+
+	sshConfig, err := sshutils.NewSSHConfigFunc(
+		mach.PublicIP,
+		mach.SSHPort,
+		mach.SSHUser,
+		mach.SSHPrivateKeyMaterial,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %w", err)
+	}
+
+	err = sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.SSHRetryDelay)
+	if err != nil {
+		mach.SetServiceState("SSH", models.ServiceStateFailed)
+		return fmt.Errorf("failed to wait for SSH: %w", err)
+	}
+
+	mach.SetServiceState("SSH", models.ServiceStateSucceeded)
+	m.UpdateStatus(
+		models.NewDisplayStatusWithText(
+			mach.Name,
+			models.AzureResourceTypeVM,
+			models.ResourceStateSucceeded,
+			"SSH Successfully Deployed",
+		),
+	)
 	return nil
-}
-
-// PollAndUpdateResources polls and updates Azure resources
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
-	// Implement resource polling and updating
-	return nil, nil
-}
-
-// NewAzureClient creates a new Azure client
-func NewAzureClient(subscriptionID string) (AzureClienter, error) {
-	// Implement Azure client creation
-	return nil, nil
 }
 
 func verifyDocker(ctx context.Context, mach *models.Machine) error {
@@ -707,7 +716,7 @@ func verifyDocker(ctx context.Context, mach *models.Machine) error {
 		models.NewDisplayStatusWithText(
 			mach.Name,
 			models.AzureResourceTypeVM,
-			models.AzureResourceStatePending,
+			models.ResourceStatePending,
 			"Testing Docker",
 		),
 	)
@@ -758,7 +767,7 @@ func verifyDocker(ctx context.Context, mach *models.Machine) error {
 			models.NewDisplayStatusWithText(
 				mach.Name,
 				models.AzureResourceTypeVM,
-				models.AzureResourceStateFailed,
+				models.ResourceStateFailed,
 				"Failed to detect Docker version",
 			),
 		)
@@ -772,7 +781,7 @@ func verifyDocker(ctx context.Context, mach *models.Machine) error {
 		models.NewDisplayStatusWithText(
 			mach.Name,
 			models.AzureResourceTypeVM,
-			models.AzureResourceStateSucceeded,
+			models.ResourceStateSucceeded,
 			"Docker Successfully Deployed",
 		),
 	)

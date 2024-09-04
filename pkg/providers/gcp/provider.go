@@ -62,8 +62,8 @@ type UpdatePayload struct {
 	UpdateType    UpdateType
 	ServiceType   models.ServiceType
 	ServiceState  models.ServiceState
-	ResourceType  models.AzureResourceTypes
-	ResourceState models.AzureResourceState
+	ResourceType  models.ResourceTypes
+	ResourceState models.ResourceState
 	Complete      bool
 }
 
@@ -96,8 +96,7 @@ type GCPProvider struct {
 
 var NewGCPProviderFunc = NewGCPProvider
 
-// NewAzureProvider creates a new AzureProvider instance
-func NewGCPProvider() (GCPProviderer, error) {
+func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
 	config := viper.GetViper()
 	if !config.IsSet("gcp") {
 		return nil, fmt.Errorf("gcp configuration is required")
@@ -143,7 +142,7 @@ func NewGCPProvider() (GCPProviderer, error) {
 	config.Set("general.ssh_public_key_path", expandedPublicKeyPath)
 	config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
 
-	client, cleanup, err := NewGCPClientFunc(context.Background(), organizationID)
+	client, cleanup, err := NewGCPClientFunc(ctx, organizationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP client: %w", err)
 	}
@@ -529,73 +528,30 @@ func (p *GCPProvider) CreateStorageBucket(
 	return p.Client.CreateStorageBucket(ctx, bucketName)
 }
 
-func (p *GCPProvider) CreateVM(
+func (p *GCPProvider) TestSSHLiveness(
 	ctx context.Context,
-	projectID string,
-	vmConfig map[string]string,
-) (string, error) {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	// Set the project ID in the deployment model
-	if m != nil && m.Deployment != nil {
-		m.Deployment.ProjectID = projectID
-		l.Infof("Set project ID in deployment: %s", projectID)
-	} else {
-		return "", fmt.Errorf("global model or deployment is nil")
-	}
-
-	// Enable required APIs
-	err := p.EnableRequiredAPIs(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to enable required APIs: %v", err)
-	}
-
-	// Create the VM
-	vmName, err := p.Client.CreateVM(ctx, vmConfig)
-	if err != nil {
-		return "", fmt.Errorf("failed to create VM: %v", err)
-	}
-
-	// Get the VM's external IP address
-	vmIP, err := p.Client.GetVMExternalIP(ctx, projectID, vmConfig["zone"], vmName)
-	if err != nil {
-		return "", fmt.Errorf("failed to get VM external IP: %v", err)
-	}
-
-	// Get the SSH private key material
-	sshPrivateKeyMaterial, err := p.getSSHPrivateKeyMaterial()
-	if err != nil {
-		return "", fmt.Errorf("failed to get SSH private key material: %v", err)
-	}
-
-	// Test SSH connectivity
-	err = p.testSSHConnectivity(ctx, p.SSHUser, vmIP, p.SSHPort, sshPrivateKeyMaterial)
-	if err != nil {
-		return "", fmt.Errorf("failed to test SSH connectivity: %v", err)
-	}
-
-	return vmName, nil
-}
-
-func (p *GCPProvider) testSSHConnectivity(
-	ctx context.Context,
-	username, ipAddress string,
-	port int,
-	sshPrivateKeyMaterial string,
+	machineName string,
 ) error {
 	l := logger.Get()
 
-	l.Infof("Testing SSH connectivity to %s@%s:%d", username, ipAddress, port)
-
-	checker := sshutils.NewSSHLivenessChecker()
-	err := checker.CheckSSHLiveness(ctx, ipAddress, username, sshPrivateKeyMaterial, port)
-	if err != nil {
-		return fmt.Errorf("failed to connect via SSH: %v", err)
+	l.Infof("Testing SSH connectivity to %s", machineName)
+	m := display.GetGlobalModelFunc()
+	mach, ok := m.Deployment.Machines[machineName]
+	if !ok {
+		return fmt.Errorf("machine %s not found", machineName)
 	}
 
-	l.Infof("Successfully connected to %s@%s:%d via SSH", username, ipAddress, port)
-	return nil
+	sshConfig, err := sshutils.NewSSHConfigFunc(
+		mach.PublicIP,
+		p.SSHPort,
+		p.SSHUser,
+		[]byte(mach.SSHPrivateKeyMaterial),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %v", err)
+	}
+
+	return sshConfig.WaitForSSH(ctx, p.SSHPort, 5*time.Minute)
 }
 
 func (p *GCPProvider) getSSHPrivateKeyMaterial() (string, error) {
@@ -637,7 +593,7 @@ func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 	var err error
 	var cleanup func()
 	gcpClientOnce.Do(func() {
-		gcpClientInstance, cleanup, err = NewGCPClient(ctx, organizationID)
+		gcpClientInstance, cleanup, err = NewGCPClientFunc(ctx, organizationID)
 	})
 	return gcpClientInstance, cleanup, err
 }

@@ -282,7 +282,8 @@ func initAzureProvider(c *cloudProvider) error {
 }
 
 func initGCPProvider(c *cloudProvider) error {
-	gcpProvider, err := gcppackage.NewGCPProviderFunc()
+	ctx := context.Background()
+	gcpProvider, err := gcppackage.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}

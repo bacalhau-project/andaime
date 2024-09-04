@@ -120,7 +120,7 @@ func runDeployment(
 		for k := range m.Deployment.Machines[i].GetMachineResources() {
 			m.Deployment.Machines[i].SetResourceState(
 				k,
-				models.AzureResourceStateSucceeded,
+				models.ResourceStateSucceeded,
 			)
 		}
 	}
@@ -301,7 +301,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			newMachines[newMachine.Name] = newMachine
 			newMachines[newMachine.Name].SetResourceState(
 				models.AzureResourceTypeVM.ResourceString,
-				models.AzureResourceStateNotStarted,
+				models.ResourceStateNotStarted,
 			)
 		}
 

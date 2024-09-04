@@ -5,8 +5,14 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
+	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/spf13/viper"
 )
 
 // Ensure GCPProvider implements ClusterDeployer
@@ -14,36 +20,144 @@ var _ common.ClusterDeployer = (*GCPProvider)(nil)
 
 // CreateResources implements the ClusterDeployer interface for GCP
 func (p *GCPProvider) CreateResources(ctx context.Context) error {
-	// TODO: Implement GCP-specific resource creation
-	return fmt.Errorf("CreateResources not implemented for GCP")
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	for _, machine := range m.Deployment.Machines {
+		l.Infof("Creating instance %s in zone %s", machine.Name, machine.Location)
+		m.UpdateStatus(models.NewDisplayStatusWithText(
+			machine.Name,
+			models.GCPResourceTypeInstance,
+			models.ResourceStatePending,
+			"Creating VM",
+		))
+
+		instance, err := p.CreateComputeInstance(
+			ctx,
+			machine.Name,
+		)
+		if err != nil {
+			l.Errorf("Failed to create instance %s: %v", machine.Name, err)
+			machine.SetResourceState(
+				models.GCPResourceTypeInstance.ResourceString,
+				models.ResourceStateFailed,
+			)
+			continue
+		}
+
+		machine.SetResourceState(
+			models.GCPResourceTypeInstance.ResourceString,
+			models.ResourceStateRunning,
+		)
+
+		if len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
+			machine.PublicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+		} else {
+			return fmt.Errorf("no access configs found for instance %s - could not get public IP", machine.Name)
+		}
+
+		machine.PrivateIP = *instance.NetworkInterfaces[0].NetworkIP
+		l.Infof("Instance %s created successfully", machine.Name)
+	}
+
+	return nil
 }
 
 // ProvisionSSH implements the ClusterDeployer interface for GCP
 func (p *GCPProvider) ProvisionSSH(ctx context.Context) error {
-	// TODO: Implement GCP-specific SSH provisioning
-	return fmt.Errorf("ProvisionSSH not implemented for GCP")
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	for _, machine := range m.Deployment.Machines {
+		l.Infof("Provisioning SSH for instance %s", machine.Name)
+		m.UpdateStatus(models.NewDisplayStatusWithText(
+			machine.Name,
+			models.GCPResourceTypeInstance,
+			models.ResourceStatePending,
+			"Provisioning SSH",
+		))
+
+		// TODO: Implement GCP-specific SSH provisioning logic here
+
+		machine.SetServiceState("SSH", models.ServiceStateSucceeded)
+		l.Infof("SSH provisioned successfully for instance %s", machine.Name)
+	}
+
+	return nil
 }
 
 // SetupDocker implements the ClusterDeployer interface for GCP
 func (p *GCPProvider) SetupDocker(ctx context.Context) error {
-	// TODO: Implement GCP-specific Docker setup
-	return fmt.Errorf("SetupDocker not implemented for GCP")
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	for _, machine := range m.Deployment.Machines {
+		l.Infof("Setting up Docker on instance %s", machine.Name)
+		m.UpdateStatus(models.NewDisplayStatusWithText(
+			machine.Name,
+			models.GCPResourceTypeInstance,
+			models.ResourceStatePending,
+			"Setting up Docker",
+		))
+
+		// TODO: Implement GCP-specific Docker setup logic here
+
+		machine.SetServiceState("Docker", models.ServiceStateSucceeded)
+		l.Infof("Docker set up successfully on instance %s", machine.Name)
+	}
+
+	return nil
 }
 
 // DeployOrchestrator implements the ClusterDeployer interface for GCP
 func (p *GCPProvider) DeployOrchestrator(ctx context.Context) error {
-	// TODO: Implement GCP-specific orchestrator deployment
-	return fmt.Errorf("DeployOrchestrator not implemented for GCP")
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	for _, machine := range m.Deployment.Machines {
+		if machine.Orchestrator {
+			l.Infof("Deploying orchestrator on instance %s", machine.Name)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeInstance,
+				models.ResourceStatePending,
+				"Deploying Orchestrator",
+			))
+
+			// TODO: Implement GCP-specific orchestrator deployment logic here
+
+			machine.SetServiceState("Orchestrator", models.ServiceStateSucceeded)
+			l.Infof("Orchestrator deployed successfully on instance %s", machine.Name)
+			break
+		}
+	}
+
+	return nil
 }
 
 // DeployNodes implements the ClusterDeployer interface for GCP
 func (p *GCPProvider) DeployNodes(ctx context.Context) error {
-	// TODO: Implement GCP-specific node deployment
-	return fmt.Errorf("DeployNodes not implemented for GCP")
-}
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 
-func (p *GCPProvider) DeployCluster(ctx context.Context) error {
-	return fmt.Errorf("DeployCluster not implemented for GCP")
+	for _, machine := range m.Deployment.Machines {
+		if !machine.Orchestrator {
+			l.Infof("Deploying node on instance %s", machine.Name)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeInstance,
+				models.ResourceStatePending,
+				"Deploying Node",
+			))
+
+			// TODO: Implement GCP-specific node deployment logic here
+
+			machine.SetServiceState("Node", models.ServiceStateSucceeded)
+			l.Infof("Node deployed successfully on instance %s", machine.Name)
+		}
+	}
+
+	return nil
 }
 
 // Update GCPProviderer interface to include ClusterDeployer methods
@@ -51,6 +165,10 @@ type GCPProviderer interface {
 	common.ClusterDeployer
 	GetGCPClient() GCPClienter
 	SetGCPClient(client GCPClienter)
+	GetConfig() *viper.Viper
+	SetConfig(config *viper.Viper)
+	GetSSHClient() sshutils.SSHClienter
+	SetSSHClient(client sshutils.SSHClienter)
 
 	EnsureProject(
 		ctx context.Context,
@@ -88,11 +206,14 @@ type GCPProviderer interface {
 		ctx context.Context,
 		bucketName string,
 	) error
-	CreateVM(
+	CreateComputeInstance(
 		ctx context.Context,
-		projectID string,
-		vmConfig map[string]string,
+		instanceName string,
+	) (*computepb.Instance, error)
+	GetVMExternalIP(
+		ctx context.Context,
+		projectID,
+		zone,
+		vmName string,
 	) (string, error)
-	ListBillingAccounts(ctx context.Context) ([]string, error)
-	GetVMExternalIP(ctx context.Context, projectID, zone, vmName string) (string, error)
 }

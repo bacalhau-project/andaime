@@ -7,28 +7,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// SSHSessioner interface defines the methods we need for SSH sessions
-type SSHSessioner interface {
-	Run(cmd string) error
-	Start(cmd string) error
-	Wait() error
-	Close() error
-	StdinPipe() (io.WriteCloser, error)
-	StdoutPipe() (io.Reader, error)
-	StderrPipe() (io.Reader, error)
-	CombinedOutput(cmd string) ([]byte, error)
-}
-
 // SSHClienter interface defines the methods we need for SSH operations
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
 	Close() error
 	TestConnectivity(ip, user string, port int, privateKeyPath string) error
-}
-
-// SSHDialer interface defines the method for dialing SSH connections
-type SSHDialer interface {
-	Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
 }
 
 // SSHClient struct definition
@@ -53,26 +36,15 @@ func (cl *SSHClient) Close() error {
 }
 
 func (cl *SSHClient) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
-	checker := NewSSHLivenessChecker()
-	if checker == nil {
-		return fmt.Errorf("failed to create SSH liveness checker")
+	sshConfig, err := NewSSHConfig(ip, port, user, []byte(privateKeyPath))
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %v", err)
 	}
-	return checker.TestConnectivity(ip, user, port, privateKeyPath)
-}
 
-// SSHLivenessChecker structure for checking SSH liveness
-type SSHLivenessChecker struct {
-	// Add necessary fields
-}
-
-// NewSSHLivenessChecker creates a new SSHLivenessChecker
-func NewSSHLivenessChecker() *SSHLivenessChecker {
-	return &SSHLivenessChecker{}
-}
-
-// TestConnectivity tests the SSH connectivity
-func (c *SSHLivenessChecker) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
-	// Implement the connectivity test
+	_, err = sshConfig.Connect()
+	if err != nil {
+		return fmt.Errorf("failed to connect to SSH: %v", err)
+	}
 	return nil
 }
 
