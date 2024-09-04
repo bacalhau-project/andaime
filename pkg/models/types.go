@@ -218,6 +218,7 @@ func ConvertFromRawResourceToStatus(
 	resourceMap map[string]interface{},
 	deployment *Deployment,
 ) ([]DisplayStatus, error) {
+	l := logger.Get()
 	resourceName := resourceMap["name"].(string)
 	resourceType := resourceMap["type"].(string)
 	resourceState := resourceMap["provisioningState"].(string)
@@ -252,6 +253,9 @@ func ConvertFromRawResourceToStatus(
 		}
 	} else {
 		if !utils.CaseInsensitiveContains(SkippedResourceTypes, resourceType) {
+			l.Debugf("unknown resource ID format: %s", resourceName)
+			l.Debugf("resource type: %s", resourceType)
+			l.Debugf("resource state: %s", resourceState)
 			return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
 		}
 	}

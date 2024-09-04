@@ -58,6 +58,11 @@ var AzureResourceTypeIP = ResourceTypes{
 	ShortResourceName: "IP  ",
 }
 
+var AzureResourceTypeGuestAttestation = ResourceTypes{
+	ResourceString:    "Microsoft.Compute/virtualMachines/extensions/GuestAttestation",
+	ShortResourceName: "GATT",
+}
+
 func GetAzureResourceType(resource string) ResourceTypes {
 	for _, r := range GetAllAzureResources() {
 		if strings.EqualFold(r.ResourceString, resource) {
@@ -76,6 +81,7 @@ func GetAllAzureResources() []ResourceTypes {
 		AzureResourceTypeVM,
 		AzureResourceTypeDISK,
 		AzureResourceTypeIP,
+		AzureResourceTypeGuestAttestation,
 	}
 }
 
