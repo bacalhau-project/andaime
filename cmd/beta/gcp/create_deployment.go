@@ -50,7 +50,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	uniqueID := time.Now().Format("060102150405")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
-	p, err := gcp.NewGCPProviderFunc()
+	p, err := gcp.NewGCPProvider()
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
@@ -93,8 +93,6 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	return deploymentErr
 }
 
-// Remove this function as it's no longer needed
-
 func setDefaultConfigurations() {
 	viper.SetDefault("general.project_prefix", "andaime")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
@@ -109,13 +107,13 @@ func setDefaultConfigurations() {
 	viper.SetDefault("gcp.machine_type", "e2-medium")
 	viper.SetDefault("gcp.disk_size_gb", globals.DefaultDiskSizeGB)
 	viper.SetDefault("gcp.allowed_ports", globals.DefaultAllowedPorts)
-	viper.SetDefault("gcp.machines", []models.Machine{
+	viper.SetDefault("gcp.machines", []map[string]interface{}{
 		{
-			Name:     "default-vm",
-			VMSize:   viper.GetString("gcp.machine_type"),
-			Location: viper.GetString("gcp.zone"),
-			Parameters: models.Parameters{
-				Orchestrator: true,
+			"name":     "default-vm",
+			"vm_size":  viper.GetString("gcp.machine_type"),
+			"location": viper.GetString("gcp.zone"),
+			"parameters": map[string]interface{}{
+				"orchestrator": true,
 			},
 		},
 	})
