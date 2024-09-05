@@ -185,17 +185,17 @@ func (p *GCPProvider) loadDeploymentFromConfig() error {
 	m.Deployment.ProjectID = p.Config.GetString("gcp.project_id")
 
 	// Load billing account ID
-	m.Deployment.BillingAccountID = p.Config.GetString("gcp.billing_account_id")
+	m.Deployment.GCP.BillingAccountID = p.Config.GetString("gcp.billing_account_id")
 
 	// Load service account email
-	m.Deployment.ServiceAccountEmail = p.Config.GetString("gcp.service_account_email")
+	m.Deployment.GCP.ServiceAccountEmail = p.Config.GetString("gcp.service_account_email")
 
 	// Load allowed ports
 	m.Deployment.AllowedPorts = p.Config.GetIntSlice("gcp.allowed_ports")
 
 	// Initialize the ProjectServiceAccounts map if it's nil
-	if m.Deployment.ProjectServiceAccounts == nil {
-		m.Deployment.ProjectServiceAccounts = make(map[string]models.ServiceAccountInfo)
+	if m.Deployment.GCP.ProjectServiceAccounts == nil {
+		m.Deployment.GCP.ProjectServiceAccounts = make(map[string]models.ServiceAccountInfo)
 	}
 
 	// Load project-specific data
@@ -206,7 +206,7 @@ func (p *GCPProvider) loadDeploymentFromConfig() error {
 				email, _ := saData["email"].(string)
 				key, _ := saData["key"].(string)
 				if email != "" && key != "" {
-					m.Deployment.ProjectServiceAccounts[projectID] = models.ServiceAccountInfo{
+					m.Deployment.GCP.ProjectServiceAccounts[projectID] = models.ServiceAccountInfo{
 						Email: email,
 						Key:   key,
 					}
@@ -320,7 +320,7 @@ func (p *GCPProvider) createServiceAccount(ctx context.Context, projectID string
 	)
 
 	// Update the deployment model
-	m.Deployment.ServiceAccountEmail = sa.Email
+	m.Deployment.GCP.ServiceAccountEmail = sa.Email
 
 	// Save the updated config
 	err = p.Config.WriteConfig()
@@ -577,11 +577,15 @@ func (p *GCPProvider) SetBillingAccount(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 	l.Infof(
 		"Setting billing account to %s for project %s",
-		m.Deployment.BillingAccountID,
+		m.Deployment.GCP.BillingAccountID,
 		m.Deployment.ProjectID,
 	)
 
-	return p.Client.SetBillingAccount(ctx, m.Deployment.ProjectID, m.Deployment.BillingAccountID)
+	return p.Client.SetBillingAccount(
+		ctx,
+		m.Deployment.ProjectID,
+		m.Deployment.GCP.BillingAccountID,
+	)
 }
 
 var (
@@ -603,4 +607,14 @@ func (p *GCPProvider) GetVMExternalIP(
 	projectID, zone, vmName string,
 ) (string, error) {
 	return p.Client.GetVMExternalIP(ctx, projectID, zone, vmName)
+}
+
+type GCPVMConfig struct {
+	ProjectID         string
+	Region            string
+	Zone              string
+	VMName            string
+	MachineType       string
+	SSHUser           string
+	PublicKeyMaterial string
 }

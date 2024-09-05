@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -211,7 +212,6 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	defaultType := viper.GetString("gcp.default_machine_type")
 	defaultDiskSize := viper.GetInt("gcp.disk_size_gb")
 	defaultZone := viper.GetString("gcp.default_zone")
-	defaultSourceImage := viper.GetString("gcp.default_source_image")
 	orgID := viper.GetString("gcp.organization_id")
 
 	if orgID == "" {
@@ -249,10 +249,13 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			return fmt.Errorf("invalid machine type for GCP: %s", vmType)
 		}
 
+		// Convert defaultDiskSize to int32 securely
+		int32DefaultDiskSize := safeConvertToInt32(defaultDiskSize)
+
 		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
 				location,
-				int32(defaultDiskSize),
+				int32DefaultDiskSize,
 				vmType,
 				privateKeyBytes,
 				deployment.SSHPort,
@@ -260,12 +263,6 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			if err != nil {
 				return fmt.Errorf("failed to create raw machine: %w", err)
 			}
-
-			// Set the source image in the machine's Parameters
-			if newMachine.Parameters == nil {
-				newMachine.Parameters = models.Parameters{}
-			}
-			newMachine.Parameters.Set("source_image", defaultSourceImage)
 
 			if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
 				newMachine.Orchestrator = true
@@ -330,4 +327,16 @@ func createNewMachine(
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 	return newMachine, nil
+}
+
+func safeConvertToInt32(value int) int32 {
+	if value > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if value < math.MinInt32 {
+		return math.MinInt32
+	}
+
+	//nolint:gosec
+	return int32(value)
 }
