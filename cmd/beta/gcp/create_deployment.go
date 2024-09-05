@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -304,8 +305,12 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 		// }
 		// fmt.Println("✅")
 
-		if !isValidGCPLocation(rawMachine.Location) {
+		if !internal_gcp.IsValidGCPLocation(rawMachine.Location) {
 			return fmt.Errorf("invalid location for GCP: %s", rawMachine.Location)
+		}
+
+		if !internal_gcp.IsValidGCPMachineType(rawMachine.Location, thisVMType) {
+			return fmt.Errorf("invalid machine type for GCP: %s", thisVMType)
 		}
 
 		countOfMachines := utils.GetCountOfMachines(count, defaultCount)
@@ -397,44 +402,4 @@ func createNewMachine(
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 	return newMachine, nil
-}
-func isValidGCPLocation(location string) bool {
-	// List of valid GCP regions and zones
-	validLocations := map[string]bool{
-		"us-central1":       true,
-		"us-central1-a":     true,
-		"us-central1-b":     true,
-		"us-central1-c":     true,
-		"us-central1-f":     true,
-		"us-east1":          true,
-		"us-east1-b":        true,
-		"us-east1-c":        true,
-		"us-east1-d":        true,
-		"us-east4":          true,
-		"us-east4-a":        true,
-		"us-east4-b":        true,
-		"us-east4-c":        true,
-		"us-west1":          true,
-		"us-west1-a":        true,
-		"us-west1-b":        true,
-		"us-west1-c":        true,
-		"europe-west1":      true,
-		"europe-west1-b":    true,
-		"europe-west1-c":    true,
-		"europe-west1-d":    true,
-		"europe-west2":      true,
-		"europe-west2-a":    true,
-		"europe-west2-b":    true,
-		"europe-west2-c":    true,
-		"asia-east1":        true,
-		"asia-east1-a":      true,
-		"asia-east1-b":      true,
-		"asia-east1-c":      true,
-		"asia-southeast1":   true,
-		"asia-southeast1-a": true,
-		"asia-southeast1-b": true,
-		"asia-southeast1-c": true,
-	}
-
-	return validLocations[location]
 }
