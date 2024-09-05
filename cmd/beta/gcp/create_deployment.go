@@ -13,7 +13,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -52,7 +52,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	uniqueID := time.Now().Format("060102150405")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
-	p, err := gcp_provider.NewGCPProvider(ctx)
+	p, err := gcp.NewGCPProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
