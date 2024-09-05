@@ -51,7 +51,7 @@ func setupTest(t *testing.T) *testSetup {
 		Client: mockAzureClient,
 	}
 
-	deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
+	deployment, err := models.NewDeployment()
 	assert.NoError(t, err)
 
 	display.SetGlobalModel(display.InitialModel(deployment))
@@ -66,7 +66,7 @@ func setupTest(t *testing.T) *testSetup {
 		"worker1": {Name: "worker1", PublicIP: "1.2.3.5", Location: "eastus2"},
 		"worker2": {Name: "worker2", PublicIP: "1.2.3.6", Location: "westus"},
 	}
-	m.Deployment.ResourceGroupLocation = "eastus"
+	m.Deployment.Azure.ResourceGroupLocation = "eastus"
 	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
 
 	sshutils.NewSSHConfigFunc = func(host string,

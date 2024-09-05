@@ -102,6 +102,8 @@ type GCPClienter interface {
 	) error
 	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
 	EnsureVPCNetwork(ctx context.Context, networkName string) error
+	EnsureFirewallRules(ctx context.Context, networkName string) error
+	EnsureStorageBucket(ctx context.Context, location, bucketName string) error
 }
 
 type LiveGCPClient struct {
@@ -111,6 +113,7 @@ type LiveGCPClient struct {
 	cloudBillingClient     *billing.CloudBillingClient
 	iamService             *iam.Service
 	serviceUsageClient     *serviceusage.Client
+	storageClient          *storage.Client
 	computeClient          *compute.InstancesClient
 	networksClient         *compute.NetworksClient
 	firewallsClient        *compute.FirewallsClient
@@ -137,14 +140,15 @@ func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, networkName string
 		Project: c.parentString,
 		NetworkResource: &computepb.Network{
 			Name:                  &networkName,
-			AutoCreateSubnetworks: &computepb.Network_AutoCreateSubnetworksValueValuesEnum{AutoCreateSubnetworksValueValuesEnum: computepb.Network_AUTO_CREATE_SUBNETWORKS_VALUE_TRUE},
+			AutoCreateSubnetworks: to.Ptr(true),
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create VPC network: %v", err)
 	}
 
-	err = c.waitForGlobalOperation(ctx, c.parentString, op.Name)
+	opName := op.Name()
+	err = c.waitForGlobalOperation(ctx, c.parentString, opName)
 	if err != nil {
 		return fmt.Errorf("failed to wait for VPC network creation: %v", err)
 	}
@@ -262,6 +266,12 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		return nil, nil, err
 	}
 	clientList = append(clientList, machineTypeListClient)
+
+	storageClient, err := storage.NewClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, storageClient)
 
 	// Cleanup function to close all clients
 	cleanup := func() {
@@ -1464,4 +1474,101 @@ func (c *LiveGCPClient) ValidateMachineType(
 	}
 
 	return true, nil
+}
+
+func (c *LiveGCPClient) EnsureFirewallRules(
+	ctx context.Context,
+	networkName string,
+) error {
+	l := logger.Get()
+	l.Debugf("Ensuring firewall rules for network %s", networkName)
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	projectID := m.Deployment.ProjectID
+
+	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
+	if err != nil {
+		return fmt.Errorf("failed to get or create network: %v", err)
+	}
+
+	// Create a new firewall rule for each port in the deployment model
+	for i, port := range m.Deployment.AllowedPorts {
+		firewallRuleName := fmt.Sprintf("allow-%d", port)
+		firewallRule := &computepb.Firewall{
+			Name:    to.Ptr(firewallRuleName),
+			Network: network.SelfLink,
+			Allowed: []*computepb.Allowed{
+				{
+					IPProtocol: to.Ptr("tcp"),
+					Ports:      []string{strconv.Itoa(port)},
+				},
+			},
+			Direction: to.Ptr("INGRESS"),
+			Priority:  to.Ptr(int32(1000 + i)),
+		}
+
+		req := &computepb.InsertFirewallRequest{
+			Project:          projectID,
+			FirewallResource: firewallRule,
+		}
+
+		op, err := c.firewallsClient.Insert(ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to create firewall rule: %v", err)
+		}
+
+		l.Debugf("Firewall rule %s created, waiting for operation to complete", firewallRuleName)
+
+		err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+		if err != nil {
+			return fmt.Errorf("failed to wait for firewall rule creation: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *LiveGCPClient) EnsureStorageBucket(
+	ctx context.Context,
+	location string,
+	bucketName string,
+) error {
+	l := logger.Get()
+	l.Debugf("Ensuring storage bucket %s exists", bucketName)
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	projectID := m.Deployment.ProjectID
+
+	bucket, err := c.storageClient.Bucket(bucketName).Attrs(ctx)
+	if err != nil {
+		if err == storage.ErrBucketNotExist {
+			return fmt.Errorf("bucket %s does not exist", bucketName)
+		}
+		return fmt.Errorf("failed to check if bucket exists: %v", err)
+	}
+
+	if bucket == nil {
+		return fmt.Errorf("bucket %s does not exist", bucketName)
+	}
+
+	attrs := &storage.BucketAttrs{
+		Name:              bucketName,
+		Location:          location,
+		StorageClass:      "STANDARD",
+		VersioningEnabled: true,
+	}
+
+	// Create the bucket
+	err = c.storageClient.Bucket(bucketName).Create(ctx, projectID, attrs)
+	if err != nil {
+		return fmt.Errorf("failed to create bucket: %v", err)
+	}
+
+	return nil
 }

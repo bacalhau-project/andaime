@@ -148,19 +148,19 @@ func setDeploymentBasicInfo(d *models.Deployment) error {
 	d.SSHUser = viper.GetString("general.ssh_user")
 	d.SSHPort = viper.GetInt("general.ssh_port")
 	d.OrchestratorIP = viper.GetString("general.orchestrator_ip")
-	d.ResourceGroupName = viper.GetString("azure.resource_group_name")
-	d.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
+	d.Azure.ResourceGroupName = viper.GetString("azure.resource_group_name")
+	d.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 	d.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
-	d.DefaultVMSize = viper.GetString("azure.default_vm_size")
+	d.Azure.DefaultVMSize = viper.GetString("azure.default_vm_size")
 
 	defaultDiskSize := viper.GetInt("azure.default_disk_size_gb")
-	d.DefaultDiskSizeGB = utils.GetSafeDiskSize(defaultDiskSize)
-	d.DefaultLocation = viper.GetString("azure.default_location")
+	d.Azure.DefaultDiskSizeGB = utils.GetSafeDiskSize(defaultDiskSize)
+	d.Azure.DefaultLocation = viper.GetString("azure.default_location")
 	subscriptionID, err := getSubscriptionID()
 	if err != nil {
 		return fmt.Errorf("failed to get subscription ID: %w", err)
 	}
-	d.SubscriptionID = subscriptionID
+	d.Azure.SubscriptionID = subscriptionID
 	return nil
 }
 
@@ -249,7 +249,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				thisVMType = defaultType
 			}
 		}
-		azureClient, err := azure.NewAzureClientFunc(deployment.SubscriptionID)
+		azureClient, err := azure.NewAzureClientFunc(deployment.Azure.SubscriptionID)
 		if err != nil {
 			return fmt.Errorf("failed to create Azure client: %w", err)
 		}
@@ -379,7 +379,7 @@ func PrepareDeployment(
 	if uniqueID == "" {
 		return nil, fmt.Errorf("general.unique_id is not set")
 	}
-	deployment, err := models.NewDeployment(models.DeploymentTypeAzure)
+	deployment, err := models.NewDeployment()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)
 	}
@@ -405,8 +405,8 @@ func PrepareDeployment(
 	}
 
 	// Ensure we have a location set
-	if deployment.ResourceGroupLocation == "" {
-		deployment.ResourceGroupLocation = "eastus" // Default Azure region
+	if deployment.Azure.ResourceGroupLocation == "" {
+		deployment.Azure.ResourceGroupLocation = "eastus" // Default Azure region
 		l.Warn("No resource group location specified, using default: eastus")
 	}
 

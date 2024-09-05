@@ -4,7 +4,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -37,17 +36,6 @@ func IsValidVMSize(vmSize string) bool {
 
 var skippedTypes = []string{
 	"microsoft.compute/virtualmachines/extensions",
-}
-
-type Pollerer interface {
-	PollUntilDone(
-		ctx context.Context,
-		options *runtime.PollUntilDoneOptions,
-	) (armresources.DeploymentsClientCreateOrUpdateResponse, error)
-	ResumeToken() (string, error)
-	Result(ctx context.Context) (armresources.DeploymentsClientCreateOrUpdateResponse, error)
-	Done() bool
-	Poll(ctx context.Context) (*http.Response, error)
 }
 
 type AzureClienter interface {
@@ -128,6 +116,11 @@ type AzureClienter interface {
 		ctx context.Context,
 		resourceGroupName string,
 	) (bool, error)
+
+	GetVMExternalIP(
+		ctx context.Context,
+		resourceGroupName, vmName string,
+	) (string, error)
 }
 
 // LiveAzureClient wraps all Azure SDK calls
@@ -474,4 +467,11 @@ func (c *LiveAzureClient) ResourceGroupExists(
 		return false, err
 	}
 	return true, nil
+}
+
+func (c *LiveAzureClient) GetVMExternalIP(
+	ctx context.Context,
+	resourceGroupName, vmName string,
+) (string, error) {
+	return "", nil
 }

@@ -34,11 +34,19 @@ func main() {
 }
 
 func generateGCPData() error {
+	// Create and start spinner for zones
+	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+	s.Suffix = " Fetching GCP zones..."
+	s.Start()
+
 	gcpZonesCmd := exec.Command("sh", "-c", "gcloud compute zones list --format=json")
 	gcpZonesOutput, err := gcpZonesCmd.Output()
 	if err != nil {
+		s.Stop()
 		return fmt.Errorf("failed to get GCP zones: %v", err)
 	}
+
+	s.Stop()
 
 	var gcpZones []struct {
 		Name string `json:"name"`
@@ -57,8 +65,8 @@ func generateGCPData() error {
 		err          error
 	}, len(gcpZones))
 
-	// Create and start spinner
-	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+	// Create and start spinner for machine types
+	s = spinner.New(spinner.CharSets[9], 100*time.Millisecond)
 	s.Suffix = " Fetching GCP machine types..."
 	s.Start()
 
@@ -115,7 +123,21 @@ func generateGCPData() error {
 	// Stop spinner
 	s.Stop()
 
-	yamlData, err := yaml.Marshal(gcpData)
+	// Sort locations and machine types
+	sortedLocations := make([]string, 0, len(gcpData.Locations))
+	for location := range gcpData.Locations {
+		sortedLocations = append(sortedLocations, location)
+	}
+	sort.Strings(sortedLocations)
+
+	sortedGCPData := CloudData{Locations: make(map[string][]string)}
+	for _, location := range sortedLocations {
+		machineTypes := gcpData.Locations[location]
+		sort.Strings(machineTypes)
+		sortedGCPData.Locations[location] = machineTypes
+	}
+
+	yamlData, err := yaml.Marshal(sortedGCPData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal GCP data to YAML: %v", err)
 	}
@@ -151,10 +173,7 @@ func getGCPMachineTypes(zone string) ([]string, error) {
 	})
 
 	var machineTypesList []string
-	for i, machineType := range gcpMachineTypes {
-		if i >= topMachineTypes {
-			break
-		}
+	for _, machineType := range gcpMachineTypes {
 		machineTypesList = append(machineTypesList, machineType.Name)
 	}
 	return machineTypesList, nil
@@ -247,7 +266,21 @@ func generateAzureData() error {
 	// Stop spinner
 	s.Stop()
 
-	yamlData, err := yaml.Marshal(azureData)
+	// Sort locations and machine types
+	sortedLocations := make([]string, 0, len(azureData.Locations))
+	for location := range azureData.Locations {
+		sortedLocations = append(sortedLocations, location)
+	}
+	sort.Strings(sortedLocations)
+
+	sortedAzureData := CloudData{Locations: make(map[string][]string)}
+	for _, location := range sortedLocations {
+		machineTypes := azureData.Locations[location]
+		sort.Strings(machineTypes)
+		sortedAzureData.Locations[location] = machineTypes
+	}
+
+	yamlData, err := yaml.Marshal(sortedAzureData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal Azure data to YAML: %v", err)
 	}
@@ -287,12 +320,8 @@ func getAzureVMSizes(location string) ([]string, error) {
 	sort.Slice(vmSizes, func(i, j int) bool {
 		return vmSizes[i].Cpus > vmSizes[j].Cpus
 	})
-
 	var topVMSizes []string
-	for i, vmSize := range vmSizes {
-		if i >= topMachineTypes {
-			break
-		}
+	for _, vmSize := range vmSizes {
 		topVMSizes = append(topVMSizes, vmSize.Name)
 	}
 	return topVMSizes, nil

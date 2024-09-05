@@ -45,13 +45,13 @@ func (p *AzureProvider) PrepareResourceGroup(
 	}
 
 	// Check if the resource group name already contains a timestamp
-	if m.Deployment.ResourceGroupName == "" {
-		m.Deployment.ResourceGroupName = "andaime-rg"
+	if m.Deployment.Azure.ResourceGroupName == "" {
+		m.Deployment.Azure.ResourceGroupName = "andaime-rg"
 	}
-	newRGName := m.Deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	m.Deployment.ResourceGroupName = newRGName
+	newRGName := m.Deployment.Azure.ResourceGroupName + "-" + time.Now().Format("20060102150405")
+	m.Deployment.Azure.ResourceGroupName = newRGName
 
-	resourceGroupLocation := m.Deployment.ResourceGroupLocation
+	resourceGroupLocation := m.Deployment.Azure.ResourceGroupLocation
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
 		if len(m.Deployment.Machines) > 0 {
@@ -67,12 +67,12 @@ func (p *AzureProvider) PrepareResourceGroup(
 			)
 		}
 	}
-	m.Deployment.ResourceGroupLocation = resourceGroupLocation
+	m.Deployment.Azure.ResourceGroupLocation = resourceGroupLocation
 
 	l.Debugf(
 		"Creating Resource Group - %s in location %s",
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Azure.ResourceGroupName,
+		m.Deployment.Azure.ResourceGroupLocation,
 	)
 
 	for _, machine := range m.Deployment.Machines {
@@ -87,12 +87,16 @@ func (p *AzureProvider) PrepareResourceGroup(
 	client := p.GetAzureClient()
 	_, err := client.GetOrCreateResourceGroup(
 		ctx,
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Azure.ResourceGroupName,
+		m.Deployment.Azure.ResourceGroupLocation,
 		m.Deployment.Tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to create Resource Group - %s: %v", m.Deployment.ResourceGroupName, err)
+		l.Errorf(
+			"Failed to create Resource Group - %s: %v",
+			m.Deployment.Azure.ResourceGroupName,
+			err,
+		)
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
@@ -107,8 +111,8 @@ func (p *AzureProvider) PrepareResourceGroup(
 
 	l.Debugf(
 		"Created Resource Group - %s in location %s",
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Azure.ResourceGroupName,
+		m.Deployment.Azure.ResourceGroupLocation,
 	)
 
 	return nil
@@ -465,7 +469,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		client := p.GetAzureClient()
 		poller, err := client.DeployTemplate(
 			ctx,
-			m.Deployment.ResourceGroupName,
+			m.Deployment.Azure.ResourceGroupName,
 			fmt.Sprintf("deployment-%s", machine.Name),
 			vmTemplate,
 			params,
@@ -542,10 +546,19 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		m.Deployment.Machines[machine.Name].StatusMessage = "Failed to deploy due to DNS conflict"
 	} else {
 		for i := 0; i < ipRetries; i++ {
-			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, m.Deployment.ResourceGroupName, machine.Name)
+			publicIP, privateIP, err := p.GetVMIPAddresses(
+				ctx,
+				m.Deployment.Azure.ResourceGroupName,
+				machine.Name,
+			)
 			if err != nil {
 				if i == ipRetries-1 {
-					l.Errorf("Failed to get IP addresses for VM %s after %d retries: %v", machine.Name, ipRetries, err)
+					l.Errorf(
+						"Failed to get IP addresses for VM %s after %d retries: %v",
+						machine.Name,
+						ipRetries,
+						err,
+					)
 					m.Deployment.Machines[machine.Name].StatusMessage = "Failed to get IP addresses"
 					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
 				}
@@ -603,8 +616,8 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	client := p.GetAzureClient()
 	resources, err := client.GetResources(
 		ctx,
-		m.Deployment.SubscriptionID,
-		m.Deployment.ResourceGroupName,
+		m.Deployment.Azure.SubscriptionID,
+		m.Deployment.Azure.ResourceGroupName,
 		m.Deployment.Tags,
 	)
 	if err != nil {
@@ -667,7 +680,7 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 	goRoutineID := m.RegisterGoroutine(
-		fmt.Sprintf("FinalizeDeployment-%s", m.Deployment.ResourceGroupName),
+		fmt.Sprintf("FinalizeDeployment-%s", m.Deployment.Azure.ResourceGroupName),
 	)
 	defer m.DeregisterGoroutine(goRoutineID)
 

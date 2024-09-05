@@ -52,8 +52,11 @@ func createProject(ctx context.Context, projectID string) error {
 	fmt.Printf("Project ensured successfully: %s\n", m.Deployment.ProjectID)
 
 	// Update status of all machines with the project being created
-	for i := range m.Machines {
-		m.Machines[i].StatusMessage = fmt.Sprintf("Associated with project: %s", m.Deployment.ProjectID)
+	for i := range m.Deployment.Machines {
+		m.Deployment.Machines[i].StatusMessage = fmt.Sprintf(
+			"Associated with project: %s",
+			m.Deployment.ProjectID,
+		)
 	}
 
 	// Enable necessary APIs
@@ -96,13 +99,6 @@ func createProject(ctx context.Context, projectID string) error {
 	fmt.Println("Ensuring firewall rules...")
 	if err := p.EnsureFirewallRules(ctx, networkName); err != nil {
 		return handleGCPError(fmt.Errorf("failed to ensure firewall rules: %v", err))
-	}
-
-	// Create or ensure Cloud Storage bucket
-	bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
-	fmt.Printf("Ensuring Cloud Storage bucket: %s\n", bucketName)
-	if err := p.EnsureStorageBucket(ctx, bucketName); err != nil {
-		return handleGCPError(fmt.Errorf("failed to ensure storage bucket: %v", err))
 	}
 
 	fmt.Println("Project setup completed successfully.")

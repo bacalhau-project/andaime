@@ -58,6 +58,13 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 
 		machine.PrivateIP = *instance.NetworkInterfaces[0].NetworkIP
 		l.Infof("Instance %s created successfully", machine.Name)
+
+		// Create or ensure Cloud Storage bucket
+		bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
+		fmt.Printf("Ensuring Cloud Storage bucket: %s\n", bucketName)
+		if err := p.EnsureStorageBucket(ctx, machine.Location, bucketName); err != nil {
+			return fmt.Errorf("failed to ensure storage bucket: %v", err)
+		}
 	}
 
 	return nil
@@ -208,7 +215,7 @@ type GCPProviderer interface {
 	) error
 	CreateComputeInstance(
 		ctx context.Context,
-		instanceName string,
+		vmName string,
 	) (*computepb.Instance, error)
 	GetVMExternalIP(
 		ctx context.Context,
@@ -216,4 +223,13 @@ type GCPProviderer interface {
 		zone,
 		vmName string,
 	) (string, error)
+	EnsureFirewallRules(
+		ctx context.Context,
+		networkName string,
+	) error
+	EnsureStorageBucket(
+		ctx context.Context,
+		location,
+		bucketName string,
+	) error
 }

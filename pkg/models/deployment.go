@@ -66,61 +66,45 @@ const (
 )
 
 type Deployment struct {
-	mu   sync.RWMutex
-	Name string
-
-	// Azure specific
-	ResourceGroupName     string
-	ResourceGroupLocation string
-
-	// GCP specific
-	OrganizationID string
-
-	// ProjectID is the project ID for the deployment - works on multiple clouds
-	ProjectID string
-
-	// BillingAccountID is the billing account ID for the deployment - works on GCP
-	BillingAccountID string
-
-	// ServiceAccountEmail is the email of the service account for the deployment - works on GCP
-	ServiceAccountEmail    string
+	mu                     sync.RWMutex
+	Name                   string
+	Azure                  *AzureConfig
+	GCP                    *GCPConfig
+	Machines               map[string]*Machine
+	UniqueID               string
+	StartTime              time.Time
+	EndTime                time.Time
+	ProjectID              string
+	Locations              []string
+	AllowedPorts           []int
+	SSHUser                string
+	SSHPort                int
+	SSHPublicKeyPath       string
+	SSHPublicKeyMaterial   string
+	SSHPrivateKeyPath      string
+	SSHPrivateKeyMaterial  string
+	OrchestratorIP         string
+	Tags                   map[string]*string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
-
-	Locations      []string
-	OrchestratorIP string
-	Machines       map[string]*Machine
-	UniqueID       string
-
-	Tags   map[string]*string
-	Labels map[string]string
-
-	AllowedPorts          []int
-	SSHUser               string
-	SSHPort               int
-	SSHPublicKeyPath      string
-	SSHPrivateKeyPath     string
-	SSHPublicKeyMaterial  string
-	SSHPrivateKeyMaterial string
-	DefaultVMSize         string `default:"Standard_B2s"`
-	DefaultDiskSizeGB     int32  `default:"30"`
-	DefaultLocation       string `default:"eastus"`
-	StartTime             time.Time
-	EndTime               time.Time
-	SubscriptionID        string
-	deploymentMutex       sync.RWMutex
-
-	Cleanup func()
-	Type    DeploymentType
+	deploymentMutex        sync.RWMutex
 }
 
-func NewDeployment(deploymentType DeploymentType) (*Deployment, error) {
+func NewDeployment() (*Deployment, error) {
+	projectPrefix := viper.GetString("general.project_prefix")
+	if projectPrefix == "" {
+		return nil, fmt.Errorf("general.project_prefix is not set")
+	}
+	uniqueID := time.Now().Format("0601021504")
+	projectID := projectPrefix + "-" + uniqueID
 	deployment := &Deployment{
-		StartTime: time.Now(),
-		Machines:  make(map[string]*Machine),
-		Tags:      make(map[string]*string),
-		ProjectID: viper.GetString("general.project_prefix"),
-		UniqueID:  time.Now().Format("060102150405"),
-		Type:      deploymentType,
+		StartTime:              time.Now(),
+		Machines:               make(map[string]*Machine),
+		UniqueID:               uniqueID,
+		Azure:                  &AzureConfig{},
+		GCP:                    &GCPConfig{},
+		ProjectID:              projectID,
+		Tags:                   make(map[string]*string),
+		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
 	}
 	return deployment, nil
 }
@@ -129,12 +113,11 @@ func (d *Deployment) ToMap() map[string]interface{} {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return map[string]interface{}{
-		"ResourceGroupName":     d.ResourceGroupName,
-		"ResourceGroupLocation": d.ResourceGroupLocation,
+		"ResourceGroupName":     d.Azure.ResourceGroupName,
+		"ResourceGroupLocation": d.Azure.ResourceGroupLocation,
 		"Machines":              d.Machines,
 		"ProjectID":             d.ProjectID,
 		"UniqueID":              d.UniqueID,
-		"Tags":                  d.Tags,
 	}
 }
 
@@ -142,7 +125,7 @@ func (d *Deployment) UpdateViperConfig() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	v := viper.GetViper()
-	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.ResourceGroupName)
+	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.Azure.ResourceGroupName)
 	viperMachines := make(map[string]map[string]interface{})
 	for _, machine := range d.Machines {
 		viperMachines[machine.Name] = map[string]interface{}{
@@ -183,4 +166,47 @@ func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
 
 type StatusUpdateMsg struct {
 	Status *DisplayStatus
+}
+
+func (d *Deployment) GetCloudResources(cloudType DeploymentType) interface{} {
+	switch cloudType {
+	case DeploymentTypeAzure:
+		return d.Azure
+	case DeploymentTypeGCP:
+		return d.GCP
+	default:
+		return nil
+	}
+}
+
+func (d *Deployment) GetCloudConfig(cloudType DeploymentType) interface{} {
+	switch cloudType {
+	case DeploymentTypeAzure:
+		return d.Azure
+	case DeploymentTypeGCP:
+		return d.GCP
+	default:
+		return nil
+	}
+}
+
+type AzureConfig struct {
+	ResourceGroupName     string
+	ResourceGroupLocation string
+	SubscriptionID        string
+	DefaultVMSize         string
+	DefaultDiskSizeGB     int32
+	DefaultLocation       string
+}
+
+type GCPConfig struct {
+	ProjectID              string
+	OrganizationID         string
+	Region                 string
+	Zone                   string
+	DefaultMachineType     string
+	DefaultDiskSizeGB      int32
+	BillingAccountID       string
+	ServiceAccountEmail    string
+	ProjectServiceAccounts map[string]ServiceAccountInfo
 }

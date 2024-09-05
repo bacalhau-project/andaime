@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"os"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/aws/smithy-go/ptr"
-	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -32,6 +30,11 @@ func setupTestDisplayModel() *display.DisplayModel {
 		Deployment: &models.Deployment{
 			Machines:  make(map[string]*models.Machine),
 			Locations: []string{"eastus"},
+			Azure: &models.AzureConfig{
+				ResourceGroupName:     "test-resource-group",
+				ResourceGroupLocation: "eastus",
+				SubscriptionID:        "test-subscription-id",
+			},
 		},
 	}
 }
@@ -208,14 +211,6 @@ func TestDeployResources(t *testing.T) {
 	setupDeployARMTemplateTest(t)
 	defer teardownDeployARMTemplateTest(t)
 
-	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
-	testSSHPrivateKeyMaterial, err := os.ReadFile(testSSHPrivateKeyPath)
-	if err != nil {
-		t.Fatalf("failed to read SSH private key: %v", err)
-	}
-	defer cleanupPublicKey()
-	defer cleanupPrivateKey()
-
 	mockSSHConfig := new(MockSSHConfig)
 
 	tests := []struct {
@@ -350,14 +345,7 @@ func TestDeployResources(t *testing.T) {
 			}
 
 			m := setupTestDisplayModel()
-			m.Deployment = &models.Deployment{
-				Locations:             tt.locations,
-				Machines:              make(map[string]*models.Machine),
-				SSHPrivateKeyMaterial: string(testSSHPrivateKeyMaterial),
-				SSHPort:               66000,
-				SSHUser:               "fake-user",
-			}
-
+			m.Deployment.Locations = tt.locations
 			originalGlobalModelFunc := display.GetGlobalModelFunc
 			defer func() {
 				display.GetGlobalModelFunc = originalGlobalModelFunc
@@ -441,7 +429,12 @@ func TestPollAndUpdateResources(t *testing.T) {
 	m.Deployment = &models.Deployment{
 		Name:     "test-deployment",
 		Machines: make(map[string]*models.Machine),
-		Tags:     map[string]*string{"test": ptr.String("value")},
+		Azure: &models.AzureConfig{
+			ResourceGroupName:     "test-resource-group",
+			ResourceGroupLocation: "eastus",
+			SubscriptionID:        "test-subscription-id",
+		},
+		Tags: map[string]*string{"test": ptr.String("value")},
 	}
 
 	for _, machineName := range testMachines {
@@ -700,7 +693,12 @@ func TestRandomServiceUpdates(t *testing.T) {
 	localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
 		Machines: make(map[string]*models.Machine),
-		Tags:     map[string]*string{"test": ptr.String("value")},
+		Azure: &models.AzureConfig{
+			ResourceGroupName:     "test-resource-group",
+			ResourceGroupLocation: "eastus",
+			SubscriptionID:        "test-subscription-id",
+		},
+		Tags: map[string]*string{"test": ptr.String("value")},
 	}
 
 	for _, machineName := range testMachines {

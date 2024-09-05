@@ -15,12 +15,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
-type Parameters map[string]interface{}
-
-func (p Parameters) Set(key string, value interface{}) {
-	p[key] = value
-}
-
 type Machine struct {
 	ID       string
 	Name     string

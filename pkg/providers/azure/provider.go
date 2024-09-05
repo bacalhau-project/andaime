@@ -102,13 +102,23 @@ type AzureProviderer interface {
 	FinalizeDeployment(ctx context.Context) error
 	DestroyResources(ctx context.Context, resourceGroupName string) error
 	PollAndUpdateResources(ctx context.Context) ([]interface{}, error)
+	GetVMExternalIP(ctx context.Context, resourceGroupName, vmName string) (string, error)
 }
 
 // Ensure AzureProvider implements AzureProviderer
 var _ AzureProviderer = (*AzureProvider)(nil)
 
+type AzureVMConfig struct {
+	ResourceGroupName string
+	VMName            string
+	Location          string
+	VMSize            string
+	SSHUser           string
+	PublicKeyMaterial string
+}
+
 type AzureProvider struct {
-	Client              interface{}
+	Client              AzureClienter
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
@@ -500,7 +510,7 @@ func (p *AzureProvider) logDeploymentStatus() {
 		fmt.Sprintf(
 			"Deployment Status - Name: %s, ResourceGroup: %s",
 			m.Deployment.Name,
-			m.Deployment.ResourceGroupName,
+			m.Deployment.Azure.ResourceGroupName,
 		),
 	)
 	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(m.Deployment.Machines)))
@@ -787,4 +797,12 @@ func verifyDocker(ctx context.Context, mach *models.Machine) error {
 	)
 
 	return nil
+}
+
+func (p *AzureProvider) GetVMExternalIP(
+	ctx context.Context,
+	resourceGroupName,
+	vmName string,
+) (string, error) {
+	return p.Client.GetVMExternalIP(ctx, resourceGroupName, vmName)
 }

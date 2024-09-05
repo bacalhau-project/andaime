@@ -38,7 +38,7 @@ var GCPCmd = &cobra.Command{
 			return fmt.Errorf("gcp.billing_account_id is required")
 		}
 		billingAccountID := viper.GetString("gcp.billing_account_id")
-		m.Deployment.BillingAccountID = billingAccountID
+		m.Deployment.GCP.BillingAccountID = billingAccountID
 
 		return nil
 	},

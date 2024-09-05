@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -26,7 +28,9 @@ func GetCreateVMCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringP("zone", "z", "", "The zone where the VM will be created")
+	cmd.Flags().StringP("machine-type", "m", "", "The machine type for the VM")
 	_ = cmd.MarkFlagRequired("zone")
+	_ = cmd.MarkFlagRequired("machine-type")
 
 	return cmd
 }
@@ -39,6 +43,11 @@ func createVM(cmd *cobra.Command, args []string) error {
 	projectID := args[0]
 
 	zone, err := cmd.Flags().GetString("zone")
+	if err != nil {
+		return err
+	}
+
+	machineType, err := cmd.Flags().GetString("machine-type")
 	if err != nil {
 		return err
 	}
@@ -64,13 +73,42 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("public key material is nil, read from file %s", publicKeyPath)
 	}
 
-	vmConfig := map[string]string{
-		"zone":              zone,
-		"sshUser":           sshUser,
-		"PublicKeyMaterial": string(publicKeyMaterial),
+	vmName := fmt.Sprintf("vm-%s", projectID)
+
+	organizationID := viper.GetString("gcp.organization_id")
+	if organizationID == "" {
+		return fmt.Errorf("organization ID is not set")
 	}
 
-	vm, err := p.CreateComputeInstance(ctx, vmConfig["instanceName"])
+	billingAccountID := viper.GetString("gcp.billing_account_id")
+	if billingAccountID == "" {
+		return fmt.Errorf("billing account ID is not set")
+	}
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	m.Deployment.ProjectID = projectID
+	m.Deployment.GCP.ProjectID = projectID
+	m.Deployment.GCP.OrganizationID = organizationID
+	m.Deployment.GCP.BillingAccountID = billingAccountID
+	m.Deployment.GCP.Region = getRegionFromZone(zone)
+	m.Deployment.GCP.Zone = zone
+	m.Deployment.Machines = map[string]*models.Machine{
+		vmName: {
+			Name:                 vmName,
+			VMSize:               machineType,
+			SSHUser:              sshUser,
+			SSHPublicKeyMaterial: publicKeyMaterial,
+			CloudSpecific: models.CloudSpecificInfo{
+				Zone:   zone,
+				Region: getRegionFromZone(zone),
+			},
+		},
+	}
+
+	vm, err := p.CreateComputeInstance(ctx, vmName)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
@@ -89,4 +127,13 @@ func createVM(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("VM created successfully: %s (External IP: %s)\n", *vm.Name, externalIP)
 	return nil
+}
+
+func getRegionFromZone(zone string) string {
+	// GCP zones are typically in the format of <region>-<zone>, e.g., us-central1-a
+	parts := strings.Split(zone, "-")
+	if len(parts) < 2 {
+		return ""
+	}
+	return strings.Join(parts[:len(parts)-1], "-")
 }

@@ -1,68 +1,95 @@
 package internal_azure
 
 import (
-	"slices"
+	"sort"
 	"strings"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"gopkg.in/yaml.v2"
 )
 
-func IsValidAzureLocation(location string) bool {
-	l := logger.Get()
+type AzureData struct {
+	Locations map[string][]string `yaml:"locations"`
+}
+
+func getSortedAzureData() ([]byte, error) {
 	data, err := GetAzureData()
 	if err != nil {
-		l.Warnf("Failed to get Azure data: %v", err)
+		return nil, err
+	}
+
+	var azureData AzureData
+	err = yaml.Unmarshal(data, &azureData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sort locations
+	sortedLocations := make([]string, 0, len(azureData.Locations))
+	for location := range azureData.Locations {
+		sortedLocations = append(sortedLocations, location)
+	}
+	sort.Strings(sortedLocations)
+
+	// Sort VM sizes for each location
+	sortedData := AzureData{
+		Locations: make(map[string][]string),
+	}
+	for _, location := range sortedLocations {
+		vmSizes := azureData.Locations[location]
+		sort.Strings(vmSizes)
+		sortedData.Locations[location] = vmSizes
+	}
+
+	return yaml.Marshal(sortedData)
+}
+
+func IsValidAzureLocation(location string) bool {
+	l := logger.Get()
+	data, err := getSortedAzureData()
+	if err != nil {
+		l.Warnf("Failed to get sorted Azure data: %v", err)
 		return false
 	}
 
-	var validLocations map[string]interface{}
-	err = yaml.Unmarshal(data, &validLocations)
+	var azureData AzureData
+	err = yaml.Unmarshal(data, &azureData)
 	if err != nil {
 		l.Warnf("Failed to unmarshal Azure data: %v", err)
 		return false
 	}
 
-	for validLocation := range validLocations {
-		if strings.EqualFold(location, validLocation) {
-			return true
-		}
-	}
-
-	l.Warnf("Invalid Azure location: %s", location)
-	return false
+	_, exists := azureData.Locations[strings.ToLower(location)]
+	return exists
 }
 
 func IsValidAzureVMSize(location, vmSize string) bool {
 	l := logger.Get()
-
-	if !IsValidAzureLocation(location) {
-		return false
-	}
-
-	data, err := GetAzureData()
+	data, err := getSortedAzureData()
 	if err != nil {
-		l.Warnf("Failed to get Azure data: %v", err)
+		l.Warnf("Failed to get sorted Azure data: %v", err)
 		return false
 	}
 
-	validLocationAndVMType := make(map[string][]string)
-	err = yaml.Unmarshal(data, &validLocationAndVMType)
+	var azureData AzureData
+	err = yaml.Unmarshal(data, &azureData)
 	if err != nil {
-		l.Warnf("Could not load Azure valid location and machines: %v", err)
+		l.Warnf("Failed to unmarshal Azure data: %v", err)
 		return false
 	}
 
-	locMachineTypes, ok := validLocationAndVMType[location]
-	if !ok {
-		l.Warnf("No VM sizes found for location: %s", location)
+	vmSizes, exists := azureData.Locations[location]
+	if !exists {
+		l.Warnf("Location not found: %s", location)
 		return false
 	}
 
-	if !slices.Contains(locMachineTypes, vmSize) {
-		l.Warnf("Invalid VM size for location: %s, vmSize: %s", location, vmSize)
-		return false
+	for _, size := range vmSizes {
+		if size == vmSize {
+			return true
+		}
 	}
 
-	return true
+	l.Warnf("Invalid VM size for location: %s, vmSize: %s", location, vmSize)
+	return false
 }

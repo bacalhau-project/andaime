@@ -45,6 +45,7 @@ Cmds
 compinit
 computepb
 Configer
+Cpus
 creack
 createdeployment
 Deallocation
@@ -73,6 +74,7 @@ funlen
 gcloud
 gcppackage
 gcpuser
+GCPVM
 gdamore
 genproto
 gerr
