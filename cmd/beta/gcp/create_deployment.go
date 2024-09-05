@@ -263,9 +263,9 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 			// Set the source image in the machine's Parameters
 			if newMachine.Parameters == nil {
-				newMachine.Parameters = make(map[string]interface{})
+				newMachine.Parameters = models.Parameters{}
 			}
-			newMachine.Parameters["source_image"] = defaultSourceImage
+			newMachine.Parameters.Set("source_image", defaultSourceImage)
 
 			if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
 				newMachine.Orchestrator = true
