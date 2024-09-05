@@ -57,6 +57,26 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
+	// Check if a project ID was provided or generated
+	projectID := viper.GetString("gcp.project_id")
+	if projectID == "" {
+		return fmt.Errorf("failed to get or generate a project ID")
+	}
+
+	// Create the project if it doesn't exist
+	createdProjectID, err := p.EnsureProject(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to ensure project exists: %w", err)
+	}
+
+	// Update the project ID in the configuration
+	viper.Set("gcp.project_id", createdProjectID)
+
+	// Enable required APIs
+	if err := p.EnableRequiredAPIs(ctx); err != nil {
+		return fmt.Errorf("failed to enable required APIs: %w", err)
+	}
+
 	viper.Set("general.unique_id", uniqueID)
 	deployment, err := PrepareDeployment(ctx)
 	if err != nil {

@@ -110,6 +110,14 @@ func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
 	}
 	organizationID := config.GetString("gcp.organization_id")
 
+	// Check if a project ID is provided
+	projectID := config.GetString("gcp.project_id")
+	if projectID == "" {
+		// Generate a new project ID if not provided
+		projectID = fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
+		config.Set("gcp.project_id", projectID)
+	}
+
 	// Check for SSH keys
 	sshPublicKeyPath := config.GetString("general.ssh_public_key_path")
 	sshPrivateKeyPath := config.GetString("general.ssh_private_key_path")
@@ -453,6 +461,22 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 	}
 
 	l.Infof("Successfully enabled API: %s", apiName)
+	return nil
+}
+
+func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
+	requiredAPIs := []string{
+		"cloudresourcemanager.googleapis.com",
+		"compute.googleapis.com",
+		"iam.googleapis.com",
+	}
+
+	for _, api := range requiredAPIs {
+		if err := p.EnableAPI(ctx, api); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
