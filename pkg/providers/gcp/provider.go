@@ -11,8 +11,8 @@ import (
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/compute/apiv1/computepb"
-	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
+	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -22,19 +22,6 @@ import (
 	"github.com/spf13/viper"
 	"google.golang.org/api/iam/v1"
 )
-
-// GCPClienter interface is defined in gcp_client.go
-
-// GCPProviderer interface is defined in gcp_cluster_deployer.go
-
-var (
-	// NewGCPClientFunc is defined in gcp_client.go
-)
-
-// NewGCPProviderFunc is the function to create a new GCP provider
-var NewGCPProviderFunc = func(ctx context.Context) (GCPProviderer, error) {
-	return NewGCPProvider(ctx)
-}
 
 // mockGCPClient is a mock implementation of GCPClienter for compilation purposes
 type mockGCPClient struct{}
@@ -46,7 +33,10 @@ func (m *mockGCPClient) EnsureProject(ctx context.Context, projectID string) (st
 	return projectID, nil
 }
 
-func (m *mockGCPClient) CreateServiceAccount(ctx context.Context, projectID string) (*iam.ServiceAccount, error) {
+func (m *mockGCPClient) CreateServiceAccount(
+	ctx context.Context,
+	projectID string,
+) (*iam.ServiceAccount, error) {
 	return &iam.ServiceAccount{}, nil
 }
 
@@ -54,7 +44,10 @@ func (m *mockGCPClient) CheckAuthentication(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockGCPClient) CreateComputeInstance(ctx context.Context, instanceName string) (*computepb.Instance, error) {
+func (m *mockGCPClient) CreateComputeInstance(
+	ctx context.Context,
+	instanceName string,
+) (*computepb.Instance, error) {
 	return &computepb.Instance{}, nil
 }
 
@@ -510,7 +503,6 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 	return nil
 }
 
-
 func (p *GCPProvider) CreateVPCNetwork(
 	ctx context.Context,
 	networkName string,
@@ -676,7 +668,7 @@ type GCPVMConfig struct {
 
 func createNewGCPProject(ctx context.Context, organizationID string) (string, error) {
 	projectID := fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
-	
+
 	client, err := resourcemanager.NewProjectsClient(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create resource manager client: %w", err)
@@ -702,4 +694,19 @@ func createNewGCPProject(ctx context.Context, organizationID string) (string, er
 	}
 
 	return project.ProjectId, nil
+}
+
+func (p *GCPProvider) EnsureFirewallRules(
+	ctx context.Context,
+	networkName string,
+) error {
+	return p.Client.EnsureFirewallRules(ctx, networkName)
+}
+
+func (p *GCPProvider) EnsureStorageBucket(
+	ctx context.Context,
+	location,
+	bucketName string,
+) error {
+	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
 }
