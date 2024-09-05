@@ -335,7 +335,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 			newMachines[newMachine.Name] = newMachine
 			newMachines[newMachine.Name].SetResourceState(
-				models.ResourceTypeVM,
+				"VM",
 				models.ResourceStateNotStarted,
 			)
 		}
