@@ -101,6 +101,7 @@ type GCPClienter interface {
 		projectID, ruleName string,
 	) error
 	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
+	EnsureVPCNetwork(ctx context.Context, networkName string) error
 }
 
 type LiveGCPClient struct {
