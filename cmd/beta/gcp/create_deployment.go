@@ -140,7 +140,7 @@ func PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 	if uniqueID == "" {
 		return nil, fmt.Errorf("general.unique_id is not set")
 	}
-	deployment, err := models.NewDeployment(models.DeploymentTypeGCP)
+	deployment, err := models.NewDeployment()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)
 	}
@@ -179,7 +179,9 @@ func setDeploymentBasicInfo(deployment *models.Deployment) error {
 	projectPrefix := viper.GetString("general.project_prefix")
 	uniqueID := viper.GetString("general.unique_id")
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
-	deployment.ProjectID = viper.GetString("gcp.project_id")
+	deployment.GCP.ProjectID = viper.GetString("gcp.project_id")
+	deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
+	deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
 	return nil
 }
 
@@ -312,7 +314,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				deployment.SSHPort,
 			)
 			if err != nil {
-				return fmt.Errorf("failed to create new machine: %w", err)
+				return fmt.Errorf("failed to create raw machine: %w", err)
 			}
 
 			if rawMachine.Parameters != nil {
