@@ -61,6 +61,18 @@ func main() {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
 
+	// Check for GCP credentials
+	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		fmt.Println("GOOGLE_APPLICATION_CREDENTIALS is not set. Please set up your credentials using the following steps:")
+		fmt.Println("1. Install the gcloud CLI if you haven't already: https://cloud.google.com/sdk/docs/install")
+		fmt.Println("2. Run the following commands in your terminal:")
+		fmt.Println("   gcloud auth login")
+		fmt.Println("   gcloud auth application-default login")
+		fmt.Println("3. The above command will set up your user credentials.")
+		fmt.Println("After completing these steps, run your application again.")
+		return
+	}
+
 	switch os.Args[1] {
 	case "deploy":
 		if err := deploy(cfg); err != nil {

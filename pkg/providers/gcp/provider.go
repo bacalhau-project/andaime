@@ -183,7 +183,10 @@ func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
 	projectID := config.GetString("gcp.project_id")
 	if projectID == "" {
 		// Generate a new project ID if not provided
-		projectID = fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
+		projectID, err := createNewGCPProject(ctx, organizationID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create new GCP project: %w", err)
+		}
 		config.Set("gcp.project_id", projectID)
 	}
 
@@ -695,4 +698,33 @@ type GCPVMConfig struct {
 	MachineType       string
 	SSHUser           string
 	PublicKeyMaterial string
+}
+func createNewGCPProject(ctx context.Context, organizationID string) (string, error) {
+	projectID := fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
+	
+	client, err := resourcemanager.NewProjectsClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create resource manager client: %w", err)
+	}
+	defer client.Close()
+
+	req := &resourcemanagerpb.CreateProjectRequest{
+		Project: &resourcemanagerpb.Project{
+			ProjectId: projectID,
+			Name:      "Andaime Project",
+			Parent:    fmt.Sprintf("organizations/%s", organizationID),
+		},
+	}
+
+	op, err := client.CreateProject(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to create project: %w", err)
+	}
+
+	project, err := op.Wait(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to wait for project creation: %w", err)
+	}
+
+	return project.ProjectId, nil
 }

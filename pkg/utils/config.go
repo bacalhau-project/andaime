@@ -16,6 +16,9 @@ type Config struct {
 	AWS struct {
 		Regions []string `yaml:"regions"`
 	} `yaml:"aws"`
+	GCP struct {
+		ProjectID string `yaml:"project_id"`
+	} `yaml:"gcp"`
 }
 
 const (
