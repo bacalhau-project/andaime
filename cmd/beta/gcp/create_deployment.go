@@ -209,23 +209,12 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	}
 
 	defaultCount := viper.GetInt("gcp.default_count_per_zone")
-	if defaultCount == 0 {
-		l.Error("gcp.default_count_per_zone is empty")
-		return fmt.Errorf("gcp.default_count_per_zone is empty")
-	}
 	defaultType := viper.GetString("gcp.default_machine_type")
-	if defaultType == "" {
-		l.Error("gcp.default_machine_type is empty")
-		return fmt.Errorf("gcp.default_machine_type is empty")
-	}
-
 	defaultDiskSize := viper.GetInt("gcp.disk_size_gb")
-	if defaultDiskSize == 0 {
-		l.Error("gcp.disk_size_gb is empty")
-		return fmt.Errorf("gcp.disk_size_gb is empty")
-	}
-
+	defaultZone := viper.GetString("gcp.default_zone")
+	defaultSourceImage := viper.GetString("gcp.default_source_image")
 	orgID := viper.GetString("gcp.organization_id")
+
 	if orgID == "" {
 		l.Error("gcp.organization_id is empty")
 		return fmt.Errorf("gcp.organization_id is empty")
@@ -236,89 +225,36 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 		return err
 	}
 
-	orchestratorIP := deployment.OrchestratorIP
-	var orchestratorLocations []string
-	for _, rawMachine := range rawMachines {
-		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
-			// We're doing some checking here to make sure that the orchestrator node not
-			// specified in a way that would result in multiple orchestrator nodes
-			if rawMachine.Parameters.Count == 0 {
-				rawMachine.Parameters.Count = defaultCount
-			}
-
-			for i := 0; i < rawMachine.Parameters.Count; i++ {
-				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
-			}
-		}
-	}
-
-	if len(orchestratorLocations) > 1 {
-		return fmt.Errorf("multiple orchestrator nodes found")
-	}
-
-	type badMachineLocationCombo struct {
-		location string
-		vmSize   string
-	}
-	var allBadMachineLocationCombos []badMachineLocationCombo
 	newMachines := make(map[string]*models.Machine)
 	for _, rawMachine := range rawMachines {
-		count := 1
-		if rawMachine.Parameters != nil {
-			if rawMachine.Parameters.Count > 0 {
-				count = rawMachine.Parameters.Count
-			}
+		count := defaultCount
+		if rawMachine.Parameters != nil && rawMachine.Parameters.Count > 0 {
+			count = rawMachine.Parameters.Count
 		}
 
-		var thisVMType string
-		if rawMachine.Parameters != nil {
-			thisVMType = rawMachine.Parameters.Type
-			if thisVMType == "" {
-				thisVMType = defaultType
-			}
+		vmType := defaultType
+		if rawMachine.Parameters != nil && rawMachine.Parameters.Type != "" {
+			vmType = rawMachine.Parameters.Type
 		}
 
-		// Probably can't do this validation without a GCP client - skipping for now
-
-		// gcpClient, cleanup, err := gcp.NewGCPClientFunc(ctx, orgID)
-		// if err != nil {
-		// 	return fmt.Errorf("failed to create GCP client: %w", err)
-		// }
-		// deployment.Cleanup = cleanup
-
-		// fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
-		// valid, err := gcpClient.ValidateMachineType(
-		// 	ctx,
-		// 	rawMachine.Location,
-		// 	thisVMType,
-		// )
-		// if !valid || err != nil {
-		// 	allBadMachineLocationCombos = append(
-		// 		allBadMachineLocationCombos,
-		// 		badMachineLocationCombo{
-		// 			location: rawMachine.Location,
-		// 			vmSize:   thisVMType,
-		// 		},
-		// 	)
-		// 	fmt.Println("❌")
-		// 	continue
-		// }
-		// fmt.Println("✅")
-
-		if !internal_gcp.IsValidGCPLocation(rawMachine.Location) {
-			return fmt.Errorf("invalid location for GCP: %s", rawMachine.Location)
+		location := rawMachine.Location
+		if location == "" {
+			location = defaultZone
 		}
 
-		if !internal_gcp.IsValidGCPMachineType(rawMachine.Location, thisVMType) {
-			return fmt.Errorf("invalid machine type for GCP: %s", thisVMType)
+		if !internal_gcp.IsValidGCPLocation(location) {
+			return fmt.Errorf("invalid location for GCP: %s", location)
 		}
 
-		countOfMachines := utils.GetCountOfMachines(count, defaultCount)
-		for i := 0; i < countOfMachines; i++ {
+		if !internal_gcp.IsValidGCPMachineType(location, vmType) {
+			return fmt.Errorf("invalid machine type for GCP: %s", vmType)
+		}
+
+		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
-				rawMachine.Location,
-				utils.GetSafeDiskSize(defaultDiskSize),
-				thisVMType,
+				location,
+				int32(defaultDiskSize),
+				vmType,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
@@ -326,16 +262,10 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				return fmt.Errorf("failed to create raw machine: %w", err)
 			}
 
-			if rawMachine.Parameters != nil {
-				if rawMachine.Parameters.Type != "" {
-					newMachine.VMSize = rawMachine.Parameters.Type
-				}
-				if rawMachine.Parameters.Orchestrator {
-					newMachine.Orchestrator = true
-				}
-			} else {
-				// Log a warning or handle the case where Parameters is nil
-				logger.Get().Warnf("Parameters for machine in location %s is nil", rawMachine.Location)
+			newMachine.SourceImage = defaultSourceImage
+
+			if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
+				newMachine.Orchestrator = true
 			}
 
 			newMachines[newMachine.Name] = newMachine
@@ -345,28 +275,23 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			)
 		}
 
-		locations[rawMachine.Location] = true
+		locations[location] = true
 	}
 
-	if len(allBadMachineLocationCombos) > 0 {
-		return fmt.Errorf(
-			"invalid machine type and location combinations: %v",
-			allBadMachineLocationCombos,
-		)
-	}
-
-	// Loop for setting the orchestrator node
+	// Set orchestrator if not explicitly set
 	orchestratorFound := false
-	for name, machine := range newMachines {
-		if orchestratorIP != "" {
-			newMachines[name].OrchestratorIP = orchestratorIP
+	for _, machine := range newMachines {
+		if machine.Orchestrator {
 			orchestratorFound = true
-		} else if machine.Orchestrator {
-			orchestratorFound = true
+			break
 		}
 	}
-	if !orchestratorFound {
-		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
+	if !orchestratorFound && len(newMachines) > 0 {
+		// Set the first machine as orchestrator
+		for _, machine := range newMachines {
+			machine.Orchestrator = true
+			break
+		}
 	}
 
 	deployment.Machines = newMachines
