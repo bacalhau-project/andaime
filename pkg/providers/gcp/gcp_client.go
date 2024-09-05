@@ -121,6 +121,37 @@ type LiveGCPClient struct {
 	machineTypeListClient  *compute.MachineTypesClient
 }
 
+func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, networkName string) error {
+	// Check if the network already exists
+	_, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+		Project: c.parentString,
+		Network: networkName,
+	})
+	if err == nil {
+		// Network already exists
+		return nil
+	}
+
+	// If the network doesn't exist, create it
+	op, err := c.networksClient.Insert(ctx, &computepb.InsertNetworkRequest{
+		Project: c.parentString,
+		NetworkResource: &computepb.Network{
+			Name:                  &networkName,
+			AutoCreateSubnetworks: &computepb.Network_AutoCreateSubnetworksValueValuesEnum{AutoCreateSubnetworksValueValuesEnum: computepb.Network_AUTO_CREATE_SUBNETWORKS_VALUE_TRUE},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create VPC network: %v", err)
+	}
+
+	err = c.waitForGlobalOperation(ctx, c.parentString, op.Name)
+	if err != nil {
+		return fmt.Errorf("failed to wait for VPC network creation: %v", err)
+	}
+
+	return nil
+}
+
 var NewGCPClientFunc = NewGCPClient
 
 type CloseableClient interface {

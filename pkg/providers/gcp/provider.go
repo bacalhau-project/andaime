@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
+	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -28,11 +29,12 @@ import (
 
 var (
 	// NewGCPClientFunc is defined in gcp_client.go
-
-	NewGCPProviderFunc = func(ctx context.Context) (GCPProviderer, error) {
-		return nil, fmt.Errorf("GCP provider not implemented")
-	}
 )
+
+// NewGCPProviderFunc is the function to create a new GCP provider
+var NewGCPProviderFunc = func(ctx context.Context) (GCPProviderer, error) {
+	return NewGCPProvider(ctx)
+}
 
 // mockGCPClient is a mock implementation of GCPClienter for compilation purposes
 type mockGCPClient struct{}
