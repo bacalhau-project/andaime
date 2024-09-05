@@ -41,7 +41,7 @@ func createProject(ctx context.Context, projectID string) error {
 	if billingAccountID == "" {
 		return fmt.Errorf("billing_account_id is not set in the configuration")
 	}
-	m.Deployment.BillingAccountID = billingAccountID
+	m.Deployment.GCP.BillingAccountID = billingAccountID
 
 	// Use client directly instead of through a provider
 	m.Deployment.ProjectID, err = p.EnsureProject(ctx, projectID)
