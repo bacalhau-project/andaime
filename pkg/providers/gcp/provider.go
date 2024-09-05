@@ -88,6 +88,10 @@ func (m *mockGCPClient) CreateServiceAccount(ctx context.Context, projectID stri
 	return &iam.ServiceAccount{}, nil
 }
 
+func (m *mockGCPClient) CheckAuthentication(ctx context.Context) error {
+	return nil
+}
+
 // Implement other methods as needed...
 
 const (
@@ -699,6 +703,11 @@ type GCPVMConfig struct {
 	SSHUser           string
 	PublicKeyMaterial string
 }
+import (
+	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
+)
+
 func createNewGCPProject(ctx context.Context, organizationID string) (string, error) {
 	projectID := fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
 	
