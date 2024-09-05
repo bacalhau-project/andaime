@@ -14,7 +14,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -262,7 +261,11 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				return fmt.Errorf("failed to create raw machine: %w", err)
 			}
 
-			newMachine.SourceImage = defaultSourceImage
+			// Set the source image in the machine's Parameters
+			if newMachine.Parameters == nil {
+				newMachine.Parameters = make(map[string]interface{})
+			}
+			newMachine.Parameters["source_image"] = defaultSourceImage
 
 			if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
 				newMachine.Orchestrator = true
