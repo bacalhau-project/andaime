@@ -11,6 +11,7 @@ import (
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -703,10 +704,6 @@ type GCPVMConfig struct {
 	SSHUser           string
 	PublicKeyMaterial string
 }
-import (
-	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
-	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
-)
 
 func createNewGCPProject(ctx context.Context, organizationID string) (string, error) {
 	projectID := fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
