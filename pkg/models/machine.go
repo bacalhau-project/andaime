@@ -37,6 +37,9 @@ type Machine struct {
 
 	SSHUser               string
 	SSHPrivateKeyMaterial []byte
+	SSHPrivateKeyPath     string
+	SSHPublicKeyMaterial  []byte
+	SSHPublicKeyPath      string
 	SSHPort               int
 
 	CreationStartTime time.Time
@@ -56,28 +59,40 @@ type Machine struct {
 	done       bool
 
 	DeploymentType DeploymentType
+	CloudProvider  DeploymentType
+	CloudSpecific  CloudSpecificInfo
+}
+
+type CloudSpecificInfo struct {
+	// Azure specific
+	ResourceGroupName string
+
+	// GCP specific
+	Zone   string
+	Region string
 }
 
 func NewMachine(
-	deploymentType DeploymentType,
+	cloudProvider DeploymentType,
 	location string,
 	vmSize string,
 	diskSizeGB int32,
 ) (*Machine, error) {
 	newID := utils.CreateShortID()
 
-	if !IsValidLocation(deploymentType, location) {
-		return nil, fmt.Errorf("invalid location for %s: %s", deploymentType, location)
+	if !IsValidLocation(cloudProvider, location) {
+		return nil, fmt.Errorf("invalid location for %s: %s", cloudProvider, location)
 	}
 
 	returnMachine := &Machine{
-		ID:             newID,
-		Name:           fmt.Sprintf("%s-vm", newID),
-		StartTime:      time.Now(),
-		Location:       location,
-		VMSize:         vmSize,
-		DiskSizeGB:     diskSizeGB,
-		DeploymentType: deploymentType,
+		ID:            newID,
+		Name:          fmt.Sprintf("%s-vm", newID),
+		StartTime:     time.Now(),
+		Location:      location,
+		VMSize:        vmSize,
+		DiskSizeGB:    diskSizeGB,
+		CloudProvider: cloudProvider,
+		CloudSpecific: CloudSpecificInfo{},
 	}
 
 	for _, service := range RequiredServices {
@@ -421,4 +436,9 @@ func IsValidLocation(deploymentType DeploymentType, location string) bool {
 	default:
 		return false
 	}
+}
+
+// CloudType returns the cloud provider type for this machine
+func (m *Machine) CloudType() DeploymentType {
+	return m.CloudProvider
 }
