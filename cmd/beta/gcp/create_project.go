@@ -43,13 +43,18 @@ func createProject(ctx context.Context, projectID string) error {
 	}
 	m.Deployment.GCP.BillingAccountID = billingAccountID
 
-	// Use client directly instead of through a provider
+	// Use EnsureProject to create or reuse an existing project
 	m.Deployment.ProjectID, err = p.EnsureProject(ctx, projectID)
 	if err != nil {
 		return handleGCPError(err)
 	}
 
-	fmt.Printf("Project created successfully: %s\n", m.Deployment.ProjectID)
+	fmt.Printf("Project ensured successfully: %s\n", m.Deployment.ProjectID)
+
+	// Update status of all machines with the project being created
+	for i := range m.Machines {
+		m.Machines[i].StatusMessage = fmt.Sprintf("Associated with project: %s", m.Deployment.ProjectID)
+	}
 
 	// Enable necessary APIs
 	apisToEnable := []string{
@@ -77,27 +82,27 @@ func createProject(ctx context.Context, projectID string) error {
 		fmt.Printf("Enabled API: %s\n", api)
 	}
 
-	// Create VPC network
+	// Create or ensure VPC network
 	networkName := "andaime-network"
-	fmt.Printf("Creating VPC network: %s\n", networkName)
-	err = p.GetGCPClient().CreateVPCNetwork(ctx, networkName)
+	fmt.Printf("Ensuring VPC network: %s\n", networkName)
+	err = p.GetGCPClient().EnsureVPCNetwork(ctx, networkName)
 	if err != nil {
-		return handleGCPError(fmt.Errorf("failed to create VPC network: %v", err))
+		return handleGCPError(fmt.Errorf("failed to ensure VPC network: %v", err))
 	}
 
-	fmt.Printf("VPC network created successfully: %s\n", networkName)
+	fmt.Printf("VPC network ensured successfully: %s\n", networkName)
 
-	// Create firewall rules
-	fmt.Println("Creating firewall rules...")
-	if err := p.CreateFirewallRules(ctx, networkName); err != nil {
-		return handleGCPError(fmt.Errorf("failed to create firewall rules: %v", err))
+	// Create or ensure firewall rules
+	fmt.Println("Ensuring firewall rules...")
+	if err := p.EnsureFirewallRules(ctx, networkName); err != nil {
+		return handleGCPError(fmt.Errorf("failed to ensure firewall rules: %v", err))
 	}
 
-	// Create Cloud Storage bucket
+	// Create or ensure Cloud Storage bucket
 	bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
-	fmt.Printf("Creating Cloud Storage bucket: %s\n", bucketName)
-	if err := p.CreateStorageBucket(ctx, bucketName); err != nil {
-		return handleGCPError(fmt.Errorf("failed to create storage bucket: %v", err))
+	fmt.Printf("Ensuring Cloud Storage bucket: %s\n", bucketName)
+	if err := p.EnsureStorageBucket(ctx, bucketName); err != nil {
+		return handleGCPError(fmt.Errorf("failed to ensure storage bucket: %v", err))
 	}
 
 	fmt.Println("Project setup completed successfully.")
