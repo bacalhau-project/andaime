@@ -1,5 +1,4 @@
 package gcp
-package gcp
 
 import (
 	"context"
