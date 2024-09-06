@@ -262,29 +262,13 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			return fmt.Errorf("invalid machine type for GCP: %s", vmType)
 		}
 
-		var diskImage string
+		diskImageFamily := defaultDiskImageFamily
 		if rawMachine.Parameters != nil && rawMachine.Parameters.DiskImageFamily != "" {
-			diskImage = internal_gcp.IsValidGCPDiskImageFamily(
-				location,
-				rawMachine.Parameters.DiskImageFamily,
-			)
-			if diskImage == "" {
-				return fmt.Errorf(
-					"invalid disk image family for GCP: %s",
-					rawMachine.Parameters.DiskImageFamily,
-				)
-			}
-		} else {
-			diskImage = internal_gcp.IsValidGCPDiskImageFamily(
-				location,
-				defaultDiskImageFamily,
-			)
-			if diskImage == "" {
-				return fmt.Errorf(
-					"invalid default disk image family for GCP: %s",
-					defaultDiskImageFamily,
-				)
-			}
+			diskImageFamily = rawMachine.Parameters.DiskImageFamily
+		}
+
+		if err := internal_gcp.IsValidGCPDiskImageFamily(location, diskImageFamily); err != nil {
+			return fmt.Errorf("invalid disk image family for GCP: %w", err)
 		}
 
 		int32DiskSizeGB := safeConvertToInt32(diskSizeGB)
@@ -294,7 +278,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				location,
 				int32DiskSizeGB,
 				vmType,
-				diskImage,
+				diskImageFamily,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
@@ -344,7 +328,7 @@ func createNewMachine(
 	location string,
 	diskSizeGB int32,
 	vmSize string,
-	diskImage string,
+	diskImageFamily string,
 	privateKeyBytes []byte,
 	sshPort int,
 ) (*models.Machine, error) {
@@ -365,7 +349,7 @@ func createNewMachine(
 	newMachine.SSHPort = sshPort
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
-	newMachine.DiskImage = diskImage
+	newMachine.DiskImageFamily = diskImageFamily
 
 	return newMachine, nil
 }

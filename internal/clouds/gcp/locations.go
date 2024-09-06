@@ -1,6 +1,7 @@
 package internal_gcp
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -60,24 +61,24 @@ func IsValidGCPMachineType(location, machineType string) bool {
 }
 
 // Returns the name of the disk image, if the disk image family is valid, otherwise returns an empty string
-func IsValidGCPDiskImageFamily(location, diskImageFamilyToCheck string) string {
+func IsValidGCPDiskImageFamily(location, diskImageFamilyToCheck string) error {
 	l := logger.Get()
 	gcpDataRaw, err := GetGCPData()
 	if err != nil {
-		return ""
+		return err
 	}
 
 	var gcpData GCPData
 	err = yaml.Unmarshal(gcpDataRaw, &gcpData)
 	if err != nil {
 		l.Warnf("Failed to unmarshal GCP data: %v", err)
-		return ""
+		return err
 	}
 
 	for _, diskImage := range gcpData.DiskImages {
 		if diskImage.Family == diskImageFamilyToCheck {
-			return diskImage.Name
+			return nil
 		}
 	}
-	return ""
+	return fmt.Errorf("invalid disk image family for GCP: %s", diskImageFamilyToCheck)
 }

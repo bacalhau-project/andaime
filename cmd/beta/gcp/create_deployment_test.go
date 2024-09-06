@@ -62,7 +62,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		for _, machine = range deployment.Machines {
 			break
 		}
-		assert.Contains(t, machine.DiskImage, "ubuntu-2004")
+		assert.Contains(t, machine.DiskImageFamily, "ubuntu-2004-lts")
 		assert.Equal(t, "n2-standard-2", machine.VMSize)
 		assert.Equal(t, true, machine.Orchestrator)
 	})
@@ -116,7 +116,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		for _, machine = range deployment.Machines {
 			break
 		}
-		assert.Contains(t, machine.DiskImage, "debian-12")
+		assert.Contains(t, machine.DiskImageFamily, "debian-12")
 	})
 
 	// Test case 4: Invalid image type
@@ -170,7 +170,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		}
 		assert.Contains(
 			t,
-			machine.DiskImage,
+			machine.DiskImageFamily,
 			"ubuntu-2004", // Default image
 		)
 	})

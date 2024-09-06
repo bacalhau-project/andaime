@@ -29,12 +29,12 @@ type Machine struct {
 	PrivateIP     string
 	StartTime     time.Time
 
-	VMSize         string
-	DiskSizeGB     int32 `default:"30"`
-	DiskImage      string
-	ElapsedTime    time.Duration
-	Orchestrator   bool
-	OrchestratorIP string
+	VMSize          string
+	DiskSizeGB      int32 `default:"30"`
+	DiskImageFamily string
+	ElapsedTime     time.Duration
+	Orchestrator    bool
+	OrchestratorIP  string
 
 	SSHUser               string
 	SSHPrivateKeyMaterial []byte

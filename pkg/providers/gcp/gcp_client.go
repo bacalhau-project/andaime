@@ -991,7 +991,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 				Type:       to.Ptr("PERSISTENT"),
 				InitializeParams: &computepb.AttachedDiskInitializeParams{
 					DiskSizeGb:  to.Ptr(int64(machine.DiskSizeGB)),
-					SourceImage: to.Ptr(machine.DiskImage),
+					SourceImage: to.Ptr(machine.DiskImageFamily),
 				},
 			},
 		},
