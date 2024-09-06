@@ -276,7 +276,8 @@ func (m *Machine) countCompletedResources() (int, int) {
 
 	for _, requiredResource := range requiredResources {
 		resource := m.getResourceUnsafe(requiredResource.GetResourceLowerString())
-		if resource.ResourceState == ResourceStateSucceeded {
+		if resource.ResourceState == ResourceStateSucceeded ||
+			resource.ResourceState == ResourceStateRunning {
 			completedResources++
 		}
 	}

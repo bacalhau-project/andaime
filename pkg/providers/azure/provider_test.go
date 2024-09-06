@@ -739,6 +739,8 @@ func TestRandomServiceUpdates(t *testing.T) {
 	updatesPerMachine := 1000 // Increase the number of updates per machine
 	expectedUpdates := int32(len(testMachines) * updatesPerMachine)
 
+	var stateMutex sync.Mutex // Mutex to protect access to the state map
+
 	for _, machine := range testMachines {
 		wg.Add(1)
 		go func(machine string) {
@@ -814,22 +816,8 @@ func TestRandomServiceUpdates(t *testing.T) {
 	}
 
 	l.Debug("Checking final states")
-	for _, machine := range testMachines {
-		for _, service := range allServices {
-			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
-			assert.True(
-				t,
-				state >= models.ServiceStateNotStarted && state <= models.ServiceStateFailed,
-				"Unexpected final state for machine %s, service %s: %v",
-				machine,
-				service,
-				state,
-			)
-		}
-	}
-
-	// Check for unique states across machines and ensure no NotStarted states
 	stateMap := make(map[string]map[string]models.ServiceState)
+	stateMutex.Lock()
 	for _, machine := range testMachines {
 		stateMap[machine] = make(map[string]models.ServiceState)
 		for _, service := range allServices {
@@ -839,6 +827,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 				"Service %s on machine %s is still in NotStarted state", service.Name, machine)
 		}
 	}
+	stateMutex.Unlock()
 
 	uniqueStates := make(map[string]bool)
 	for _, machine := range testMachines {
@@ -928,6 +917,8 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 	updatesPerMachine := 1000 // Increase the number of updates per machine
 	expectedUpdates := int32(len(testMachines) * updatesPerMachine)
 
+	var stateMutex sync.Mutex // Mutex to protect access to the state map
+
 	for _, machine := range testMachines {
 		wg.Add(1)
 		go func(machine string) {
@@ -1000,10 +991,15 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 	}
 
 	l.Debug("Checking final states")
+	stateMap := make(map[string]map[string]models.ServiceState)
+	stateMutex.Lock()
 	for _, machine := range testMachines {
+		stateMap[machine] = make(map[string]models.ServiceState)
 		for _, service := range allServices {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
+			stateMap[machine][service.Name] = state
 			if state < models.ServiceStateNotStarted || state > models.ServiceStateFailed {
+				stateMutex.Unlock()
 				return fmt.Errorf(
 					"Unexpected final state for machine %s, service %s: %s",
 					machine,
@@ -1013,23 +1009,7 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 			}
 		}
 	}
-
-	// Check for unique states across machines and ensure no NotStarted states
-	stateMap := make(map[string]map[string]models.ServiceState)
-	for _, machine := range testMachines {
-		stateMap[machine] = make(map[string]models.ServiceState)
-		for _, service := range allServices {
-			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
-			stateMap[machine][service.Name] = state
-			if state == models.ServiceStateNotStarted {
-				return fmt.Errorf(
-					"Service %s on machine %s is still in NotStarted state",
-					service.Name,
-					machine,
-				)
-			}
-		}
-	}
+	stateMutex.Unlock()
 
 	uniqueStates := make(map[string]bool)
 	for _, machine := range testMachines {

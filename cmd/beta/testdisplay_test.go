@@ -28,6 +28,7 @@ func TestDisplayLayout(t *testing.T) {
 	testMachines := map[string]*models.Machine{
 		"test1": {
 			Name:          "test1",
+			CloudProvider: models.DeploymentTypeAzure,
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "apple grape mango",
@@ -36,6 +37,7 @@ func TestDisplayLayout(t *testing.T) {
 		},
 		"test2": {
 			Name:          "test2",
+			CloudProvider: models.DeploymentTypeAzure,
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "nectarine fig elderberry",
@@ -44,6 +46,7 @@ func TestDisplayLayout(t *testing.T) {
 		},
 		"test3": {
 			Name:          "test3",
+			CloudProvider: models.DeploymentTypeAzure,
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "grape quince kiwi",
@@ -52,6 +55,7 @@ func TestDisplayLayout(t *testing.T) {
 		},
 		"test4": {
 			Name:          "test4",
+			CloudProvider: models.DeploymentTypeAzure,
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "cherry orange quince",
@@ -60,6 +64,7 @@ func TestDisplayLayout(t *testing.T) {
 		},
 		"test5": {
 			Name:          "test5",
+			CloudProvider: models.DeploymentTypeAzure,
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "raspberry ugli kiwi",
@@ -78,6 +83,10 @@ func TestDisplayLayout(t *testing.T) {
 
 	i := 0
 	for _, machine := range m.Deployment.Machines {
+		for _, resource := range machine.GetMachineResources() {
+			machine.SetResourceState(resource.ResourceName, models.ResourceStateSucceeded)
+		}
+
 		for _, service := range machine.GetMachineServices() {
 			machine.SetServiceState(service.Name, RotateServiceStates(i))
 			i++
@@ -185,15 +194,22 @@ func TestColumnWidths(t *testing.T) {
 }
 
 func TestProgressBar(t *testing.T) {
+	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	m.Deployment.Machines = map[string]*models.Machine{
 		"test1": {
 			Name:          "test1",
+			CloudProvider: models.DeploymentTypeAzure,
 			Type:          models.AzureResourceTypeVM,
 			Location:      "us-west-2",
 			StatusMessage: "test",
 			Orchestrator:  true,
 		},
+	}
+	for _, machine := range m.Deployment.Machines {
+		for _, resource := range machine.GetMachineResources() {
+			machine.SetResourceState(resource.ResourceName, models.ResourceStateSucceeded)
+		}
 	}
 	renderedTable := m.RenderFinalTable()
 	lines := strings.Split(renderedTable, "\n")
