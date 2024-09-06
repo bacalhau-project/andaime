@@ -37,11 +37,13 @@ centralus
 chans
 charmbracelet
 Clienter
+cloudasset
 cloudbilling
 cloudbillingpb
 cloudfunctions
 cloudresourcemanager
 Cmds
+commandline
 compinit
 computepb
 Configer
@@ -211,6 +213,7 @@ unpadded
 Upsert
 usermod
 utod
+vbauerster
 VCPU
 virtualenvs
 virtualmachine

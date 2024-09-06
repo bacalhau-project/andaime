@@ -31,6 +31,7 @@ type Machine struct {
 
 	VMSize         string
 	DiskSizeGB     int32 `default:"30"`
+	DiskImage      string
 	ElapsedTime    time.Duration
 	Orchestrator   bool
 	OrchestratorIP string
@@ -84,9 +85,10 @@ func NewMachine(
 		return nil, fmt.Errorf("invalid location for %s: %s", cloudProvider, location)
 	}
 
+	machineName := fmt.Sprintf("%s-vm", newID)
 	returnMachine := &Machine{
-		ID:            newID,
-		Name:          fmt.Sprintf("%s-vm", newID),
+		ID:            machineName,
+		Name:          machineName,
 		StartTime:     time.Now(),
 		Location:      location,
 		VMSize:        vmSize,
@@ -99,8 +101,15 @@ func NewMachine(
 		returnMachine.SetServiceState(service.Name, ServiceStateNotStarted)
 	}
 
-	for _, resource := range RequiredAzureResources {
-		returnMachine.SetResource(resource.GetResourceLowerString(), ResourceStateNotStarted)
+	if cloudProvider == DeploymentTypeAzure {
+		for _, resource := range RequiredAzureResources {
+			returnMachine.SetResource(resource.GetResourceLowerString(), ResourceStateNotStarted)
+		}
+	} else if cloudProvider == DeploymentTypeGCP {
+		for _, resource := range RequiredGCPResources {
+			returnMachine.SetResource(resource.GetResourceLowerString(), ResourceStateNotStarted)
+		}
+		returnMachine.Type = GCPResourceTypeInstance
 	}
 
 	return returnMachine, nil
@@ -252,12 +261,18 @@ func (m *Machine) SetResourceState(resourceName string, state ResourceState) {
 func (m *Machine) ResourcesComplete() (int, int) {
 	m.stateMutex.RLock()
 	defer m.stateMutex.RUnlock()
-	return m.countCompletedResources(RequiredAzureResources)
+	return m.countCompletedResources()
 }
 
-func (m *Machine) countCompletedResources(requiredResources []ResourceTypes) (int, int) {
+func (m *Machine) countCompletedResources() (int, int) {
 	completedResources := 0
-	totalResources := len(requiredResources)
+
+	requiredResources := []ResourceTypes{}
+	if m.CloudProvider == DeploymentTypeAzure {
+		requiredResources = RequiredAzureResources
+	} else if m.CloudProvider == DeploymentTypeGCP {
+		requiredResources = RequiredGCPResources
+	}
 
 	for _, requiredResource := range requiredResources {
 		resource := m.getResourceUnsafe(requiredResource.GetResourceLowerString())
@@ -266,7 +281,7 @@ func (m *Machine) countCompletedResources(requiredResources []ResourceTypes) (in
 		}
 	}
 
-	return completedResources, totalResources
+	return completedResources, len(requiredResources)
 }
 
 // Service management methods

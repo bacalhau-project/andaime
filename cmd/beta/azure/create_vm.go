@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func GetCreateVMCmd() *cobra.Command {
+func GetAzureCreateVMCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-vm [resource-group-name]",
 		Short: "Create a new VM in Azure",

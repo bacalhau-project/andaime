@@ -7,8 +7,8 @@ import (
 )
 
 var RequiredGCPResources = []ResourceTypes{
+	GCPResourceTypeProject,
 	GCPResourceTypeVPC,
-	GCPResourceTypeSubnet,
 	GCPResourceTypeFirewall,
 	GCPResourceTypeInstance,
 	GCPResourceTypeDisk,
@@ -18,28 +18,28 @@ var SkippedResourceTypes = []string{
 	"compute.v1.instanceGroupManager",
 }
 
+var GCPResourceTypeProject = ResourceTypes{
+	ResourceString:    "cloudresourcemanager.googleapis.com/Project",
+	ShortResourceName: "PRJ ",
+}
+
 var GCPResourceTypeVPC = ResourceTypes{
-	ResourceString:    "compute.v1.network",
+	ResourceString:    "compute.googleapis.com/Network",
 	ShortResourceName: "VPC ",
 }
 
-var GCPResourceTypeSubnet = ResourceTypes{
-	ResourceString:    "compute.v1.subnetwork",
-	ShortResourceName: "SNET",
-}
-
 var GCPResourceTypeFirewall = ResourceTypes{
-	ResourceString:    "compute.v1.firewall",
+	ResourceString:    "compute.googleapis.com/Firewall",
 	ShortResourceName: "FW  ",
 }
 
 var GCPResourceTypeInstance = ResourceTypes{
-	ResourceString:    "compute.v1.instance",
+	ResourceString:    "compute.googleapis.com/Instance",
 	ShortResourceName: "VM  ",
 }
 
 var GCPResourceTypeDisk = ResourceTypes{
-	ResourceString:    "compute.v1.disk",
+	ResourceString:    "compute.googleapis.com/Disk",
 	ShortResourceName: "DISK",
 }
 
@@ -54,8 +54,8 @@ func GetGCPResourceType(resource string) ResourceTypes {
 
 func GetAllGCPResources() []ResourceTypes {
 	return []ResourceTypes{
+		GCPResourceTypeProject,
 		GCPResourceTypeVPC,
-		GCPResourceTypeSubnet,
 		GCPResourceTypeFirewall,
 		GCPResourceTypeInstance,
 		GCPResourceTypeDisk,

@@ -15,6 +15,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -668,7 +669,7 @@ func (m *DisplayModel) getMachineRowData(machine *models.Machine) []string {
 	return []string{
 		machine.Name,
 		machine.Type.ShortResourceName,
-		machine.Location,
+		utils.TruncateString(machine.Location, DisplayColumns[2].Width-2),
 		machine.StatusMessage,
 		progressBar,
 		formatElapsedTime(elapsedTime),

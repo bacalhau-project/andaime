@@ -2,7 +2,6 @@ package gcp
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
-	"cloud.google.com/go/compute/apiv1/computepb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -20,42 +18,20 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
-	"google.golang.org/api/iam/v1"
+	"golang.org/x/sync/errgroup"
 )
 
-// mockGCPClient is a mock implementation of GCPClienter for compilation purposes
-type mockGCPClient struct{}
-
-// Implement all methods of GCPClienter interface for mockGCPClient
-// For brevity, we'll just implement a few methods here
-
-func (m *mockGCPClient) EnsureProject(ctx context.Context, projectID string) (string, error) {
-	return projectID, nil
+var GCPRequiredAPIs = []string{
+	"compute.googleapis.com",
+	"networkmanagement.googleapis.com",
+	"storage-api.googleapis.com",
+	"file.googleapis.com",
+	"storage.googleapis.com",
 }
 
-func (m *mockGCPClient) CreateServiceAccount(
-	ctx context.Context,
-	projectID string,
-) (*iam.ServiceAccount, error) {
-	return &iam.ServiceAccount{}, nil
+func GetRequiredAPIs() []string {
+	return GCPRequiredAPIs
 }
-
-func (m *mockGCPClient) CheckAuthentication(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockGCPClient) CreateComputeInstance(
-	ctx context.Context,
-	instanceName string,
-) (*computepb.Instance, error) {
-	return &computepb.Instance{}, nil
-}
-
-func (m *mockGCPClient) EnsureVPCNetwork(ctx context.Context, networkName string) error {
-	return nil
-}
-
-// Implement other methods as needed...
 
 const (
 	UpdateQueueSize         = 100
@@ -149,14 +125,12 @@ func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
 	organizationID := config.GetString("gcp.organization_id")
 
 	// Check if a project ID is provided
-	projectID := config.GetString("gcp.project_id")
-	if projectID == "" {
-		// Generate a new project ID if not provided
-		projectID, err := createNewGCPProject(ctx, organizationID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create new GCP project: %w", err)
-		}
-		config.Set("gcp.project_id", projectID)
+	projectPrefix := config.GetString("gcp.project_prefix")
+	if projectPrefix == "" {
+		return nil, fmt.Errorf(
+			"'gcp.project_prefix' is not set in the configuration file: %s",
+			viper.ConfigFileUsed(),
+		)
 	}
 
 	// Check for SSH keys
@@ -295,91 +269,38 @@ func (p *GCPProvider) EnsureProject(
 	ctx context.Context,
 	projectID string,
 ) (string, error) {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return "", fmt.Errorf("global model or deployment is nil")
+	}
+
+	for _, machine := range m.Deployment.Machines {
+		machine.SetResourceState(
+			models.GCPResourceTypeProject.ResourceString,
+			models.ResourceStatePending,
+		)
+	}
+
 	// Create the project
 	createdProjectID, err := p.Client.EnsureProject(ctx, projectID)
 	if err != nil {
+		for _, machine := range m.Deployment.Machines {
+			machine.SetResourceState(
+				models.GCPResourceTypeProject.ResourceString,
+				models.ResourceStateFailed,
+			)
+		}
 		return "", err
 	}
 
-	// Set the project ID in the deployment model
-	m := display.GetGlobalModelFunc()
-	if m != nil && m.Deployment != nil {
-		m.Deployment.ProjectID = createdProjectID
-	}
-
-	// Create a service account for the project
-	err = p.createServiceAccount(ctx, createdProjectID)
-	if err != nil {
-		return "", err
-	}
-
-	// Create firewall rules for the project
-	err = p.CreateFirewallRules(ctx, "default")
-	if err != nil {
-		return "", fmt.Errorf("failed to create firewall rules: %v", err)
+	for _, machine := range m.Deployment.Machines {
+		machine.SetResourceState(
+			models.GCPResourceTypeProject.ResourceString,
+			models.ResourceStateSucceeded,
+		)
 	}
 
 	return createdProjectID, nil
-}
-
-func (p *GCPProvider) createServiceAccount(ctx context.Context, projectID string) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	l.Infof("Creating service account for project %s", projectID)
-
-	// Create a new service account
-	sa, err := p.Client.CreateServiceAccount(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to create service account: %v", err)
-	}
-
-	l.Infof("Service account created or found: %s", sa.Email)
-
-	// Ensure the service account exists before creating a key
-	retryBackoff := backoff.NewExponentialBackOff()
-	retryBackoff.MaxElapsedTime = 1 * time.Minute
-
-	var key *iam.ServiceAccountKey
-	err = backoff.Retry(func() error {
-		var innerErr error
-		key, innerErr = p.Client.CreateServiceAccountKey(ctx, projectID, sa.Email)
-		if innerErr != nil {
-			l.Warnf("Failed to create service account key, retrying: %v", innerErr)
-			return innerErr // This will trigger a retry
-		}
-		return nil // Success, stop retrying
-	}, retryBackoff)
-
-	if err != nil {
-		return fmt.Errorf("failed to create service account key after retries: %v", err)
-	}
-
-	// Decode the private key
-	decodedPrivateKey, err := base64.StdEncoding.DecodeString(key.PrivateKeyData)
-	if err != nil {
-		return fmt.Errorf("failed to decode private key: %v", err)
-	}
-
-	// Store the service account details in the config
-	p.Config.Set(fmt.Sprintf("gcp.projects.%s.service_account.email", projectID), sa.Email)
-	p.Config.Set(
-		fmt.Sprintf("gcp.projects.%s.service_account.key", projectID),
-		string(decodedPrivateKey),
-	)
-
-	// Update the deployment model
-	m.Deployment.GCP.ServiceAccountEmail = sa.Email
-
-	// Save the updated config
-	err = p.Config.WriteConfig()
-	if err != nil {
-		return fmt.Errorf("failed to save config: %v", err)
-	}
-
-	l.Infof("Service account credentials stored in config for project %s", projectID)
-
-	return nil
 }
 
 func (p *GCPProvider) DestroyProject(
@@ -430,7 +351,6 @@ func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
 }
 
 func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
-	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
 	if m == nil || m.Deployment == nil {
@@ -442,20 +362,28 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 		return fmt.Errorf("project ID is not set in the deployment")
 	}
 
-	requiredAPIs := []string{
-		"compute.googleapis.com",
-		"networkmanagement.googleapis.com",
-		"storage-api.googleapis.com",
-		"file.googleapis.com",
-		"storage.googleapis.com",
+	var apiEg errgroup.Group
+	for _, api := range GetRequiredAPIs() {
+		api := api
+		apiEg.Go(func() error {
+			for _, machine := range m.Deployment.Machines {
+				machine.SetResourceState(api, models.ResourceStatePending)
+			}
+			err := p.EnableAPI(ctx, api)
+			if err != nil {
+				for _, machine := range m.Deployment.Machines {
+					machine.SetResourceState(api, models.ResourceStateFailed)
+				}
+				return fmt.Errorf("failed to enable API %s: %v", api, err)
+			}
+			for _, machine := range m.Deployment.Machines {
+				machine.SetResourceState(api, models.ResourceStateSucceeded)
+			}
+			return nil
+		})
 	}
-
-	for _, api := range requiredAPIs {
-		err := p.EnableAPI(ctx, api)
-		if err != nil {
-			return fmt.Errorf("failed to enable API %s: %v", api, err)
-		}
-		l.Infof("Enabled API: %s for project %s", api, projectID)
+	if err := apiEg.Wait(); err != nil {
+		return fmt.Errorf("failed to enable APIs: %v", err)
 	}
 
 	return nil
@@ -480,6 +408,7 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 	enabled, err := p.Client.IsAPIEnabled(ctx, projectID, apiName)
 	if err != nil {
 		l.Warnf("Failed to check API status: %v", err)
+		return fmt.Errorf("failed to check API status: %v", err)
 	} else if enabled {
 		l.Infof("API %s is already enabled", apiName)
 		return nil

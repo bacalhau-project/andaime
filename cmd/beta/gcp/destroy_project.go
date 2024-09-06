@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func GetDestroyProjectCmd() *cobra.Command {
+func GetGCPDestroyProjectCmd() *cobra.Command {
 	var deleteAll bool
 	var listOnly bool
 
@@ -21,16 +21,25 @@ func GetDestroyProjectCmd() *cobra.Command {
 all projects labeled with 'andaime', or list all available projects.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// This will prevent the default error handling
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+
+			var err error
 			if listOnly {
-				return listAllProjects()
+				err = listAllProjects()
+			} else if deleteAll {
+				err = runDestroyAllProjects()
+			} else if len(args) == 0 {
+				err = fmt.Errorf("PROJECT_ID is required when --all flag is not set")
+			} else {
+				err = runDestroyProject(cmd, args[0])
 			}
-			if deleteAll {
-				return runDestroyAllProjects()
+
+			if err != nil {
+				fmt.Println(err)
 			}
-			if len(args) == 0 {
-				return fmt.Errorf("PROJECT_ID is required when --all flag is not set")
-			}
-			return runDestroyProject(args[0])
+			return nil
 		},
 	}
 
@@ -139,7 +148,7 @@ func runDestroyAllProjects() error {
 	return nil
 }
 
-func runDestroyProject(projectID string) error {
+func runDestroyProject(cmd *cobra.Command, projectID string) error {
 	ctx := context.Background()
 	p, err := gcp.NewGCPProviderFunc(ctx)
 	if err != nil {
@@ -158,7 +167,17 @@ func runDestroyProject(projectID string) error {
 
 	err = p.DestroyProject(ctx, projectID)
 	if err != nil {
-		return fmt.Errorf("failed to delete project: %v", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Error: Failed to delete project %s\n", projectID)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Reason: Authentication issue with Google Cloud\n")
+		fmt.Fprintf(
+			cmd.ErrOrStderr(),
+			"Please ensure you're logged in and have the necessary permissions.\n",
+		)
+		fmt.Fprintf(
+			cmd.ErrOrStderr(),
+			"For more information, visit: https://support.google.com/a/answer/9368756\n",
+		)
+		return err
 	}
 
 	fmt.Printf("Project %s has been scheduled for deletion\n", projectID)

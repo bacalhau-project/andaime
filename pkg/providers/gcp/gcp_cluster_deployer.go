@@ -13,6 +13,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 )
 
 // Ensure GCPProvider implements ClusterDeployer
@@ -23,48 +24,89 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	for _, machine := range m.Deployment.Machines {
-		l.Infof("Creating instance %s in zone %s", machine.Name, machine.Location)
-		m.UpdateStatus(models.NewDisplayStatusWithText(
-			machine.Name,
-			models.GCPResourceTypeInstance,
-			models.ResourceStatePending,
-			"Creating VM",
-		))
+	uniqueID := viper.GetString("general.unique_id")
+	if uniqueID == "" {
+		return fmt.Errorf("unique ID is not set")
+	}
+	m.Deployment.UniqueID = uniqueID
 
-		instance, err := p.CreateComputeInstance(
-			ctx,
-			machine.Name,
-		)
-		if err != nil {
-			l.Errorf("Failed to create instance %s: %v", machine.Name, err)
+	// Check if a project ID was provided or generated
+	projectID := viper.GetString("gcp.project_id")
+
+	// Create the project if it doesn't exist
+	createdProjectID, err := p.EnsureProject(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to ensure project exists: %w", err)
+	}
+
+	m.Deployment.ProjectID = createdProjectID
+
+	// Enable required APIs
+	if err := p.EnableRequiredAPIs(ctx); err != nil {
+		return fmt.Errorf("failed to enable required APIs: %w", err)
+	}
+
+	var eg errgroup.Group
+	// Create firewall rules for the project
+	eg.Go(func() error {
+		return p.CreateFirewallRules(ctx, "default")
+	})
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("failed to create firewall rules: %v", err)
+	}
+
+	var instanceEg errgroup.Group
+	for _, machine := range m.Deployment.Machines {
+		instanceEg.Go(func() error {
+			l.Infof("Creating instance %s in zone %s", machine.Name, machine.Location)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeInstance,
+				models.ResourceStatePending,
+				"Creating VM",
+			))
+
+			instance, err := p.CreateComputeInstance(
+				ctx,
+				machine.Name,
+			)
+			if err != nil {
+				l.Errorf("Failed to create instance %s: %v", machine.Name, err)
+				machine.SetResourceState(
+					models.GCPResourceTypeInstance.ResourceString,
+					models.ResourceStateFailed,
+				)
+				return err
+			}
+
 			machine.SetResourceState(
 				models.GCPResourceTypeInstance.ResourceString,
-				models.ResourceStateFailed,
+				models.ResourceStateRunning,
 			)
-			continue
-		}
 
-		machine.SetResourceState(
-			models.GCPResourceTypeInstance.ResourceString,
-			models.ResourceStateRunning,
-		)
+			if len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
+				machine.PublicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+			} else {
+				return fmt.Errorf("no access configs found for instance %s - could not get public IP", machine.Name)
+			}
 
-		if len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
-			machine.PublicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
-		} else {
-			return fmt.Errorf("no access configs found for instance %s - could not get public IP", machine.Name)
-		}
+			machine.PrivateIP = *instance.NetworkInterfaces[0].NetworkIP
+			l.Infof("Instance %s created successfully", machine.Name)
 
-		machine.PrivateIP = *instance.NetworkInterfaces[0].NetworkIP
-		l.Infof("Instance %s created successfully", machine.Name)
+			// Create or ensure Cloud Storage bucket
+			bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
+			l.Infof("Ensuring Cloud Storage bucket: %s\n", bucketName)
+			if err := p.EnsureStorageBucket(ctx, machine.Location, bucketName); err != nil {
+				return fmt.Errorf("failed to ensure storage bucket: %v", err)
+			}
 
-		// Create or ensure Cloud Storage bucket
-		bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
-		fmt.Printf("Ensuring Cloud Storage bucket: %s\n", bucketName)
-		if err := p.EnsureStorageBucket(ctx, machine.Location, bucketName); err != nil {
-			return fmt.Errorf("failed to ensure storage bucket: %v", err)
-		}
+			return nil
+		})
+	}
+
+	if err := instanceEg.Wait(); err != nil {
+		return fmt.Errorf("failed to create instances: %v", err)
 	}
 
 	return nil

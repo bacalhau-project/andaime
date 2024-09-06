@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func GetCreateProjectCmd() *cobra.Command {
+func GetGCPCreateProjectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-project",
 		Short: "Create a new GCP project with necessary resources",

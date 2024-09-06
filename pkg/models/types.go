@@ -112,6 +112,14 @@ func NewDisplayStatus(
 	resourceType ResourceTypes,
 	state ResourceState,
 ) *DisplayStatus {
+	l := logger.Get()
+	l.Debugf(
+		"NewDisplayStatus: %s, %s, %s, %d",
+		machineName,
+		resourceID,
+		resourceType.ResourceString,
+		state,
+	)
 	return &DisplayStatus{
 		ID:   machineName,
 		Name: machineName,
@@ -206,12 +214,22 @@ func CreateStateMessage(
 		l.Debugf("Resource State: %d", resourceState)
 		stateEmoji = DisplayEmojiQuestion
 	}
-	return fmt.Sprintf(
-		"%s %s - %s",
-		resource.ShortResourceName,
-		stateEmoji,
-		resourceName,
-	)
+	var statusString string
+	if strings.Contains(resource.ShortResourceName, "VM") {
+		statusString = fmt.Sprintf(
+			"%s %s",
+			stateEmoji,
+			resourceName,
+		)
+	} else {
+		statusString = fmt.Sprintf(
+			"%s %s - %s",
+			resource.ShortResourceName,
+			stateEmoji,
+			resourceName,
+		)
+	}
+	return statusString
 }
 
 func ConvertFromRawResourceToStatus(

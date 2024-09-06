@@ -26,6 +26,7 @@ import (
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2/google"
@@ -299,6 +300,7 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		regionOperationsClient: regionOperationsClient,
 		zonesListClient:        zonesClient,
 		machineTypeListClient:  machineTypeListClient,
+		storageClient:          storageClient,
 	}
 
 	return liveGCPClient, cleanup, nil
@@ -350,25 +352,43 @@ func (c *LiveGCPClient) EnsureProject(
 ) (string, error) {
 	l := logger.Get()
 
-	// Check if the project ID is too long
-	if len(projectID) > maximumProjectIDLength {
-		return "", fmt.Errorf(
-			"project ID is too long, it should be less than %d characters -- %s...",
-			maximumProjectIDLength,
-			projectID[:maximumProjectIDLength],
-		)
-	}
+	var uniqueProjectID string
+	if projectID != "" {
+		uniqueProjectID = projectID
+	} else {
+		// Check if the project ID is too long
+		if len(projectID) > maximumProjectIDLength {
+			l.Warnf(
+				"project ID is too long, it should be less than %d characters -- %s...",
+				maximumProjectIDLength,
+				projectID[:maximumProjectIDLength],
+			)
+			return "", fmt.Errorf(
+				"project ID is too long, it should be less than %d characters",
+				maximumProjectIDLength,
+			)
+		}
 
-	timestamp := time.Now().Format("01021504") // mmddhhmm
-	uniqueProjectID := fmt.Sprintf("%s-%s", projectID, timestamp)
+		projectPrefix := viper.GetString("general.project_prefix")
+		if projectPrefix == "" {
+			return "", fmt.Errorf("project prefix is not set")
+		}
 
-	// Check if the unique project ID is too long
-	if len(uniqueProjectID) > maximumUniqueProjectIDLength {
-		return "", fmt.Errorf(
-			"unique project ID is too long, it should be less than %d characters -- %s...",
-			maximumUniqueProjectIDLength,
-			uniqueProjectID[:maximumUniqueProjectIDLength],
-		)
+		timestamp := time.Now().Format("01021504") // mmddhhmm
+		uniqueProjectID = fmt.Sprintf("%s-%s", projectPrefix, timestamp)
+
+		// Check if the unique project ID is too long
+		if len(uniqueProjectID) > maximumUniqueProjectIDLength {
+			l.Warnf(
+				"unique project ID is too long, it should be less than %d characters -- %s...",
+				maximumUniqueProjectIDLength,
+				uniqueProjectID[:maximumUniqueProjectIDLength],
+			)
+			return "", fmt.Errorf(
+				"unique project ID is too long, it should be less than %d characters",
+				maximumUniqueProjectIDLength,
+			)
+		}
 	}
 
 	l.Debugf("Ensuring project: %s", uniqueProjectID)
@@ -383,7 +403,7 @@ func (c *LiveGCPClient) EnsureProject(
 		},
 	}
 
-	l.Debugf("Creating project: %s", uniqueProjectID)
+	l.Infof("Creating project: %s ...", uniqueProjectID)
 	createCallResponse, err := c.projectClient.CreateProject(ctx, req)
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
@@ -413,52 +433,15 @@ func (c *LiveGCPClient) EnsureProject(
 		return "", fmt.Errorf("wait for project creation: %v", err)
 	}
 
-	l.Debugf("Created project: %s (Display Name: %s)", project.ProjectId, project.DisplayName)
-
+	l.Infof(
+		"Created project: %s (Display Name: %s)",
+		project.ProjectId,
+		project.DisplayName,
+	)
 	// Set the billing account for the project
 	billingAccountID := viper.GetString("gcp.billing_account_id")
 	if err := c.SetBillingAccount(ctx, project.ProjectId, billingAccountID); err != nil {
 		return "", fmt.Errorf("failed to set billing account: %v", err)
-	}
-
-	// Enable necessary APIs
-	apisToEnable := []string{
-		"compute.googleapis.com",
-		"storage.googleapis.com",
-		"iam.googleapis.com",
-		"serviceusage.googleapis.com",
-	}
-
-	for _, api := range apisToEnable {
-		if err := c.EnableAPI(ctx, project.ProjectId, api); err != nil {
-			return "", fmt.Errorf("failed to enable API %s: %v", api, err)
-		}
-	}
-
-	// Create service account after project creation
-	serviceAccount, err := c.CreateServiceAccount(ctx, project.ProjectId)
-	if err != nil {
-		l.Errorf("Failed to create service account: %v", err)
-		return "", fmt.Errorf("create service account: %v", err)
-	}
-
-	// Generate a key for the service account
-	serviceAccountKey, err := c.CreateServiceAccountKey(
-		ctx,
-		project.ProjectId,
-		serviceAccount.Email,
-	)
-	if err != nil {
-		l.Errorf("Failed to create service account key: %v", err)
-		return "", fmt.Errorf("create service account key: %v", err)
-	}
-
-	// Store the service account email and key in the config
-	viper.Set("gcp.service_account_email", serviceAccount.Email)
-	viper.Set("gcp.service_account_key", serviceAccountKey.PrivateKeyData)
-	if err := viper.WriteConfig(); err != nil {
-		l.Errorf("Failed to write config: %v", err)
-		return "", fmt.Errorf("write config: %v", err)
 	}
 
 	return project.ProjectId, nil
@@ -539,18 +522,36 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 			for _, resource := range resources {
 				resourceType := resource.GetAssetType()
 				resourceName := resource.GetName()
-				state := resource.GetServicePerimeter().Status
 
-				l.Debugf("Resource: %s (Type: %s) - State: %s", resourceName, resourceType, state)
+				// // Print out the resource name and type to a file - /tmp/resources.txt
+				// file, err := os.OpenFile(
+				// 	"/tmp/resources.txt",
+				// 	os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+				// 	0644,
+				// )
+				// if err != nil {
+				// 	l.Errorf("Failed to open file: %v", err)
+				// }
+				// defer file.Close()
+
+				// _, err = file.WriteString(
+				// 	fmt.Sprintf("Resource: %s (Type: %s)\n", resourceName, resourceType),
+				// )
+				// if resourceType == "compute.googleapis.com/Subnetwork" {
+				// 	res2B, _ := json.Marshal(resource)
+				// 	_, err = file.WriteString(fmt.Sprintf("%s\n", string(res2B)))
+				// }
+				// if err != nil {
+				// 	l.Errorf("Failed to write to file: %v", err)
+				// }
+
+				// Print out the resource name and type to a file - /tmp/resources.txt
+				l.Debugf("Resource: %s (Type: %s)", resourceName, resourceType)
 
 				// Update the resource state in the deployment model
-				if err := c.UpdateResourceState(resourceName, resourceType, "NOT IMPLEMENTED"); err != nil {
+				if err := c.UpdateResourceState(resourceName, resourceType, models.ResourceStateSucceeded); err != nil {
 					l.Errorf("Failed to update resource state: %v", err)
 				}
-
-				// if state != "READY" {
-				// 	allResourcesProvisioned = false
-				// }
 			}
 
 			if allResourcesProvisioned && c.allMachinesComplete(m) {
@@ -602,13 +603,21 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 ) ([]*assetpb.Asset, error) {
 	resources := []*assetpb.Asset{}
 	l := logger.Get()
-	l.Debugf("Listing all resources in project: %s", projectID)
 
-	// Chain of thought reasoning prefix
-	prefix := "To list all assets in the project, we need to query the Cloud Asset API. "
+	assetTypes := []string{
+		"compute.googleapis.com/Instance",
+		"compute.googleapis.com/Disk",
+		"compute.googleapis.com/Image",
+		"compute.googleapis.com/Network",
+		// "compute.googleapis.com/Subnetwork",
+		"compute.googleapis.com/Firewall",
+		// "iam.googleapis.com/ServiceAccount",
+		// "iam.googleapis.com/Policy",
+	}
 
 	req := &assetpb.SearchAllResourcesRequest{
-		Scope: fmt.Sprintf("projects/%s", projectID),
+		Scope:      fmt.Sprintf("projects/%s", projectID),
+		AssetTypes: assetTypes,
 	}
 
 	it := c.assetClient.SearchAllResources(ctx, req)
@@ -623,8 +632,7 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 
 		// Prefix the query with the chain of thought reasoning
 		l.Debugf(
-			"%sQuerying resource: %s (Type: %s)",
-			prefix,
+			"Querying resource: %s (Type: %s)",
 			resource.GetName(),
 			resource.GetAssetType(),
 		)
@@ -641,26 +649,22 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 }
 
 // UpdateResourceState updates the state of a resource in the deployment
-func (c *LiveGCPClient) UpdateResourceState(resourceName, resourceType, state string) error {
+func (c *LiveGCPClient) UpdateResourceState(
+	resourceName, resourceType string,
+	state models.ResourceState,
+) error {
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	// // Find the machine that owns this resource
-	// for _, machine := range m.Deployment.Machines {
-	// 	if strings.HasPrefix(resourceName, machine.Name) {
-	// 		// Update the resource state for this machine
-	// 		if machine.EnsureMachineServices() == nil {
-	// 			machine.Resources = make(map[string]models.Resource)
-	// 		}
-	// 		machine.Resources[resourceType] = models.Resource{
-	// 			ResourceState: models.AzureResourceState(state),
-	// 			ResourceValue: resourceName,
-	// 		}
-	// 		return nil
-	// 	}
-	// }
+	// Find the machine that owns this resource
+	for _, machine := range m.Deployment.Machines {
+		if strings.HasPrefix(resourceName, machine.Name) {
+			machine.SetResourceState(resourceType, state)
+			return nil
+		}
+	}
 
 	return fmt.Errorf("resource %s not found in any machine", resourceName)
 }
@@ -779,6 +783,15 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 
 	// Create a firewall rule for each allowed port
 	for i, port := range allowedPorts {
+		for _, machine := range m.Deployment.Machines {
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeFirewall,
+				models.ResourceStatePending,
+				fmt.Sprintf("Creating FW for port %d", port),
+			))
+		}
+
 		ruleName := fmt.Sprintf("default-allow-%d", port)
 
 		// Check if the firewall rule already exists
@@ -826,13 +839,8 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 			return nil
 		}
 
-		// Start a spinner to alert the user
-		spinner := display.NewSpinner(fmt.Sprintf("Creating firewall rule for port %d...", port))
-		defer spinner.Stop()
-
 		err := backoff.Retry(operation, b)
 		if err != nil {
-			spinner.Stop()
 			l.Errorf("Failed to create firewall rule for port %d after retries: %v", port, err)
 			return fmt.Errorf(
 				"failed to create firewall rule for port %d after retries: %v",
@@ -840,8 +848,16 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 				err,
 			)
 		}
-		spinner.Stop()
 		l.Infof("Firewall rule created successfully for port %d", port)
+
+		for _, machine := range m.Deployment.Machines {
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeFirewall,
+				models.ResourceStateRunning,
+				fmt.Sprintf("Created FW Rule for port %d", port),
+			))
+		}
 	}
 
 	return nil
@@ -905,15 +921,6 @@ func (c *LiveGCPClient) CreateComputeInstance(
 		return nil, fmt.Errorf("failed to enable Compute Engine API: %v", err)
 	}
 
-	// Generate a unique VM name
-	uniqueID := fmt.Sprintf("%s-%s", projectID, time.Now().Format("0601021504"))
-	vmName := fmt.Sprintf("%s-vm", uniqueID)
-
-	// Get default values from config
-	defaultMachineType := viper.GetString("gcp.default_machine_type")
-	defaultDiskSizeGB := viper.GetString("gcp.default_disk_size_gb")
-	defaultSourceImage := viper.GetString("gcp.default_source_image")
-
 	// Get the zone from the vmConfig
 	zone := machine.Location
 
@@ -927,12 +934,6 @@ func (c *LiveGCPClient) CreateComputeInstance(
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get or create network: %v", err)
-	}
-
-	// Convert defaultDiskSizeGB to int64
-	defaultDiskSizeGBInt, err := strconv.ParseInt(defaultDiskSizeGB, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert default disk size to int64: %v", err)
 	}
 
 	// Get the SSH user from the deployment model
@@ -968,12 +969,20 @@ func (c *LiveGCPClient) CreateComputeInstance(
 		return nil, fmt.Errorf("failed to execute startup script template: %w", err)
 	}
 
+	if machine.VMSize == "" {
+		return nil, fmt.Errorf("vm size is not set on this machine")
+	}
+
+	if machine.DiskSizeGB == 0 {
+		return nil, fmt.Errorf("disk size is not set on this machine")
+	}
+
 	instance := &computepb.Instance{
-		Name: &vmName,
+		Name: &instanceName,
 		MachineType: to.Ptr(fmt.Sprintf(
 			"zones/%s/machineTypes/%s",
 			zone, // Use the provided zone
-			defaultMachineType,
+			machine.VMSize,
 		)),
 		Disks: []*computepb.AttachedDisk{
 			{
@@ -981,8 +990,8 @@ func (c *LiveGCPClient) CreateComputeInstance(
 				Boot:       to.Ptr(true),
 				Type:       to.Ptr("PERSISTENT"),
 				InitializeParams: &computepb.AttachedDiskInitializeParams{
-					DiskSizeGb:  to.Ptr(defaultDiskSizeGBInt),
-					SourceImage: to.Ptr(defaultSourceImage),
+					DiskSizeGb:  to.Ptr(int64(machine.DiskSizeGB)),
+					SourceImage: to.Ptr(machine.DiskImage),
 				},
 			},
 		},
@@ -1036,7 +1045,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 	instance, err = c.computeClient.Get(ctx, &computepb.GetInstanceRequest{
 		Project:  projectID,
 		Zone:     zone,
-		Instance: vmName,
+		Instance: instanceName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get VM instance: %v", err)
@@ -1537,7 +1546,7 @@ func (c *LiveGCPClient) EnsureStorageBucket(
 	bucketName string,
 ) error {
 	l := logger.Get()
-	l.Debugf("Ensuring storage bucket %s exists", bucketName)
+	l.Debugf("Ensuring storage bucket %s exists in location %s", bucketName, location)
 
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
@@ -1545,30 +1554,46 @@ func (c *LiveGCPClient) EnsureStorageBucket(
 	}
 	projectID := m.Deployment.ProjectID
 
-	bucket, err := c.storageClient.Bucket(bucketName).Attrs(ctx)
+	if c.storageClient == nil {
+		return fmt.Errorf("storage client is nil")
+	}
+
+	bucket := c.storageClient.Bucket(bucketName)
+	if bucket == nil {
+		return fmt.Errorf("failed to create bucket handle")
+	}
+
+	attrs, err := bucket.Attrs(ctx)
 	if err != nil {
 		if err == storage.ErrBucketNotExist {
-			return fmt.Errorf("bucket %s does not exist", bucketName)
+			l.Debugf("Bucket %s does not exist, creating it", bucketName)
+			return c.createBucket(ctx, projectID, bucketName, location)
 		}
 		return fmt.Errorf("failed to check if bucket exists: %v", err)
 	}
 
-	if bucket == nil {
-		return fmt.Errorf("bucket %s does not exist", bucketName)
-	}
+	l.Debugf("Bucket %s already exists in location %s", bucketName, attrs.Location)
+	return nil
+}
+
+func (c *LiveGCPClient) createBucket(
+	ctx context.Context,
+	projectID, bucketName, location string,
+) error {
+	l := logger.Get()
+	l.Debugf("Creating bucket %s in location %s", bucketName, location)
 
 	attrs := &storage.BucketAttrs{
-		Name:              bucketName,
 		Location:          location,
 		StorageClass:      "STANDARD",
 		VersioningEnabled: true,
 	}
 
-	// Create the bucket
-	err = c.storageClient.Bucket(bucketName).Create(ctx, projectID, attrs)
+	err := c.storageClient.Bucket(bucketName).Create(ctx, projectID, attrs)
 	if err != nil {
 		return fmt.Errorf("failed to create bucket: %v", err)
 	}
 
+	l.Debugf("Successfully created bucket %s", bucketName)
 	return nil
 }

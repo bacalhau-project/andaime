@@ -114,3 +114,11 @@ func ConvertStringMapToStringPtrMap(m map[string]string) map[string]*string {
 	}
 	return result
 }
+
+func TruncateString(s string, maxLength int) string {
+	ellipsis := "..."
+	if len(s) > maxLength {
+		return s[:maxLength-len(ellipsis)] + ellipsis
+	}
+	return s
+}

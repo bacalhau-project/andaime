@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func GetCreateVMCmd() *cobra.Command {
+func GetGCPCreateVMCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-vm <project-id>",
 		Short: "Create a new VM in a GCP project",

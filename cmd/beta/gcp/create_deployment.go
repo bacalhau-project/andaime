@@ -49,7 +49,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	uniqueID := time.Now().Format("060102150405")
+	uniqueID := time.Now().Format("0601021504")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
 	p, err := gcp.NewGCPProvider(ctx)
@@ -57,34 +57,15 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
-	// Check if a project ID was provided or generated
-	projectID := viper.GetString("gcp.project_id")
-	if projectID == "" {
-		return fmt.Errorf("failed to get or generate a project ID")
-	}
-
-	// Create the project if it doesn't exist
-	createdProjectID, err := p.EnsureProject(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to ensure project exists: %w", err)
-	}
-
-	// Update the project ID in the configuration
-	viper.Set("gcp.project_id", createdProjectID)
-
-	// Enable required APIs
-	if err := p.EnableRequiredAPIs(ctx); err != nil {
-		return fmt.Errorf("failed to enable required APIs: %w", err)
-	}
-
-	viper.Set("general.unique_id", uniqueID)
 	deployment, err := PrepareDeployment(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to initialize deployment: %w", err)
+		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
 	m := display.InitialModel(deployment)
 	m.Deployment = deployment
+	m.Deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
+	m.Deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
 
 	prog := display.GetGlobalProgram()
 	prog.InitProgram(m)
@@ -214,6 +195,8 @@ type rawMachine struct {
 		Count        int    `yaml:"count,omitempty"`
 		Type         string `yaml:"type,omitempty"`
 		Orchestrator bool   `yaml:"orchestrator,omitempty"`
+		DiskImage    string `yaml:"disk_image,omitempty"`
+		DiskSizeGB   int    `yaml:"disk_size_gb,omitempty"`
 	} `yaml:"parameters"`
 }
 
@@ -232,7 +215,12 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	defaultType := viper.GetString("gcp.default_machine_type")
 	defaultDiskSize := viper.GetInt("gcp.disk_size_gb")
 	defaultZone := viper.GetString("gcp.default_zone")
+	defaultDiskImage := viper.GetString("gcp.default_disk_image")
 	orgID := viper.GetString("gcp.organization_id")
+
+	if defaultDiskImage == "" {
+		defaultDiskImage = "ubuntu-2204-lts"
+	}
 
 	if orgID == "" {
 		l.Error("gcp.organization_id is empty")
@@ -261,6 +249,16 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			location = defaultZone
 		}
 
+		diskImage := defaultDiskImage
+		if rawMachine.Parameters != nil && rawMachine.Parameters.DiskImage != "" {
+			diskImage = rawMachine.Parameters.DiskImage
+		}
+
+		diskSizeGB := defaultDiskSize
+		if rawMachine.Parameters != nil && rawMachine.Parameters.DiskSizeGB > 0 {
+			diskSizeGB = rawMachine.Parameters.DiskSizeGB
+		}
+
 		if !internal_gcp.IsValidGCPLocation(location) {
 			return fmt.Errorf("invalid location for GCP: %s", location)
 		}
@@ -269,14 +267,14 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			return fmt.Errorf("invalid machine type for GCP: %s", vmType)
 		}
 
-		// Convert defaultDiskSize to int32 securely
-		int32DefaultDiskSize := safeConvertToInt32(defaultDiskSize)
+		int32DiskSizeGB := safeConvertToInt32(diskSizeGB)
 
 		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
 				location,
-				int32DefaultDiskSize,
+				int32DiskSizeGB,
 				vmType,
+				diskImage,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
@@ -290,7 +288,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 			newMachines[newMachine.Name] = newMachine
 			newMachines[newMachine.Name].SetResourceState(
-				"VM",
+				models.GCPResourceTypeInstance.ResourceString,
 				models.ResourceStateNotStarted,
 			)
 		}
@@ -326,6 +324,7 @@ func createNewMachine(
 	location string,
 	diskSizeGB int32,
 	vmSize string,
+	diskImage string,
 	privateKeyBytes []byte,
 	sshPort int,
 ) (*models.Machine, error) {
@@ -345,6 +344,8 @@ func createNewMachine(
 	newMachine.SSHUser = "azureuser"
 	newMachine.SSHPort = sshPort
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
+
+	newMachine.DiskImage = diskImage
 
 	return newMachine, nil
 }
