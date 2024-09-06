@@ -303,7 +303,7 @@ func getAzureVMSizes(location string) ([]string, error) {
 	return topVMSizes, nil
 }
 
-func generateGCPData(removedZones chan<- string, s *lineSpinner, imagesSpinner *lineSpinner) error {
+func generateGCPData(_ chan<- string, s *lineSpinner, imagesSpinner *lineSpinner) error {
 	var wg sync.WaitGroup
 	var gcpDataMutex sync.Mutex
 	gcpData := CloudData{

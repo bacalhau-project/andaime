@@ -192,11 +192,11 @@ func setDeploymentBasicInfo(deployment *models.Deployment) error {
 type rawMachine struct {
 	Location   string `yaml:"location"`
 	Parameters *struct {
-		Count        int    `yaml:"count,omitempty"`
-		Type         string `yaml:"type,omitempty"`
-		Orchestrator bool   `yaml:"orchestrator,omitempty"`
-		DiskImage    string `yaml:"disk_image,omitempty"`
-		DiskSizeGB   int    `yaml:"disk_size_gb,omitempty"`
+		Count           int    `yaml:"count,omitempty"`
+		Type            string `yaml:"type,omitempty"`
+		Orchestrator    bool   `yaml:"orchestrator,omitempty"`
+		DiskImageFamily string `yaml:"disk_image_family,omitempty"`
+		DiskSizeGB      int    `yaml:"disk_size_gb,omitempty"`
 	} `yaml:"parameters"`
 }
 
@@ -215,11 +215,11 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 	defaultType := viper.GetString("gcp.default_machine_type")
 	defaultDiskSize := viper.GetInt("gcp.disk_size_gb")
 	defaultZone := viper.GetString("gcp.default_zone")
-	defaultDiskImage := viper.GetString("gcp.default_disk_image")
+	defaultDiskImageFamily := viper.GetString("gcp.default_disk_image_family")
 	orgID := viper.GetString("gcp.organization_id")
 
-	if defaultDiskImage == "" {
-		defaultDiskImage = "ubuntu-2204-lts"
+	if defaultDiskImageFamily == "" {
+		defaultDiskImageFamily = "ubuntu-2004-lts"
 	}
 
 	if orgID == "" {
@@ -249,11 +249,6 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			location = defaultZone
 		}
 
-		diskImage := defaultDiskImage
-		if rawMachine.Parameters != nil && rawMachine.Parameters.DiskImage != "" {
-			diskImage = rawMachine.Parameters.DiskImage
-		}
-
 		diskSizeGB := defaultDiskSize
 		if rawMachine.Parameters != nil && rawMachine.Parameters.DiskSizeGB > 0 {
 			diskSizeGB = rawMachine.Parameters.DiskSizeGB
@@ -265,6 +260,31 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 
 		if !internal_gcp.IsValidGCPMachineType(location, vmType) {
 			return fmt.Errorf("invalid machine type for GCP: %s", vmType)
+		}
+
+		var diskImage string
+		if rawMachine.Parameters != nil && rawMachine.Parameters.DiskImageFamily != "" {
+			diskImage = internal_gcp.IsValidGCPDiskImageFamily(
+				location,
+				rawMachine.Parameters.DiskImageFamily,
+			)
+			if diskImage == "" {
+				return fmt.Errorf(
+					"invalid disk image family for GCP: %s",
+					rawMachine.Parameters.DiskImageFamily,
+				)
+			}
+		} else {
+			diskImage = internal_gcp.IsValidGCPDiskImageFamily(
+				location,
+				defaultDiskImageFamily,
+			)
+			if diskImage == "" {
+				return fmt.Errorf(
+					"invalid default disk image family for GCP: %s",
+					defaultDiskImageFamily,
+				)
+			}
 		}
 
 		int32DiskSizeGB := safeConvertToInt32(diskSizeGB)

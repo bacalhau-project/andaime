@@ -54,6 +54,8 @@ Deallocation
 Debugf
 depguard
 Dialerer
+diskimage
+diskimagefamily
 dockerclient
 dockertypes
 dupl

@@ -9,7 +9,17 @@ import (
 )
 
 type GCPData struct {
-	Locations map[string][]string `yaml:"locations"`
+	Locations  map[string][]string `yaml:"locations"`
+	DiskImages []DiskImage         `yaml:"diskImages"`
+}
+
+type DiskImage struct {
+	Name         string   `yaml:"name"`
+	Family       string   `yaml:"family"`
+	Description  string   `yaml:"description"`
+	DiskSizeGb   string   `yaml:"diskSizeGb"`
+	Licenses     []string `yaml:"licenses"`
+	Architecture string   `yaml:"architecture"`
 }
 
 func IsValidGCPLocation(location string) bool {
@@ -32,19 +42,42 @@ func IsValidGCPLocation(location string) bool {
 
 func IsValidGCPMachineType(location, machineType string) bool {
 	l := logger.Get()
-	gcpData, err := GetGCPData()
+	gcpDataRaw, err := GetGCPData()
 	if err != nil {
 		return false
 	}
-	var validLocationsAndMachines GCPData
-	err = yaml.Unmarshal(gcpData, &validLocationsAndMachines)
+	var gcpData GCPData
+	err = yaml.Unmarshal(gcpDataRaw, &gcpData)
 	if err != nil {
 		l.Warnf("Failed to unmarshal GCP data: %v", err)
 		return false
 	}
-	validMachineTypes, ok := validLocationsAndMachines.Locations[strings.ToLower(location)]
+	validMachineTypes, ok := gcpData.Locations[strings.ToLower(location)]
 	if !ok {
 		return false
 	}
 	return slices.Contains(validMachineTypes, machineType)
+}
+
+// Returns the name of the disk image, if the disk image family is valid, otherwise returns an empty string
+func IsValidGCPDiskImageFamily(location, diskImageFamilyToCheck string) string {
+	l := logger.Get()
+	gcpDataRaw, err := GetGCPData()
+	if err != nil {
+		return ""
+	}
+
+	var gcpData GCPData
+	err = yaml.Unmarshal(gcpDataRaw, &gcpData)
+	if err != nil {
+		l.Warnf("Failed to unmarshal GCP data: %v", err)
+		return ""
+	}
+
+	for _, diskImage := range gcpData.DiskImages {
+		if diskImage.Family == diskImageFamilyToCheck {
+			return diskImage.Name
+		}
+	}
+	return ""
 }

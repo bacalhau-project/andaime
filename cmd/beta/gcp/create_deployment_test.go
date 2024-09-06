@@ -34,10 +34,6 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 	viper.Set("general.project_prefix", "test-project")
 	viper.Set("general.unique_id", "test-unique-id")
-	deployment, err := models.NewDeployment()
-	assert.NoError(t, err)
-	deployment.SSHPrivateKeyPath = testPrivateKeyPath
-	deployment.SSHPort = 22
 
 	// Test case 1: Valid configuration
 	t.Run("Valid configuration", func(t *testing.T) {
@@ -45,16 +41,30 @@ func TestProcessMachinesConfig(t *testing.T) {
 			{
 				"location": "us-central1-a",
 				"parameters": map[string]interface{}{
-					"count":        1,
-					"type":         "n2-standard-2",
-					"orchestrator": true,
+					"count":           1,
+					"type":            "n2-standard-2",
+					"orchestrator":    true,
+					"diskimagefamily": "ubuntu-2004-lts",
 				},
 			},
 		})
 
+		deployment, err := models.NewDeployment()
+		assert.NoError(t, err)
+		deployment.SSHPrivateKeyPath = testPrivateKeyPath
+		deployment.SSHPort = 22
+
 		err = ProcessMachinesConfig(deployment)
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
+		// Get first machine - it will have a generated name
+		var machine *models.Machine
+		for _, machine = range deployment.Machines {
+			break
+		}
+		assert.Contains(t, machine.DiskImage, "ubuntu-2004")
+		assert.Equal(t, "n2-standard-2", machine.VMSize)
+		assert.Equal(t, true, machine.Orchestrator)
 	})
 
 	// Test case 2: Invalid location
@@ -63,20 +73,105 @@ func TestProcessMachinesConfig(t *testing.T) {
 			{
 				"location": "bad-location-2", // Invalid GCP location
 				"parameters": map[string]interface{}{
-					"count": 1,
-					"type":  "n1-standard-1",
+					"count":           1,
+					"type":            "n1-standard-1",
+					"diskimagefamily": "ubuntu-2004-lts",
 				},
 			},
 		})
 
 		deployment, err := models.NewDeployment()
+		assert.NoError(t, err)
 		deployment.SSHPrivateKeyPath = testPrivateKeyPath
 		deployment.SSHPort = 22
-
-		assert.NoError(t, err)
 
 		err = ProcessMachinesConfig(deployment)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid location for GCP: bad-location-2")
+	})
+
+	// Test case 3: Valid image type
+	t.Run("Valid image type", func(t *testing.T) {
+		viper.Set("gcp.machines", []map[string]interface{}{
+			{
+				"location": "us-central1-a",
+				"parameters": map[string]interface{}{
+					"count":           1,
+					"type":            "n1-standard-1",
+					"diskimagefamily": "debian-12",
+				},
+			},
+		})
+
+		deployment, err := models.NewDeployment()
+		assert.NoError(t, err)
+		deployment.SSHPrivateKeyPath = testPrivateKeyPath
+		deployment.SSHPort = 22
+
+		err = ProcessMachinesConfig(deployment)
+		assert.NoError(t, err)
+		assert.Len(t, deployment.Machines, 1)
+		// Get first machine - it will have a generated name
+		var machine *models.Machine
+		for _, machine = range deployment.Machines {
+			break
+		}
+		assert.Contains(t, machine.DiskImage, "debian-12")
+	})
+
+	// Test case 4: Invalid image type
+	t.Run("Invalid image type", func(t *testing.T) {
+		viper.Set("gcp.machines", []map[string]interface{}{
+			{
+				"location": "us-central1-a",
+				"parameters": map[string]interface{}{
+					"count":           1,
+					"type":            "n1-standard-1",
+					"diskimagefamily": "invalid-image-type",
+				},
+			},
+		})
+
+		deployment, err := models.NewDeployment()
+		assert.NoError(t, err)
+		deployment.SSHPrivateKeyPath = testPrivateKeyPath
+		deployment.SSHPort = 22
+
+		err = ProcessMachinesConfig(deployment)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid disk image family for GCP: invalid-image-type")
+	})
+
+	// Test case 5: Missing image type (should use default)
+	t.Run("Missing image type", func(t *testing.T) {
+		viper.Set("gcp.machines", []map[string]interface{}{
+			{
+				"location": "us-central1-a",
+				"parameters": map[string]interface{}{
+					"count":        1,
+					"type":         "n1-standard-1",
+					"orchestrator": true,
+				},
+			},
+		})
+
+		deployment, err := models.NewDeployment()
+		assert.NoError(t, err)
+		deployment.SSHPrivateKeyPath = testPrivateKeyPath
+		deployment.SSHPort = 22
+
+		err = ProcessMachinesConfig(deployment)
+		assert.NoError(t, err)
+		assert.Len(t, deployment.Machines, 1)
+		// Get first machine - it will have a generated name
+		var machine *models.Machine
+		for _, machine = range deployment.Machines {
+			break
+		}
+		assert.Contains(
+			t,
+			machine.DiskImage,
+			"ubuntu-2004", // Default image
+		)
 	})
 }
