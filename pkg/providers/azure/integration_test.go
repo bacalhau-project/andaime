@@ -297,51 +297,98 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
-			models.AzureResourceTypeVM.ResourceString,
-			models.ResourceStateSucceeded,
-		)
-	}
+	setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	// Mock SSH provisioning failure
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
-		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
+	setup.mockSSHConfig.On("PushFile",
+		mock.Anything,
+		"/tmp/install-docker.sh",
+		mock.Anything,
+		mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
+		Return("", nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker run hello-world").
+		Return("", nil)
+	setup.mockSSHConfig.On("PushFile",
+		mock.Anything,
+		"/tmp/install-core-packages.sh",
+		mock.Anything,
+		mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh").
+		Return("", nil)
+	setup.mockSSHConfig.On("PushFile",
+		mock.Anything,
+		"/tmp/get-node-config-metadata.sh",
+		mock.Anything,
+		mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh").
+		Return("", nil)
+	setup.mockSSHConfig.On("PushFile",
+		mock.Anything,
+		"/tmp/install-bacalhau.sh",
+		mock.Anything,
+		mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh").
+		Return("", nil)
+	setup.mockSSHConfig.On("PushFile",
+		mock.Anything,
+		"/tmp/install-run-bacalhau.sh",
+		mock.Anything,
+		mock.Anything).
+		Return(nil)
+	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh").
+		Return("", nil)
 	setup.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
-		Return(`[]`, nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
+		Return("", fmt.Errorf("bacalhau orchestrator node list failed"))
 
+	m := display.GetGlobalModelFunc()
+
+	err := setup.provider.CreateResources(ctx)
+	assert.NoError(t, err)
+
+	var eg errgroup.Group
 	for _, machine := range m.Deployment.Machines {
-		err := setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		eg.Go(func() error {
+			return setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		})
+	}
+	if err := eg.Wait(); err != nil {
 		assert.NoError(t, err)
 	}
 
+	err = setup.provider.GetClusterDeployer().DeployOrchestrator(ctx)
+	assert.Error(t, err)
+
+	// Check that the VM status was updated correctly
 	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
-			err := setup.provider.GetClusterDeployer().DeployOrchestrator(ctx)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "no Bacalhau nodes found")
+		if machine.Name == "orchestrator" {
+			assert.Equal(
+				t,
+				models.ServiceStateFailed,
+				machine.GetServiceState("Bacalhau"),
+			)
+		} else {
+			assert.Equal(
+				t,
+				models.ServiceStateNotStarted,
+				machine.GetServiceState("Bacalhau"),
+			)
 		}
 	}
 
-	for _, machine := range m.Deployment.Machines {
-		if !machine.Orchestrator {
-			err := setup.provider.GetClusterDeployer().DeployWorker(ctx, machine.Name)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "no Bacalhau nodes found")
-		}
-	}
-
-	for _, machine := range m.Deployment.Machines {
-		assert.NotEqual(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-	}
+	setup.mockAzureClient.AssertExpectations(t)
 	setup.mockSSHConfig.AssertExpectations(t)
+
 }
 
 type MockPoller struct {
