@@ -17,6 +17,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -64,6 +65,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	m := display.InitialModel(deployment)
 	m.Deployment = deployment
+	m.Deployment.GCP.ProjectID = m.Deployment.ProjectID
 	m.Deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
 	m.Deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
 
@@ -72,16 +74,25 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	go p.StartResourcePolling(ctx)
 
-	var deploymentErr error
-	go func() {
-		select {
-		case <-ctx.Done():
-			l.Debug("Deployment cancelled")
-			return
-		default:
-			deploymentErr = p.CreateResources(ctx)
-		}
-	}()
+	deploymentErr := p.CreateResources(ctx)
+	if deploymentErr != nil {
+		l.Error(fmt.Sprintf("Error creating resources: %v", deploymentErr))
+		cancel()
+	}
+
+	p.GetClusterDeployer().WaitForAllMachinesToReachState(ctx, models.ResourceStateSucceeded)
+
+	var errGroup errgroup.Group
+	for _, machine := range deployment.Machines {
+		internalMachine := machine
+		errGroup.Go(func() error {
+			return internalMachine.InstallDockerAndCorePackages(ctx)
+		})
+	}
+	if err := errGroup.Wait(); err != nil {
+		l.Error(fmt.Sprintf("Error installing Docker and core packages: %v", err))
+		cancel()
+	}
 
 	_, err = prog.Run()
 	if err != nil {
@@ -267,7 +278,8 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 			diskImageFamily = rawMachine.Parameters.DiskImageFamily
 		}
 
-		if err := internal_gcp.IsValidGCPDiskImageFamily(location, diskImageFamily); err != nil {
+		diskImageURL, err := internal_gcp.IsValidGCPDiskImageFamily(location, diskImageFamily)
+		if err != nil {
 			return fmt.Errorf("invalid disk image family for GCP: %w", err)
 		}
 
@@ -279,6 +291,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				int32DiskSizeGB,
 				vmType,
 				diskImageFamily,
+				diskImageURL,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
@@ -329,6 +342,7 @@ func createNewMachine(
 	diskSizeGB int32,
 	vmSize string,
 	diskImageFamily string,
+	diskImageURL string,
 	privateKeyBytes []byte,
 	sshPort int,
 ) (*models.Machine, error) {
@@ -350,6 +364,7 @@ func createNewMachine(
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 	newMachine.DiskImageFamily = diskImageFamily
+	newMachine.DiskImageURL = diskImageURL
 
 	return newMachine, nil
 }

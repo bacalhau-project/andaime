@@ -222,7 +222,7 @@ func (m *MockGCPClient) CreateVPCNetwork(
 	return args.Error(0)
 }
 
-func (m *MockGCPClient) DeployResources(
+func (m *MockGCPClient) CreateResources(
 	ctx context.Context,
 ) error {
 	args := m.Called(ctx)

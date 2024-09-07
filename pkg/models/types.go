@@ -209,9 +209,9 @@ func CreateStateMessage(
 	case ResourceStateSucceeded:
 		stateEmoji = DisplayEmojiSuccess
 	case ResourceStateUnknown:
-		l.Debugf("Resource: %s", resource)
-		l.Debugf("Resource Name: %s", resourceName)
-		l.Debugf("Resource State: %d", resourceState)
+		l.Debugf("State Unknown for Resource: %s", resource)
+		l.Debugf("State Resource Name: %s", resourceName)
+		l.Debugf("State Resource State: %d", resourceState)
 		stateEmoji = DisplayEmojiQuestion
 	}
 	var statusString string

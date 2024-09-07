@@ -207,7 +207,7 @@ func TestProcessUpdate(t *testing.T) {
 	})
 }
 
-func TestDeployResources(t *testing.T) {
+func TestCreateResources(t *testing.T) {
 	setupDeployARMTemplateTest(t)
 	defer teardownDeployARMTemplateTest(t)
 
@@ -393,7 +393,7 @@ func TestDeployResources(t *testing.T) {
 				sshutils.NewSSHConfigFunc = oldNewSSHConfigFunc
 			}()
 
-			err := provider.DeployResources(context.Background())
+			err := provider.CreateResources(context.Background())
 
 			if tt.expectedError != "" {
 				assert.ErrorContains(t, err, tt.expectedError)

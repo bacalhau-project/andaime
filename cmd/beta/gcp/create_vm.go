@@ -108,7 +108,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	vm, err := p.CreateComputeInstance(ctx, vmName)
+	vm, err := p.GetGCPClient().CreateComputeInstance(ctx, vmName)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
@@ -120,7 +120,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the external IP address of the VM
-	externalIP, err := p.GetVMExternalIP(ctx, projectID, zone, *vm.Name)
+	externalIP, err := p.GetGCPClient().GetVMExternalIP(ctx, projectID, zone, *vm.Name)
 	if err != nil {
 		return err
 	}

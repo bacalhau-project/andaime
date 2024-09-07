@@ -4,21 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
-
-func (p *GCPProvider) CreateComputeInstance(
-	ctx context.Context,
-	instanceName string,
-) (*computepb.Instance, error) {
-	instance, err := p.GetGCPClient().CreateComputeInstance(ctx, instanceName)
-	if err != nil {
-		return nil, err
-	}
-	return instance, nil
-}
 
 func (p *GCPProvider) startUpdateProcessor(ctx context.Context) {
 	l := logger.Get()

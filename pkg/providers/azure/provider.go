@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/blang/semver"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -86,20 +85,20 @@ const (
 // AzureProvider wraps the Azure deployment functionality
 type AzureProviderer interface {
 	general.Providerer
-	common.ClusterDeployer
 	GetAzureClient() AzureClienter
 	SetAzureClient(client AzureClienter)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 	GetSSHClient() sshutils.SSHClienter
 	SetSSHClient(client sshutils.SSHClienter)
+	GetClusterDeployer() *common.ClusterDeployer
+	SetClusterDeployer(deployer *common.ClusterDeployer)
 
 	StartResourcePolling(ctx context.Context)
 	PrepareResourceGroup(ctx context.Context) error
-	DeployResources(ctx context.Context) error
-	ProvisionPackagesOnMachines(ctx context.Context) error
-	ProvisionBacalhau(ctx context.Context) error
+	CreateResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
+
 	DestroyResources(ctx context.Context, resourceGroupName string) error
 	PollAndUpdateResources(ctx context.Context) ([]interface{}, error)
 	GetVMExternalIP(ctx context.Context, resourceGroupName, vmName string) (string, error)
@@ -120,6 +119,7 @@ type AzureVMConfig struct {
 type AzureProvider struct {
 	Client              AzureClienter
 	Config              *viper.Viper
+	ClusterDeployer     *common.ClusterDeployer
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
 	SSHPort             int
@@ -185,7 +185,7 @@ func NewAzureProvider() (AzureProviderer, error) {
 	l.Debugf("Using Azure subscription ID: %s", subscriptionID)
 
 	// Validate the subscription ID format
-	if !isValidGUID(subscriptionID) {
+	if !utils.IsValidGUID(subscriptionID) {
 		return nil, fmt.Errorf("invalid Azure subscription ID format: %s", subscriptionID)
 	}
 
@@ -345,31 +345,6 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 	}
 
 	l.Infof("Resource group %s destroyed successfully", resourceGroupName)
-	return nil
-}
-
-func (p *AzureProvider) CreateResources(ctx context.Context) error {
-	// TODO: Implement resource creation
-	return nil
-}
-
-func (p *AzureProvider) ProvisionSSH(ctx context.Context) error {
-	// TODO: Implement SSH provisioning
-	return nil
-}
-
-func (p *AzureProvider) SetupDocker(ctx context.Context) error {
-	// TODO: Implement Docker setup
-	return nil
-}
-
-func (p *AzureProvider) DeployOrchestrator(ctx context.Context) error {
-	// TODO: Implement orchestrator deployment
-	return nil
-}
-
-func (p *AzureProvider) DeployNodes(ctx context.Context) error {
-	// TODO: Implement node deployment
 	return nil
 }
 
@@ -611,33 +586,6 @@ func (p *AzureProvider) AllMachinesComplete() bool {
 	return true
 }
 
-func stripAndParseJSON(input string) ([]map[string]interface{}, error) {
-	// Find the start of the JSON array
-	start := strings.Index(input, "[")
-	if start == -1 {
-		return nil, fmt.Errorf("no JSON array found in input")
-	}
-
-	// Extract the JSON part
-	jsonStr := input[start:]
-
-	// Parse the JSON
-	var result []map[string]interface{}
-	err := json.Unmarshal([]byte(jsonStr), &result)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing JSON: %v", err)
-	}
-
-	return result, nil
-}
-
-func isValidGUID(guid string) bool {
-	r := regexp.MustCompile(
-		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
-	)
-	return r.MatchString(guid)
-}
-
 func (p *AzureProvider) WaitForAllMachinesToReachState(
 	ctx context.Context,
 	targetState models.ResourceState,
@@ -648,11 +596,6 @@ func (p *AzureProvider) WaitForAllMachinesToReachState(
 		allReady := true
 		for _, machine := range m.Deployment.Machines {
 			state := machine.GetResourceState("Microsoft.Compute/virtualMachines")
-			if err := p.TestSSHLiveness(ctx, machine.Name); err != nil {
-				return err
-			}
-
-			l.Debugf("Machine %s state: %d", machine.Name, state)
 			if state != targetState {
 				allReady = false
 				break
@@ -698,14 +641,6 @@ func (p *AzureProvider) TestSSHLiveness(ctx context.Context, machineName string)
 	}
 
 	mach.SetServiceState("SSH", models.ServiceStateSucceeded)
-	m.UpdateStatus(
-		models.NewDisplayStatusWithText(
-			mach.Name,
-			models.AzureResourceTypeVM,
-			models.ResourceStateSucceeded,
-			"SSH Successfully Deployed",
-		),
-	)
 	return nil
 }
 
@@ -805,4 +740,12 @@ func (p *AzureProvider) GetVMExternalIP(
 	vmName string,
 ) (string, error) {
 	return p.Client.GetVMExternalIP(ctx, resourceGroupName, vmName)
+}
+
+func (p *AzureProvider) GetClusterDeployer() *common.ClusterDeployer {
+	return p.ClusterDeployer
+}
+
+func (p *AzureProvider) SetClusterDeployer(deployer *common.ClusterDeployer) {
+	p.ClusterDeployer = deployer
 }

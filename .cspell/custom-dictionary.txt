@@ -26,6 +26,7 @@ azureuser
 azureutils
 bacalhau
 BADKEYPATH
+bcdfghjklmnpqrstvwxz
 billingpb
 blang
 bodyclose

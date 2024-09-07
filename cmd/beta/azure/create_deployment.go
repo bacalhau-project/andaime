@@ -16,6 +16,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -110,7 +111,7 @@ func runDeployment(
 	}
 	l.Debug("Resource group prepared successfully")
 
-	if err = p.DeployResources(ctx); err != nil {
+	if err = p.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to deploy resources: %w", err)
 	}
 
@@ -125,14 +126,39 @@ func runDeployment(
 		}
 	}
 
-	if err = p.ProvisionPackagesOnMachines(ctx); err != nil {
-		return fmt.Errorf("failed to provision machines: %w", err)
+	var eg errgroup.Group
+
+	for _, machine := range m.Deployment.Machines {
+		eg.Go(func() error {
+			return p.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		})
 	}
 
-	if err := p.ProvisionBacalhau(ctx); err != nil {
-		return fmt.Errorf("failed to provision Bacalhau: %w", err)
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("failed to provision packages on machines: %w", err)
 	}
 
+	for _, machine := range m.Deployment.Machines {
+		if machine.Orchestrator {
+			if err := p.GetClusterDeployer().DeployOrchestrator(ctx); err != nil {
+				return fmt.Errorf("failed to provision Bacalhau: %w", err)
+			}
+			break
+		}
+	}
+
+	for _, machine := range m.Deployment.Machines {
+		eg.Go(func() error {
+			if err := p.GetClusterDeployer().DeployWorker(ctx, machine.Name); err != nil {
+				return fmt.Errorf("failed to configure Bacalhau: %w", err)
+			}
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("failed to deploy workers: %w", err)
+	}
 	if err := p.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}

@@ -97,7 +97,7 @@ func createProject(ctx context.Context, projectID string) error {
 
 	// Create or ensure firewall rules
 	fmt.Println("Ensuring firewall rules...")
-	if err := p.EnsureFirewallRules(ctx, networkName); err != nil {
+	if err := p.GetGCPClient().EnsureFirewallRules(ctx, networkName); err != nil {
 		return handleGCPError(fmt.Errorf("failed to ensure firewall rules: %v", err))
 	}
 

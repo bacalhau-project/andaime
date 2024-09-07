@@ -50,14 +50,14 @@ func CreateShortID() string {
 }
 
 func generateID(length int) string {
-	var lettersAndDigits = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+	var letters = []rune("bcdfghjklmnpqrstvwxz")
 	b := make([]rune, length)
 	for i := range b {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(lettersAndDigits))))
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
 		if err != nil {
 			log.Fatalf("Failed to generate unique ID: %v", err)
 		}
-		b[i] = lettersAndDigits[n.Int64()]
+		b[i] = letters[n.Int64()]
 	}
 	return string(b)
 }

@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -88,4 +90,31 @@ func DeleteKeyFromConfig(key string) error {
 	}
 
 	return nil
+}
+
+func StripAndParseJSON(input string) ([]map[string]interface{}, error) {
+	// Find the start of the JSON array
+	start := strings.Index(input, "[")
+	if start == -1 {
+		return nil, fmt.Errorf("no JSON array found in input")
+	}
+
+	// Extract the JSON part
+	jsonStr := input[start:]
+
+	// Parse the JSON
+	var result []map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
+	}
+
+	return result, nil
+}
+
+func IsValidGUID(guid string) bool {
+	r := regexp.MustCompile(
+		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
+	)
+	return r.MatchString(guid)
 }

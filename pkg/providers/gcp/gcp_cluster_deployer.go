@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
-	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -15,9 +14,6 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
-
-// Ensure GCPProvider implements ClusterDeployer
-var _ common.ClusterDeployer = (*GCPProvider)(nil)
 
 // CreateResources implements the ClusterDeployer interface for GCP
 func (p *GCPProvider) CreateResources(ctx context.Context) error {
@@ -67,7 +63,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				"Creating VM",
 			))
 
-			instance, err := p.CreateComputeInstance(
+			instance, err := p.Client.CreateComputeInstance(
 				ctx,
 				machine.Name,
 			)
@@ -95,11 +91,11 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 			l.Infof("Instance %s created successfully", machine.Name)
 
 			// Create or ensure Cloud Storage bucket
-			bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
-			l.Infof("Ensuring Cloud Storage bucket: %s\n", bucketName)
-			if err := p.EnsureStorageBucket(ctx, machine.Location, bucketName); err != nil {
-				return fmt.Errorf("failed to ensure storage bucket: %v", err)
-			}
+			// bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
+			// l.Infof("Ensuring Cloud Storage bucket: %s\n", bucketName)
+			// if err := p.EnsureStorageBucket(ctx, machine.Location, bucketName); err != nil {
+			// 	return fmt.Errorf("failed to ensure storage bucket: %v", err)
+			// }
 
 			return nil
 		})
@@ -112,112 +108,16 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	return nil
 }
 
-// ProvisionSSH implements the ClusterDeployer interface for GCP
-func (p *GCPProvider) ProvisionSSH(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	for _, machine := range m.Deployment.Machines {
-		l.Infof("Provisioning SSH for instance %s", machine.Name)
-		m.UpdateStatus(models.NewDisplayStatusWithText(
-			machine.Name,
-			models.GCPResourceTypeInstance,
-			models.ResourceStatePending,
-			"Provisioning SSH",
-		))
-
-		// TODO: Implement GCP-specific SSH provisioning logic here
-
-		machine.SetServiceState("SSH", models.ServiceStateSucceeded)
-		l.Infof("SSH provisioned successfully for instance %s", machine.Name)
-	}
-
-	return nil
-}
-
-// SetupDocker implements the ClusterDeployer interface for GCP
-func (p *GCPProvider) SetupDocker(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	for _, machine := range m.Deployment.Machines {
-		l.Infof("Setting up Docker on instance %s", machine.Name)
-		m.UpdateStatus(models.NewDisplayStatusWithText(
-			machine.Name,
-			models.GCPResourceTypeInstance,
-			models.ResourceStatePending,
-			"Setting up Docker",
-		))
-
-		// TODO: Implement GCP-specific Docker setup logic here
-
-		machine.SetServiceState("Docker", models.ServiceStateSucceeded)
-		l.Infof("Docker set up successfully on instance %s", machine.Name)
-	}
-
-	return nil
-}
-
-// DeployOrchestrator implements the ClusterDeployer interface for GCP
-func (p *GCPProvider) DeployOrchestrator(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
-			l.Infof("Deploying orchestrator on instance %s", machine.Name)
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				machine.Name,
-				models.GCPResourceTypeInstance,
-				models.ResourceStatePending,
-				"Deploying Orchestrator",
-			))
-
-			// TODO: Implement GCP-specific orchestrator deployment logic here
-
-			machine.SetServiceState("Orchestrator", models.ServiceStateSucceeded)
-			l.Infof("Orchestrator deployed successfully on instance %s", machine.Name)
-			break
-		}
-	}
-
-	return nil
-}
-
-// DeployNodes implements the ClusterDeployer interface for GCP
-func (p *GCPProvider) DeployNodes(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	for _, machine := range m.Deployment.Machines {
-		if !machine.Orchestrator {
-			l.Infof("Deploying node on instance %s", machine.Name)
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				machine.Name,
-				models.GCPResourceTypeInstance,
-				models.ResourceStatePending,
-				"Deploying Node",
-			))
-
-			// TODO: Implement GCP-specific node deployment logic here
-
-			machine.SetServiceState("Node", models.ServiceStateSucceeded)
-			l.Infof("Node deployed successfully on instance %s", machine.Name)
-		}
-	}
-
-	return nil
-}
-
 // Update GCPProviderer interface to include ClusterDeployer methods
 type GCPProviderer interface {
-	common.ClusterDeployer
 	GetGCPClient() GCPClienter
 	SetGCPClient(client GCPClienter)
 	GetConfig() *viper.Viper
 	SetConfig(config *viper.Viper)
 	GetSSHClient() sshutils.SSHClienter
 	SetSSHClient(client sshutils.SSHClienter)
+	GetClusterDeployer() *common.ClusterDeployer
+	SetClusterDeployer(deployer *common.ClusterDeployer)
 
 	EnsureProject(
 		ctx context.Context,
@@ -235,43 +135,44 @@ type GCPProviderer interface {
 		projectID string,
 	) ([]*assetpb.Asset, error)
 	SetBillingAccount(ctx context.Context) error
-	DeployResources(ctx context.Context) error
-	ProvisionPackagesOnMachines(ctx context.Context) error
-	ProvisionBacalhau(ctx context.Context) error
+
+	CreateResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error
+
 	StartResourcePolling(ctx context.Context)
 	CheckAuthentication(ctx context.Context) error
 	EnableAPI(ctx context.Context, apiName string) error
 	EnableRequiredAPIs(ctx context.Context) error
-	CreateVPCNetwork(
-		ctx context.Context,
-		networkName string,
-	) error
-	CreateFirewallRules(
-		ctx context.Context,
-		networkName string,
-	) error
-	CreateStorageBucket(
-		ctx context.Context,
-		bucketName string,
-	) error
-	CreateComputeInstance(
-		ctx context.Context,
-		vmName string,
-	) (*computepb.Instance, error)
-	GetVMExternalIP(
-		ctx context.Context,
-		projectID,
-		zone,
-		vmName string,
-	) (string, error)
-	EnsureFirewallRules(
-		ctx context.Context,
-		networkName string,
-	) error
-	EnsureStorageBucket(
-		ctx context.Context,
-		location,
-		bucketName string,
-	) error
+
+	// CreateVPCNetwork(
+	// 	ctx context.Context,
+	// 	networkName string,
+	// ) error
+	// CreateFirewallRules(
+	// 	ctx context.Context,
+	// 	networkName string,
+	// ) error
+	// CreateStorageBucket(
+	// 	ctx context.Context,
+	// 	bucketName string,
+	// ) error
+	// CreateComputeInstance(
+	// 	ctx context.Context,
+	// 	vmName string,
+	// ) (*computepb.Instance, error)
+	// GetVMExternalIP(
+	// 	ctx context.Context,
+	// 	projectID,
+	// 	zone,
+	// 	vmName string,
+	// ) (string, error)
+	// EnsureFirewallRules(
+	// 	ctx context.Context,
+	// 	networkName string,
+	// ) error
+	// EnsureStorageBucket(
+	// 	ctx context.Context,
+	// 	location,
+	// 	bucketName string,
+	// ) error
 }

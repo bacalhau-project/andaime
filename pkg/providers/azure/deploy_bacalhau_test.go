@@ -10,6 +10,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -83,7 +84,7 @@ func (m *MockSSHConfig) StartService(
 
 func setupTestBacalhauDeployer(
 	machines map[string]*models.Machine,
-) (*BacalhauDeployer, *MockSSHConfig) {
+) (*common.ClusterDeployer, *MockSSHConfig) {
 	mockSSH := new(MockSSHConfig)
 	mockSSH.MockClient = new(sshutils.MockSSHClient)
 
@@ -91,7 +92,7 @@ func setupTestBacalhauDeployer(
 	m.Deployment.Machines = machines
 	m.Deployment.OrchestratorIP = "1.2.3.4"
 
-	deployer := NewBacalhauDeployer()
+	deployer := common.NewClusterDeployer()
 
 	// Override the SSH config creation function
 	sshutils.NewSSHConfigFunc = func(host string,
@@ -141,7 +142,7 @@ func TestFindOrchestratorMachine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deployer, _ := setupTestBacalhauDeployer(tt.machines)
-			machine, err := deployer.findOrchestratorMachine()
+			machine, err := deployer.FindOrchestratorMachine()
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -168,7 +169,7 @@ func TestSetupNodeConfigMetadata(t *testing.T) {
 	mockSSH.On("PushFile", ctx, "/tmp/get-node-config-metadata.sh", mock.Anything, true).Return(nil)
 	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/get-node-config-metadata.sh").Return("", nil)
 
-	err := deployer.setupNodeConfigMetadata(
+	err := deployer.SetupNodeConfigMetadata(
 		ctx,
 		m.Deployment.Machines["test"],
 		mockSSH,
@@ -193,7 +194,7 @@ func TestInstallBacalhau(t *testing.T) {
 		Times(1)
 	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/install-bacalhau.sh").Return("", nil)
 
-	err := deployer.installBacalhau(
+	err := deployer.InstallBacalhau(
 		ctx,
 		mockSSH,
 	)
@@ -216,7 +217,7 @@ func TestInstallBacalhauRun(t *testing.T) {
 		Times(1)
 	mockSSH.On("ExecuteCommand", ctx, "sudo /tmp/install-run-bacalhau.sh").Return("", nil)
 
-	err := deployer.installBacalhauRunScript(
+	err := deployer.InstallBacalhauRunScript(
 		ctx,
 		mockSSH,
 	)
@@ -237,7 +238,7 @@ func TestSetupBacalhauService(t *testing.T) {
 	mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
 	mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 
-	err := deployer.setupBacalhauService(
+	err := deployer.SetupBacalhauService(
 		ctx,
 		mockSSH,
 	)
@@ -279,7 +280,7 @@ func TestVerifyBacalhauDeployment(t *testing.T) {
 			mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 0.0.0.0").
 				Return(tt.nodeListOutput, nil)
 
-			err := deployer.verifyBacalhauDeployment(
+			err := deployer.VerifyBacalhauDeployment(
 				ctx,
 				mockSSH,
 				"0.0.0.0",
@@ -365,8 +366,8 @@ func TestDeployBacalhauNode(t *testing.T) {
 
 			tt.setupMock(mockSSH)
 
-			err := deployer.deployBacalhauNode(
-				context.Background(),
+			err := deployer.DeployBacalhauNode(
+				ctx,
 				"test",
 				tt.nodeType,
 			)

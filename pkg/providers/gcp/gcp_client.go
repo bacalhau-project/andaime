@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -56,10 +57,7 @@ type GCPClienter interface {
 		projectID string,
 	) ([]*assetpb.Asset, error)
 	StartResourcePolling(ctx context.Context) error
-	DeployResources(ctx context.Context) error
-	ProvisionPackagesOnMachines(ctx context.Context) error
-	ProvisionBacalhau(ctx context.Context) error
-	FinalizeDeployment(ctx context.Context) error
+
 	CheckAuthentication(ctx context.Context) error
 	EnableAPI(ctx context.Context, projectID, apiName string) error
 	CreateVPCNetwork(ctx context.Context, networkName string) error
@@ -123,6 +121,8 @@ type LiveGCPClient struct {
 	regionOperationsClient *compute.RegionOperationsClient
 	zonesListClient        *compute.ZonesClient
 	machineTypeListClient  *compute.MachineTypesClient
+
+	apisEnabled chan bool
 }
 
 func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, networkName string) error {
@@ -498,8 +498,13 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
+	retryBackoff := backoff.NewExponentialBackOff()
+	retryBackoff.MaxElapsedTime = 5 * time.Minute
+
 	resourceTicker := time.NewTicker(ResourcePollingInterval)
 	defer resourceTicker.Stop()
+
+	allResourcesProvisioned := false
 
 	for {
 		select {
@@ -509,52 +514,50 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 				return nil
 			}
 
+			// Check if the project ID is set
+			if m.Deployment.GCP.ProjectID == "" {
+				l.Debug("Project ID is not set, waiting for it to be populated")
+				err := backoff.Retry(func() error {
+					if m.Deployment.GCP.ProjectID != "" {
+						l.Debug("Project ID is now set")
+						return nil
+					}
+					return fmt.Errorf("project ID not set")
+				}, retryBackoff)
+
+				if err != nil {
+					l.Debug("Max wait time reached, stopping retry")
+					return fmt.Errorf("project ID not set within maximum wait time")
+				}
+			}
+
 			// Query all resources in the project
-			resources, err := c.ListAllAssetsInProject(ctx, m.Deployment.ProjectID)
+			resources, err := c.ListAllAssetsInProject(ctx, m.Deployment.GCP.ProjectID)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
-				return err
+				continue
 			}
 
 			l.Debugf("Poll: Found %d resources", len(resources))
 
-			allResourcesProvisioned := true
+			allResourcesProvisioned = true
 			for _, resource := range resources {
 				resourceType := resource.GetAssetType()
 				resourceName := resource.GetName()
 
-				// // Print out the resource name and type to a file - /tmp/resources.txt
-				// file, err := os.OpenFile(
-				// 	"/tmp/resources.txt",
-				// 	os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-				// 	0644,
-				// )
-				// if err != nil {
-				// 	l.Errorf("Failed to open file: %v", err)
-				// }
-				// defer file.Close()
-
-				// _, err = file.WriteString(
-				// 	fmt.Sprintf("Resource: %s (Type: %s)\n", resourceName, resourceType),
-				// )
-				// if resourceType == "compute.googleapis.com/Subnetwork" {
-				// 	res2B, _ := json.Marshal(resource)
-				// 	_, err = file.WriteString(fmt.Sprintf("%s\n", string(res2B)))
-				// }
-				// if err != nil {
-				// 	l.Errorf("Failed to write to file: %v", err)
-				// }
-
-				// Print out the resource name and type to a file - /tmp/resources.txt
 				l.Debugf("Resource: %s (Type: %s)", resourceName, resourceType)
 
 				// Update the resource state in the deployment model
 				if err := c.UpdateResourceState(resourceName, resourceType, models.ResourceStateSucceeded); err != nil {
 					l.Errorf("Failed to update resource state: %v", err)
+					allResourcesProvisioned = false
 				}
 			}
 
-			if allResourcesProvisioned && c.allMachinesComplete(m) {
+			// Check if all machines are complete
+			allMachinesComplete := c.allMachinesComplete(m)
+
+			if allResourcesProvisioned && allMachinesComplete {
 				l.Debug(
 					"All resources provisioned and machines completed, stopping resource polling",
 				)
@@ -577,21 +580,6 @@ func (c *LiveGCPClient) allMachinesComplete(m *display.DisplayModel) bool {
 	return true
 }
 
-func (c *LiveGCPClient) DeployResources(ctx context.Context) error {
-	// TODO: Implement resource deployment logic
-	return fmt.Errorf("DeployResources not implemented")
-}
-
-func (c *LiveGCPClient) ProvisionPackagesOnMachines(ctx context.Context) error {
-	// TODO: Implement package provisioning logic
-	return fmt.Errorf("ProvisionPackagesOnMachines not implemented")
-}
-
-func (c *LiveGCPClient) ProvisionBacalhau(ctx context.Context) error {
-	// TODO: Implement Bacalhau provisioning logic
-	return fmt.Errorf("ProvisionBacalhau not implemented")
-}
-
 func (c *LiveGCPClient) FinalizeDeployment(ctx context.Context) error {
 	// TODO: Implement deployment finalization logic
 	return fmt.Errorf("FinalizeDeployment not implemented")
@@ -605,12 +593,12 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 	l := logger.Get()
 
 	assetTypes := []string{
-		"compute.googleapis.com/Instance",
-		"compute.googleapis.com/Disk",
-		"compute.googleapis.com/Image",
-		"compute.googleapis.com/Network",
+		"compute.googleapis.com/instance",
+		"compute.googleapis.com/disk",
+		"compute.googleapis.com/image",
+		"compute.googleapis.com/network",
 		// "compute.googleapis.com/Subnetwork",
-		"compute.googleapis.com/Firewall",
+		"compute.googleapis.com/firewall",
 		// "iam.googleapis.com/ServiceAccount",
 		// "iam.googleapis.com/Policy",
 	}
@@ -645,6 +633,12 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 		resources = append(resources, resourceAsset)
 	}
 
+	// Print out total resources found every 100 queries
+	//nolint:gosec,mnd
+	if rand.Int31n(100) < 10 {
+		l.Debugf("Found %d resources", len(resources))
+	}
+
 	return resources, nil
 }
 
@@ -658,12 +652,37 @@ func (c *LiveGCPClient) UpdateResourceState(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
+	foundResource := false
 	// Find the machine that owns this resource
 	for _, machine := range m.Deployment.Machines {
-		if strings.HasPrefix(resourceName, machine.Name) {
-			machine.SetResourceState(resourceType, state)
+		if strings.Contains(strings.ToLower(resourceName),
+			strings.ToLower(machine.Name)) {
+			if machine.GetResourceState(resourceType) < state {
+				machine.SetResourceState(resourceType, state)
+				m.UpdateStatus(models.NewDisplayStatusWithText(
+					machine.Name,
+					models.GetGCPResourceType(resourceType),
+					state,
+					resourceType+" deployed.",
+				))
+			}
 			return nil
+		} else if strings.Contains(strings.ToLower(resourceName), "/global/") {
+			foundResource = true
+			if machine.GetResourceState(resourceType) < state {
+				machine.SetResourceState(resourceType, state)
+				m.UpdateStatus(models.NewDisplayStatusWithText(
+					machine.Name,
+					models.GetGCPResourceType(resourceType),
+					state,
+					resourceType+" deployed.",
+				))
+			}
 		}
+	}
+
+	if foundResource {
+		return nil
 	}
 
 	return fmt.Errorf("resource %s not found in any machine", resourceName)
@@ -782,7 +801,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	networkName = "default"
 
 	// Create a firewall rule for each allowed port
-	for i, port := range allowedPorts {
+	for _, port := range allowedPorts {
 		for _, machine := range m.Deployment.Machines {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.Name,
@@ -794,38 +813,37 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 
 		ruleName := fmt.Sprintf("default-allow-%d", port)
 
-		// Check if the firewall rule already exists
-		if err := c.checkFirewallRuleExists(ctx, projectID, ruleName); err == nil {
-			l.Infof("Firewall rule %s already exists, skipping creation", ruleName)
-			continue
-		}
-
-		firewallRule := &computepb.Firewall{
-			Name:    &ruleName,
-			Network: to.Ptr(fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)),
-			Allowed: []*computepb.Allowed{
-				{
-					IPProtocol: to.Ptr("tcp"),
-					Ports:      []string{strconv.Itoa(port)},
-				},
-			},
-			SourceRanges: []string{"0.0.0.0/0"}, // Allow from any source IP
-			Direction:    to.Ptr("INGRESS"),
-			Priority:     to.Ptr(int32(1000 + i)), // Assign a unique priority to each rule
-		}
-
 		// Define exponential backoff
 		b := backoff.NewExponentialBackOff()
 		b.MaxElapsedTime = 5 * time.Minute
 
 		operation := func() error {
+			firewallRule := &computepb.Firewall{
+				Name: &ruleName,
+				Network: to.Ptr(
+					fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName),
+				),
+				Allowed: []*computepb.Allowed{
+					{
+						IPProtocol: to.Ptr("tcp"),
+						Ports:      []string{strconv.Itoa(port)},
+					},
+				},
+				SourceRanges: []string{"0.0.0.0/0"}, // Allow from any source IP
+				Direction:    to.Ptr("INGRESS"),
+			}
+
 			op, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
 				Project:          projectID,
 				FirewallResource: firewallRule,
 			})
 			if err != nil {
+				if strings.Contains(err.Error(), "already exists") {
+					l.Debugf("Firewall rule %s already exists, skipping creation", ruleName)
+					return nil // Treat as success
+				}
 				if strings.Contains(err.Error(), "Compute Engine API has not been used") {
-					l.Infof("Compute Engine API is not yet active. Retrying...")
+					l.Debugf("Compute Engine API is not yet active. Retrying... (FW Rules)")
 					return err // This will trigger a retry
 				}
 				return backoff.Permanent(fmt.Errorf("failed to create firewall rule: %v", err))
@@ -848,14 +866,14 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 				err,
 			)
 		}
-		l.Infof("Firewall rule created successfully for port %d", port)
+		l.Infof("Firewall rule created or already exists for port %d", port)
 
 		for _, machine := range m.Deployment.Machines {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.Name,
 				models.GCPResourceTypeFirewall,
 				models.ResourceStateRunning,
-				fmt.Sprintf("Created FW Rule for port %d", port),
+				fmt.Sprintf("Created or verified FW Rule for port %d", port),
 			))
 		}
 	}
@@ -991,7 +1009,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 				Type:       to.Ptr("PERSISTENT"),
 				InitializeParams: &computepb.AttachedDiskInitializeParams{
 					DiskSizeGb:  to.Ptr(int64(machine.DiskSizeGB)),
-					SourceImage: to.Ptr(machine.DiskImageFamily),
+					SourceImage: to.Ptr(machine.DiskImageURL),
 				},
 			},
 		},
@@ -1526,6 +1544,10 @@ func (c *LiveGCPClient) EnsureFirewallRules(
 
 		op, err := c.firewallsClient.Insert(ctx, req)
 		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				l.Debugf("Firewall rule %s already exists, skipping creation", firewallRuleName)
+				continue
+			}
 			return fmt.Errorf("failed to create firewall rule: %v", err)
 		}
 

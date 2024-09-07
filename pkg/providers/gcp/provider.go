@@ -14,6 +14,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/mitchellh/go-homedir"
@@ -27,6 +28,7 @@ var GCPRequiredAPIs = []string{
 	"storage-api.googleapis.com",
 	"file.googleapis.com",
 	"storage.googleapis.com",
+	"cloudasset.googleapis.com",
 }
 
 func GetRequiredAPIs() []string {
@@ -96,6 +98,7 @@ const (
 
 type GCPProvider struct {
 	Client              GCPClienter
+	ClusterDeployer     *common.ClusterDeployer
 	CleanupClient       func()
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
@@ -110,7 +113,7 @@ type GCPProvider struct {
 
 var NewGCPProviderFunc = NewGCPProvider
 
-func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
+func NewGCPProvider(ctx context.Context) (*GCPProvider, error) {
 	config := viper.GetViper()
 	if !config.IsSet("gcp") {
 		return nil, fmt.Errorf("gcp configuration is required")
@@ -323,20 +326,10 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
 	}
 }
 
-func (p *GCPProvider) DeployResources(ctx context.Context) error {
-	return p.Client.DeployResources(ctx)
-}
-
-func (p *GCPProvider) ProvisionPackagesOnMachines(ctx context.Context) error {
-	return p.Client.ProvisionPackagesOnMachines(ctx)
-}
-
-func (p *GCPProvider) ProvisionBacalhau(ctx context.Context) error {
-	return p.Client.ProvisionBacalhau(ctx)
-}
-
 func (p *GCPProvider) FinalizeDeployment(ctx context.Context) error {
-	return p.Client.FinalizeDeployment(ctx)
+	l := logger.Get()
+	l.Debug("Finalizing deployment... nothing to do.")
+	return nil
 }
 
 func (p *GCPProvider) ListAllAssetsInProject(
@@ -458,7 +451,7 @@ func (p *GCPProvider) CreateVPCNetwork(
 		err := p.Client.CreateVPCNetwork(ctx, networkName)
 		if err != nil {
 			if strings.Contains(err.Error(), "Compute Engine API has not been used") {
-				l.Infof("Compute Engine API is not yet active. Retrying...")
+				l.Infof("Compute Engine API is not yet active. Retrying... (VPC)")
 				return err // This error will trigger a retry
 			}
 			return backoff.Permanent(err) // This error will not trigger a retry
@@ -518,18 +511,24 @@ func (p *GCPProvider) TestSSHLiveness(
 	if !ok {
 		return fmt.Errorf("machine %s not found", machineName)
 	}
-
 	sshConfig, err := sshutils.NewSSHConfigFunc(
 		mach.PublicIP,
 		p.SSHPort,
 		p.SSHUser,
-		[]byte(mach.SSHPrivateKeyMaterial),
+		mach.SSHPrivateKeyMaterial,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create SSH config: %v", err)
 	}
 
-	return sshConfig.WaitForSSH(ctx, p.SSHPort, 5*time.Minute)
+	err = sshConfig.WaitForSSH(ctx, p.SSHPort, sshutils.GetAggregateSSHTimeout())
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s via SSH: %v", machineName, err)
+	}
+
+	l.Debugf("Successfully connected to %s via SSH", machineName)
+
+	return nil
 }
 
 func (p *GCPProvider) getSSHPrivateKeyMaterial() (string, error) {
@@ -640,4 +639,12 @@ func (p *GCPProvider) EnsureStorageBucket(
 	bucketName string,
 ) error {
 	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
+}
+
+func (p *GCPProvider) GetClusterDeployer() *common.ClusterDeployer {
+	return p.ClusterDeployer
+}
+
+func (p *GCPProvider) SetClusterDeployer(deployer *common.ClusterDeployer) {
+	p.ClusterDeployer = deployer
 }

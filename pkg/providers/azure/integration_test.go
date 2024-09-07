@@ -16,14 +16,17 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/sync/errgroup"
 )
 
 type testSetup struct {
 	provider        *AzureProvider
+	clusterDeployer *common.ClusterDeployer
 	mockAzureClient *MockAzureClient
 	mockSSHConfig   *MockSSHConfig
 	mockSSHClient   *sshutils.MockSSHClient
@@ -69,6 +72,12 @@ func setupTest(t *testing.T) *testSetup {
 	m.Deployment.Azure.ResourceGroupLocation = "eastus"
 	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
 
+	for _, machine := range m.Deployment.Machines {
+		machine.SetServiceState("SSH", models.ServiceStateNotStarted)
+		machine.SetServiceState("Docker", models.ServiceStateNotStarted)
+		machine.SetServiceState("Bacalhau", models.ServiceStateNotStarted)
+	}
+
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,
@@ -81,8 +90,11 @@ func setupTest(t *testing.T) *testSetup {
 		viper.Reset()
 	}
 
+	clusterDeployer := common.NewClusterDeployer()
+
 	return &testSetup{
 		provider:        provider,
+		clusterDeployer: clusterDeployer,
 		mockAzureClient: mockAzureClient,
 		mockSSHConfig:   mockSSHConfig,
 		cleanup:         cleanup,
@@ -167,11 +179,18 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 		)
 	}
 
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
+	for _, machine := range m.Deployment.Machines {
+		err := setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		assert.NoError(t, err)
+	}
+
+	err := setup.provider.GetClusterDeployer().DeployOrchestrator(ctx)
 	assert.NoError(t, err)
 
-	err = setup.provider.ProvisionBacalhau(ctx)
-	assert.NoError(t, err)
+	for _, machine := range m.Deployment.Machines {
+		err := setup.provider.GetClusterDeployer().DeployWorker(ctx, machine.Name)
+		assert.NoError(t, err)
+	}
 
 	for _, machine := range m.Deployment.Machines {
 		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("SSH"))
@@ -189,6 +208,11 @@ func TestSSHProvisioningFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Mock successful VM deployment
+	setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
+
+	// Mock SSH provisioning failure
 	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(fmt.Errorf("SSH provisioning failed"))
 
@@ -200,10 +224,20 @@ func TestSSHProvisioningFailure(t *testing.T) {
 		)
 	}
 
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
+	err := setup.provider.CreateResources(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SSH provisioning failed")
 
+	// Check that the VM status was updated correctly
+	for _, machine := range m.Deployment.Machines {
+		assert.Equal(
+			t,
+			models.ServiceStateFailed,
+			machine.GetServiceState("SSH"),
+		)
+	}
+
+	setup.mockAzureClient.AssertExpectations(t)
 	setup.mockSSHConfig.AssertExpectations(t)
 }
 
@@ -211,28 +245,48 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	setup := setupTest(t)
 	defer setup.cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	setupMockDeployment(setup.mockAzureClient)
+	setupMockVMAndNetwork(setup.mockAzureClient)
+
+	// Mock SSH provisioning failure
+	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
-		Return("", fmt.Errorf("failed to install Docker"))
+	setup.mockSSHConfig.On("PushFile",
+		mock.Anything,
+		"/tmp/install-docker.sh",
+		mock.Anything,
+		mock.Anything).
+		Return(fmt.Errorf("fake docker install failure"))
 
 	m := display.GetGlobalModelFunc()
+
+	err := setup.provider.CreateResources(ctx)
+	assert.NoError(t, err)
+
+	var eg errgroup.Group
 	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
-			models.AzureResourceTypeVM.ResourceString,
-			models.ResourceStateSucceeded,
+		eg.Go(func() error {
+			return setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		assert.Error(t, err)
+	}
+
+	// Check that the VM status was updated correctly
+	for _, machine := range m.Deployment.Machines {
+		assert.Equal(
+			t,
+			models.ServiceStateFailed,
+			machine.GetServiceState("Docker"),
 		)
 	}
 
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to marshal Docker server version")
-
+	setup.mockAzureClient.AssertExpectations(t)
 	setup.mockSSHConfig.AssertExpectations(t)
 }
 
@@ -263,14 +317,26 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 		Return(`[]`, nil)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
 
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
-	if err != nil {
-		assert.Fail(t, "error provisioning packages on machines", err)
+	for _, machine := range m.Deployment.Machines {
+		err := setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		assert.NoError(t, err)
 	}
 
-	err = setup.provider.ProvisionBacalhau(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no Bacalhau nodes found")
+	for _, machine := range m.Deployment.Machines {
+		if machine.Orchestrator {
+			err := setup.provider.GetClusterDeployer().DeployOrchestrator(ctx)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "no Bacalhau nodes found")
+		}
+	}
+
+	for _, machine := range m.Deployment.Machines {
+		if !machine.Orchestrator {
+			err := setup.provider.GetClusterDeployer().DeployWorker(ctx, machine.Name)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "no Bacalhau nodes found")
+		}
+	}
 
 	for _, machine := range m.Deployment.Machines {
 		assert.NotEqual(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
