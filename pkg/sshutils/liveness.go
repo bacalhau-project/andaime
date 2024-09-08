@@ -65,31 +65,6 @@ const (
 // 	return fmt.Errorf("failed to establish SSH connection after %d attempts: %v", c.RetryCount, err)
 // }
 
-// func getSSHConfig(user, privateKeyPath string) (*ssh.ClientConfig, error) {
-// 	key, err := getPrivateKey(privateKeyPath)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get private key: %v", err)
-// 	}
-
-// 	return &ssh.ClientConfig{
-// 		User: user,
-// 		Auth: []ssh.AuthMethod{
-// 			ssh.PublicKeys(key),
-// 		},
-// 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-// 		Timeout:         10 * time.Second,
-// 	}, nil
-// }
-
-// func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
-// 	privateKey, err := ssh.ParsePrivateKey([]byte(privateKeyMaterial))
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse private key: %v", err)
-// 	}
-
-// 	return privateKey, nil
-// }
-
 // func trySSHConnection(
 // 	_ context.Context,
 // 	config SSHConfiger,

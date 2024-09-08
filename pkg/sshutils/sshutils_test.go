@@ -17,16 +17,14 @@ func TestNewSSHConfig(t *testing.T) {
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	testSSHPrivateKeyMaterial, err := os.ReadFile(testSSHPrivateKeyPath)
-	if err != nil {
-		panic(err)
-	}
-
 	host := "example.com"
 	port := 22
 	user := "testuser"
 	mockDialer := &MockSSHDialer{}
-	configInterface, err := NewSSHConfigFunc(host, port, user, testSSHPrivateKeyMaterial)
+	configInterface, err := NewSSHConfigFunc(host, port, user, testSSHPrivateKeyPath)
+	if err != nil {
+		assert.Fail(t, "failed to create SSH config: %v", err)
+	}
 	config := configInterface.(*SSHConfig)
 	config.SSHDial = mockDialer
 
@@ -77,13 +75,8 @@ func TestConnectFailure(t *testing.T) {
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	testSSHPrivateKeyMaterial, err := os.ReadFile(testSSHPrivateKeyPath)
-	if err != nil {
-		panic(err)
-	}
-
 	mockDialer := NewMockSSHDialer()
-	configInterface, _ := NewSSHConfigFunc("example.com", 22, "testuser", testSSHPrivateKeyMaterial)
+	configInterface, _ := NewSSHConfigFunc("example.com", 22, "testuser", testSSHPrivateKeyPath)
 	config := configInterface.(*SSHConfig)
 	config.SSHDial = mockDialer
 	config.InsecureIgnoreHostKey = true
@@ -342,7 +335,7 @@ func GetMockClient(t *testing.T) (SSHClienter, *SSHConfig) {
 		"example.com",
 		22,
 		"testuser",
-		[]byte("test-key-material"),
+		"test-private-key-path",
 	)
 	if err != nil {
 		assert.Fail(t, "failed to create SSH config: %v", err)

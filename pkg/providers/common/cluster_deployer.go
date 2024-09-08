@@ -252,7 +252,7 @@ func (cd *ClusterDeployer) createSSHConfig(machine *models.Machine) (sshutils.SS
 		machine.PublicIP,
 		machine.SSHPort,
 		machine.SSHUser,
-		machine.SSHPrivateKeyMaterial,
+		machine.SSHPrivateKeyPath,
 	)
 }
 

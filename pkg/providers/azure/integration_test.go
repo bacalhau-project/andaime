@@ -135,7 +135,7 @@ func setupTest(t *testing.T) *testSetup {
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,
-		privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
+		sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
 		return mockSSHConfig, nil
 	}
 

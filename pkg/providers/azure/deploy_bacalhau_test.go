@@ -98,7 +98,7 @@ func setupTestBacalhauDeployer(
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,
-		privateKeyMaterial []byte,
+		sshPrivateKeyPath string,
 	) (sshutils.SSHConfiger, error) {
 		return mockSSH, nil
 	}

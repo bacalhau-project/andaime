@@ -66,6 +66,14 @@ const (
 	ResourceStateTerminated
 )
 
+var SkippedResourceTypes = []string{
+	// Azure Skips
+	"GuestAttestation",
+
+	// GCP Skips
+	"compute.v1.instanceGroupManager",
+}
+
 func NewDisplayStatusWithText(
 	resourceID string,
 	resourceType ResourceTypes,

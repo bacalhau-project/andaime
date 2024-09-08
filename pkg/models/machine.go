@@ -417,7 +417,7 @@ func (mach *Machine) verifyDocker(ctx context.Context) error {
 		mach.PublicIP,
 		mach.SSHPort,
 		mach.SSHUser,
-		mach.SSHPrivateKeyMaterial,
+		mach.SSHPrivateKeyPath,
 	)
 	if err != nil {
 		l.Errorf("Error creating SSH config: %v", err)
@@ -459,7 +459,7 @@ func (mach *Machine) installService(
 		mach.PublicIP,
 		mach.SSHPort,
 		mach.SSHUser,
-		mach.SSHPrivateKeyMaterial,
+		mach.SSHPrivateKeyPath,
 	)
 	if err != nil {
 		l.Errorf("Error creating SSH config: %v", err)

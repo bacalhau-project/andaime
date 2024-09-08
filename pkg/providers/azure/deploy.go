@@ -203,7 +203,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 					machine.PublicIP,
 					machine.SSHPort,
 					machine.Location,
-					machine.SSHPrivateKeyMaterial,
+					machine.SSHPrivateKeyPath,
 				)
 				if err != nil {
 					m.UpdateStatus(
@@ -223,7 +223,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				}
 				err = sshConfig.WaitForSSH(ctx,
 					sshutils.SSHRetryAttempts,
-					timeBetweenIPRetries)
+					sshutils.GetAggregateSSHTimeout())
 				if err != nil {
 					m.UpdateStatus(
 						models.NewDisplayStatusWithText(
@@ -337,7 +337,7 @@ func (p *AzureProvider) prepareDeploymentParams(
 ) map[string]interface{} {
 	m := display.GetGlobalModelFunc()
 	return map[string]interface{}{
-		"vmName":             fmt.Sprintf("%s-vm", machine.ID),
+		"vmName":             machine.Name,
 		"adminUsername":      "azureuser",
 		"authenticationType": "sshPublicKey",
 		"adminPasswordOrKey": m.Deployment.SSHPublicKeyMaterial,

@@ -14,10 +14,6 @@ var RequiredGCPResources = []ResourceTypes{
 	GCPResourceTypeDisk,
 }
 
-var SkippedResourceTypes = []string{
-	"compute.v1.instanceGroupManager",
-}
-
 var GCPResourceTypeProject = ResourceTypes{
 	ResourceString:    "cloudresourcemanager.googleapis.com/Project",
 	ShortResourceName: "PRJ ",

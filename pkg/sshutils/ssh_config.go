@@ -3,6 +3,7 @@ package sshutils
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -13,6 +14,7 @@ type SSHConfig struct {
 	Host               string
 	Port               int
 	User               string
+	SSHPrivateKeyPath  string
 	PrivateKeyMaterial []byte
 	Timeout            time.Duration
 	Logger             *logger.Logger
@@ -43,30 +45,20 @@ func NewSSHConfig(
 	host string,
 	port int,
 	user string,
-	sshPrivateKeyMaterial []byte,
+	sshPrivateKeyPath string,
 ) (SSHConfiger, error) {
-	if len(sshPrivateKeyMaterial) == 0 {
-		return nil, fmt.Errorf("private key material is empty")
+	if len(sshPrivateKeyPath) == 0 {
+		return nil, fmt.Errorf("private key path is empty")
 	}
 
-	hostKeyCallback, err := GetHostKeyCallback(host)
+	sshClientConfig, err := getSSHClientConfig(user, host, sshPrivateKeyPath)
 	if err != nil {
-		//nolint: gosec
-		hostKeyCallback = ssh.InsecureIgnoreHostKey()
+		return nil, fmt.Errorf("failed to get SSH client config: %w", err)
 	}
 
-	signer, err := ssh.ParsePrivateKey(sshPrivateKeyMaterial)
+	sshPrivateKeyMaterial, err := os.ReadFile(sshPrivateKeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	sshClientConfig := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         SSHTimeOut,
+		return nil, fmt.Errorf("failed to read private key material: %w", err)
 	}
 
 	dialer := NewSSHDial(host, port, sshClientConfig)
@@ -75,6 +67,7 @@ func NewSSHConfig(
 		Host:                  host,
 		Port:                  port,
 		User:                  user,
+		SSHPrivateKeyPath:     sshPrivateKeyPath,
 		PrivateKeyMaterial:    sshPrivateKeyMaterial,
 		Timeout:               SSHTimeOut,
 		Logger:                logger.Get(),
@@ -82,6 +75,46 @@ func NewSSHConfig(
 		SSHDial:               dialer,
 		InsecureIgnoreHostKey: false,
 	}, nil
+}
+
+func getSSHClientConfig(user, host, privateKeyPath string) (*ssh.ClientConfig, error) {
+	l := logger.Get()
+	l.Debugf("Getting SSH client config for %s", host)
+
+	privateKeyBytes, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key: %v", err)
+	}
+
+	key, err := getPrivateKey(string(privateKeyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get private key: %v", err)
+	}
+
+	// TODO: Handle host key callback
+	hostKeyCallback := ssh.InsecureIgnoreHostKey()
+	possibleHostKeyCallback, err := GetHostKeyCallback(host)
+	if err != nil {
+		hostKeyCallback = possibleHostKeyCallback
+	}
+
+	return &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(key),
+		},
+		HostKeyCallback: hostKeyCallback,
+		Timeout:         10 * time.Second,
+	}, nil
+}
+
+func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
+	privateKey, err := ssh.ParsePrivateKey([]byte(privateKeyMaterial))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %v", err)
+	}
+
+	return privateKey, nil
 }
 
 func (c *SSHConfig) SetSSHClient(client SSHClienter) {
@@ -168,7 +201,7 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 	l.Infof("Executing command: %s", command)
 
 	var output string
-	err := retry(NumberOfSSHRetries, TimeInBetweenSSHRetries, func() error {
+	err := retry(SSHRetryAttempts, SSHRetryDelay, func() error {
 		session, err := c.NewSession()
 		if err != nil {
 			return fmt.Errorf("failed to create session: %w", err)

@@ -36,7 +36,7 @@ func (cl *SSHClient) Close() error {
 }
 
 func (cl *SSHClient) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
-	sshConfig, err := NewSSHConfig(ip, port, user, []byte(privateKeyPath))
+	sshConfig, err := NewSSHConfig(ip, port, user, privateKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to create SSH config: %v", err)
 	}

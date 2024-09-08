@@ -515,7 +515,7 @@ func (p *GCPProvider) TestSSHLiveness(
 		mach.PublicIP,
 		p.SSHPort,
 		p.SSHUser,
-		mach.SSHPrivateKeyMaterial,
+		mach.SSHPrivateKeyPath,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create SSH config: %v", err)

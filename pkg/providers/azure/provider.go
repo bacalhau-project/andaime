@@ -628,7 +628,7 @@ func (p *AzureProvider) TestSSHLiveness(ctx context.Context, machineName string)
 		mach.PublicIP,
 		mach.SSHPort,
 		mach.SSHUser,
-		mach.SSHPrivateKeyMaterial,
+		mach.SSHPrivateKeyPath,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create SSH config: %w", err)
@@ -651,7 +651,7 @@ func verifyDocker(ctx context.Context, mach *models.Machine) error {
 		mach.PublicIP,
 		mach.SSHPort,
 		mach.SSHUser,
-		mach.SSHPrivateKeyMaterial,
+		mach.SSHPrivateKeyPath,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create SSH config: %w", err)

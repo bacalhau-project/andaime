@@ -353,6 +353,7 @@ func (c *LiveAzureClient) GetVirtualMachine(
 	resourceGroupName string,
 	vmName string,
 ) (*armcompute.VirtualMachine, error) {
+	c.computeClient.Get(ctx, resourceGroupName, vmName, nil)
 	resp, err := c.computeClient.Get(ctx, resourceGroupName, vmName, nil)
 	if err != nil {
 		return nil, err
