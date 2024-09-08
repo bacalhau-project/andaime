@@ -441,15 +441,6 @@ func PrepareDeployment(
 ) (*models.Deployment, error) {
 	l := logger.Get()
 	l.Debug("Starting PrepareDeployment")
-
-	projectPrefix := viper.GetString("general.project_prefix")
-	if projectPrefix == "" {
-		return nil, fmt.Errorf("general.project_prefix is not set")
-	}
-	uniqueID := viper.GetString("general.unique_id")
-	if uniqueID == "" {
-		return nil, fmt.Errorf("general.unique_id is not set")
-	}
 	deployment, err := models.NewDeployment()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)

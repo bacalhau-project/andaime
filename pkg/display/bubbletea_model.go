@@ -289,6 +289,11 @@ func GetGlobalModel() *DisplayModel {
 }
 
 func SetGlobalModel(m *DisplayModel) {
+	var setGlobalModelMutex sync.Mutex
+
+	setGlobalModelMutex.Lock()
+	defer setGlobalModelMutex.Unlock()
+
 	globalModelInstance = m
 }
 
@@ -307,6 +312,7 @@ func InitialModel(deployment *models.Deployment) *DisplayModel {
 		logger:           logger.Get(),
 	}
 	go model.handleKeyEvents()
+	SetGlobalModel(model)
 	return model
 }
 

@@ -222,21 +222,28 @@ func CreateStateMessage(
 		l.Debugf("State Resource State: %d", resourceState)
 		stateEmoji = DisplayEmojiQuestion
 	}
-	var statusString string
-	if strings.Contains(resource.ShortResourceName, "VM") {
-		statusString = fmt.Sprintf(
-			"%s %s",
-			stateEmoji,
-			resourceName,
-		)
-	} else {
-		statusString = fmt.Sprintf(
-			"%s %s - %s",
-			resource.ShortResourceName,
-			stateEmoji,
-			resourceName,
-		)
-	}
+
+	// var statusString string
+	// if strings.Contains(resource.ShortResourceName, "VM") {
+	// 	statusString = fmt.Sprintf(
+	// 		"%s %s",
+	// 		stateEmoji,
+	// 		resourceName,
+	// 	)
+	// } else {
+	// 	statusString = fmt.Sprintf(
+	// 		"%s %s - %s",
+	// 		resource.ShortResourceName,
+	// 		stateEmoji,
+	// 		resourceName,
+	// 	)
+	// }
+
+	statusString := fmt.Sprintf(
+		"%s %s",
+		resource.ShortResourceName,
+		stateEmoji,
+	)
 	return statusString
 }
 

@@ -2,7 +2,6 @@ package azure
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -16,7 +15,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/blang/semver"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
@@ -584,154 +582,6 @@ func (p *AzureProvider) AllMachinesComplete() bool {
 		}
 	}
 	return true
-}
-
-func (p *AzureProvider) WaitForAllMachinesToReachState(
-	ctx context.Context,
-	targetState models.ResourceState,
-) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-	for {
-		allReady := true
-		for _, machine := range m.Deployment.Machines {
-			state := machine.GetResourceState("Microsoft.Compute/virtualMachines")
-			if state != targetState {
-				allReady = false
-				break
-			}
-		}
-		if allReady {
-			l.Debug("All machines have reached the target state")
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(WaitingForMachinesTime):
-			l.Debug("Waiting for machines to reach target state...")
-		}
-	}
-	return nil
-}
-
-// TestSSHLiveness tests the SSH liveness of a machine
-func (p *AzureProvider) TestSSHLiveness(ctx context.Context, machineName string) error {
-	m := display.GetGlobalModelFunc()
-
-	mach, ok := m.Deployment.Machines[machineName]
-	if !ok {
-		return fmt.Errorf("machine %s not found", machineName)
-	}
-
-	sshConfig, err := sshutils.NewSSHConfigFunc(
-		mach.PublicIP,
-		mach.SSHPort,
-		mach.SSHUser,
-		mach.SSHPrivateKeyPath,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %w", err)
-	}
-
-	err = sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.SSHRetryDelay)
-	if err != nil {
-		mach.SetServiceState("SSH", models.ServiceStateFailed)
-		return fmt.Errorf("failed to wait for SSH: %w", err)
-	}
-
-	mach.SetServiceState("SSH", models.ServiceStateSucceeded)
-	return nil
-}
-
-func verifyDocker(ctx context.Context, mach *models.Machine) error {
-	m := display.GetGlobalModelFunc()
-
-	sshConfig, err := sshutils.NewSSHConfigFunc(
-		mach.PublicIP,
-		mach.SSHPort,
-		mach.SSHUser,
-		mach.SSHPrivateKeyPath,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %w", err)
-	}
-
-	m.UpdateStatus(
-		models.NewDisplayStatusWithText(
-			mach.Name,
-			models.AzureResourceTypeVM,
-			models.ResourceStatePending,
-			"Testing Docker",
-		),
-	)
-
-	versionsObject := map[string]interface{}{}
-	out, err := sshConfig.ExecuteCommand(ctx, "sudo docker version -f json")
-	if err != nil {
-		return fmt.Errorf("failed to execute command: %w", err)
-	}
-
-	err = json.Unmarshal([]byte(out), &versionsObject)
-	if err != nil {
-		return fmt.Errorf("failed to marshal Docker server version: %w", err)
-	}
-
-	serverVersionDetected := false
-	clientVersionDetected := false
-	if versionsObject["Server"] == nil {
-		return fmt.Errorf("failed to get Docker server version")
-	} else {
-		if serverVersion, ok := versionsObject["Server"].(map[string]interface{}); ok {
-			if version, ok := serverVersion["Version"].(string); ok {
-				// If Version is a semver, we can use it
-				if _, err := semver.Parse(version); err == nil {
-					serverVersionDetected = true
-				} else {
-					serverVersionDetected = false
-				}
-			}
-		}
-	}
-
-	if versionsObject["Client"] == nil {
-		return fmt.Errorf("failed to get Docker client version")
-	} else {
-		if clientVersion, ok := versionsObject["Client"].(map[string]interface{}); ok {
-			if version, ok := clientVersion["Version"].(string); ok {
-				// If Version is a semver, we can use it
-				if _, err := semver.Parse(version); err == nil {
-					clientVersionDetected = true
-				}
-			}
-		}
-	}
-
-	if !serverVersionDetected || !clientVersionDetected {
-		m.UpdateStatus(
-			models.NewDisplayStatusWithText(
-				mach.Name,
-				models.AzureResourceTypeVM,
-				models.ResourceStateFailed,
-				"Failed to detect Docker version",
-			),
-		)
-		return fmt.Errorf("failed to detect Docker version")
-	}
-
-	// If all checks pass, continue with the existing code
-	mach.StatusMessage = "Successfully Deployed"
-	mach.SetServiceState("Docker", models.ServiceStateSucceeded)
-	m.UpdateStatus(
-		models.NewDisplayStatusWithText(
-			mach.Name,
-			models.AzureResourceTypeVM,
-			models.ResourceStateSucceeded,
-			"Docker Successfully Deployed",
-		),
-	)
-
-	return nil
 }
 
 func (p *AzureProvider) GetVMExternalIP(

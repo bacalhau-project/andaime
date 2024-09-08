@@ -11,7 +11,6 @@ import (
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
 	Close() error
-	TestConnectivity(ip, user string, port int, privateKeyPath string) error
 }
 
 // SSHClient struct definition
@@ -35,31 +34,8 @@ func (cl *SSHClient) Close() error {
 	return cl.Client.Close()
 }
 
-func (cl *SSHClient) TestConnectivity(ip, user string, port int, privateKeyPath string) error {
-	sshConfig, err := NewSSHConfig(ip, port, user, privateKeyPath)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %v", err)
-	}
-
-	_, err = sshConfig.Connect()
-	if err != nil {
-		return fmt.Errorf("failed to connect to SSH: %v", err)
-	}
-	return nil
-}
-
 type SSHClientWrapper struct {
 	*ssh.Client
-}
-
-// TestConnectivity implements SSHClienter.
-func (w *SSHClientWrapper) TestConnectivity(
-	ip string,
-	user string,
-	port int,
-	privateKeyPath string,
-) error {
-	panic("unimplemented")
 }
 
 func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {

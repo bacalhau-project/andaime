@@ -21,7 +21,6 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	// Create a new Viper instance for this test
 	testConfig := viper.New()
-	testConfig.Set("gcp.project_id", "test-project-id")
 
 	// Create a local display model for this test
 	localModel := &display.DisplayModel{}

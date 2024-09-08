@@ -27,7 +27,11 @@ type ClusterDeployerInterface interface {
 	CreateResources(ctx context.Context) error
 
 	ProvisionSSH(ctx context.Context) error
-	WaitForAllMachinesToReachState(ctx context.Context, state models.ResourceState) error
+	WaitForAllMachinesToReachState(
+		ctx context.Context,
+		resourceType string,
+		state models.ResourceState,
+	) error
 	ProvisionPackagesOnMachine(ctx context.Context, machineName string) error
 
 	ProvisionBacalhau(ctx context.Context) error
@@ -467,6 +471,7 @@ func (cd *ClusterDeployer) ProvisionPackagesOnMachine(
 
 func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 	ctx context.Context,
+	resourceType string,
 	state models.ResourceState,
 ) error {
 	l := logger.Get()
@@ -475,7 +480,7 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 	for {
 		allReady := true
 		for _, machine := range m.Deployment.Machines {
-			if machine.GetResourceState(models.AzureResourceTypeVM.ResourceString) != state {
+			if machine.GetResourceState(resourceType) != state {
 				allReady = false
 				break
 			}

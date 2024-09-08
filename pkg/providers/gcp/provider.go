@@ -128,10 +128,10 @@ func NewGCPProvider(ctx context.Context) (*GCPProvider, error) {
 	organizationID := config.GetString("gcp.organization_id")
 
 	// Check if a project ID is provided
-	projectPrefix := config.GetString("gcp.project_prefix")
+	projectPrefix := config.GetString("general.project_prefix")
 	if projectPrefix == "" {
 		return nil, fmt.Errorf(
-			"'gcp.project_prefix' is not set in the configuration file: %s",
+			"'general.project_prefix' is not set in the configuration file: %s",
 			viper.ConfigFileUsed(),
 		)
 	}
@@ -633,13 +633,13 @@ func (p *GCPProvider) EnsureFirewallRules(
 	return p.Client.EnsureFirewallRules(ctx, networkName)
 }
 
-func (p *GCPProvider) EnsureStorageBucket(
-	ctx context.Context,
-	location,
-	bucketName string,
-) error {
-	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
-}
+// func (p *GCPProvider) EnsureStorageBucket(
+// 	ctx context.Context,
+// 	location,
+// 	bucketName string,
+// ) error {
+// 	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
+// }
 
 func (p *GCPProvider) GetClusterDeployer() *common.ClusterDeployer {
 	return p.ClusterDeployer

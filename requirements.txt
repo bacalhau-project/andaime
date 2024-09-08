@@ -285,6 +285,7 @@ pydantic-core==2.20.1
     # via
     #   aider-chat
     #   pydantic
+pydub==0.25.1
 pyee==11.1.0
     # via playwright
 pyflakes==3.2.0
@@ -332,6 +333,7 @@ requests==2.32.3
     #   huggingface-hub
     #   litellm
     #   llama-index-core
+    #   speechrecognition
     #   tavily-python
     #   tiktoken
     #   transformers
@@ -354,7 +356,7 @@ scipy==1.13.1
 send2trash==1.8.3
 sentence-transformers==3.0.1
     # via llama-index-embeddings-huggingface
-setuptools==74.1.1
+setuptools==74.1.2
     # via setuptools-scm
 setuptools-scm==8.1.0
     # via aider-chat
@@ -380,6 +382,7 @@ soupsieve==2.6
     # via
     #   aider-chat
     #   beautifulsoup4
+speechrecognition==3.10.4
 sqlalchemy==2.0.31
     # via llama-index-core
 sympy==1.13.0
@@ -433,6 +436,7 @@ typing-extensions==4.12.2
     #   pydantic
     #   pydantic-core
     #   pyee
+    #   speechrecognition
     #   sqlalchemy
     #   torch
     #   typing-inspect
@@ -451,6 +455,7 @@ wcwidth==0.2.13
     # via
     #   aider-chat
     #   prompt-toolkit
+websockets==13.0.1
 wrapt==1.16.0
     # via
     #   deprecated

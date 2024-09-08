@@ -28,10 +28,12 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudresourcemanager/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -59,6 +61,7 @@ type GCPClienter interface {
 	StartResourcePolling(ctx context.Context) error
 
 	CheckAuthentication(ctx context.Context) error
+	CheckPermissions(ctx context.Context) error
 	EnableAPI(ctx context.Context, projectID, apiName string) error
 	CreateVPCNetwork(ctx context.Context, networkName string) error
 	CreateFirewallRules(ctx context.Context, networkName string) error
@@ -102,7 +105,7 @@ type GCPClienter interface {
 	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
 	EnsureVPCNetwork(ctx context.Context, networkName string) error
 	EnsureFirewallRules(ctx context.Context, networkName string) error
-	EnsureStorageBucket(ctx context.Context, location, bucketName string) error
+	// EnsureStorageBucket(ctx context.Context, location, bucketName string) error
 }
 
 type LiveGCPClient struct {
@@ -121,6 +124,7 @@ type LiveGCPClient struct {
 	regionOperationsClient *compute.RegionOperationsClient
 	zonesListClient        *compute.ZonesClient
 	machineTypeListClient  *compute.MachineTypesClient
+	resourceManagerService *cloudresourcemanager.Service
 
 	apisEnabled chan bool
 }
@@ -274,6 +278,11 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 	}
 	clientList = append(clientList, storageClient)
 
+	resourceManagerService, err := cloudresourcemanager.NewService(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create resource manager service: %w", err)
+	}
+
 	// Cleanup function to close all clients
 	cleanup := func() {
 		l.Debug("Cleaning up GCP client")
@@ -301,6 +310,7 @@ func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 		zonesListClient:        zonesClient,
 		machineTypeListClient:  machineTypeListClient,
 		storageClient:          storageClient,
+		resourceManagerService: resourceManagerService,
 	}
 
 	return liveGCPClient, cleanup, nil
@@ -545,7 +555,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 				resourceType := resource.GetAssetType()
 				resourceName := resource.GetName()
 
-				l.Debugf("Resource: %s (Type: %s)", resourceName, resourceType)
+				// l.Debugf("Resource: %s (Type: %s)", resourceName, resourceType)
 
 				// Update the resource state in the deployment model
 				if err := c.UpdateResourceState(resourceName, resourceType, models.ResourceStateSucceeded); err != nil {
@@ -618,12 +628,11 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 			return nil, fmt.Errorf("failed to list resources: %v", err)
 		}
 
-		// Prefix the query with the chain of thought reasoning
-		l.Debugf(
-			"Querying resource: %s (Type: %s)",
-			resource.GetName(),
-			resource.GetAssetType(),
-		)
+		// l.Debugf(
+		// 	"Querying resource: %s (Type: %s)",
+		// 	resource.GetName(),
+		// 	resource.GetAssetType(),
+		// )
 
 		resourceAsset := &assetpb.Asset{
 			Name:       resource.GetName(),
@@ -1562,60 +1571,49 @@ func (c *LiveGCPClient) EnsureFirewallRules(
 	return nil
 }
 
-func (c *LiveGCPClient) EnsureStorageBucket(
-	ctx context.Context,
-	location string,
-	bucketName string,
-) error {
+func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	l := logger.Get()
-	l.Debugf("Ensuring storage bucket %s exists in location %s", bucketName, location)
+	l.Debug("Checking GCP permissions")
 
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 	projectID := m.Deployment.ProjectID
-
-	if c.storageClient == nil {
-		return fmt.Errorf("storage client is nil")
+	if projectID == "" {
+		return fmt.Errorf("project ID is empty")
 	}
 
-	bucket := c.storageClient.Bucket(bucketName)
-	if bucket == nil {
-		return fmt.Errorf("failed to create bucket handle")
+	l.Debugf("Checking permissions for project: %s", projectID)
+
+	requiredPermissions := []string{
+		"cloudasset.assets.searchAllResources",
+		"compute.instances.list",
 	}
 
-	attrs, err := bucket.Attrs(ctx)
+	request := &cloudresourcemanager.TestIamPermissionsRequest{
+		Permissions: requiredPermissions,
+	}
+	response, err := c.resourceManagerService.Projects.TestIamPermissions(
+		"projects/"+projectID,
+		request,
+	).Context(ctx).Do()
+
 	if err != nil {
-		if err == storage.ErrBucketNotExist {
-			l.Debugf("Bucket %s does not exist, creating it", bucketName)
-			return c.createBucket(ctx, projectID, bucketName, location)
+		l.Errorf("Failed to test IAM permissions: %v", err)
+		if gerr, ok := err.(*googleapi.Error); ok {
+			l.Errorf("Google API Error: %v", gerr.Message)
+			l.Errorf("Error Details: %+v", gerr.Details)
 		}
-		return fmt.Errorf("failed to check if bucket exists: %v", err)
+		return fmt.Errorf("failed to test IAM permissions: %w", err)
 	}
 
-	l.Debugf("Bucket %s already exists in location %s", bucketName, attrs.Location)
-	return nil
-}
-
-func (c *LiveGCPClient) createBucket(
-	ctx context.Context,
-	projectID, bucketName, location string,
-) error {
-	l := logger.Get()
-	l.Debugf("Creating bucket %s in location %s", bucketName, location)
-
-	attrs := &storage.BucketAttrs{
-		Location:          location,
-		StorageClass:      "STANDARD",
-		VersioningEnabled: true,
+	missingPermissions := utils.Difference(requiredPermissions, response.Permissions)
+	if len(missingPermissions) > 0 {
+		l.Errorf("Missing required permissions: %v", missingPermissions)
+		return fmt.Errorf("missing required permissions: %v", missingPermissions)
 	}
 
-	err := c.storageClient.Bucket(bucketName).Create(ctx, projectID, attrs)
-	if err != nil {
-		return fmt.Errorf("failed to create bucket: %v", err)
-	}
-
-	l.Debugf("Successfully created bucket %s", bucketName)
+	l.Debug("All required permissions are granted")
 	return nil
 }

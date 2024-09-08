@@ -108,6 +108,7 @@ hhmm
 hhmmss
 hostkey
 hostnames
+htmltemplate
 igws
 ineffassign
 Infof

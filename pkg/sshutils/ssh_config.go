@@ -51,6 +51,18 @@ func NewSSHConfig(
 		return nil, fmt.Errorf("private key path is empty")
 	}
 
+	if len(host) == 0 {
+		return nil, fmt.Errorf("host is empty")
+	}
+
+	if len(user) == 0 {
+		return nil, fmt.Errorf("user is empty")
+	}
+
+	if port == 0 {
+		return nil, fmt.Errorf("port is empty")
+	}
+
 	sshClientConfig, err := getSSHClientConfig(user, host, sshPrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSH client config: %w", err)
@@ -124,6 +136,14 @@ func (c *SSHConfig) SetSSHClient(client SSHClienter) {
 func (c *SSHConfig) Connect() (SSHClienter, error) {
 	l := logger.Get()
 	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
+
+	if c.Host == "" {
+		return nil, fmt.Errorf("host is empty")
+	}
+
+	if c.Port == 0 {
+		return nil, fmt.Errorf("port is empty")
+	}
 
 	client, err := c.SSHDial.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
 	if err != nil {

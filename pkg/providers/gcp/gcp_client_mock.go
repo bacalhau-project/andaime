@@ -425,3 +425,10 @@ func (m *MockGCPClient) waitForGlobalOperation(
 	args := m.Called(ctx, project, operation)
 	return args.Error(0)
 }
+
+func (m *MockGCPClient) CheckPermissions(
+	ctx context.Context,
+) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}

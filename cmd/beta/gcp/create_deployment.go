@@ -64,35 +64,58 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	m := display.InitialModel(deployment)
-	m.Deployment = deployment
-	m.Deployment.GCP.ProjectID = m.Deployment.ProjectID
+	m.Deployment.GCP.ProjectID = deployment.ProjectID
 	m.Deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
 	m.Deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
+
+	// Check permissions before starting deployment
+	// if err := p.GetGCPClient().CheckPermissions(ctx); err != nil {
+	// 	l.Error(fmt.Sprintf("Permission check failed: %v", err))
+	// 	return fmt.Errorf("insufficient permissions to deploy: %w", err)
+	// }
 
 	prog := display.GetGlobalProgram()
 	prog.InitProgram(m)
 
 	go p.StartResourcePolling(ctx)
 
-	deploymentErr := p.CreateResources(ctx)
-	if deploymentErr != nil {
-		l.Error(fmt.Sprintf("Error creating resources: %v", deploymentErr))
-		cancel()
-	}
+	go func() {
+		deploymentErr := p.CreateResources(ctx)
+		if deploymentErr != nil {
+			l.Error(fmt.Sprintf("Error creating resources: %v", deploymentErr))
+			cancel()
+		}
+		err := p.GetClusterDeployer().
+			WaitForAllMachinesToReachState(ctx,
+				models.GCPResourceTypeInstance.ResourceString,
+				models.ResourceStateSucceeded,
+			)
+		if err != nil {
+			l.Error(fmt.Sprintf("Error waiting for all machines to reach state: %v", err))
+			cancel()
+		}
 
-	p.GetClusterDeployer().WaitForAllMachinesToReachState(ctx, models.ResourceStateSucceeded)
+		var dockerErrGroup errgroup.Group
+		for _, machine := range deployment.Machines {
+			internalMachine := machine
+			dockerErrGroup.Go(func() error {
+				return internalMachine.InstallDockerAndCorePackages(ctx)
+			})
+		}
+		if err := dockerErrGroup.Wait(); err != nil {
+			l.Error(fmt.Sprintf("Error installing Docker and core packages: %v", err))
+			cancel()
+		}
 
-	var errGroup errgroup.Group
-	for _, machine := range deployment.Machines {
-		internalMachine := machine
-		errGroup.Go(func() error {
-			return internalMachine.InstallDockerAndCorePackages(ctx)
+		var bacalhauErrGroup errgroup.Group
+		bacalhauErrGroup.Go(func() error {
+			return p.GetClusterDeployer().ProvisionBacalhau(ctx)
 		})
-	}
-	if err := errGroup.Wait(); err != nil {
-		l.Error(fmt.Sprintf("Error installing Docker and core packages: %v", err))
-		cancel()
-	}
+		if err := bacalhauErrGroup.Wait(); err != nil {
+			l.Error(fmt.Sprintf("Error installing Bacalhau: %v", err))
+			cancel()
+		}
+	}()
 
 	_, err = prog.Run()
 	if err != nil {
@@ -104,7 +127,7 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	fmt.Print("\033[H\033[2J")
 	fmt.Println(m.RenderFinalTable())
 
-	return deploymentErr
+	return nil
 }
 
 func setDefaultConfigurations() {
@@ -115,7 +138,6 @@ func setDefaultConfigurations() {
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
 	viper.SetDefault("general.ssh_user", "andaime")
 	viper.SetDefault("general.ssh_port", DefaultSSHPort)
-	viper.SetDefault("gcp.project_id", "")
 	viper.SetDefault("gcp.region", "us-central1")
 	viper.SetDefault("gcp.zone", "us-central1-a")
 	viper.SetDefault("gcp.machine_type", "e2-medium")
@@ -144,15 +166,6 @@ func getDefaultLogLevel() string {
 func PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 	l := logger.Get()
 	l.Debug("Starting PrepareDeployment for GCP")
-
-	projectPrefix := viper.GetString("general.project_prefix")
-	if projectPrefix == "" {
-		return nil, fmt.Errorf("general.project_prefix is not set")
-	}
-	uniqueID := viper.GetString("general.unique_id")
-	if uniqueID == "" {
-		return nil, fmt.Errorf("general.unique_id is not set")
-	}
 	deployment, err := models.NewDeployment()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)
@@ -176,6 +189,9 @@ func PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
 		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
 	}
+
+	deployment.SSHUser = viper.GetString("general.ssh_user")
+	deployment.SSHPort = viper.GetInt("general.ssh_port")
 
 	if err := deployment.UpdateViperConfig(); err != nil {
 		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)

@@ -20,22 +20,14 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	uniqueID := viper.GetString("general.unique_id")
-	if uniqueID == "" {
-		return fmt.Errorf("unique ID is not set")
-	}
-	m.Deployment.UniqueID = uniqueID
-
-	// Check if a project ID was provided or generated
-	projectID := viper.GetString("gcp.project_id")
-
 	// Create the project if it doesn't exist
-	createdProjectID, err := p.EnsureProject(ctx, projectID)
+	createdProjectID, err := p.EnsureProject(ctx, m.Deployment.GCP.ProjectID)
 	if err != nil {
 		return fmt.Errorf("failed to ensure project exists: %w", err)
 	}
 
 	m.Deployment.ProjectID = createdProjectID
+	m.Deployment.GCP.ProjectID = createdProjectID
 
 	// Enable required APIs
 	if err := p.EnableRequiredAPIs(ctx); err != nil {
@@ -76,6 +68,47 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				return err
 			}
 
+			machine.PublicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+			machine.PrivateIP = *instance.NetworkInterfaces[0].NetworkIP
+
+			sshConfig, err := sshutils.NewSSHConfigFunc(
+				machine.PublicIP,
+				machine.SSHPort,
+				machine.SSHUser,
+				machine.SSHPrivateKeyPath,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create SSH config: %w", err)
+			}
+			machine.SetServiceState("SSH", models.ServiceStateUpdating)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeInstance,
+				models.ResourceStatePending,
+				"Provisioning SSH",
+			))
+
+			if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
+				l.Errorf("Failed to provision SSH: %v", err)
+				machine.SetServiceState("SSH", models.ServiceStateFailed)
+				m.UpdateStatus(models.NewDisplayStatusWithText(
+					machine.Name,
+					models.GCPResourceTypeInstance,
+					models.ResourceStateFailed,
+					"SSH Provisioning Failed",
+				))
+
+				return fmt.Errorf("failed to provision SSH: %w", err)
+			}
+
+			machine.SetServiceState("SSH", models.ServiceStateSucceeded)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.Name,
+				models.GCPResourceTypeInstance,
+				models.ResourceStateRunning,
+				"SSH Provisioned",
+			))
+
 			machine.SetResourceState(
 				models.GCPResourceTypeInstance.ResourceString,
 				models.ResourceStateRunning,
@@ -87,7 +120,6 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				return fmt.Errorf("no access configs found for instance %s - could not get public IP", machine.Name)
 			}
 
-			machine.PrivateIP = *instance.NetworkInterfaces[0].NetworkIP
 			l.Infof("Instance %s created successfully", machine.Name)
 
 			// Create or ensure Cloud Storage bucket
