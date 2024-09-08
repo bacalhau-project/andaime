@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template"
 	"strings"
+	"text/template"
 	"time"
 
 	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
@@ -162,6 +162,11 @@ func (cd *ClusterDeployer) DeployWorker(
 	m := display.GetGlobalModelFunc()
 
 	if m.Deployment.Machines[machineName].Orchestrator {
+		l := logger.Get()
+		l.Errorf(
+			"machine %s is an orchestrator, and should not be deployed as a worker",
+			machineName,
+		)
 		return fmt.Errorf(
 			"machine %s is an orchestrator, and should not be deployed as a worker",
 			machineName,
@@ -269,12 +274,17 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		return fmt.Errorf("failed to get node config metadata script: %w", err)
 	}
 
+	// MAKE SURE WE ARE IMPORTING text/template and not html/template
 	// Create a template with custom delimiters to avoid conflicts with bash syntax
-	tmpl, err := template.New("getNodeMetadataScript").
-		Delims("[[", "]]").
-		Parse(string(getNodeMetadataScriptBytes))
+	tmpl := template.New("getNodeMetadataScript")
+	tmpl, err = tmpl.Delims("[[", "]]").Parse(string(getNodeMetadataScriptBytes))
 	if err != nil {
 		return fmt.Errorf("failed to parse node metadata script template: %w", err)
+	}
+
+	// Runtime check
+	if _, ok := interface{}(tmpl).(*template.Template); !ok {
+		return fmt.Errorf("incorrect template package used: expected text/template")
 	}
 
 	orchestrators := []string{}
@@ -289,7 +299,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	}
 
 	var scriptBuffer bytes.Buffer
-	err = tmpl.Execute(&scriptBuffer, map[string]interface{}{
+	err = tmpl.ExecuteTemplate(&scriptBuffer, "getNodeMetadataScript", map[string]interface{}{
 		"MachineType":   machine.VMSize,
 		"MachineName":   machine.Name,
 		"Location":      machine.Location,

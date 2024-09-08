@@ -392,8 +392,11 @@ func TestDeployOrchestrator(t *testing.T) {
 	orchestrators := "0.0.0.0"
 	vmSize := "Standard_DS4_v2"
 
+	viper.Set("general.project_prefix", "test-project")
+
 	expectedLines := map[string][]string{
 		"get-node-config-metadata.sh": {
+			`cat << EOF > /etc/node-config`,
 			fmt.Sprintf(`MACHINE_TYPE="%s"`, vmSize),
 			fmt.Sprintf(`HOSTNAME="%s"`, hostname),
 			`VCPU_COUNT="$VCPU_COUNT"`,

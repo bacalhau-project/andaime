@@ -71,27 +71,66 @@ func executeCreateDeployment(cmd *cobra.Command, args []string) error {
 	go p.StartResourcePolling(ctx)
 
 	var deploymentErr error
+	deploymentDone := make(chan struct{})
+
 	go func() {
+		defer close(deploymentDone)
 		select {
 		case <-ctx.Done():
 			l.Debug("Deployment cancelled")
 			return
 		default:
 			deploymentErr = runDeployment(ctx, p)
+			if deploymentErr != nil {
+				l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
+				cancel() // Cancel the context on error
+			}
 		}
 	}()
 
 	_, err = prog.Run()
 	if err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
-		return err
+		cancel() // Cancel the context on error
+	}
+
+	// Wait for deployment to finish or context to be cancelled
+	select {
+	case <-deploymentDone:
+	case <-ctx.Done():
+		l.Debug("Context cancelled, waiting for deployment to finish")
+		<-deploymentDone
+	}
+
+	// Write configuration to file
+	configFile := viper.ConfigFileUsed()
+	if configFile == "" {
+		l.Error("No configuration file found, could not write to file.")
+		return nil
+	}
+	if err := viper.WriteConfigAs(configFile); err != nil {
+		l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+	} else {
+		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
 	}
 
 	// Clear the screen and print final table
 	fmt.Print("\033[H\033[2J")
 	fmt.Println(m.RenderFinalTable())
 
-	return deploymentErr
+	if deploymentErr != nil {
+		fmt.Println("Deployment failed, but configuration was written to file.")
+		fmt.Println("The deployment error was:")
+		fmt.Println(deploymentErr)
+	}
+
+	if err != nil {
+		fmt.Println("General (unknown) error running program:")
+		fmt.Println(err)
+		return nil
+	}
+
+	return nil
 }
 
 func runDeployment(
@@ -148,6 +187,9 @@ func runDeployment(
 	}
 
 	for _, machine := range m.Deployment.Machines {
+		if machine.Orchestrator {
+			continue
+		}
 		eg.Go(func() error {
 			if err := p.GetClusterDeployer().DeployWorker(ctx, machine.Name); err != nil {
 				return fmt.Errorf("failed to configure Bacalhau: %w", err)
