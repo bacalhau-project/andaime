@@ -68,7 +68,7 @@ const (
 
 var SkippedResourceTypes = []string{
 	// Azure Skips
-	"GuestAttestation",
+	"microsoft.compute/virtualmachines/extensions",
 
 	// GCP Skips
 	"compute.v1.instanceGroupManager",

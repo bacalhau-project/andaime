@@ -269,7 +269,10 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		return fmt.Errorf("failed to get node config metadata script: %w", err)
 	}
 
-	tmpl, err := template.New("getNodeMetadataScript").Parse(string(getNodeMetadataScriptBytes))
+	// Create a template with custom delimiters to avoid conflicts with bash syntax
+	tmpl, err := template.New("getNodeMetadataScript").
+		Delims("[[", "]]").
+		Parse(string(getNodeMetadataScriptBytes))
 	if err != nil {
 		return fmt.Errorf("failed to parse node metadata script template: %w", err)
 	}

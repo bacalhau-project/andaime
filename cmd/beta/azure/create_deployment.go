@@ -305,6 +305,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				rawMachine.Location,
 				utils.GetSafeDiskSize(defaultDiskSize),
 				thisVMType,
+				deployment.SSHPrivateKeyPath,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
@@ -367,6 +368,7 @@ func createNewMachine(
 	location string,
 	diskSizeGB int32,
 	vmSize string,
+	privateKeyPath string,
 	privateKeyBytes []byte,
 	sshPort int,
 ) (*models.Machine, error) {
@@ -385,6 +387,7 @@ func createNewMachine(
 
 	newMachine.SSHUser = "azureuser"
 	newMachine.SSHPort = sshPort
+	newMachine.SSHPrivateKeyPath = privateKeyPath
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 	return newMachine, nil

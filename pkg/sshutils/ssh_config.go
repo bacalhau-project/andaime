@@ -92,9 +92,9 @@ func getSSHClientConfig(user, host, privateKeyPath string) (*ssh.ClientConfig, e
 	}
 
 	// TODO: Handle host key callback
-	hostKeyCallback := ssh.InsecureIgnoreHostKey()
+	hostKeyCallback := ssh.InsecureIgnoreHostKey() //nolint:gosec
 	possibleHostKeyCallback, err := GetHostKeyCallback(host)
-	if err != nil {
+	if err == nil {
 		hostKeyCallback = possibleHostKeyCallback
 	}
 

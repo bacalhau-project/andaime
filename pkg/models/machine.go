@@ -284,9 +284,11 @@ func (mach *Machine) countCompletedResources() (int, int) {
 			// l.Debugf("Machine %s: Resource %s is completed", m.Name, resource.ResourceName)
 			completedResources++
 		} else {
+			// The below is a no-op, but it's a good way to get some details
+			// when debugging.
 			// Print out roughly every 1000 calls
 			//nolint:gosec,mnd
-			if rand.Intn(1000) < 10 {
+			if rand.Intn(1000) < -1 {
 				l.Debugf("Machine %s: Resource %s is not completed", mach.Name, resource.ResourceName)
 			}
 		}

@@ -292,6 +292,7 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 				vmType,
 				diskImageFamily,
 				diskImageURL,
+				deployment.SSHPrivateKeyPath,
 				privateKeyBytes,
 				deployment.SSHPort,
 			)
@@ -343,6 +344,7 @@ func createNewMachine(
 	vmSize string,
 	diskImageFamily string,
 	diskImageURL string,
+	privateKeyPath string,
 	privateKeyBytes []byte,
 	sshPort int,
 ) (*models.Machine, error) {
@@ -361,6 +363,7 @@ func createNewMachine(
 
 	newMachine.SSHUser = "azureuser"
 	newMachine.SSHPort = sshPort
+	newMachine.SSHPrivateKeyPath = privateKeyPath
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
 
 	newMachine.DiskImageFamily = diskImageFamily

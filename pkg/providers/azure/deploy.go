@@ -202,7 +202,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				sshConfig, err := sshutils.NewSSHConfigFunc(
 					machine.PublicIP,
 					machine.SSHPort,
-					machine.Location,
+					machine.SSHUser,
 					machine.SSHPrivateKeyPath,
 				)
 				if err != nil {
@@ -408,7 +408,10 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				return fmt.Errorf("deployment failed with unknown error")
 			}
 		} else {
-			return fmt.Errorf("deployment response or provisioning state is nil")
+			if err != nil {
+				return fmt.Errorf("deployment response or provisioning state is nil: %v", err)
+			}
+			return fmt.Errorf("deployment response or provisioning state is nil: %v", resp)
 		}
 
 		if err != nil && strings.Contains(err.Error(), "DnsRecordCreateConflict") {
