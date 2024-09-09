@@ -21,6 +21,12 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	// Create a new Viper instance for this test
 	testConfig := viper.New()
+	testConfig.Set("gcp.project_id", "test-project-id")
+	testConfig.Set("gcp.zone", "us-central1-a")
+	testConfig.Set("general.ssh_public_key_path", "/path/to/public/key")
+	testConfig.Set("general.ssh_private_key_path", "/path/to/private/key")
+	testConfig.Set("general.ssh_user", "testuser")
+	testConfig.Set("general.ssh_port", 22)
 
 	// Create a local display model for this test
 	localModel := &display.DisplayModel{}
@@ -39,6 +45,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 			Zone:      "us-central1-a",
 		},
 		Tags: map[string]*string{"test": &[]string{"value"}[0]},
+		SSHPublicKeyMaterial: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0g+ZTxC7weoIJLUafOgrm+h...",
 	}
 
 	for _, machineName := range testMachines {

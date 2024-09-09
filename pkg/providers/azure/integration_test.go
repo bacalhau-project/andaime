@@ -45,6 +45,15 @@ func setupTest(t *testing.T) *testSetup {
 	err = viper.ReadInConfig()
 	assert.NoError(t, err)
 
+	// Set additional required configuration
+	viper.Set("azure.subscription_id", "test-subscription-id")
+	viper.Set("azure.resource_group_name", "test-resource-group")
+	viper.Set("azure.resource_group_location", "eastus")
+	viper.Set("general.ssh_public_key_path", "/path/to/public/key")
+	viper.Set("general.ssh_private_key_path", "/path/to/private/key")
+	viper.Set("general.ssh_user", "testuser")
+	viper.Set("general.ssh_port", 22)
+
 	mockPoller := new(MockPoller)
 	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
 		Return(armresources.DeploymentsClientCreateOrUpdateResponse{

@@ -26,6 +26,14 @@ import (
 var originalGlobalModelFunc func() *display.DisplayModel
 
 func setupTestDisplayModel() *display.DisplayModel {
+	viper.Set("azure.subscription_id", "test-subscription-id")
+	viper.Set("azure.resource_group_name", "test-resource-group")
+	viper.Set("azure.resource_group_location", "eastus")
+	viper.Set("general.ssh_public_key_path", "/path/to/public/key")
+	viper.Set("general.ssh_private_key_path", "/path/to/private/key")
+	viper.Set("general.ssh_user", "testuser")
+	viper.Set("general.ssh_port", 22)
+
 	return &display.DisplayModel{
 		Deployment: &models.Deployment{
 			Machines:  make(map[string]*models.Machine),
@@ -35,6 +43,7 @@ func setupTestDisplayModel() *display.DisplayModel {
 				ResourceGroupLocation: "eastus",
 				SubscriptionID:        "test-subscription-id",
 			},
+			SSHPublicKeyMaterial: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0g+ZTxC7weoIJLUafOgrm+h...",
 		},
 	}
 }
