@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
@@ -115,3 +116,68 @@ func (m *MockSSHSession) Wait() error {
 }
 
 var _ SSHSessioner = &MockSSHSession{}
+
+// MockSSHConfig is a mock implementation of sshutils.SSHConfiger
+type MockSSHConfig struct {
+	mock.Mock
+	Name        string
+	MockClient  *MockSSHClient
+	MockSession *MockSSHSession
+}
+
+func (m *MockSSHConfig) PushFile(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+) error {
+	args := m.Called(ctx, remotePath, content, executable)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) ExecuteCommand(
+	ctx context.Context,
+	cmd string,
+) (string, error) {
+	args := m.Called(ctx, cmd)
+	return args.Get(0).(string), args.Error(1)
+}
+
+func (m *MockSSHConfig) InstallSystemdService(
+	ctx context.Context,
+	serviceName string,
+	serviceContent string,
+) error {
+	args := m.Called(ctx, serviceName, serviceContent)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) RestartService(
+	ctx context.Context,
+	serviceName string,
+) error {
+	args := m.Called(ctx, serviceName)
+	return args.Error(0)
+}
+
+// Additional methods to satisfy the SSHConfiger interface
+func (m *MockSSHConfig) Connect() (SSHClienter, error) { return m.MockClient, nil }
+
+func (m *MockSSHConfig) Close() error { return nil }
+
+func (m *MockSSHConfig) WaitForSSH(
+	ctx context.Context,
+	retries int,
+	retryDelay time.Duration,
+) error {
+	args := m.Called(ctx, retries, retryDelay)
+	return args.Error(0)
+}
+func (m *MockSSHConfig) SetSSHClient(client SSHClienter) {}
+
+func (m *MockSSHConfig) StartService(
+	ctx context.Context,
+	serviceName string,
+) error {
+	return nil
+}

@@ -258,7 +258,7 @@ func (m *MockGCPClient) EnsureProject(
 	projectID string,
 ) (string, error) {
 	args := m.Called(ctx, projectID)
-	return args.String(0), args.Error(1)
+	return args.Get(0).(string), args.Error(1)
 }
 
 func (m *MockGCPClient) EnsureSubnetwork(

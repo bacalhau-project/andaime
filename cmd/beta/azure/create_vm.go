@@ -72,7 +72,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	viper.Set("azure.machines", machines)
 
 	// Call the existing executeCreateDeployment function from create_deployment.go
-	if err := executeCreateDeployment(cmd, nil); err != nil {
+	if err := ExecuteCreateDeployment(cmd, nil); err != nil {
 		return fmt.Errorf("failed to create VM: %w", err)
 	}
 

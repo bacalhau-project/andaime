@@ -14,11 +14,11 @@ var CreateDeploymentCmd = &cobra.Command{
 	Use:   "deployment",
 	Short: "Create a deployment in AWS",
 	Long:  `Create a deployment in AWS using the configuration specified in the config file.`,
-	RunE:  executeCreateDeployment,
+	RunE:  ExecuteCreateDeployment,
 }
 
 //nolint:unused
-func executeCreateDeployment(cmd *cobra.Command, args []string) error {
+func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
 
 	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())

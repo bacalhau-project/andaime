@@ -15,6 +15,10 @@ type MockAzureClient struct {
 	mock.Mock
 }
 
+func NewMockAzureClient() *MockAzureClient {
+	return new(MockAzureClient)
+}
+
 func (m *MockAzureClient) DeployTemplate(
 	ctx context.Context,
 	resourceGroupName string,

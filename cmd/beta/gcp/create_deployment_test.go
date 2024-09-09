@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
+	"github.com/bacalhau-project/andaime/pkg/common"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -54,7 +55,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		deployment.SSHPrivateKeyPath = testPrivateKeyPath
 		deployment.SSHPort = 22
 
-		err = ProcessMachinesConfig(deployment)
+		err = common.ProcessMachinesConfig(deployment, "gcp")
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name
@@ -86,7 +87,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		deployment.SSHPrivateKeyPath = testPrivateKeyPath
 		deployment.SSHPort = 22
 
-		err = ProcessMachinesConfig(deployment)
+		err = common.ProcessMachinesConfig(deployment, "gcp")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid location for GCP: bad-location-2")
 	})
@@ -109,7 +110,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		deployment.SSHPrivateKeyPath = testPrivateKeyPath
 		deployment.SSHPort = 22
 
-		err = ProcessMachinesConfig(deployment)
+		err = common.ProcessMachinesConfig(deployment, "gcp")
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name
@@ -139,7 +140,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		deployment.SSHPrivateKeyPath = testPrivateKeyPath
 		deployment.SSHPort = 22
 
-		err = ProcessMachinesConfig(deployment)
+		err = common.ProcessMachinesConfig(deployment, "gcp")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid disk image family for GCP: invalid-image-type")
 	})
@@ -162,7 +163,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		deployment.SSHPrivateKeyPath = testPrivateKeyPath
 		deployment.SSHPort = 22
 
-		err = ProcessMachinesConfig(deployment)
+		err = common.ProcessMachinesConfig(deployment, "gcp")
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name

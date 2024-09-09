@@ -61,7 +61,7 @@ func Execute() error {
 
 	setupPanicHandling()
 
-	rootCmd := setupRootCommand()
+	rootCmd := SetupRootCommand()
 	rootCmd.SetContext(ctx)
 	if err := rootCmd.Execute(); err != nil {
 		l.Errorf("Command execution failed: %v", err)
@@ -125,7 +125,7 @@ func logPanic(l *logger.Logger, r interface{}) {
 	}
 }
 
-func setupRootCommand() *cobra.Command {
+func SetupRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "andaime",
 		Short: "Andaime is a tool for managing cloud resources",

@@ -20,7 +20,6 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.30.4
 	github.com/aws/aws-sdk-go-v2/config v1.27.31
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.177.0
-	github.com/blang/semver v3.5.1+incompatible
 	github.com/briandowns/spinner v1.23.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/charmbracelet/bubbles v0.19.0
@@ -62,6 +61,7 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/charmbracelet/x/ansi v0.2.3 // indirect
 	github.com/charmbracelet/x/term v0.2.0 // indirect
 	github.com/cheggaaa/pb v1.0.29 // indirect

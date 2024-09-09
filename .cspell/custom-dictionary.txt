@@ -14,6 +14,7 @@ armsubscription
 armsubscriptions
 asiawest
 assetpb
+australiasoutheast
 autorest
 awsconfig
 awserr
@@ -106,6 +107,7 @@ gserviceaccount
 Gtthi
 hhmm
 hhmmss
+highcpu
 hostkey
 hostnames
 htmltemplate
@@ -154,6 +156,7 @@ PBIP
 Pollerer
 practise
 predeclared
+Progammer
 progressbar
 Providerer
 Provisionings

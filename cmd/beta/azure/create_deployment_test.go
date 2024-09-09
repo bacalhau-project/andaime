@@ -10,9 +10,11 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
+	"github.com/bacalhau-project/andaime/pkg/common"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -23,13 +25,13 @@ func TestProcessMachinesConfig(t *testing.T) {
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	mockAzureClient := new(azure.MockAzureClient)
+	mockAzureClient := new(azure_provider.MockAzureClient)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
 
-	origNewAzureClientFunc := azure.NewAzureClientFunc
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
+	origNewAzureClientFunc := azure_provider.NewAzureClientFunc
+	t.Cleanup(func() { azure_provider.NewAzureClientFunc = origNewAzureClientFunc })
+	azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_provider.AzureClienter, error) {
 		return mockAzureClient, nil
 	}
 
@@ -112,7 +114,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 			viper.Set("azure.disk_size_gb", 30)
 			viper.Set("general.orchestrator_ip", tt.orchestratorIP)
 
-			err := ProcessMachinesConfig(deployment)
+			err := azure_provider.ProcessMachinesConfig(deployment)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -218,7 +220,7 @@ func TestInitializeDeployment(t *testing.T) {
 		ctx := context.Background()
 		viper.Set("general.project_prefix", "test-project")
 		viper.Set("general.unique_id", "test-unique-id")
-		deployment, err := PrepareDeployment(ctx)
+		deployment, err := common.PrepareDeployment(ctx, "azure")
 		assert.NoError(t, err)
 		assert.NotNil(t, deployment)
 		localModel.Deployment = deployment
@@ -312,7 +314,7 @@ func TestPrepareDeployment(t *testing.T) {
 	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
 	viper.Set("azure.subscription_id", "test-subscription-id")
 	viper.Set("azure.resource_group_name", "test-rg")
-	viper.Set("azure.resource_group_location", "")
+	viper.Set("azure.resource_group_location", "eastus")
 	viper.Set("azure.default_count_per_zone", 1)
 	viper.Set("azure.default_machine_type", "Standard_DS4_v2")
 	viper.Set("azure.disk_size_gb", int32(30))
@@ -333,7 +335,7 @@ func TestPrepareDeployment(t *testing.T) {
 	// Execute
 	viper.Set("general.project_prefix", "test-project")
 	viper.Set("general.unique_id", "test-unique-id")
-	deployment, err := PrepareDeployment(ctx)
+	deployment, err := common.PrepareDeployment(ctx, "azure")
 	assert.NotNil(t, deployment)
 	assert.NoError(t, err)
 

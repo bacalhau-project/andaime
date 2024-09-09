@@ -1,32 +1,42 @@
 package display
 
 import (
+	"os"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+type GlobalProgammer interface {
+	InitProgram(m *DisplayModel)
+	GetProgram() *GlobalProgram
+	Quit()
+	Run() (tea.Model, error)
+}
+
 // GlobalProgram represents the singleton instance
 type GlobalProgram struct {
-	program *tea.Program
+	Program *tea.Program
 }
 
 var (
-	globalProgramInstance *GlobalProgram
+	globalProgramInstance GlobalProgammer
 	globalProgramOnce     sync.Once
 )
 
+var GetGlobalProgramFunc = GetGlobalProgram
+
 // GetGlobalProgram returns the singleton instance of GlobalProgram
-func GetGlobalProgram() *GlobalProgram {
+func GetGlobalProgram() GlobalProgammer {
 	globalProgramOnce.Do(func() {
-		globalProgramInstance = &GlobalProgram{}
+		globalProgramInstance = new(GlobalProgram)
 	})
 	return globalProgramInstance
 }
 
 // InitProgram initializes the tea.Program
 func (gp *GlobalProgram) InitProgram(m *DisplayModel) {
-	gp.program = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
+	gp.Program = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	SetGlobalModel(m)
 }
 
@@ -41,9 +51,15 @@ func (gp *GlobalProgram) Quit() {
 		m.quitChan <- true
 	}
 
-	gp.program.Quit()
+	gp.Program.Quit()
 }
 
 func (gp *GlobalProgram) Run() (tea.Model, error) {
-	return gp.program.Run()
+	if os.Getenv("TEST_MODE") == "true" {
+		gp.Program = tea.NewProgram(
+			GetGlobalModelFunc(),
+			tea.WithoutRenderer(),
+		)
+	}
+	return gp.Program.Run()
 }

@@ -187,7 +187,7 @@ func NewAzureProvider() (AzureProviderer, error) {
 		return nil, fmt.Errorf("invalid Azure subscription ID format: %s", subscriptionID)
 	}
 
-	client, err := NewAzureClient(subscriptionID)
+	client, err := NewAzureClientFunc(subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}

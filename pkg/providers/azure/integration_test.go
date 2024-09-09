@@ -28,7 +28,7 @@ type testSetup struct {
 	clusterDeployer *common.ClusterDeployer
 	mockAzureClient *MockAzureClient
 	mockPoller      *MockPoller
-	mockSSHConfig   *MockSSHConfig
+	mockSSHConfig   *sshutils.MockSSHConfig
 	mockSSHClient   *sshutils.MockSSHClient
 	cleanup         func()
 }
@@ -102,7 +102,7 @@ func setupTest(t *testing.T) *testSetup {
 	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
 		Return(publicIPAddress, nil)
 
-	mockSSHConfig := new(MockSSHConfig)
+	mockSSHConfig := new(sshutils.MockSSHConfig)
 
 	provider := &AzureProvider{
 		Client: mockAzureClient,

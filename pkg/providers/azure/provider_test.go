@@ -211,7 +211,7 @@ func TestCreateResources(t *testing.T) {
 	setupDeployARMTemplateTest(t)
 	defer teardownDeployARMTemplateTest(t)
 
-	mockSSHConfig := new(MockSSHConfig)
+	mockSSHConfig := new(sshutils.MockSSHConfig)
 
 	tests := []struct {
 		name                string
