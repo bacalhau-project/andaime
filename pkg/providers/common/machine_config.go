@@ -1,6 +1,11 @@
 package common
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -20,44 +25,184 @@ type RawMachine struct {
 	} `yaml:"parameters"`
 }
 
-func ProcessMachinesConfig(deployment *models.Deployment, providerType models.DeploymentType, validateMachineType func(string, string) (bool, error)) error {
+//nolint:funlen,gocyclo
+func ProcessMachinesConfig(
+	providerType models.DeploymentType,
+	validateMachineType func(context.Context, string, string) (bool, error),
+) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	locations := make(map[string]bool)
 
+	lowerProviderType := strings.ToLower(string(providerType))
+
 	rawMachines := []RawMachine{}
+	if err := viper.UnmarshalKey(lowerProviderType+".machines", &rawMachines); err != nil {
+		return fmt.Errorf("error unmarshaling machines: %w", err)
+	}
 
-	// ...
+	defaultCount := viper.GetInt(string(providerType) + ".default_count_per_zone")
+	if defaultCount == 0 {
+		errorMessage := fmt.Sprintf("%s.default_count_per_zone is empty", lowerProviderType)
+		l.Error(errorMessage)
+		return fmt.Errorf(errorMessage)
+	}
+	defaultType := viper.GetString(string(providerType) + ".default_machine_type")
+	if defaultType == "" {
+		errorMessage := fmt.Sprintf("%s.default_machine_type is empty", lowerProviderType)
+		l.Error(errorMessage)
+		return fmt.Errorf(errorMessage)
+	}
 
-	machines := make(map[string]*models.Machine)
+	defaultDiskSize := viper.GetInt(string(providerType) + ".disk_size_gb")
+	if defaultDiskSize == 0 {
+		errorMessage := fmt.Sprintf("%s.disk_size_gb is empty", lowerProviderType)
+		l.Error(errorMessage)
+		return fmt.Errorf(errorMessage)
+	}
+
+	privateKeyBytes, err := sshutils.ReadPrivateKey(m.Deployment.SSHPrivateKeyPath)
+	if err != nil {
+		errorMessage := fmt.Sprintf("failed to read private key: %v", err)
+		l.Error(errorMessage)
+		return fmt.Errorf(errorMessage)
+	}
+
+	orchestratorIP := m.Deployment.OrchestratorIP
+	var orchestratorLocations []string
 	for _, rawMachine := range rawMachines {
-		// ... (implementation details)
-		machines[machine.Name].SetResourceState(
-			string(providerType)+"VM",
-			models.ResourceStateNotStarted,
+		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
+			if rawMachine.Parameters.Count == 0 {
+				rawMachine.Parameters.Count = defaultCount
+			}
+			for i := 0; i < rawMachine.Parameters.Count; i++ {
+				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
+			}
+		}
+	}
+
+	if len(orchestratorLocations) > 1 {
+		return fmt.Errorf("multiple orchestrator nodes found")
+	}
+
+	type badMachineLocationCombo struct {
+		location string
+		vmSize   string
+	}
+	var allBadMachineLocationCombos []badMachineLocationCombo
+	newMachines := make(map[string]*models.Machine)
+	for _, rawMachine := range rawMachines {
+		count := utils.GetCountOfMachines(rawMachine.Parameters.Count, defaultCount)
+		thisVMType := defaultType
+		if rawMachine.Parameters != nil && rawMachine.Parameters.Type != "" {
+			thisVMType = rawMachine.Parameters.Type
+		}
+
+		fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
+		valid, err := validateMachineType(context.Background(), rawMachine.Location, thisVMType)
+		if !valid || err != nil {
+			allBadMachineLocationCombos = append(
+				allBadMachineLocationCombos,
+				badMachineLocationCombo{
+					location: rawMachine.Location,
+					vmSize:   thisVMType,
+				},
+			)
+			fmt.Println("❌")
+			continue
+		}
+		fmt.Println("✅")
+
+		for i := 0; i < count; i++ {
+			newMachine, err := createNewMachine(
+				providerType,
+				rawMachine.Location,
+				utils.GetSafeDiskSize(defaultDiskSize),
+				thisVMType,
+				privateKeyBytes,
+				m.Deployment.SSHPort,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create new machine: %w", err)
+			}
+
+			if rawMachine.Parameters != nil {
+				if rawMachine.Parameters.Orchestrator {
+					newMachine.Orchestrator = true
+				}
+			} else {
+				l.Warnf("Parameters for machine in location %s is nil", rawMachine.Location)
+			}
+
+			newMachines[newMachine.Name] = newMachine
+			newMachines[newMachine.Name].SetResourceState(
+				string(providerType)+"VM",
+				models.ResourceStateNotStarted,
+			)
+		}
+
+		locations[rawMachine.Location] = true
+	}
+
+	if len(allBadMachineLocationCombos) > 0 {
+		return fmt.Errorf(
+			"invalid machine type and location combinations: %v",
+			allBadMachineLocationCombos,
 		)
 	}
 
-	// ...
-
-	// Set orchestrator if not explicitly set
 	orchestratorFound := false
-	for _, machine := range machines {
-		if machine.Orchestrator {
+	for name, machine := range newMachines {
+		if orchestratorIP != "" {
+			newMachines[name].OrchestratorIP = orchestratorIP
 			orchestratorFound = true
-			break
+		} else if machine.Orchestrator {
+			orchestratorFound = true
 		}
 	}
-	if !orchestratorFound && len(machines) > 0 {
-		// Set the first machine as orchestrator
-		for _, machine := range machines {
+	if !orchestratorFound && len(newMachines) > 0 {
+		for _, machine := range newMachines {
 			machine.Orchestrator = true
 			break
 		}
+		orchestratorFound = true
+	}
+	if !orchestratorFound {
+		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
 	}
 
-	deployment.Machines = machines
+	m.Deployment.Machines = newMachines
 	for k := range locations {
-		deployment.Locations = append(deployment.Locations, k)
+		m.Deployment.Locations = append(m.Deployment.Locations, k)
 	}
 
 	return nil
+}
+
+func createNewMachine(
+	providerType models.DeploymentType,
+	location string,
+	diskSizeGB int32,
+	vmSize string,
+	privateKeyBytes []byte,
+	sshPort int,
+) (*models.Machine, error) {
+	newMachine, err := models.NewMachine(providerType, location, vmSize, diskSizeGB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new machine: %w", err)
+	}
+
+	if err := newMachine.EnsureMachineServices(); err != nil {
+		logger.Get().Errorf("Failed to ensure machine services: %v", err)
+	}
+
+	for _, service := range models.RequiredServices {
+		newMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
+	}
+
+	newMachine.SSHUser = "azureuser"
+	newMachine.SSHPort = sshPort
+	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
+
+	return newMachine, nil
 }
