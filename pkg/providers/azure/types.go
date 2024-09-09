@@ -1,14 +1,11 @@
 package azure
 
-// RawMachine struct is now in machine_config.go
-
 import (
 	"context"
 	"net/http"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
