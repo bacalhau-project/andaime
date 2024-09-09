@@ -1,8 +1,6 @@
 package common
 
 import (
-	"fmt"
-
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -29,10 +27,11 @@ func ProcessMachinesConfig(deployment *models.Deployment, providerType models.De
 
 	// ...
 
+	machines := make(map[string]*models.Machine)
 	for _, rawMachine := range rawMachines {
-		// ...
-		newMachines[newMachine.Name].SetResourceState(
-			providerType.String()+"VM",
+		// ... (implementation details)
+		machines[machine.Name].SetResourceState(
+			string(providerType)+"VM",
 			models.ResourceStateNotStarted,
 		)
 	}
@@ -41,21 +40,21 @@ func ProcessMachinesConfig(deployment *models.Deployment, providerType models.De
 
 	// Set orchestrator if not explicitly set
 	orchestratorFound := false
-	for _, machine := range newMachines {
+	for _, machine := range machines {
 		if machine.Orchestrator {
 			orchestratorFound = true
 			break
 		}
 	}
-	if !orchestratorFound && len(newMachines) > 0 {
+	if !orchestratorFound && len(machines) > 0 {
 		// Set the first machine as orchestrator
-		for _, machine := range newMachines {
+		for _, machine := range machines {
 			machine.Orchestrator = true
 			break
 		}
 	}
 
-	deployment.Machines = newMachines
+	deployment.Machines = machines
 	for k := range locations {
 		deployment.Locations = append(deployment.Locations, k)
 	}

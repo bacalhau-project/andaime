@@ -1,19 +1,11 @@
 package gcp
 
 import (
-	"fmt"
-
-	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
-)
-
-import (
 	"context"
 	"fmt"
 
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 )
