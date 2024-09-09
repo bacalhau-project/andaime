@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -47,20 +45,11 @@ func setupTest(t *testing.T) *testSetup {
 	err = viper.ReadInConfig()
 	assert.NoError(t, err)
 
-	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
-	var provisioningState armresources.ProvisioningState
-	if err == nil {
-		provisioningState = armresources.ProvisioningStateSucceeded
-	} else {
-		provisioningState = armresources.ProvisioningStateFailed
-	}
-	props.Properties = &armresources.DeploymentPropertiesExtended{
-		ProvisioningState: &provisioningState,
-	}
-
 	mockPoller := new(MockPoller)
 	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(props, nil)
+		Return(armresources.DeploymentsClientCreateOrUpdateResponse{
+			DeploymentExtended: testdata.FakeDeployment(),
+		}, nil)
 	mockAzureClient := new(MockAzureClient)
 	mockAzureClient.On("DeployTemplate",
 		mock.Anything,
@@ -72,35 +61,13 @@ func setupTest(t *testing.T) *testSetup {
 	).
 		Return(mockPoller, nil)
 
-	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
-	vm := &armcompute.VirtualMachine{
-		Properties: &armcompute.VirtualMachineProperties{
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{{ID: &nicID}},
-			},
-		},
-	}
-
 	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(vm, nil)
+		Return(testdata.FakeVirtualMachine(), nil)
 
-	privateIPAddress := "10.0.0.4"
-	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
-	mockNIC := &armnetwork.Interface{
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{{
-				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-					PrivateIPAddress: &privateIPAddress,
-					PublicIPAddress:  &armnetwork.PublicIPAddress{ID: &publicIPAddressID},
-				},
-			}},
-		},
-	}
 	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockNIC, nil)
-	publicIPAddress := "20.30.40.50"
+		Return(testdata.FakeNetworkInterface(), nil)
 	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(publicIPAddress, nil)
+		Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
 
 	mockSSHConfig := new(sshutils.MockSSHConfig)
 
@@ -176,35 +143,14 @@ func setupMockDeployment(mockAzureClient *MockAzureClient) *MockPoller {
 }
 
 func setupMockVMAndNetwork(mockAzureClient *MockAzureClient) {
-	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
-	mockVM := &armcompute.VirtualMachine{
-		Properties: &armcompute.VirtualMachineProperties{
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{{ID: &nicID}},
-			},
-		},
-	}
 	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockVM, nil)
+		Return(testdata.FakeVirtualMachine(), nil)
 
-	privateIPAddress := "10.0.0.4"
-	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
-	mockNIC := &armnetwork.Interface{
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{{
-				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-					PrivateIPAddress: &privateIPAddress,
-					PublicIPAddress:  &armnetwork.PublicIPAddress{ID: &publicIPAddressID},
-				},
-			}},
-		},
-	}
 	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockNIC, nil)
+		Return(testdata.FakeNetworkInterface(), nil)
 
-	publicIPAddress := "20.30.40.50"
 	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(publicIPAddress, nil)
+		Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
 }
 
 func TestProvisionResourcesSuccess(t *testing.T) {
