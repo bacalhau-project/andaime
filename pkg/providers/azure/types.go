@@ -1,5 +1,7 @@
 package azure
 
+// RawMachine struct is now in machine_config.go
+
 import (
 	"context"
 	"net/http"
