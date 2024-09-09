@@ -18,6 +18,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
 func ProcessMachinesConfig(deployment *models.Deployment) error {
