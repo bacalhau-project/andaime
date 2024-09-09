@@ -27,6 +27,11 @@ func TestRandomServiceUpdates(t *testing.T) {
 	testConfig.Set("general.ssh_private_key_path", "/path/to/private/key")
 	testConfig.Set("general.ssh_user", "testuser")
 	testConfig.Set("general.ssh_port", 22)
+	testConfig.Set("general.project_prefix", "test-project")
+
+	// Set the global Viper instance to our test config
+	viper.Reset()
+	viper.MergeConfigMap(testConfig.AllSettings())
 
 	// Create a local display model for this test
 	localModel := &display.DisplayModel{}

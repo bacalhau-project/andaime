@@ -33,6 +33,7 @@ func setupTestDisplayModel() *display.DisplayModel {
 	viper.Set("general.ssh_private_key_path", "/path/to/private/key")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
+	viper.Set("general.project_prefix", "test-project")
 
 	return &display.DisplayModel{
 		Deployment: &models.Deployment{
