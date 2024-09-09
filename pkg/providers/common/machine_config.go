@@ -61,7 +61,12 @@ func ProcessMachinesConfig(
 		return fmt.Errorf(errorMessage)
 	}
 
-	privateKeyBytes, err := sshutils.ReadPrivateKey(m.Deployment.SSHPrivateKeyPath)
+	privateKeyPath := viper.GetString("general.ssh_private_key_path")
+	if privateKeyPath == "" {
+		return fmt.Errorf("general.ssh_private_key_path is not set")
+	}
+
+	privateKeyBytes, err := sshutils.ReadPrivateKey(privateKeyPath)
 	if err != nil {
 		errorMessage := fmt.Sprintf("failed to read private key: %v", err)
 		l.Error(errorMessage)
