@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/bacalhau-project/andaime/cmd"
 	"github.com/bacalhau-project/andaime/internal/testutil"
@@ -143,8 +142,8 @@ func TestPrepareDeployment(t *testing.T) {
 			ctx := context.Background()
 
 			deployment, err := common.PrepareDeployment(ctx, tt.provider)
-			require.NoError(t, err)
-			require.NotNil(t, deployment)
+			assert.NoError(t, err)
+			assert.NotNil(t, deployment)
 
 			assert.NotEmpty(t, deployment.Name)
 			assert.NotEmpty(t, deployment.Machines)
