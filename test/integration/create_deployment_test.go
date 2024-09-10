@@ -27,7 +27,11 @@ func setupTestEnvironment(t *testing.T) (func(), string, string) {
 	return cleanup, testSSHPublicKeyPath, testSSHPrivateKeyPath
 }
 
-func setupViper(t *testing.T, provider models.DeploymentType, testSSHPublicKeyPath, testSSHPrivateKeyPath string) {
+func setupViper(
+	t *testing.T,
+	provider models.DeploymentType,
+	testSSHPublicKeyPath, testSSHPrivateKeyPath string,
+) {
 	viper.Reset()
 	viper.Set("general.project_prefix", "test-1292")
 	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
@@ -147,8 +151,6 @@ func TestPrepareDeployment(t *testing.T) {
 
 			assert.NotEmpty(t, deployment.Name)
 			assert.NotEmpty(t, deployment.Machines)
-
-			// TODO: Add more specific assertions based on the expected deployment configuration
 		})
 	}
 }
