@@ -148,8 +148,8 @@ type GCPProviderer interface {
 	SetConfig(config *viper.Viper)
 	GetSSHClient() sshutils.SSHClienter
 	SetSSHClient(client sshutils.SSHClienter)
-	GetClusterDeployer() *common.ClusterDeployer
-	SetClusterDeployer(deployer *common.ClusterDeployer)
+	GetClusterDeployer() common.ClusterDeployerer
+	SetClusterDeployer(deployer common.ClusterDeployerer)
 
 	EnsureProject(
 		ctx context.Context,
@@ -166,7 +166,10 @@ type GCPProviderer interface {
 		ctx context.Context,
 		projectID string,
 	) ([]*assetpb.Asset, error)
-	SetBillingAccount(ctx context.Context) error
+	SetBillingAccount(
+		ctx context.Context,
+		billingAccountID string,
+	) error
 
 	CreateResources(ctx context.Context) error
 	FinalizeDeployment(ctx context.Context) error

@@ -18,15 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type ClusterDeployerInterface interface {
-	GetConfig() *viper.Viper
-	SetConfig(config *viper.Viper)
-	GetSSHClient() sshutils.SSHClienter
-	SetSSHClient(client sshutils.SSHClienter)
-
-	CreateResources(ctx context.Context) error
-
-	ProvisionSSH(ctx context.Context) error
+type ClusterDeployerer interface {
 	WaitForAllMachinesToReachState(
 		ctx context.Context,
 		resourceType string,
@@ -35,7 +27,6 @@ type ClusterDeployerInterface interface {
 	ProvisionPackagesOnMachine(ctx context.Context, machineName string) error
 
 	ProvisionBacalhau(ctx context.Context) error
-
 	ProvisionOrchestrator(ctx context.Context, machineName string) error
 	ProvisionWorker(ctx context.Context, machineName string) error
 }
@@ -72,7 +63,7 @@ func (cd *ClusterDeployer) ProvisionBacalhau(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 
 	// Provision Bacalhau orchestrator
-	if err := cd.DeployOrchestrator(ctx); err != nil {
+	if err := cd.ProvisionOrchestrator(ctx, "orch"); err != nil {
 		l.Errorf("Failed to provision Bacalhau orchestrator: %v", err)
 		return err
 	}
@@ -102,7 +93,7 @@ func (cd *ClusterDeployer) ProvisionBacalhau(ctx context.Context) error {
 			)
 			defer m.DeregisterGoroutine(goRoutineID)
 
-			if err := cd.DeployWorker(ctx, internalMachine.Name); err != nil {
+			if err := cd.ProvisionWorker(ctx, internalMachine.Name); err != nil {
 				return fmt.Errorf(
 					"failed to provision Bacalhau worker %s: %v",
 					internalMachine.Name,
@@ -120,14 +111,14 @@ func (cd *ClusterDeployer) ProvisionBacalhau(ctx context.Context) error {
 	return nil
 }
 
-func (cd *ClusterDeployer) DeployOrchestrator(ctx context.Context) error {
+func (cd *ClusterDeployer) ProvisionOrchestrator(ctx context.Context, machineName string) error {
 	m := display.GetGlobalModelFunc()
 	orchestratorMachine, err := cd.FindOrchestratorMachine()
 	if err != nil {
 		return err
 	}
 
-	err = cd.DeployBacalhauNode(ctx, orchestratorMachine.Name, "requester")
+	err = cd.provisionBacalhauNode(ctx, orchestratorMachine.Name, "requester")
 	if err != nil {
 		return err
 	}
@@ -159,7 +150,7 @@ func (cd *ClusterDeployer) DeployOrchestrator(ctx context.Context) error {
 	return nil
 }
 
-func (cd *ClusterDeployer) DeployWorker(
+func (cd *ClusterDeployer) ProvisionWorker(
 	ctx context.Context,
 	machineName string,
 ) error {
@@ -177,7 +168,7 @@ func (cd *ClusterDeployer) DeployWorker(
 		)
 	}
 
-	return cd.DeployBacalhauNode(ctx, machineName, "compute")
+	return cd.provisionBacalhauNode(ctx, machineName, "compute")
 }
 
 func (cd *ClusterDeployer) FindOrchestratorMachine() (*models.Machine, error) {
@@ -203,7 +194,7 @@ func (cd *ClusterDeployer) FindOrchestratorMachine() (*models.Machine, error) {
 	return orchestratorMachine, nil
 }
 
-func (cd *ClusterDeployer) DeployBacalhauNode(
+func (cd *ClusterDeployer) provisionBacalhauNode(
 	ctx context.Context,
 	machineName string,
 	nodeType string,

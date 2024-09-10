@@ -74,7 +74,7 @@ type GCPClienter interface {
 		ctx context.Context,
 		project, zone, operation string,
 	) error
-	SetBillingAccount(ctx context.Context, projectID, billingAccountID string) error
+	SetBillingAccount(ctx context.Context, billingAccountID string) error
 	ListBillingAccounts(ctx context.Context) ([]string, error)
 	CreateServiceAccount(
 		ctx context.Context,
@@ -450,7 +450,7 @@ func (c *LiveGCPClient) EnsureProject(
 	)
 	// Set the billing account for the project
 	billingAccountID := viper.GetString("gcp.billing_account_id")
-	if err := c.SetBillingAccount(ctx, project.ProjectId, billingAccountID); err != nil {
+	if err := c.SetBillingAccount(ctx, billingAccountID); err != nil {
 		return "", fmt.Errorf("failed to set billing account: %v", err)
 	}
 
@@ -1185,9 +1185,15 @@ func (c *LiveGCPClient) waitForOperation(
 
 func (c *LiveGCPClient) SetBillingAccount(
 	ctx context.Context,
-	projectID, billingAccountID string,
+	billingAccountID string,
 ) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	projectID := m.Deployment.ProjectID
 	l.Infof("Setting billing account %s for project %s", billingAccountID, projectID)
 
 	billingAccountName := getBillingAccountName(billingAccountID)

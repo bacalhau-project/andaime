@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
@@ -23,7 +24,7 @@ import (
 
 type testSetup struct {
 	provider        *AzureProvider
-	clusterDeployer *common.ClusterDeployer
+	clusterDeployer common.ClusterDeployerer
 	mockAzureClient *MockAzureClient
 	mockPoller      *MockPoller
 	mockSSHConfig   *sshutils.MockSSHConfig
@@ -49,10 +50,9 @@ func setupTest(t *testing.T) *testSetup {
 	viper.Set("azure.subscription_id", "test-subscription-id")
 	viper.Set("azure.resource_group_name", "test-resource-group")
 	viper.Set("azure.resource_group_location", "eastus")
-	viper.Set("general.ssh_public_key_path", "/path/to/public/key")
-	viper.Set("general.ssh_private_key_path", "/path/to/private/key")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
+	viper.Set("azure.default_disk_size_gb", 30)
 
 	mockPoller := new(MockPoller)
 	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
@@ -80,15 +80,20 @@ func setupTest(t *testing.T) *testSetup {
 
 	mockSSHConfig := new(sshutils.MockSSHConfig)
 
+	mockClusterDeployer := new(common.MockClusterDeployer)
+	mockClusterDeployer.On("ProvisionOrchestrator", mock.Anything).Return(nil)
+	mockClusterDeployer.On("ProvisionWorker", mock.Anything, mock.Anything).Return(nil)
+	mockClusterDeployer.On("ProvisionPackagesOnMachine", mock.Anything, mock.Anything).
+		Return(nil)
+
 	provider := &AzureProvider{
 		Client: mockAzureClient,
 	}
 
 	deployment, err := models.NewDeployment()
 	assert.NoError(t, err)
+	m := display.NewDisplayModel(deployment)
 
-	display.SetGlobalModel(display.InitialModel(deployment))
-	m := display.GetGlobalModelFunc()
 	m.Deployment.Machines = map[string]*models.Machine{
 		"orchestrator": {
 			Name:         "orchestrator",
@@ -238,20 +243,21 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 
 	m := display.GetGlobalModelFunc()
 	err := setup.provider.CreateResources(ctx)
+	setup.provider.SetClusterDeployer(setup.clusterDeployer)
 
 	for _, machine := range m.Deployment.Machines {
 		err := setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
 		assert.NoError(t, err)
 	}
 
-	err = setup.provider.GetClusterDeployer().DeployOrchestrator(ctx)
+	err = setup.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	assert.NoError(t, err)
 
 	for _, machine := range m.Deployment.Machines {
 		if machine.Orchestrator {
 			continue
 		}
-		err := setup.provider.GetClusterDeployer().DeployWorker(ctx, machine.Name)
+		err := setup.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.Name)
 		assert.NoError(t, err)
 	}
 
@@ -327,6 +333,7 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	m := display.GetGlobalModelFunc()
 
 	err := setup.provider.CreateResources(ctx)
+	setup.provider.SetClusterDeployer(setup.clusterDeployer)
 	assert.NoError(t, err)
 
 	var eg errgroup.Group
@@ -354,6 +361,16 @@ func TestDockerProvisioningFailure(t *testing.T) {
 }
 
 func TestOrchestratorProvisioningFailure(t *testing.T) {
+	testSSHPublicKeyPath,
+		cleanupPublicKey,
+		testSSHPrivateKeyPath,
+		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	defer cleanupPublicKey()
+	defer cleanupPrivateKey()
+
+	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
+	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
+
 	setup := setupTest(t)
 	defer setup.cleanup()
 
@@ -365,33 +382,34 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 
 	// Mock SSH provisioning failure
 	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Times(3)
+		Return(nil).Times(9)
 	setup.mockSSHConfig.On("PushFile",
 		mock.Anything,
 		"/tmp/install-docker.sh",
 		mock.Anything,
 		mock.Anything).
-		Return(nil).Times(3)
+		Return(nil).Times(9)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
-		Return("", nil).Times(3)
+		Return("", nil).Times(9)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker run hello-world").
-		Return("", nil).Times(3)
+		Return("", nil).Times(9)
 	setup.mockSSHConfig.On("PushFile",
 		mock.Anything,
 		"/tmp/install-core-packages.sh",
 		mock.Anything,
 		mock.Anything).
-		Return(nil).Times(3)
+		Return(nil).Times(9)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh").
-		Return("", nil).Times(3)
+		Return("", nil).Times(9)
 	setup.mockSSHConfig.On("PushFile",
 		mock.Anything,
 		"/tmp/get-node-config-metadata.sh",
 		mock.Anything,
 		mock.Anything).
-		Return(nil)
+		Return(nil).Times(1)
 	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh").
-		Return("", nil)
+		Return("", nil).
+		Times(1)
 	setup.mockSSHConfig.On("PushFile",
 		mock.Anything,
 		"/tmp/install-bacalhau.sh",
@@ -425,8 +443,21 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 
 	m := display.GetGlobalModelFunc()
 
-	err := setup.provider.CreateResources(ctx)
+	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeAzure)
 	assert.NoError(t, err)
+	m.Deployment = deployment
+
+	validateMachineType := func(ctx context.Context, location string, machineType string) (bool, error) {
+		return true, nil
+	}
+
+	err = common.ProcessMachinesConfig(models.DeploymentTypeAzure, validateMachineType)
+	assert.NoError(t, err)
+
+	err = setup.provider.CreateResources(ctx)
+	assert.NoError(t, err)
+
+	setup.provider.SetClusterDeployer(setup.clusterDeployer)
 
 	var eg errgroup.Group
 	for _, machine := range m.Deployment.Machines {
@@ -438,12 +469,12 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = setup.provider.GetClusterDeployer().DeployOrchestrator(ctx)
+	err = setup.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	assert.Error(t, err)
 
 	// Check that the VM status was updated correctly
 	for _, machine := range m.Deployment.Machines {
-		if machine.Name == "orchestrator" {
+		if machine.Orchestrator {
 			assert.Equal(
 				t,
 				models.ServiceStateFailed,

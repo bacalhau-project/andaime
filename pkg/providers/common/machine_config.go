@@ -3,27 +3,18 @@ package common
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
+	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
-
-type RawMachine struct {
-	Location   string `yaml:"location"`
-	Parameters *struct {
-		Count           int    `yaml:"count,omitempty"`
-		Type            string `yaml:"type,omitempty"`
-		Orchestrator    bool   `yaml:"orchestrator,omitempty"`
-		DiskSizeGB      int    `yaml:"disk_size_gb,omitempty"`
-		DiskImageURL    string `yaml:"disk_image_url,omitempty"`
-		DiskImageFamily string `yaml:"disk_image_family,omitempty"`
-	} `yaml:"parameters"`
-}
 
 //nolint:funlen,gocyclo
 func ProcessMachinesConfig(
@@ -36,27 +27,40 @@ func ProcessMachinesConfig(
 
 	lowerProviderType := strings.ToLower(string(providerType))
 
-	rawMachines := []RawMachine{}
+	rawMachines := []general.RawMachine{}
 	if err := viper.UnmarshalKey(lowerProviderType+".machines", &rawMachines); err != nil {
 		return fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
-	defaultCount := viper.GetInt(string(providerType) + ".default_count_per_zone")
+	defaultCount := viper.GetInt(lowerProviderType + ".default_count_per_zone")
 	if defaultCount == 0 {
 		errorMessage := fmt.Sprintf("%s.default_count_per_zone is empty", lowerProviderType)
 		l.Error(errorMessage)
 		return fmt.Errorf(errorMessage)
 	}
-	defaultType := viper.GetString(string(providerType) + ".default_machine_type")
+	defaultType := viper.GetString(lowerProviderType + ".default_machine_type")
 	if defaultType == "" {
 		errorMessage := fmt.Sprintf("%s.default_machine_type is empty", lowerProviderType)
 		l.Error(errorMessage)
 		return fmt.Errorf(errorMessage)
 	}
 
-	defaultDiskSize := viper.GetInt(string(providerType) + ".disk_size_gb")
+	defaultDiskImageFamily := viper.GetString(lowerProviderType + ".default_disk_image_family")
+	defaultDiskImageURL := viper.GetString(lowerProviderType + ".default_disk_image_url")
+	if ((defaultDiskImageURL == "" && defaultDiskImageFamily == "") ||
+		(defaultDiskImageURL != "" && defaultDiskImageFamily != "")) &&
+		providerType == models.DeploymentTypeGCP {
+		l.Warnf(
+			"Neither %s.default_disk_image_url or %s.default_disk_image_family is set. Using Ubuntu 20.04 LTS",
+			lowerProviderType,
+			lowerProviderType,
+		)
+
+	}
+
+	defaultDiskSize := viper.GetInt(string(providerType) + ".default_disk_size_gb")
 	if defaultDiskSize == 0 {
-		errorMessage := fmt.Sprintf("%s.disk_size_gb is empty", lowerProviderType)
+		errorMessage := fmt.Sprintf("%s.default_disk_size_gb is empty", lowerProviderType)
 		l.Error(errorMessage)
 		return fmt.Errorf(errorMessage)
 	}
@@ -73,16 +77,24 @@ func ProcessMachinesConfig(
 		return fmt.Errorf(errorMessage)
 	}
 
+	sshPort, err := strconv.Atoi(viper.GetString("general.ssh_port"))
+	if err != nil {
+		l.Warnf("failed to parse ssh_port, using default 22")
+		sshPort = 22
+	}
+	m.Deployment.SSHPort = sshPort
+
 	orchestratorIP := m.Deployment.OrchestratorIP
 	var orchestratorLocations []string
 	for _, rawMachine := range rawMachines {
-		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
-			if rawMachine.Parameters.Count == 0 {
-				rawMachine.Parameters.Count = defaultCount
-			}
-			for i := 0; i < rawMachine.Parameters.Count; i++ {
-				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
-			}
+		if !rawMachine.Parameters.Orchestrator {
+			continue
+		}
+		if rawMachine.Parameters.Count == 0 {
+			rawMachine.Parameters.Count = defaultCount
+		}
+		for i := 0; i < rawMachine.Parameters.Count; i++ {
+			orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
 		}
 	}
 
@@ -97,9 +109,9 @@ func ProcessMachinesConfig(
 	var allBadMachineLocationCombos []badMachineLocationCombo
 	newMachines := make(map[string]*models.Machine)
 	for _, rawMachine := range rawMachines {
-		count := utils.GetCountOfMachines(rawMachine.Parameters.Count, defaultCount)
+		count := utils.GetCountOfMachines(rawMachine.Parameters, defaultCount)
 		thisVMType := defaultType
-		if rawMachine.Parameters != nil && rawMachine.Parameters.Type != "" {
+		if rawMachine.Parameters.Type != "" {
 			thisVMType = rawMachine.Parameters.Type
 		}
 
@@ -118,6 +130,16 @@ func ProcessMachinesConfig(
 		}
 		fmt.Println("✅")
 
+		diskImageFamily := defaultDiskImageFamily
+		diskImageURL := defaultDiskImageURL
+		if rawMachine.Parameters != (general.RawMachineParams{}) {
+			if rawMachine.Parameters.DiskImageFamily != "" {
+				diskImageFamily = rawMachine.Parameters.DiskImageFamily
+			}
+			if rawMachine.Parameters.DiskImageURL != "" {
+				diskImageURL = rawMachine.Parameters.DiskImageURL
+			}
+		}
 		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
 				providerType,
@@ -125,20 +147,19 @@ func ProcessMachinesConfig(
 				utils.GetSafeDiskSize(defaultDiskSize),
 				thisVMType,
 				privateKeyBytes,
-				m.Deployment.SSHPort,
+				sshPort,
+				diskImageFamily,
+				diskImageURL,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create new machine: %w", err)
 			}
 
-			if rawMachine.Parameters != nil {
+			if rawMachine.Parameters != (general.RawMachineParams{}) {
 				if rawMachine.Parameters.Orchestrator {
 					newMachine.Orchestrator = true
 				}
-			} else {
-				l.Warnf("Parameters for machine in location %s is nil", rawMachine.Location)
 			}
-
 			newMachines[newMachine.Name] = newMachine
 			newMachines[newMachine.Name].SetResourceState(
 				string(providerType)+"VM",
@@ -191,7 +212,10 @@ func createNewMachine(
 	vmSize string,
 	privateKeyBytes []byte,
 	sshPort int,
+	diskImageFamily string,
+	diskImageURL string,
 ) (*models.Machine, error) {
+	l := logger.Get()
 	newMachine, err := models.NewMachine(providerType, location, vmSize, diskSizeGB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new machine: %w", err)
@@ -208,6 +232,34 @@ func createNewMachine(
 	newMachine.SSHUser = "azureuser"
 	newMachine.SSHPort = sshPort
 	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
+
+	if providerType == models.DeploymentTypeGCP {
+		if diskImageFamily == "" && diskImageURL == "" {
+			l.Warnf("Neither disk image family or URL is set, using Ubuntu 20.04 LTS")
+			diskImageFamily = "ubuntu-2004-lts"
+			diskImageURL = "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2004-lts"
+		} else {
+			returnedDiskImageURL, err := internal_gcp.IsValidGCPDiskImageFamily(
+				location,
+				diskImageFamily,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to validate disk image family: %w", err)
+			}
+			newMachine.DiskImageFamily = diskImageFamily
+			if diskImageURL != returnedDiskImageURL && diskImageURL != "" {
+				l.Warnf(
+					"disk image URL (%s) does not match, using provided URL: %s",
+					returnedDiskImageURL,
+					diskImageURL,
+				)
+			} else if diskImageURL == "" {
+				diskImageURL = returnedDiskImageURL
+			}
+		}
+		newMachine.DiskImageURL = diskImageURL
+		newMachine.DiskImageFamily = diskImageFamily
+	}
 
 	return newMachine, nil
 }

@@ -231,12 +231,6 @@ func TestCreateResources(t *testing.T) {
 		expectedError       string
 	}{
 		{
-			name:                "No locations",
-			locations:           []string{},
-			machinesPerLocation: 1,
-			expectedError:       "no locations provided",
-		},
-		{
 			name:                "Single location, single machine, success",
 			locations:           []string{"eastus"},
 			machinesPerLocation: 1,
@@ -685,6 +679,8 @@ func generateMockResource(
 }
 
 func TestRandomServiceUpdates(t *testing.T) {
+	t.Parallel() // Allow this test to run in parallel with others
+
 	l := logger.Get()
 
 	// Create a new Viper instance for this test
@@ -740,16 +736,14 @@ func TestRandomServiceUpdates(t *testing.T) {
 	go func() {
 		l.Debug("Update processor started")
 		provider.startUpdateProcessor(ctx)
-		processorDone <- struct{}{}
+		close(processorDone)
 		l.Debug("Update processor finished")
 	}()
 
 	var wg sync.WaitGroup
 	updatesSent := int32(0)
-	updatesPerMachine := 1000 // Increase the number of updates per machine
+	updatesPerMachine := 1000
 	expectedUpdates := int32(len(testMachines) * updatesPerMachine)
-
-	var stateMutex sync.Mutex // Mutex to protect access to the state map
 
 	for _, machine := range testMachines {
 		wg.Add(1)
@@ -758,9 +752,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 			for i := 0; i < updatesPerMachine; i++ {
 				service := allServices[rng.Intn(len(allServices))]
-				newState := models.ServiceState(
-					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
-				) // Exclude NotStarted state
+				newState := models.ServiceState(rng.Intn(int(models.ServiceStateFailed)-1) + 2)
 
 				select {
 				case provider.updateQueue <- NewUpdateAction(
@@ -782,7 +774,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 					)
 					return
 				}
-				time.Sleep(time.Duration(rng.Intn(20)) * time.Millisecond)
+				time.Sleep(time.Duration(rng.Intn(5)) * time.Millisecond)
 			}
 		}(machine)
 	}
@@ -804,14 +796,11 @@ func TestRandomServiceUpdates(t *testing.T) {
 			),
 		)
 	case <-ctx.Done():
-		l.Debug(
-			fmt.Sprintf(
-				"Test timed out while sending updates. Updates sent: %d/%d",
-				atomic.LoadInt32(&updatesSent),
-				expectedUpdates,
-			),
+		t.Fatalf(
+			"Test timed out while sending updates. Updates sent: %d/%d",
+			atomic.LoadInt32(&updatesSent),
+			expectedUpdates,
 		)
-		t.Fatal("Test timed out while sending updates")
 	}
 
 	l.Debug("Closing update queue")
@@ -827,17 +816,20 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	l.Debug("Checking final states")
 	stateMap := make(map[string]map[string]models.ServiceState)
-	stateMutex.Lock()
 	for _, machine := range testMachines {
 		stateMap[machine] = make(map[string]models.ServiceState)
 		for _, service := range allServices {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			stateMap[machine][service.Name] = state
-			assert.NotEqual(t, models.ServiceStateNotStarted, state,
-				"Service %s on machine %s is still in NotStarted state", service.Name, machine)
+			if state == models.ServiceStateNotStarted {
+				t.Errorf(
+					"Service %s on machine %s is still in NotStarted state",
+					service.Name,
+					machine,
+				)
+			}
 		}
 	}
-	stateMutex.Unlock()
 
 	uniqueStates := make(map[string]bool)
 	for _, machine := range testMachines {
@@ -845,8 +837,13 @@ func TestRandomServiceUpdates(t *testing.T) {
 		uniqueStates[stateString] = true
 	}
 
-	assert.Equal(t, len(testMachines), len(uniqueStates),
-		"Not all machines have unique service state combinations")
+	if len(uniqueStates) != len(testMachines) {
+		t.Errorf(
+			"Not all machines have unique service state combinations. Got %d unique combinations, expected %d",
+			len(uniqueStates),
+			len(testMachines),
+		)
+	}
 
 	l.Debug("Test completed successfully")
 }

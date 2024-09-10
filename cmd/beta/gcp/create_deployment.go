@@ -3,14 +3,15 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/common"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -49,17 +50,21 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	uniqueID := time.Now().Format("0601021504")
 	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
 
-	p, err := gcp.NewGCPProvider(ctx)
+	p, err := gcp_provider.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
-	deployment, err := common.PrepareDeployment(ctx, "gcp")
+	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
-	m := display.InitialModel(deployment)
+	m := display.NewDisplayModel(deployment)
+	err = gcp_provider.ProcessMachinesConfig()
+	if err != nil {
+		return fmt.Errorf("failed to process machines config: %w", err)
+	}
 
 	// Check permissions before starting deployment
 	// if err := p.GetGCPClient().CheckPermissions(ctx); err != nil {
@@ -116,9 +121,11 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Clear the screen and print final table
-	fmt.Print("\033[H\033[2J")
-	fmt.Println(m.RenderFinalTable())
+	if os.Getenv("ANDAIME_TEST_MODE") != "true" { //nolint:goconst
+		// Clear the screen and print final table
+		fmt.Print("\033[H\033[2J")
+		fmt.Println(m.RenderFinalTable())
+	}
 
 	return nil
 }

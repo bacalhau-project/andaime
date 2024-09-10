@@ -363,9 +363,9 @@ func (m *MockGCPClient) ProvisionPackagesOnMachines(
 
 func (m *MockGCPClient) SetBillingAccount(
 	ctx context.Context,
-	projectID, billingAccountID string,
+	billingAccountID string,
 ) error {
-	args := m.Called(ctx, projectID, billingAccountID)
+	args := m.Called(ctx, billingAccountID)
 	return args.Error(0)
 }
 

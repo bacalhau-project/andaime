@@ -55,6 +55,7 @@ createdeployment
 Deallocation
 Debugf
 depguard
+Deployerer
 Dialerer
 diskimage
 diskimagefamily

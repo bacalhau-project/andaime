@@ -124,12 +124,16 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
-	if len(m.Deployment.Locations) >= 0 {
-		m.Deployment.Locations = utils.RemoveDuplicates(m.Deployment.Locations)
+	if len(m.Deployment.Machines) == 0 {
+		return fmt.Errorf("no machines provided")
 	}
 
 	if len(m.Deployment.Locations) == 0 {
 		return fmt.Errorf("no locations provided")
+	}
+
+	if len(m.Deployment.Locations) >= 0 {
+		m.Deployment.Locations = utils.RemoveDuplicates(m.Deployment.Locations)
 	}
 
 	// Group machines by location

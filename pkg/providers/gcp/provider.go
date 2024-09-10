@@ -113,7 +113,7 @@ type GCPProvider struct {
 
 var NewGCPProviderFunc = NewGCPProvider
 
-func NewGCPProvider(ctx context.Context) (*GCPProvider, error) {
+func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
 	config := viper.GetViper()
 	if !config.IsSet("gcp") {
 		return nil, fmt.Errorf("gcp configuration is required")
@@ -320,6 +320,10 @@ func (p *GCPProvider) ListProjects(
 }
 
 func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
+	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
+		// Skip display updates in test mode
+		return
+	}
 	l := logger.Get()
 	if err := p.Client.StartResourcePolling(ctx); err != nil {
 		l.Errorf("Failed to start resource polling: %v", err)
@@ -549,7 +553,10 @@ func (p *GCPProvider) ListBillingAccounts(ctx context.Context) ([]string, error)
 	return p.Client.ListBillingAccounts(ctx)
 }
 
-func (p *GCPProvider) SetBillingAccount(ctx context.Context) error {
+func (p *GCPProvider) SetBillingAccount(
+	ctx context.Context,
+	billingAccountID string,
+) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	l.Infof(
@@ -560,7 +567,6 @@ func (p *GCPProvider) SetBillingAccount(ctx context.Context) error {
 
 	return p.Client.SetBillingAccount(
 		ctx,
-		m.Deployment.ProjectID,
 		m.Deployment.GCP.BillingAccountID,
 	)
 }
@@ -641,10 +647,10 @@ func (p *GCPProvider) EnsureFirewallRules(
 // 	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
 // }
 
-func (p *GCPProvider) GetClusterDeployer() *common.ClusterDeployer {
+func (p *GCPProvider) GetClusterDeployer() common.ClusterDeployerer {
 	return p.ClusterDeployer
 }
 
-func (p *GCPProvider) SetClusterDeployer(deployer *common.ClusterDeployer) {
-	p.ClusterDeployer = deployer
+func (p *GCPProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
+	p.ClusterDeployer = deployer.(*common.ClusterDeployer)
 }

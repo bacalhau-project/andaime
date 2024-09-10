@@ -13,16 +13,17 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
-type Deployment struct {
+type ConfigDeployment struct {
 	Name         string
-	Type         string // "Azure" or "AWS"
-	ID           string // Resource Group for Azure, VPC ID for AWS
-	FullViperKey string // The full key in the Viper config file
+	Type         models.DeploymentType // "Azure" or "AWS"
+	ID           string                // Resource Group for Azure, VPC ID for AWS
+	FullViperKey string                // The full key in the Viper config file
 }
 
 var DestroyCmd = &cobra.Command{
@@ -73,7 +74,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	l.Debug("Config file read successfully")
 
 	// Extract deployments from config
-	var deployments []Deployment
+	var deployments []ConfigDeployment
 	azureDeployments := viper.Get("deployments.azure")
 	if azureMap, ok := azureDeployments.(map[string]interface{}); ok {
 		for name, details := range azureMap {
@@ -88,9 +89,9 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 				l.Warnf("Resource group name not found for Azure deployment %s, skipping", name)
 				continue
 			}
-			dep := Deployment{
+			dep := ConfigDeployment{
 				Name: name,
-				Type: "Azure",
+				Type: models.DeploymentTypeAzure,
 				ID:   resourceGroupName,
 			}
 			deployments = append(deployments, dep)
@@ -112,7 +113,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 				l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
 				continue
 			}
-			dep := Deployment{
+			dep := ConfigDeployment{
 				Name: name,
 				Type: "AWS",
 				ID:   vpcID,
@@ -169,7 +170,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 				}
 
 				if !found {
-					deployments = append(deployments, Deployment{
+					deployments = append(deployments, ConfigDeployment{
 						Name: rgName,
 						Type: "Azure",
 						ID:   rgName,
@@ -207,7 +208,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		l.Infof("%d. %s (%s) - %s", i+1, dep.Name, dep.Type, dep.ID)
 	}
 
-	var selected Deployment
+	var selected ConfigDeployment
 
 	// If the user has set a rgname to destroy, use that
 	if name != "" {
@@ -244,14 +245,14 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	return destroyDeployment(selected)
 }
 
-func destroyDeployment(dep Deployment) error {
+func destroyDeployment(dep ConfigDeployment) error {
 	l := logger.Get()
 	l.Infof("Starting destruction of %s (%s) - %s", dep.Name, dep.Type, dep.ID)
 
 	ctx := context.Background()
 	started := false
 
-	if dep.Type == "Azure" {
+	if dep.Type == models.DeploymentTypeAzure {
 		azureProvider, err := azure.NewAzureProviderFunc()
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {

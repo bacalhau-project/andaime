@@ -56,18 +56,17 @@ type Disk struct {
 	State  armcompute.DiskState
 }
 
-// Add this new type
 type DeploymentType string
 
 const (
 	DeploymentTypeAzure DeploymentType = "Azure"
 	DeploymentTypeGCP   DeploymentType = "GCP"
-	// Add other cloud providers as needed
 )
 
 type Deployment struct {
 	mu                     sync.RWMutex
 	Name                   string
+	DeploymentType         DeploymentType
 	Azure                  *AzureConfig
 	GCP                    *GCPConfig
 	Machines               map[string]*Machine

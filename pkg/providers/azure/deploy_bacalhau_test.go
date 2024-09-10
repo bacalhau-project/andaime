@@ -234,6 +234,8 @@ func TestVerifyBacalhauDeployment(t *testing.T) {
 }
 
 func TestDeployBacalhauNode(t *testing.T) {
+	viper.Set("general.project_prefix", "test-project")
+
 	ctx := context.Background()
 	tests := []struct {
 		name          string
@@ -301,11 +303,18 @@ func TestDeployBacalhauNode(t *testing.T) {
 
 			tt.setupMock(mockSSH)
 
-			err := deployer.DeployBacalhauNode(
-				ctx,
-				"test",
-				tt.nodeType,
-			)
+			var err error
+			if tt.nodeType == "requester" {
+				err = deployer.ProvisionOrchestrator(
+					ctx,
+					"test",
+				)
+			} else {
+				err = deployer.ProvisionWorker(
+					ctx,
+					"test",
+				)
+			}
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -411,7 +420,7 @@ func TestDeployOrchestrator(t *testing.T) {
 			renderedScripts := make(map[string][]byte)
 			tt.setupMock(mockSSH, renderedScripts)
 
-			err := deployer.DeployOrchestrator(ctx)
+			var err = deployer.ProvisionOrchestrator(ctx, "orch")
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -501,10 +510,10 @@ func TestDeployWorkers(t *testing.T) {
 			var err error
 			for _, machine := range tt.machines {
 				if !machine.Orchestrator {
-					err = deployer.DeployWorker(ctx, machine.Name)
+					err = deployer.ProvisionWorker(ctx, machine.Name)
 					assert.NoError(t, err)
 				} else {
-					err = deployer.DeployOrchestrator(ctx)
+					err = deployer.ProvisionOrchestrator(ctx, machine.Name)
 					assert.NoError(t, err)
 				}
 				if tt.expectedError != "" {

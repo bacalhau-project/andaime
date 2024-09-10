@@ -3,15 +3,15 @@ package azure
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/common"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -56,12 +56,15 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	viper.Set("general.unique_id", uniqueID)
-	deployment, err := common.PrepareDeployment(ctx, "azure")
-	m := display.InitialModel(deployment)
+	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeAzure)
 	if err != nil {
 		return fmt.Errorf("failed to initialize deployment: %w", err)
 	}
-	m.Deployment = deployment
+	m := display.NewDisplayModel(deployment)
+	err = azure_provider.ProcessMachinesConfig()
+	if err != nil {
+		return fmt.Errorf("failed to process machines config: %w", err)
+	}
 
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
@@ -112,9 +115,11 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
 	}
 
-	// Clear the screen and print final table
-	fmt.Print("\033[H\033[2J")
-	fmt.Println(m.RenderFinalTable())
+	if os.Getenv("ANDAIME_TEST_MODE") != "true" { //nolint:goconst
+		// Clear the screen and print final table
+		fmt.Print("\033[H\033[2J")
+		fmt.Println(m.RenderFinalTable())
+	}
 
 	if deploymentErr != nil {
 		fmt.Println("Deployment failed, but configuration was written to file.")
@@ -133,7 +138,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 
 func runDeployment(
 	ctx context.Context,
-	p azure.AzureProviderer,
+	p azure_provider.AzureProviderer,
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -177,7 +182,7 @@ func runDeployment(
 
 	for _, machine := range m.Deployment.Machines {
 		if machine.Orchestrator {
-			if err := p.GetClusterDeployer().DeployOrchestrator(ctx); err != nil {
+			if err := p.GetClusterDeployer().ProvisionOrchestrator(ctx, machine.Name); err != nil {
 				return fmt.Errorf("failed to provision Bacalhau: %w", err)
 			}
 			break
@@ -189,7 +194,7 @@ func runDeployment(
 			continue
 		}
 		eg.Go(func() error {
-			if err := p.GetClusterDeployer().DeployWorker(ctx, machine.Name); err != nil {
+			if err := p.GetClusterDeployer().ProvisionWorker(ctx, machine.Name); err != nil {
 				return fmt.Errorf("failed to configure Bacalhau: %w", err)
 			}
 			return nil

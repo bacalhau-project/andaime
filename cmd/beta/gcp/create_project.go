@@ -71,7 +71,7 @@ func createProject(ctx context.Context, projectID string) error {
 	}
 
 	// Set Billing Account
-	if err := p.SetBillingAccount(ctx); err != nil {
+	if err := p.SetBillingAccount(ctx, billingAccountID); err != nil {
 		return handleGCPError(fmt.Errorf("failed to set billing account: %v", err))
 	}
 

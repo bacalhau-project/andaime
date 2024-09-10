@@ -89,8 +89,8 @@ type AzureProviderer interface {
 	SetConfig(config *viper.Viper)
 	GetSSHClient() sshutils.SSHClienter
 	SetSSHClient(client sshutils.SSHClienter)
-	GetClusterDeployer() *common.ClusterDeployer
-	SetClusterDeployer(deployer *common.ClusterDeployer)
+	GetClusterDeployer() common.ClusterDeployerer
+	SetClusterDeployer(deployer common.ClusterDeployerer)
 
 	StartResourcePolling(ctx context.Context)
 	PrepareResourceGroup(ctx context.Context) error
@@ -117,7 +117,7 @@ type AzureVMConfig struct {
 type AzureProvider struct {
 	Client              AzureClienter
 	Config              *viper.Viper
-	ClusterDeployer     *common.ClusterDeployer
+	ClusterDeployer     common.ClusterDeployerer
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
 	SSHPort             int
@@ -389,6 +389,11 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 	l := logger.Get()
 	writeToDebugLog("Starting StartResourcePolling")
 
+	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
+		l.Debug("ANDAIME_TEST_MODE is set to true, skipping resource polling")
+		return
+	}
+
 	resourceTicker := time.NewTicker(ResourcePollingInterval)
 
 	quit := make(chan struct{})
@@ -592,10 +597,10 @@ func (p *AzureProvider) GetVMExternalIP(
 	return p.Client.GetVMExternalIP(ctx, resourceGroupName, vmName)
 }
 
-func (p *AzureProvider) GetClusterDeployer() *common.ClusterDeployer {
+func (p *AzureProvider) GetClusterDeployer() common.ClusterDeployerer {
 	return p.ClusterDeployer
 }
 
-func (p *AzureProvider) SetClusterDeployer(deployer *common.ClusterDeployer) {
+func (p *AzureProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }

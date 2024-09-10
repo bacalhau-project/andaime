@@ -29,7 +29,11 @@ var GetGlobalProgramFunc = GetGlobalProgram
 // GetGlobalProgram returns the singleton instance of GlobalProgram
 func GetGlobalProgram() GlobalProgammer {
 	globalProgramOnce.Do(func() {
-		globalProgramInstance = new(GlobalProgram)
+		if os.Getenv("ANDAIME_TEST_MODE") == "true" {
+			globalProgramInstance = &MockProgram{}
+		} else {
+			globalProgramInstance = new(GlobalProgram)
+		}
 	})
 	return globalProgramInstance
 }

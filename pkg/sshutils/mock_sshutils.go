@@ -2,6 +2,7 @@ package sshutils
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -131,6 +132,10 @@ func (m *MockSSHConfig) PushFile(
 	content []byte,
 	executable bool,
 ) error {
+	fmt.Println(
+		"PushFile called with remotePath:",
+		remotePath,
+	)
 	args := m.Called(ctx, remotePath, content, executable)
 	return args.Error(0)
 }

@@ -5,13 +5,12 @@ import (
 	"fmt"
 
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
-	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 )
 
-func ProcessMachinesConfig(deployment *models.Deployment) error {
-	validateMachineType := func(location, machineType string) (bool, error) {
+func ProcessMachinesConfig() error {
+	validateMachineType := func(ctx context.Context, location, machineType string) (bool, error) {
 		if !internal_gcp.IsValidGCPLocation(location) {
 			return false, fmt.Errorf("invalid location for GCP: %s", location)
 		}
@@ -21,5 +20,5 @@ func ProcessMachinesConfig(deployment *models.Deployment) error {
 		return true, nil
 	}
 
-	return common.ProcessMachinesConfig(deployment, models.DeploymentTypeGCP, validateMachineType)
+	return common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
 }
