@@ -114,15 +114,15 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			cmd.SetContext(context.Background())
 
 			// Create a mock provider
-			mockProvider := new(common.MockProvider)
+			mockProvider := &common.MockProvider{}
 			mockProvider.On("CreateDeployment", mock.Anything, mock.Anything).Return(nil)
 
 			// Inject the mock provider
 			var err error
 			if tt.provider == models.DeploymentTypeAzure {
-				err = azure.ExecuteCreateDeployment(cmd, []string{}, mockProvider)
+				err = azure.ExecuteCreateDeployment(cmd, []string{})
 			} else {
-				err = gcp.ExecuteCreateDeployment(cmd, []string{}, mockProvider)
+				err = gcp.ExecuteCreateDeployment(cmd, []string{})
 			}
 
 			assert.NoError(t, err)
@@ -133,7 +133,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			// Check if the deployment was created with the correct configuration
 			deployment := mockProvider.Calls[0].Arguments.Get(1).(*models.Deployment)
 			assert.NotEmpty(t, deployment.Name)
-			assert.Equal(t, tt.provider, deployment.DeploymentType)
+			assert.Equal(t, tt.provider, deployment.Type)
 			assert.NotEmpty(t, deployment.Machines)
 
 			// Check if SSH keys were properly set
@@ -142,11 +142,11 @@ func TestExecuteCreateDeployment(t *testing.T) {
 
 			// Check provider-specific configurations
 			if tt.provider == models.DeploymentTypeAzure {
-				assert.Equal(t, "4a45a76b-5754-461d-84a1-f5e47b0a7198", deployment.Azure.SubscriptionID)
-				assert.Equal(t, "test-1292-rg", deployment.Azure.ResourceGroupName)
+				assert.Equal(t, "4a45a76b-5754-461d-84a1-f5e47b0a7198", deployment.AzureConfig.SubscriptionID)
+				assert.Equal(t, "test-1292-rg", deployment.AzureConfig.ResourceGroupName)
 			} else {
-				assert.Equal(t, "test-1292-gcp", deployment.GCP.ProjectID)
-				assert.Equal(t, "org-1234567890", deployment.GCP.OrganizationID)
+				assert.Equal(t, "test-1292-gcp", deployment.GCPConfig.ProjectID)
+				assert.Equal(t, "org-1234567890", deployment.GCPConfig.OrganizationID)
 			}
 		})
 	}
