@@ -483,8 +483,21 @@ func TestPrepareDeployment(t *testing.T) {
 			assert.NotEmpty(t, deployment.Machines)
 
 			// Verify machine configurations
-			machineConfigs := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider)))).([]map[string]interface{})
-			assert.Equal(t, len(machineConfigs), len(deployment.Machines))
+			machineConfigs := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider)))).([]interface{})
+			expectedMachineCount := 0
+			for _, machineConfigRaw := range machineConfigs {
+				machineConfig := machineConfigRaw.(map[string]interface{})
+				if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
+					if count, ok := params["count"].(int); ok {
+						expectedMachineCount += count
+					} else {
+						expectedMachineCount++
+					}
+				} else {
+					expectedMachineCount++
+				}
+			}
+			assert.Equal(t, expectedMachineCount, len(deployment.Machines))
 
 			for _, machine := range deployment.Machines {
 				assert.NotEmpty(t, machine.Name)
@@ -499,14 +512,18 @@ func TestPrepareDeployment(t *testing.T) {
 					)
 				} else {
 					assert.Contains(t, []string{"us-central1-a", "us-central1-b"}, machine.Location)
-					assert.Equal(
-						t,
-						"n2-standard-2",
-						machine.VMSize,
-						"Machine VM size should be set correctly",
-					)
+					assert.Equal(t, "n2-standard-2", machine.VMSize, "Machine VM size should be set correctly")
 				}
 			}
+
+			// Check for orchestrator
+			orchestratorCount := 0
+			for _, machine := range deployment.Machines {
+				if machine.Orchestrator {
+					orchestratorCount++
+				}
+			}
+			assert.Equal(t, 1, orchestratorCount, "There should be exactly one orchestrator")
 		})
 	}
 }

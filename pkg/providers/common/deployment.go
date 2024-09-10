@@ -96,21 +96,49 @@ func PrepareDeployment(
 	}
 
 	// Add this after setting provider-specific configurations
-	machineConfigs := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(provider)))).([]map[string]interface{})
-	for _, machineConfig := range machineConfigs {
+	machineConfigsRaw := viper.Get(
+		fmt.Sprintf("%s.machines", strings.ToLower(string(provider))),
+	)
+	machineConfigs, ok := machineConfigsRaw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("failed to get machines from Viper configuration")
+	}
+
+	for _, machineConfigRaw := range machineConfigs {
+		machineConfig, ok := machineConfigRaw.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid machine configuration format")
+		}
+
+		location, ok := machineConfig["location"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid location in machine configuration")
+		}
+
 		machine := &models.Machine{
 			Name:     fmt.Sprintf("%s-%s", deployment.Name, utils.GenerateUniqueID()),
-			Location: machineConfig["location"].(string),
+			Location: location,
 			VMSize: viper.GetString(
 				fmt.Sprintf("%s.default_machine_type", strings.ToLower(string(provider))),
 			),
 		}
+
 		if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
 			if orchestrator, ok := params["orchestrator"].(bool); ok {
 				machine.Orchestrator = orchestrator
 			}
+			if count, ok := params["count"].(int); ok && count > 0 {
+				for i := 0; i < count; i++ {
+					machineCopy := *machine
+					machineCopy.Name = fmt.Sprintf("%s-%d", machine.Name, i+1)
+					deployment.Machines[machineCopy.Name] = &machineCopy
+				}
+			} else {
+				deployment.Machines[machine.Name] = machine
+			}
+		} else {
+			deployment.Machines[machine.Name] = machine
 		}
-		deployment.Machines[machine.Name] = machine
 	}
 
 	return deployment, nil
