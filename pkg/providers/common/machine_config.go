@@ -55,7 +55,6 @@ func ProcessMachinesConfig(
 			lowerProviderType,
 			lowerProviderType,
 		)
-
 	}
 
 	defaultDiskSize := viper.GetInt(string(providerType) + ".default_disk_size_gb")

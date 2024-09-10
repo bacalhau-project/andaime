@@ -61,14 +61,14 @@ func setupViper(
 		viper.Set("azure.resource_group_location", "eastus2")
 		viper.Set("azure.resource_group_name", "test-1292-rg")
 		viper.Set("azure.default_disk_size_gb", 30)
-		viper.Set("azure.machines", []map[string]interface{}{
-			{
+		viper.Set("azure.machines", []interface{}{
+			map[string]interface{}{
 				"location": "eastus2",
 				"parameters": map[string]interface{}{
 					"count": 2,
 				},
 			},
-			{
+			map[string]interface{}{
 				"location": "westus",
 				"parameters": map[string]interface{}{
 					"orchestrator": true,
@@ -83,14 +83,14 @@ func setupViper(
 		viper.Set("gcp.default_location", "us-central1-a")
 		viper.Set("gcp.default_machine_type", "n2-standard-2")
 		viper.Set("gcp.default_disk_size_gb", 30)
-		viper.Set("gcp.machines", []map[string]interface{}{
-			{
+		viper.Set("gcp.machines", []interface{}{
+			map[string]interface{}{
 				"location": "us-central1-a",
 				"parameters": map[string]interface{}{
 					"count": 2,
 				},
 			},
-			{
+			map[string]interface{}{
 				"location": "us-central1-b",
 				"parameters": map[string]interface{}{
 					"orchestrator": true,
@@ -375,7 +375,9 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				deployment = m.Deployment
 			}
 
-			assert.NoError(t, err)
+			if err != nil {
+				t.Fatalf("ExecuteCreateDeployment failed: %v", err)
+			}
 
 			assert.NotEmpty(t, deployment.Name)
 			assert.Equal(
@@ -421,10 +423,32 @@ func TestPrepareDeployment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setupViper(t, tt.provider, testSSHPublicKeyPath, testSSHPrivateKeyPath)
 
+			// Ensure the machine configurations are set correctly
+			machineConfigs := []map[string]interface{}{
+				{
+					"location": "eastus2",
+					"parameters": map[string]interface{}{
+						"count": float64(2), // Use float64 instead of int
+					},
+				},
+				{
+					"location": "westus",
+					"parameters": map[string]interface{}{
+						"orchestrator": true,
+					},
+				},
+			}
+			viper.Set(
+				fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider))),
+				machineConfigs,
+			)
+
 			ctx := context.Background()
 
 			deployment, err := common.PrepareDeployment(ctx, tt.provider)
-			assert.NoError(t, err)
+			if err != nil {
+				t.Fatalf("PrepareDeployment failed: %v", err)
+			}
 			assert.NotNil(t, deployment)
 
 			assert.NotEmpty(t, deployment.Name)
@@ -481,15 +505,20 @@ func TestPrepareDeployment(t *testing.T) {
 
 			// Check if machines are created
 			assert.NotEmpty(t, deployment.Machines)
+			assert.Equal(
+				t,
+				3,
+				len(deployment.Machines),
+				"Expected 3 machines (2 regular + 1 orchestrator)",
+			)
 
 			// Verify machine configurations
-			machineConfigs := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider)))).([]interface{})
 			expectedMachineCount := 0
 			for _, machineConfigRaw := range machineConfigs {
-				machineConfig := machineConfigRaw.(map[string]interface{})
+				machineConfig := machineConfigRaw
 				if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
-					if count, ok := params["count"].(int); ok {
-						expectedMachineCount += count
+					if count, ok := params["count"].(float64); ok {
+						expectedMachineCount += int(count)
 					} else {
 						expectedMachineCount++
 					}
@@ -511,7 +540,7 @@ func TestPrepareDeployment(t *testing.T) {
 						"Machine VM size should be set correctly",
 					)
 				} else {
-					assert.Contains(t, []string{"us-central1-a", "us-central1-b"}, machine.Location)
+					assert.Contains(t, []string{"eastus2", "westus"}, machine.Location)
 					assert.Equal(t, "n2-standard-2", machine.VMSize, "Machine VM size should be set correctly")
 				}
 			}

@@ -96,28 +96,35 @@ func PrepareDeployment(
 	}
 
 	// Add this after setting provider-specific configurations
-	machineConfigsRaw := viper.Get(
-		fmt.Sprintf("%s.machines", strings.ToLower(string(provider))),
-	)
-	machineConfigs, ok := machineConfigsRaw.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("failed to get machines from Viper configuration")
+	machineConfigsRaw := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(provider))))
+	if machineConfigsRaw == nil {
+		return nil, fmt.Errorf("no machines configuration found for provider %s", provider)
 	}
 
-	for _, machineConfigRaw := range machineConfigs {
-		machineConfig, ok := machineConfigRaw.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("invalid machine configuration format")
-		}
+	var machineConfigs []map[string]interface{}
 
-		location, ok := machineConfig["location"].(string)
-		if !ok {
-			return nil, fmt.Errorf("invalid location in machine configuration")
+	switch config := machineConfigsRaw.(type) {
+	case []map[string]interface{}:
+		machineConfigs = config
+	case []interface{}:
+		for _, item := range config {
+			if machineConfig, ok := item.(map[string]interface{}); ok {
+				machineConfigs = append(machineConfigs, machineConfig)
+			} else {
+				return nil, fmt.Errorf("invalid machine configuration item: expected map[string]interface{}, got %T", item)
+			}
 		}
+	default:
+		return nil, fmt.Errorf(
+			"invalid machine configuration format: expected []map[string]interface{} or []interface{}, got %T",
+			machineConfigsRaw,
+		)
+	}
 
+	for _, machineConfig := range machineConfigs {
 		machine := &models.Machine{
 			Name:     fmt.Sprintf("%s-%s", deployment.Name, utils.GenerateUniqueID()),
-			Location: location,
+			Location: machineConfig["location"].(string),
 			VMSize: viper.GetString(
 				fmt.Sprintf("%s.default_machine_type", strings.ToLower(string(provider))),
 			),
@@ -127,8 +134,8 @@ func PrepareDeployment(
 			if orchestrator, ok := params["orchestrator"].(bool); ok {
 				machine.Orchestrator = orchestrator
 			}
-			if count, ok := params["count"].(int); ok && count > 0 {
-				for i := 0; i < count; i++ {
+			if count, ok := params["count"].(float64); ok && count > 0 {
+				for i := 0; i < int(count); i++ {
 					machineCopy := *machine
 					machineCopy.Name = fmt.Sprintf("%s-%d", machine.Name, i+1)
 					deployment.Machines[machineCopy.Name] = &machineCopy
