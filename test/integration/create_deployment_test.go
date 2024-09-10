@@ -110,19 +110,41 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			cmd := cmd.SetupRootCommand()
 			cmd.SetContext(context.Background())
 
-			// TODO: Implement provider-specific mocks and assertions
-			// This is where you'd set up your mocks for Azure or GCP clients
+			// Create a mock provider
+			mockProvider := &common.MockProvider{}
+			mockProvider.On("CreateDeployment", mock.Anything, mock.Anything).Return(nil)
 
+			// Inject the mock provider
 			var err error
 			if tt.provider == models.DeploymentTypeAzure {
-				// err = azure.ExecuteCreateDeployment(cmd, []string{})
+				err = azure.ExecuteCreateDeployment(cmd, []string{}, mockProvider)
 			} else {
-				// err = gcp.ExecuteCreateDeployment(cmd, []string{})
+				err = gcp.ExecuteCreateDeployment(cmd, []string{}, mockProvider)
 			}
 
 			assert.NoError(t, err)
 
-			// TODO: Add more specific assertions based on the expected behavior
+			// Assert that CreateDeployment was called
+			mockProvider.AssertCalled(t, "CreateDeployment", mock.Anything, mock.Anything)
+
+			// Check if the deployment was created with the correct configuration
+			deployment := mockProvider.Calls[0].Arguments.Get(1).(*models.Deployment)
+			assert.NotEmpty(t, deployment.Name)
+			assert.Equal(t, tt.provider, deployment.Type)
+			assert.NotEmpty(t, deployment.Machines)
+
+			// Check if SSH keys were properly set
+			assert.Equal(t, testSSHPublicKeyPath, deployment.SSHPublicKeyPath)
+			assert.Equal(t, testSSHPrivateKeyPath, deployment.SSHPrivateKeyPath)
+
+			// Check provider-specific configurations
+			if tt.provider == models.DeploymentTypeAzure {
+				assert.Equal(t, "4a45a76b-5754-461d-84a1-f5e47b0a7198", deployment.AzureConfig.SubscriptionID)
+				assert.Equal(t, "test-1292-rg", deployment.AzureConfig.ResourceGroupName)
+			} else {
+				assert.Equal(t, "test-1292-gcp", deployment.GCPConfig.ProjectID)
+				assert.Equal(t, "org-1234567890", deployment.GCPConfig.OrganizationID)
+			}
 		})
 	}
 }
@@ -150,7 +172,50 @@ func TestPrepareDeployment(t *testing.T) {
 			assert.NotNil(t, deployment)
 
 			assert.NotEmpty(t, deployment.Name)
+			assert.Equal(t, tt.provider, deployment.Type)
 			assert.NotEmpty(t, deployment.Machines)
+
+			// Check if SSH keys were properly set
+			assert.Equal(t, testSSHPublicKeyPath, deployment.SSHPublicKeyPath)
+			assert.Equal(t, testSSHPrivateKeyPath, deployment.SSHPrivateKeyPath)
+
+			// Check if the correct number of machines were created
+			assert.Len(t, deployment.Machines, 3) // 2 regular + 1 orchestrator
+
+			// Check if there's exactly one orchestrator
+			orchestrators := 0
+			for _, machine := range deployment.Machines {
+				if machine.Parameters["orchestrator"] == true {
+					orchestrators++
+				}
+			}
+			assert.Equal(t, 1, orchestrators)
+
+			// Check provider-specific configurations
+			if tt.provider == models.DeploymentTypeAzure {
+				assert.Equal(t, "4a45a76b-5754-461d-84a1-f5e47b0a7198", deployment.AzureConfig.SubscriptionID)
+				assert.Equal(t, "test-1292-rg", deployment.AzureConfig.ResourceGroupName)
+				assert.Equal(t, "eastus2", deployment.AzureConfig.ResourceGroupLocation)
+				assert.Equal(t, 30, deployment.AzureConfig.DefaultDiskSizeGB)
+			} else {
+				assert.Equal(t, "test-1292-gcp", deployment.GCPConfig.ProjectID)
+				assert.Equal(t, "org-1234567890", deployment.GCPConfig.OrganizationID)
+				assert.Equal(t, "123456-789012-345678", deployment.GCPConfig.BillingAccountID)
+				assert.Equal(t, 30, deployment.GCPConfig.DefaultDiskSizeGB)
+			}
+
+			// Check machine configurations
+			for _, machine := range deployment.Machines {
+				assert.NotEmpty(t, machine.Name)
+				assert.NotEmpty(t, machine.Location)
+				if tt.provider == models.DeploymentTypeAzure {
+					assert.Contains(t, []string{"eastus2", "westus"}, machine.Location)
+					assert.Equal(t, "Standard_DS4_v2", machine.Parameters["machine_type"])
+				} else {
+					assert.Contains(t, []string{"us-central1-a", "us-central1-b"}, machine.Location)
+					assert.Equal(t, "n2-highcpu-4", machine.Parameters["machine_type"])
+				}
+			}
 		})
 	}
 }
