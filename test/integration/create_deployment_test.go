@@ -34,11 +34,11 @@ func setupViper(t *testing.T, provider models.DeploymentType, testSSHPublicKeyPa
 	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
 
 	tmpConfigFile, err := os.CreateTemp("", "config_*.yaml")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	t.Cleanup(func() { os.Remove(tmpConfigFile.Name()) })
 
 	viper.SetConfigFile(tmpConfigFile.Name())
-	require.NoError(t, viper.ReadInConfig())
+	assert.NoError(t, viper.ReadInConfig())
 
 	if provider == models.DeploymentTypeAzure {
 		viper.Set("azure.subscription_id", "4a45a76b-5754-461d-84a1-f5e47b0a7198")
