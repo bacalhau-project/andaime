@@ -33,8 +33,8 @@ var (
 
 type MachineResource struct {
 	ResourceName  string
-	ResourceType  ResourceTypes
-	ResourceState ResourceState
+	ResourceType  ResourceType
+	ResourceState MachineResourceState
 	ResourceValue string
 }
 
@@ -69,7 +69,7 @@ type Deployment struct {
 	DeploymentType         DeploymentType
 	Azure                  *AzureConfig
 	GCP                    *GCPConfig
-	Machines               map[string]*Machine
+	Machines               map[string]Machiner // Change *Machiner to Machiner
 	UniqueID               string
 	StartTime              time.Time
 	EndTime                time.Time
@@ -97,7 +97,7 @@ func NewDeployment() (*Deployment, error) {
 	projectID := projectPrefix + "-" + uniqueID
 	deployment := &Deployment{
 		StartTime:              time.Now(),
-		Machines:               make(map[string]*Machine),
+		Machines:               make(map[string]Machiner), // Change *Machine to Machiner
 		UniqueID:               uniqueID,
 		Azure:                  &AzureConfig{},
 		GCP:                    &GCPConfig{},
@@ -127,11 +127,11 @@ func (d *Deployment) UpdateViperConfig() error {
 	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.Azure.ResourceGroupName)
 	viperMachines := make(map[string]map[string]interface{})
 	for _, machine := range d.Machines {
-		viperMachines[machine.Name] = map[string]interface{}{
-			"Name":         machine.Name,
-			"PublicIP":     machine.PublicIP,
-			"PrivateIP":    machine.PrivateIP,
-			"Orchestrator": machine.Parameters.Orchestrator,
+		viperMachines[machine.GetName()] = map[string]interface{}{
+			"Name":         machine.GetName(),
+			"PublicIP":     machine.GetPublicIP(),
+			"PrivateIP":    machine.GetPrivateIP(),
+			"Orchestrator": machine.IsOrchestrator(),
 		}
 	}
 
@@ -139,7 +139,7 @@ func (d *Deployment) UpdateViperConfig() error {
 	return v.WriteConfig()
 }
 
-func (d *Deployment) GetMachine(name string) *Machine {
+func (d *Deployment) GetMachine(name string) Machiner {
 	d.deploymentMutex.RLock()
 	defer d.deploymentMutex.RUnlock()
 	if machine, ok := d.Machines[name]; ok {
@@ -147,13 +147,14 @@ func (d *Deployment) GetMachine(name string) *Machine {
 	}
 	return nil
 }
-func (d *Deployment) CreateMachine(name string) {
+
+func (d *Deployment) CreateMachine(name string, machine Machiner) {
 	d.deploymentMutex.Lock()
 	defer d.deploymentMutex.Unlock()
-	d.Machines[name] = &Machine{}
+	d.Machines[name] = machine
 }
 
-func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
+func (d *Deployment) UpdateMachine(name string, updater func(Machiner)) error {
 	d.deploymentMutex.Lock()
 	defer d.deploymentMutex.Unlock()
 	if machine, ok := d.Machines[name]; ok {
@@ -161,6 +162,30 @@ func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
 		return nil
 	}
 	return fmt.Errorf("machine %s not found", name)
+}
+
+func (d *Deployment) SetMachine(name string, machine Machiner) {
+	d.deploymentMutex.Lock()
+	defer d.deploymentMutex.Unlock()
+	d.Machines[name] = machine
+}
+
+func (d *Deployment) SetMachines(machines map[string]Machiner) {
+	d.deploymentMutex.Lock()
+	defer d.deploymentMutex.Unlock()
+	for name, machine := range machines {
+		d.SetMachine(name, machine)
+	}
+}
+
+func (d *Deployment) GetMachines() map[string]Machiner {
+	d.deploymentMutex.RLock()
+	defer d.deploymentMutex.RUnlock()
+	machines := make(map[string]Machiner)
+	for name, machine := range d.Machines {
+		machines[name] = machine
+	}
+	return machines
 }
 
 type StatusUpdateMsg struct {

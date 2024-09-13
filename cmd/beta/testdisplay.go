@@ -97,7 +97,7 @@ func runTestDisplay() error {
 					} else {
 						statusMessage = fmt.Sprintf("%-*s", statusLength, rawStatus)
 					}
-					m.Deployment.Machines[machine.Name].StatusMessage = statusMessage
+					m.Deployment.Machines[machine.GetName()].SetStatusMessage(statusMessage)
 				}
 			case <-timeTicker.C:
 				p.Send(models.TimeUpdateMsg{})

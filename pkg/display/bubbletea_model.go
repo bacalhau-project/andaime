@@ -107,15 +107,15 @@ func (m *DisplayModel) updateStatusMessage(machineName string, newStatus *models
 		trimmedStatus := strings.TrimSpace(newStatus.StatusMessage)
 		if len(trimmedStatus) > StatusLength-3 {
 			l.Debugf("Status too long, truncating: '%s'", trimmedStatus)
-			err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-				m.StatusMessage = trimmedStatus[:StatusLength-3] + "…"
+			err := m.Deployment.UpdateMachine(machineName, func(m models.Machiner) {
+				m.SetStatusMessage(trimmedStatus[:StatusLength-3] + "…")
 			})
 			if err != nil {
 				l.Errorf("Error updating machine status: %v", err)
 			}
 		} else {
-			err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-				m.StatusMessage = fmt.Sprintf("%-*s", StatusLength, trimmedStatus)
+			err := m.Deployment.UpdateMachine(machineName, func(m models.Machiner) {
+				m.SetStatusMessage(fmt.Sprintf("%-*s", StatusLength, trimmedStatus))
 			})
 			if err != nil {
 				l.Errorf("Error updating machine status: %v", err)
@@ -127,8 +127,8 @@ func (m *DisplayModel) updateStatusMessage(machineName string, newStatus *models
 func (m *DisplayModel) updateLocation(machineName string, newStatus *models.DisplayStatus) {
 	l := logger.Get()
 	if newStatus.Location != "" {
-		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-			m.Location = newStatus.Location
+		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
+			mach.SetLocation(newStatus.Location)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)
@@ -139,16 +139,16 @@ func (m *DisplayModel) updateLocation(machineName string, newStatus *models.Disp
 func (m *DisplayModel) updateIPs(machineName string, newStatus *models.DisplayStatus) {
 	l := logger.Get()
 	if newStatus.PublicIP != "" {
-		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-			m.PublicIP = newStatus.PublicIP
+		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
+			mach.SetPublicIP(newStatus.PublicIP)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)
 		}
 	}
 	if newStatus.PrivateIP != "" {
-		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-			m.PrivateIP = newStatus.PrivateIP
+		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
+			mach.SetPrivateIP(newStatus.PrivateIP)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)
@@ -158,9 +158,9 @@ func (m *DisplayModel) updateIPs(machineName string, newStatus *models.DisplaySt
 
 func (m *DisplayModel) updateElapsedTime(machineName string, newStatus *models.DisplayStatus) {
 	l := logger.Get()
-	if newStatus.ElapsedTime > 0 && !m.Deployment.Machines[machineName].Complete() {
-		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-			m.ElapsedTime = newStatus.ElapsedTime
+	if newStatus.ElapsedTime > 0 && !m.Deployment.Machines[machineName].IsComplete() {
+		err := m.Deployment.UpdateMachine(machineName, func(m models.Machiner) {
+			m.SetElapsedTime(newStatus.ElapsedTime)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)
@@ -174,8 +174,8 @@ func (m *DisplayModel) updateOrchestratorStatus(
 ) {
 	l := logger.Get()
 	if newStatus.Orchestrator {
-		err := m.Deployment.UpdateMachine(machineName, func(m *models.Machine) {
-			m.Orchestrator = newStatus.Orchestrator
+		err := m.Deployment.UpdateMachine(machineName, func(m models.Machiner) {
+			m.SetOrchestrator(newStatus.Orchestrator)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)
@@ -227,6 +227,7 @@ type DisplayModel struct {
 	MemoryUsage      uint64
 	BatchedUpdates   []models.StatusUpdateMsg
 	BatchUpdateTimer *time.Timer
+	updateBuffer     *utils.CircularBuffer[models.DisplayStatus]
 	quitChan         chan bool
 	goroutineCount   int64
 	keyEventChan     chan tea.KeyMsg
@@ -253,7 +254,7 @@ func (m *DisplayModel) DeregisterGoroutine(id int64) {
 // DisplayMachine represents a single machine in the deployment
 type DisplayMachine struct {
 	Name          string
-	Type          models.ResourceTypes
+	Type          models.ResourceType
 	Location      string
 	StatusMessage string
 	StartTime     time.Time
@@ -310,6 +311,7 @@ func NewDisplayModel(deployment *models.Deployment) *DisplayModel {
 		quitChan:         make(chan bool),
 		keyEventChan:     make(chan tea.KeyMsg),
 		logger:           logger.Get(),
+		updateBuffer:     utils.NewCircularBuffer[models.DisplayStatus](1000),
 	}
 	go model.handleKeyEvents()
 	SetGlobalModel(model)
@@ -559,6 +561,8 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 		return
 	}
 
+	m.updateBuffer.Add(*status)
+
 	if status.Name != "" {
 		m.updateMachineStatus(status.Name, status)
 
@@ -592,13 +596,13 @@ func (m *DisplayModel) renderTable(headerStyle, cellStyle lipgloss.Style) string
 		Name     string
 	}{}
 	for _, machine := range m.Deployment.Machines {
-		if machine.Name != "" {
+		if machine.GetName() != "" {
 			machineSlice = append(machineSlice, struct {
 				Location string
 				Name     string
 			}{
-				Location: machine.Location,
-				Name:     machine.Name,
+				Location: machine.GetLocation(),
+				Name:     machine.GetName(),
 			})
 		}
 	}
@@ -657,8 +661,8 @@ func (m *DisplayModel) renderRow(data interface{}, baseStyle lipgloss.Style, isH
 	return rowStr + "\n"
 }
 
-func (m *DisplayModel) getMachineRowData(machine *models.Machine) []string {
-	elapsedTime := time.Since(machine.StartTime).Truncate(TickerInterval)
+func (m *DisplayModel) getMachineRowData(machine models.Machiner) []string {
+	elapsedTime := time.Since(machine.GetStartTime()).Truncate(TickerInterval)
 	progress, total := machine.ResourcesComplete()
 	progressBar := renderProgressBar(
 		progress,
@@ -667,21 +671,21 @@ func (m *DisplayModel) getMachineRowData(machine *models.Machine) []string {
 	)
 
 	logger.WriteToDebugLog(
-		fmt.Sprintf("Machine: %s, Progress: %d, Total: %d", machine.Name, progress, total),
+		fmt.Sprintf("Machine: %s, Progress: %d, Total: %d", machine.GetName(), progress, total),
 	)
-	for _, service := range machine.GetMachineServices() {
+	for _, service := range machine.GetServices() {
 		logger.WriteToDebugLog(fmt.Sprintf("Service: %s, State: %v", service.Name, service.State))
 	}
 	return []string{
-		machine.Name,
-		machine.Type.ShortResourceName,
-		utils.TruncateString(machine.Location, DisplayColumns[2].Width-2),
-		machine.StatusMessage,
+		machine.GetName(),
+		machine.GetType().ShortResourceName,
+		utils.TruncateString(machine.GetLocation(), DisplayColumns[2].Width-2),
+		machine.GetStatusMessage(),
 		progressBar,
 		formatElapsedTime(elapsedTime),
-		machine.PublicIP,
-		machine.PrivateIP,
-		ConvertOrchestratorToEmoji(machine.Orchestrator),
+		machine.GetPublicIP(),
+		machine.GetPrivateIP(),
+		ConvertOrchestratorToEmoji(machine.IsOrchestrator()),
 		ConvertStateToEmoji(machine.GetServiceState("SSH")),
 		ConvertStateToEmoji(machine.GetServiceState("Docker")),
 		ConvertStateToEmoji(machine.GetServiceState("Bacalhau")),

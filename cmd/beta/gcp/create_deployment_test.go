@@ -73,14 +73,14 @@ func TestProcessMachinesConfig(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name
-		var machine *models.Machine
-		for _, machine = range deployment.Machines {
+		var machine models.Machiner
+		for _, machine = range deployment.GetMachines() {
 			break
 		}
-		assert.Contains(t, machine.DiskImageFamily, "ubuntu-2004-lts")
-		assert.Contains(t, machine.DiskImageURL, "ubuntu-os-cloud")
-		assert.Equal(t, "n2-standard-2", machine.VMSize)
-		assert.Equal(t, true, machine.Orchestrator)
+		assert.Contains(t, machine.GetDiskImageFamily(), "ubuntu-2004-lts")
+		assert.Contains(t, machine.GetDiskImageURL(), "ubuntu-os-cloud")
+		assert.Equal(t, "n2-standard-2", machine.GetVMSize())
+		assert.Equal(t, true, machine.IsOrchestrator())
 	})
 
 	// Test case 2: Invalid location
@@ -136,13 +136,14 @@ func TestProcessMachinesConfig(t *testing.T) {
 		err = common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
+
 		// Get first machine - it will have a generated name
-		var machine *models.Machine
-		for _, machine = range deployment.Machines {
+		var machine models.Machiner
+		for _, machine = range deployment.GetMachines() {
 			break
 		}
-		assert.Contains(t, machine.DiskImageFamily, "debian-12")
-		assert.Contains(t, machine.DiskImageURL, "debian-12")
+		assert.Contains(t, machine.GetDiskImageFamily(), "debian-12")
+		assert.Contains(t, machine.GetDiskImageURL(), "debian-12")
 	})
 
 	// Test case 4: Invalid image type
@@ -200,18 +201,18 @@ func TestProcessMachinesConfig(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name
-		var machine *models.Machine
-		for _, machine = range deployment.Machines {
+		var machine models.Machiner
+		for _, machine = range deployment.GetMachines() {
 			break
 		}
 		assert.Contains(
 			t,
-			machine.DiskImageFamily,
+			machine.GetDiskImageFamily(),
 			"ubuntu-2004-lts", // Default image
 		)
 		assert.Contains(
 			t,
-			machine.DiskImageURL,
+			machine.GetDiskImageURL(),
 			"ubuntu-2004-lts", // Default image URL
 		)
 	})

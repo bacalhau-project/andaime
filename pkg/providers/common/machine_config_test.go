@@ -67,12 +67,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 	var orchestratorCount int
 	for _, machine := range deployment.Machines {
-		if machine.Orchestrator {
+		if machine.IsOrchestrator() {
 			orchestratorCount++
 		}
-		assert.Equal(t, "azureuser", machine.SSHUser)
-		assert.Equal(t, 22, machine.SSHPort)
-		assert.NotNil(t, machine.SSHPrivateKeyMaterial)
+		assert.Equal(t, "azureuser", machine.GetSSHUser())
+		assert.Equal(t, 22, machine.GetSSHPort())
+		assert.NotNil(t, machine.GetSSHPrivateKeyMaterial())
 	}
 	assert.Equal(t, 1, orchestratorCount)
 }

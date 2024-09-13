@@ -6,7 +6,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
-var RequiredAzureResources = []ResourceTypes{
+var RequiredAzureResources = []ResourceType{
 	AzureResourceTypeVNET,
 	AzureResourceTypeNIC,
 	AzureResourceTypeNSG,
@@ -19,61 +19,61 @@ var AzureSkippedResourceTypes = []string{
 	"Microsoft.Compute/virtualMachines/extensions",
 }
 
-func (a *ResourceTypes) GetResourceLowerString() string {
+func (a *ResourceType) GetResourceLowerString() string {
 	return strings.ToLower(a.ResourceString)
 }
 
-var AzureResourceTypeNIC = ResourceTypes{
+var AzureResourceTypeNIC = ResourceType{
 	ResourceString:    "Microsoft.Network/networkInterfaces",
 	ShortResourceName: "NIC ",
 }
 
-var AzureResourceTypeVNET = ResourceTypes{
+var AzureResourceTypeVNET = ResourceType{
 	ResourceString:    "Microsoft.Network/virtualNetworks",
 	ShortResourceName: "VNET",
 }
 
-var AzureResourceTypeSNET = ResourceTypes{
+var AzureResourceTypeSNET = ResourceType{
 	ResourceString:    "Microsoft.Network/subnets",
 	ShortResourceName: "SNET",
 }
 
-var AzureResourceTypeNSG = ResourceTypes{
+var AzureResourceTypeNSG = ResourceType{
 	ResourceString:    "Microsoft.Network/networkSecurityGroups",
 	ShortResourceName: "NSG ",
 }
 
-var AzureResourceTypeVM = ResourceTypes{
+var AzureResourceTypeVM = ResourceType{
 	ResourceString:    "Microsoft.Compute/virtualMachines",
 	ShortResourceName: "VM  ",
 }
 
-var AzureResourceTypeDISK = ResourceTypes{
+var AzureResourceTypeDISK = ResourceType{
 	ResourceString:    "Microsoft.Compute/disks",
 	ShortResourceName: "DISK",
 }
 
-var AzureResourceTypeIP = ResourceTypes{
+var AzureResourceTypeIP = ResourceType{
 	ResourceString:    "Microsoft.Network/publicIPAddresses",
 	ShortResourceName: "IP  ",
 }
 
-var AzureResourceTypeGuestAttestation = ResourceTypes{
+var AzureResourceTypeGuestAttestation = ResourceType{
 	ResourceString:    "Microsoft.Compute/virtualMachines/extensions/GuestAttestation",
 	ShortResourceName: "GATT",
 }
 
-func GetAzureResourceType(resource string) ResourceTypes {
+func GetAzureResourceType(resource string) ResourceType {
 	for _, r := range GetAllAzureResources() {
 		if strings.EqualFold(r.ResourceString, resource) {
 			return r
 		}
 	}
-	return ResourceTypes{}
+	return ResourceType{}
 }
 
-func GetAllAzureResources() []ResourceTypes {
-	return []ResourceTypes{
+func GetAllAzureResources() []ResourceType {
+	return []ResourceType{
 		AzureResourceTypeNIC,
 		AzureResourceTypeVNET,
 		AzureResourceTypeSNET,
@@ -89,7 +89,7 @@ func IsValidAzureResource(resource string) bool {
 	return GetAzureResourceType(resource).ResourceString != ""
 }
 
-func ConvertFromAzureStringToResourceState(s string) ResourceState {
+func ConvertFromAzureStringToResourceState(s string) MachineResourceState {
 	l := logger.Get()
 	switch s {
 	case "Not Started":

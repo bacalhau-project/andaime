@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/bacalhau-project/andaime/pkg/providers/general"
 )
 
 func EnsureAzureTags(tags map[string]*string, projectID, uniqueID string) map[string]*string {
@@ -71,15 +70,4 @@ func StructToMap(obj interface{}) (map[string]interface{}, error) {
 	}
 
 	return result, nil
-}
-
-func GetCountOfMachines(params general.RawMachineParams, defaultCount int) int {
-	if params.Count > 0 {
-		return params.Count
-	}
-
-	if defaultCount == 0 {
-		return 1
-	}
-	return defaultCount
 }

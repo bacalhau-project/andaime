@@ -1,13 +1,16 @@
-package general
+package common
 
 import (
-	"github.com/spf13/viper"
+	"context"
+
+	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
-// AzureProvider wraps the Azure deployment functionality
 type Providerer interface {
-	GetConfig() *viper.Viper
-	SetConfig(config *viper.Viper)
+	PrepareDeployment(ctx context.Context) (*models.Deployment, error)
+	StartResourcePolling(ctx context.Context)
+	CreateResources(ctx context.Context) error
+	FinalizeDeployment(ctx context.Context) error
 }
 
 type RawMachineParams struct {

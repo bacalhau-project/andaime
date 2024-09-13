@@ -182,7 +182,6 @@ func checkRequiredAPIs(ctx context.Context, organizationID string) error {
 	var adminProjectID string
 
 	if commandlineProvidedProjectID == "" {
-
 		// Test to make sure we can see gcloud binary
 		cmd := exec.Command("gcloud", "version")
 		_, err := cmd.Output()

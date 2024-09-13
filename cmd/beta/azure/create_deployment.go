@@ -7,14 +7,10 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -35,31 +31,30 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 
 func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
-	l.Info("Starting executeCreateDeployment")
+	ctx := cmd.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if cancel != nil && ctx.Err() != nil {
+			cancel()
+		}
+	}()
 
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
-
-	common.SetDefaultConfigurations("azure")
-
-	projectPrefix := viper.GetString("general.project_prefix")
-	if projectPrefix == "" {
-		return fmt.Errorf("project prefix is empty")
-	}
-
-	uniqueID := time.Now().Format("060102150405")
-	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
-
+	// Initialize the Azure provider
 	p, err := azure_provider.NewAzureProviderFunc()
 	if err != nil {
-		return fmt.Errorf("failed to initialize Azure provider: %w", err)
+		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
 
-	viper.Set("general.unique_id", uniqueID)
-	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeAzure)
-	if err != nil {
-		return fmt.Errorf("failed to initialize deployment: %w", err)
+	if p == nil {
+		return fmt.Errorf("azure provider is nil")
 	}
+
+	// Prepare the deployment
+	deployment, err := p.PrepareDeployment(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to prepare deployment: %w", err)
+	}
+
 	m := display.NewDisplayModel(deployment)
 	err = azure_provider.ProcessMachinesConfig()
 	if err != nil {
@@ -141,8 +136,11 @@ func runDeployment(
 	p azure_provider.AzureProviderer,
 ) error {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
 	prog := display.GetGlobalProgramFunc()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
 
 	// Prepare resource group
 	l.Debug("Preparing resource group")
@@ -153,57 +151,22 @@ func runDeployment(
 	}
 	l.Debug("Resource group prepared successfully")
 
-	if err = p.CreateResources(ctx); err != nil {
-		return fmt.Errorf("failed to deploy resources: %w", err)
+	// Create resources
+	if err := p.CreateResources(ctx); err != nil {
+		return fmt.Errorf("failed to create resources: %w", err)
 	}
 
-	// Go through each machine and set the resource state to succeeded - since it's
-	// already been deployed (this is basically a UI bug fix)
-	for i := range m.Deployment.Machines {
-		for k := range m.Deployment.Machines[i].GetMachineResources() {
-			m.Deployment.Machines[i].SetResourceState(
-				k,
-				models.ResourceStateSucceeded,
-			)
-		}
+	// Provision machines
+	if err := p.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
+		return fmt.Errorf("failed to provision machines: %w", err)
 	}
 
-	var eg errgroup.Group
-
-	for _, machine := range m.Deployment.Machines {
-		eg.Go(func() error {
-			return p.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
-		})
+	// Provision Bacalhau cluster
+	if err := p.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 
-	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("failed to provision packages on machines: %w", err)
-	}
-
-	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
-			if err := p.GetClusterDeployer().ProvisionOrchestrator(ctx, machine.Name); err != nil {
-				return fmt.Errorf("failed to provision Bacalhau: %w", err)
-			}
-			break
-		}
-	}
-
-	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
-			continue
-		}
-		eg.Go(func() error {
-			if err := p.GetClusterDeployer().ProvisionWorker(ctx, machine.Name); err != nil {
-				return fmt.Errorf("failed to configure Bacalhau: %w", err)
-			}
-			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("failed to deploy workers: %w", err)
-	}
+	// Finalize deployment
 	if err := p.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}

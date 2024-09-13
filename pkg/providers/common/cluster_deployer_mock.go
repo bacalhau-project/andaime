@@ -11,6 +11,14 @@ type MockClusterDeployer struct {
 	mock.Mock
 }
 
+func (cd *MockClusterDeployer) ProvisionMachines(ctx context.Context) error {
+	return cd.Called(ctx).Error(0)
+}
+
+func (cd *MockClusterDeployer) FinalizeDeployment(ctx context.Context) error {
+	return cd.Called(ctx).Error(0)
+}
+
 func (cd *MockClusterDeployer) ProvisionOrchestrator(
 	ctx context.Context,
 	machineName string,
@@ -43,13 +51,11 @@ func (cd *MockClusterDeployer) ProvisionSSH(ctx context.Context) error {
 func (cd *MockClusterDeployer) WaitForAllMachinesToReachState(
 	ctx context.Context,
 	resourceType string,
-	state models.ResourceState,
+	state models.MachineResourceState,
 ) error {
 	return cd.Called(ctx, resourceType, state).Error(0)
 }
 
-func (cd *MockClusterDeployer) ProvisionBacalhau(
-	ctx context.Context,
-) error {
+func (cd *MockClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 	return cd.Called(ctx).Error(0)
 }

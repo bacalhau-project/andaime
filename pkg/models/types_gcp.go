@@ -6,7 +6,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
-var RequiredGCPResources = []ResourceTypes{
+var RequiredGCPResources = []ResourceType{
 	GCPResourceTypeProject,
 	GCPResourceTypeVPC,
 	GCPResourceTypeFirewall,
@@ -14,42 +14,42 @@ var RequiredGCPResources = []ResourceTypes{
 	GCPResourceTypeDisk,
 }
 
-var GCPResourceTypeProject = ResourceTypes{
+var GCPResourceTypeProject = ResourceType{
 	ResourceString:    "cloudresourcemanager.googleapis.com/Project",
 	ShortResourceName: "PRJ ",
 }
 
-var GCPResourceTypeVPC = ResourceTypes{
+var GCPResourceTypeVPC = ResourceType{
 	ResourceString:    "compute.googleapis.com/Network",
 	ShortResourceName: "VPC ",
 }
 
-var GCPResourceTypeFirewall = ResourceTypes{
+var GCPResourceTypeFirewall = ResourceType{
 	ResourceString:    "compute.googleapis.com/Firewall",
 	ShortResourceName: "FW  ",
 }
 
-var GCPResourceTypeInstance = ResourceTypes{
+var GCPResourceTypeInstance = ResourceType{
 	ResourceString:    "compute.googleapis.com/Instance",
 	ShortResourceName: "VM  ",
 }
 
-var GCPResourceTypeDisk = ResourceTypes{
+var GCPResourceTypeDisk = ResourceType{
 	ResourceString:    "compute.googleapis.com/Disk",
 	ShortResourceName: "DISK",
 }
 
-func GetGCPResourceType(resource string) ResourceTypes {
+func GetGCPResourceType(resource string) ResourceType {
 	for _, r := range GetAllGCPResources() {
 		if strings.EqualFold(r.ResourceString, resource) {
 			return r
 		}
 	}
-	return ResourceTypes{}
+	return ResourceType{}
 }
 
-func GetAllGCPResources() []ResourceTypes {
-	return []ResourceTypes{
+func GetAllGCPResources() []ResourceType {
+	return []ResourceType{
 		GCPResourceTypeProject,
 		GCPResourceTypeVPC,
 		GCPResourceTypeFirewall,

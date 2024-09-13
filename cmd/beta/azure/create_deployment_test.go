@@ -109,7 +109,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset the machines slice for each test
-			deployment.Machines = map[string]*models.Machine{}
+			deployment.Machines = make(map[string]models.Machiner)
 			deployment.OrchestratorIP = ""
 			if tt.orchestratorIP != "" {
 				deployment.OrchestratorIP = tt.orchestratorIP
@@ -140,11 +140,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 				// Check if orchestrator node is set when expected
 				//
-				if tt.name == "One orchestrator node, no other machines" || tt.name == "One orchestrator node and many other machines" {
+				if tt.name == "One orchestrator node, no other machines" ||
+					tt.name == "One orchestrator node and many other machines" {
 					// Go through all the machines in the deployment and check if the orchestrator bit is set on one (and only one) of them
 					orchestratorFound := false
-					for _, machine := range deployment.Machines {
-						if machine.Orchestrator {
+					for _, machine := range deployment.GetMachines() {
+						if machine.IsOrchestrator() {
 							orchestratorFound = true
 						}
 					}
@@ -152,8 +153,8 @@ func TestProcessMachinesConfig(t *testing.T) {
 				} else if tt.name == "No orchestrator node but orchestrator IP specified" {
 					assert.NotNil(t, deployment.OrchestratorIP)
 					for _, machine := range deployment.Machines {
-						assert.False(t, machine.Orchestrator)
-						assert.Equal(t, deployment.OrchestratorIP, machine.OrchestratorIP)
+						assert.False(t, machine.IsOrchestrator())
+						assert.Equal(t, deployment.OrchestratorIP, machine.GetOrchestratorIP())
 					}
 				} else {
 					assert.Nil(t, deployment.OrchestratorIP)
@@ -177,7 +178,7 @@ func TestPrepareDeployment(t *testing.T) {
 
 	origNewAzureClientFunc := azure.NewAzureClientFunc
 	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
+	azure.NewAzureClientFunc = func(subscriptionID string) (azure_provider.AzureClienter, error) {
 		return mockAzureClient, nil
 	}
 	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })

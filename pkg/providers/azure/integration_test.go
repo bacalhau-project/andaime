@@ -94,16 +94,38 @@ func setupTest(t *testing.T) *testSetup {
 	assert.NoError(t, err)
 	m := display.NewDisplayModel(deployment)
 
-	m.Deployment.Machines = map[string]*models.Machine{
-		"orchestrator": {
-			Name:         "orchestrator",
-			Orchestrator: true,
-			PublicIP:     "1.2.3.4",
-			Location:     "eastus",
-		},
-		"worker1": {Name: "worker1", PublicIP: "1.2.3.5", Location: "eastus2"},
-		"worker2": {Name: "worker2", PublicIP: "1.2.3.6", Location: "westus"},
-	}
+	orchestrator, err := models.NewMachine(
+		models.DeploymentTypeAzure,
+		"eastus",
+		"Standard_D2s_v3",
+		30,
+		models.CloudSpecificInfo{},
+	)
+	assert.NoError(t, err)
+
+	worker1, err := models.NewMachine(
+		models.DeploymentTypeAzure,
+		"eastus2",
+		"Standard_D2s_v3",
+		30,
+		models.CloudSpecificInfo{},
+	)
+	assert.NoError(t, err)
+
+	worker2, err := models.NewMachine(
+		models.DeploymentTypeAzure,
+		"westus",
+		"Standard_D2s_v3",
+		int(30),
+		models.CloudSpecificInfo{},
+	)
+	assert.NoError(t, err)
+
+	m.Deployment.SetMachines(map[string]models.Machiner{
+		"orchestrator": orchestrator,
+		"worker1":      worker1,
+		"worker2":      worker2,
+	})
 	m.Deployment.Azure.ResourceGroupLocation = "eastus"
 	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
 
@@ -125,7 +147,7 @@ func setupTest(t *testing.T) *testSetup {
 		viper.Reset()
 	}
 
-	clusterDeployer := common.NewClusterDeployer()
+	clusterDeployer := common.NewClusterDeployer(provider)
 
 	return &testSetup{
 		provider:        provider,
@@ -246,7 +268,8 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	setup.provider.SetClusterDeployer(setup.clusterDeployer)
 
 	for _, machine := range m.Deployment.Machines {
-		err := setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+		err := setup.provider.GetClusterDeployer().
+			ProvisionPackagesOnMachine(ctx, machine.GetName())
 		assert.NoError(t, err)
 	}
 
@@ -254,10 +277,10 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
+		if machine.IsOrchestrator() {
 			continue
 		}
-		err := setup.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.Name)
+		err := setup.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.GetName())
 		assert.NoError(t, err)
 	}
 
@@ -287,7 +310,7 @@ func TestSSHProvisioningFailure(t *testing.T) {
 
 	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
+		machine.SetMachineResourceState(
 			models.AzureResourceTypeVM.ResourceString,
 			models.ResourceStateSucceeded,
 		)
@@ -339,7 +362,8 @@ func TestDockerProvisioningFailure(t *testing.T) {
 	var eg errgroup.Group
 	for _, machine := range m.Deployment.Machines {
 		eg.Go(func() error {
-			return setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+			return setup.provider.GetClusterDeployer().
+				ProvisionPackagesOnMachine(ctx, machine.GetName())
 		})
 	}
 
@@ -462,7 +486,8 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 	var eg errgroup.Group
 	for _, machine := range m.Deployment.Machines {
 		eg.Go(func() error {
-			return setup.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.Name)
+			return setup.provider.GetClusterDeployer().
+				ProvisionPackagesOnMachine(ctx, machine.GetName())
 		})
 	}
 	if err := eg.Wait(); err != nil {
@@ -474,7 +499,7 @@ func TestOrchestratorProvisioningFailure(t *testing.T) {
 
 	// Check that the VM status was updated correctly
 	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
+		if machine.IsOrchestrator() {
 			assert.Equal(
 				t,
 				models.ServiceStateFailed,

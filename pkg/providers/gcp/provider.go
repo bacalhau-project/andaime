@@ -46,9 +46,7 @@ const (
 type UpdateAction struct {
 	MachineName string
 	UpdateData  UpdatePayload
-	UpdateFunc  func(*models.Machine,
-		UpdatePayload,
-	)
+	UpdateFunc  func(machine models.Machiner, update UpdatePayload)
 }
 
 func NewUpdateAction(
@@ -56,9 +54,12 @@ func NewUpdateAction(
 	updateData UpdatePayload,
 ) UpdateAction {
 	l := logger.Get()
-	updateFunc := func(machine *models.Machine, update UpdatePayload) {
+	updateFunc := func(machine models.Machiner, update UpdatePayload) {
 		if update.UpdateType == UpdateTypeResource {
-			machine.SetResourceState(update.ResourceType.ResourceString, update.ResourceState)
+			machine.SetMachineResourceState(
+				update.ResourceType.ResourceString,
+				update.ResourceState,
+			)
 		} else if update.UpdateType == UpdateTypeService {
 			machine.SetServiceState(update.ServiceType.Name, update.ServiceState)
 		} else {
@@ -76,8 +77,8 @@ type UpdatePayload struct {
 	UpdateType    UpdateType
 	ServiceType   models.ServiceType
 	ServiceState  models.ServiceState
-	ResourceType  models.ResourceTypes
-	ResourceState models.ResourceState
+	ResourceType  models.ResourceType
+	ResourceState models.MachineResourceState
 	Complete      bool
 }
 
@@ -98,7 +99,7 @@ const (
 
 type GCPProvider struct {
 	Client              GCPClienter
-	ClusterDeployer     *common.ClusterDeployer
+	ClusterDeployer     common.ClusterDeployerer
 	CleanupClient       func()
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
@@ -244,14 +245,6 @@ func (p *GCPProvider) loadDeploymentFromConfig() error {
 	return nil
 }
 
-func (p *GCPProvider) GetConfig() *viper.Viper {
-	return p.Config
-}
-
-func (p *GCPProvider) SetConfig(config *viper.Viper) {
-	p.Config = config
-}
-
 func (p *GCPProvider) GetGCPClient() GCPClienter {
 	return p.Client
 }
@@ -278,7 +271,7 @@ func (p *GCPProvider) EnsureProject(
 	}
 
 	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
+		machine.SetMachineResourceState(
 			models.GCPResourceTypeProject.ResourceString,
 			models.ResourceStatePending,
 		)
@@ -288,7 +281,7 @@ func (p *GCPProvider) EnsureProject(
 	createdProjectID, err := p.Client.EnsureProject(ctx, projectID)
 	if err != nil {
 		for _, machine := range m.Deployment.Machines {
-			machine.SetResourceState(
+			machine.SetMachineResourceState(
 				models.GCPResourceTypeProject.ResourceString,
 				models.ResourceStateFailed,
 			)
@@ -297,7 +290,7 @@ func (p *GCPProvider) EnsureProject(
 	}
 
 	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
+		machine.SetMachineResourceState(
 			models.GCPResourceTypeProject.ResourceString,
 			models.ResourceStateSucceeded,
 		)
@@ -317,6 +310,19 @@ func (p *GCPProvider) ListProjects(
 	ctx context.Context,
 ) ([]*resourcemanagerpb.Project, error) {
 	return p.Client.ListProjects(ctx, &resourcemanagerpb.ListProjectsRequest{})
+}
+
+func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
+	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeGCP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
+	}
+	deployment.GCP.Region = viper.GetString("gcp.region")
+	deployment.GCP.Zone = viper.GetString("gcp.zone")
+	deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
+	deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
+
+	return deployment, nil
 }
 
 func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
@@ -364,17 +370,17 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 		api := api
 		apiEg.Go(func() error {
 			for _, machine := range m.Deployment.Machines {
-				machine.SetResourceState(api, models.ResourceStatePending)
+				machine.SetMachineResourceState(api, models.ResourceStatePending)
 			}
-			err := p.EnableAPI(ctx, api)
+			err := p.Client.EnableAPI(ctx, projectID, api)
 			if err != nil {
 				for _, machine := range m.Deployment.Machines {
-					machine.SetResourceState(api, models.ResourceStateFailed)
+					machine.SetMachineResourceState(api, models.ResourceStateFailed)
 				}
 				return fmt.Errorf("failed to enable API %s: %v", api, err)
 			}
 			for _, machine := range m.Deployment.Machines {
-				machine.SetResourceState(api, models.ResourceStateSucceeded)
+				machine.SetMachineResourceState(api, models.ResourceStateSucceeded)
 			}
 			return nil
 		})
@@ -503,52 +509,6 @@ func (p *GCPProvider) CreateStorageBucket(
 	return p.Client.CreateStorageBucket(ctx, bucketName)
 }
 
-func (p *GCPProvider) TestSSHLiveness(
-	ctx context.Context,
-	machineName string,
-) error {
-	l := logger.Get()
-
-	l.Infof("Testing SSH connectivity to %s", machineName)
-	m := display.GetGlobalModelFunc()
-	mach, ok := m.Deployment.Machines[machineName]
-	if !ok {
-		return fmt.Errorf("machine %s not found", machineName)
-	}
-	sshConfig, err := sshutils.NewSSHConfigFunc(
-		mach.PublicIP,
-		p.SSHPort,
-		p.SSHUser,
-		mach.SSHPrivateKeyPath,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %v", err)
-	}
-
-	err = sshConfig.WaitForSSH(ctx, p.SSHPort, sshutils.GetAggregateSSHTimeout())
-	if err != nil {
-		return fmt.Errorf("failed to connect to %s via SSH: %v", machineName, err)
-	}
-
-	l.Debugf("Successfully connected to %s via SSH", machineName)
-
-	return nil
-}
-
-func (p *GCPProvider) getSSHPrivateKeyMaterial() (string, error) {
-	privateKeyPath := p.Config.GetString("general.ssh_private_key_path")
-	if privateKeyPath == "" {
-		return "", fmt.Errorf("SSH private key path is not set")
-	}
-
-	privateKeyBytes, err := os.ReadFile(privateKeyPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read private key file: %v", err)
-	}
-
-	return string(privateKeyBytes), nil
-}
-
 func (p *GCPProvider) ListBillingAccounts(ctx context.Context) ([]string, error) {
 	return p.Client.ListBillingAccounts(ctx)
 }
@@ -652,5 +612,5 @@ func (p *GCPProvider) GetClusterDeployer() common.ClusterDeployerer {
 }
 
 func (p *GCPProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
-	p.ClusterDeployer = deployer.(*common.ClusterDeployer)
+	p.ClusterDeployer = deployer
 }

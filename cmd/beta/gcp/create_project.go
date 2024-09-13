@@ -53,9 +53,11 @@ func createProject(ctx context.Context, projectID string) error {
 
 	// Update status of all machines with the project being created
 	for i := range m.Deployment.Machines {
-		m.Deployment.Machines[i].StatusMessage = fmt.Sprintf(
-			"Associated with project: %s",
-			m.Deployment.ProjectID,
+		m.Deployment.GetMachine(i).SetStatusMessage(
+			fmt.Sprintf(
+				"Associated with project: %s",
+				m.Deployment.ProjectID,
+			),
 		)
 	}
 
@@ -79,7 +81,7 @@ func createProject(ctx context.Context, projectID string) error {
 
 	fmt.Println("Enabling necessary APIs...")
 	for _, api := range apisToEnable {
-		if err := p.EnableAPI(ctx, api); err != nil {
+		if err := p.GetGCPClient().EnableAPI(ctx, projectID, api); err != nil {
 			return handleGCPError(fmt.Errorf("failed to enable API %s: %v", api, err))
 		}
 		fmt.Printf("Enabled API: %s\n", api)

@@ -38,6 +38,7 @@ cenkalti
 centralus
 chans
 charmbracelet
+circularbuffer
 Clienter
 cloudasset
 cloudbilling
@@ -127,6 +128,7 @@ loadbalancer
 locabs
 logutils
 lostcancel
+Machiner
 mapstructure
 maxint
 mgmt
@@ -188,6 +190,7 @@ SNET
 southcentralus
 southeastasia
 sqlserver
+sshuser
 sshutils
 staticcheck
 stdpm

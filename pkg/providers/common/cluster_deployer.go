@@ -10,11 +10,11 @@ import (
 
 	internal "github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/goroutine"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -22,32 +22,27 @@ type ClusterDeployerer interface {
 	WaitForAllMachinesToReachState(
 		ctx context.Context,
 		resourceType string,
-		state models.ResourceState,
+		state models.MachineResourceState,
 	) error
+
+	ProvisionAllMachinesWithPackages(ctx context.Context) error
 	ProvisionPackagesOnMachine(ctx context.Context, machineName string) error
 
-	ProvisionBacalhau(ctx context.Context) error
+	ProvisionBacalhauCluster(ctx context.Context) error
 	ProvisionOrchestrator(ctx context.Context, machineName string) error
 	ProvisionWorker(ctx context.Context, machineName string) error
 }
 
 // ClusterDeployer struct that implements ClusterDeployerInterface
 type ClusterDeployer struct {
-	config    *viper.Viper
 	sshClient sshutils.SSHClienter
+	provider  interface{} // AzureProviderer or GCPProviderer
 }
 
-func NewClusterDeployer() *ClusterDeployer {
-	return &ClusterDeployer{}
-}
-
-// Implement the interface methods
-func (cd *ClusterDeployer) GetConfig() *viper.Viper {
-	return cd.config
-}
-
-func (cd *ClusterDeployer) SetConfig(config *viper.Viper) {
-	cd.config = config
+func NewClusterDeployer(provider interface{}) *ClusterDeployer {
+	return &ClusterDeployer{
+		provider: provider,
+	}
 }
 
 func (cd *ClusterDeployer) GetSSHClient() sshutils.SSHClienter {
@@ -58,7 +53,53 @@ func (cd *ClusterDeployer) SetSSHClient(client sshutils.SSHClienter) {
 	cd.sshClient = client
 }
 
-func (cd *ClusterDeployer) ProvisionBacalhau(ctx context.Context) error {
+func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
+
+	var errGroup errgroup.Group
+	for _, machine := range m.Deployment.Machines {
+		internalMachine := machine
+		errGroup.Go(func() error {
+			goRoutineID := goroutine.RegisterGoroutine(
+				fmt.Sprintf("ProvisionPackagesOnMachine-%s", internalMachine.GetName()),
+			)
+			defer goroutine.DeregisterGoroutine(goRoutineID)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				internalMachine.GetName(),
+				models.AzureResourceTypeVM,
+				models.ResourceStatePending,
+				"Provisioning Docker & packages on machine",
+			))
+			err := cd.ProvisionPackagesOnMachine(ctx, internalMachine.GetName())
+			if err != nil {
+				m.UpdateStatus(models.NewDisplayStatusWithText(
+					internalMachine.GetName(),
+					models.AzureResourceTypeVM,
+					models.ResourceStateFailed,
+					fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
+				))
+				return fmt.Errorf(
+					"failed to provision packages on machine %s: %v",
+					internalMachine.GetName(),
+					err,
+				)
+			}
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				internalMachine.GetName(),
+				models.AzureResourceTypeVM,
+				models.ResourceStateSucceeded,
+				"Provisioned Docker & packages on machine",
+			))
+			return nil
+		})
+	}
+	if err := errGroup.Wait(); err != nil {
+		return fmt.Errorf("failed to provision packages on all machines: %v", err)
+	}
+	return nil
+}
+
+func (cd *ClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
@@ -74,29 +115,29 @@ func (cd *ClusterDeployer) ProvisionBacalhau(ctx context.Context) error {
 		return err
 	}
 
-	if orchestrator.PublicIP == "" {
+	if orchestrator.GetPublicIP() == "" {
 		l.Errorf("Orchestrator machine has no public IP: %v", err)
 		return err
 	}
-	m.Deployment.OrchestratorIP = orchestrator.PublicIP
+	m.Deployment.OrchestratorIP = orchestrator.GetPublicIP()
 
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(models.NumberOfSimultaneousProvisionings)
-	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
+	for _, machine := range m.Deployment.GetMachines() {
+		if machine.IsOrchestrator() {
 			continue
 		}
 		internalMachine := machine
 		errGroup.Go(func() error {
-			goRoutineID := m.RegisterGoroutine(
-				fmt.Sprintf("DeployBacalhauWorker-%s", internalMachine.Name),
+			goRoutineID := goroutine.RegisterGoroutine(
+				fmt.Sprintf("DeployBacalhauWorker-%s", internalMachine.GetName()),
 			)
-			defer m.DeregisterGoroutine(goRoutineID)
+			defer goroutine.DeregisterGoroutine(goRoutineID)
 
-			if err := cd.ProvisionWorker(ctx, internalMachine.Name); err != nil {
+			if err := cd.ProvisionWorker(ctx, internalMachine.GetName()); err != nil {
 				return fmt.Errorf(
 					"failed to provision Bacalhau worker %s: %v",
-					internalMachine.Name,
+					internalMachine.GetName(),
 					err,
 				)
 			}
@@ -113,35 +154,32 @@ func (cd *ClusterDeployer) ProvisionBacalhau(ctx context.Context) error {
 
 func (cd *ClusterDeployer) ProvisionOrchestrator(ctx context.Context, machineName string) error {
 	m := display.GetGlobalModelFunc()
-	orchestratorMachine, err := cd.FindOrchestratorMachine()
+	orchestratorMachine := m.Deployment.GetMachine(machineName)
+
+	err := cd.provisionBacalhauNode(ctx, orchestratorMachine.GetName(), "requester")
 	if err != nil {
 		return err
 	}
 
-	err = cd.provisionBacalhauNode(ctx, orchestratorMachine.Name, "requester")
-	if err != nil {
-		return err
-	}
-
-	orchestratorIP := orchestratorMachine.PublicIP
+	orchestratorIP := orchestratorMachine.GetPublicIP()
 	m.Deployment.OrchestratorIP = orchestratorIP
-	err = m.Deployment.UpdateMachine(orchestratorMachine.Name, func(mach *models.Machine) {
-		mach.OrchestratorIP = orchestratorIP
+	err = m.Deployment.UpdateMachine(orchestratorMachine.GetName(), func(mach models.Machiner) {
+		mach.SetOrchestratorIP(orchestratorIP)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to set orchestrator IP on Orchestrator node: %w", err)
 	}
-	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
+	for _, machine := range m.Deployment.GetMachines() {
+		if machine.IsOrchestrator() {
 			continue
 		}
-		err = m.Deployment.UpdateMachine(machine.Name, func(mach *models.Machine) {
-			mach.OrchestratorIP = orchestratorIP
+		err = m.Deployment.UpdateMachine(machine.GetName(), func(mach models.Machiner) {
+			mach.SetOrchestratorIP(orchestratorIP)
 		})
 		if err != nil {
 			return fmt.Errorf(
 				"failed to set orchestrator IP on compute node (%s): %w",
-				machine.Name,
+				machine.GetName(),
 				err,
 			)
 		}
@@ -156,7 +194,7 @@ func (cd *ClusterDeployer) ProvisionWorker(
 ) error {
 	m := display.GetGlobalModelFunc()
 
-	if m.Deployment.Machines[machineName].Orchestrator {
+	if m.Deployment.GetMachine(machineName).IsOrchestrator() {
 		l := logger.Get()
 		l.Errorf(
 			"machine %s is an orchestrator, and should not be deployed as a worker",
@@ -171,14 +209,14 @@ func (cd *ClusterDeployer) ProvisionWorker(
 	return cd.provisionBacalhauNode(ctx, machineName, "compute")
 }
 
-func (cd *ClusterDeployer) FindOrchestratorMachine() (*models.Machine, error) {
+func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
 	m := display.GetGlobalModelFunc()
 
-	var orchestratorMachine *models.Machine
+	var orchestratorMachine models.Machiner
 	orchestratorCount := 0
 
 	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
+		if machine.IsOrchestrator() {
 			orchestratorMachine = machine
 			orchestratorCount++
 		}
@@ -202,7 +240,7 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	machine := m.Deployment.Machines[machineName]
+	machine := m.Deployment.GetMachine(machineName)
 	sshConfig, err := cd.createSSHConfig(machine)
 	if err != nil {
 		return err
@@ -230,16 +268,16 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
-	if err := cd.VerifyBacalhauDeployment(ctx, sshConfig, machine.OrchestratorIP); err != nil {
+	if err := cd.VerifyBacalhauDeployment(ctx, sshConfig, machine.GetOrchestratorIP()); err != nil {
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
-	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.Name)
+	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
 
-	if machine.Orchestrator {
-		m.Deployment.OrchestratorIP = machine.PublicIP
-		machine.OrchestratorIP = "0.0.0.0"
+	if machine.IsOrchestrator() {
+		m.Deployment.OrchestratorIP = machine.GetPublicIP()
+		machine.SetOrchestratorIP("0.0.0.0")
 	}
 
 	machine.SetComplete()
@@ -247,18 +285,18 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 	return nil
 }
 
-func (cd *ClusterDeployer) createSSHConfig(machine *models.Machine) (sshutils.SSHConfiger, error) {
+func (cd *ClusterDeployer) createSSHConfig(machine models.Machiner) (sshutils.SSHConfiger, error) {
 	return sshutils.NewSSHConfigFunc(
-		machine.PublicIP,
-		machine.SSHPort,
-		machine.SSHUser,
-		machine.SSHPrivateKeyPath,
+		machine.GetPublicIP(),
+		machine.GetSSHPort(),
+		machine.GetSSHUser(),
+		machine.GetSSHPrivateKeyPath(),
 	)
 }
 
 func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	ctx context.Context,
-	machine *models.Machine,
+	machine models.Machiner,
 	sshConfig sshutils.SSHConfiger,
 	nodeType string,
 ) error {
@@ -285,8 +323,8 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	orchestrators := []string{}
 	if nodeType == "requester" {
 		orchestrators = append(orchestrators, "0.0.0.0")
-	} else if machine.OrchestratorIP != "" {
-		orchestrators = append(orchestrators, machine.OrchestratorIP)
+	} else if machine.GetOrchestratorIP() != "" {
+		orchestrators = append(orchestrators, machine.GetOrchestratorIP())
 	} else if m.Deployment.OrchestratorIP != "" {
 		orchestrators = append(orchestrators, m.Deployment.OrchestratorIP)
 	} else {
@@ -295,11 +333,11 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 
 	var scriptBuffer bytes.Buffer
 	err = tmpl.ExecuteTemplate(&scriptBuffer, "getNodeMetadataScript", map[string]interface{}{
-		"MachineType":   machine.VMSize,
-		"MachineName":   machine.Name,
-		"Location":      machine.Location,
+		"MachineType":   machine.GetVMSize(),
+		"MachineName":   machine.GetName(),
+		"Location":      machine.GetLocation(),
 		"Orchestrators": strings.Join(orchestrators, ","),
-		"IP":            machine.PublicIP,
+		"IP":            machine.GetPublicIP(),
 		"Token":         "",
 		"NodeType":      nodeType,
 		"Project":       m.Deployment.ProjectID,
@@ -419,12 +457,12 @@ func (cd *ClusterDeployer) VerifyBacalhauDeployment(
 
 func (cd *ClusterDeployer) HandleDeploymentError(
 	_ context.Context,
-	machine *models.Machine,
+	machine models.Machiner,
 	err error,
 ) error {
 	l := logger.Get()
 	machine.SetServiceState("Bacalhau", models.ServiceStateFailed)
-	l.Errorf("Failed to deploy Bacalhau on machine %s: %v", machine.Name, err)
+	l.Errorf("Failed to deploy Bacalhau on machine %s: %v", machine.GetName(), err)
 	return err
 }
 
@@ -463,7 +501,7 @@ func (cd *ClusterDeployer) ProvisionPackagesOnMachine(
 func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 	ctx context.Context,
 	resourceType string,
-	state models.ResourceState,
+	state models.MachineResourceState,
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -471,7 +509,7 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 	for {
 		allReady := true
 		for _, machine := range m.Deployment.Machines {
-			if machine.GetResourceState(resourceType) != state {
+			if machine.GetMachineResourceState(resourceType) != state {
 				allReady = false
 				break
 			}

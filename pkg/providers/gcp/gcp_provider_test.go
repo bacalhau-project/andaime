@@ -44,12 +44,12 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
-		Machines: make(map[string]*models.Machine),
+		Machines: make(map[string]models.Machiner),
 		GCP: &models.GCPConfig{
 			ProjectID: "test-project-id",
 			Zone:      "us-central1-a",
 		},
-		Tags: map[string]*string{"test": &[]string{"value"}[0]},
+		Tags:                 map[string]*string{"test": &[]string{"value"}[0]},
 		SSHPublicKeyMaterial: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0g+ZTxC7weoIJLUafOgrm+h...",
 	}
 

@@ -14,9 +14,9 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	azurepackage "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	gcppackage "github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
@@ -45,9 +45,9 @@ var shouldInitAzureFlag bool
 var shouldInitGCPFlag bool
 
 type cloudProvider struct {
-	awsProvider   awsprovider.AWSProviderer
-	azureProvider azurepackage.AzureProviderer
-	gcpProvider   gcppackage.GCPProviderer
+	awsProvider   aws_provider.AWSProviderer
+	azureProvider azure_provider.AzureProviderer
+	gcpProvider   gcp_provider.GCPProviderer
 }
 
 func Execute() error {
@@ -264,7 +264,7 @@ func initializeCloudProviders() (*cloudProvider, error) {
 }
 
 func initAWSProvider(c *cloudProvider) error {
-	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
+	awsProvider, err := aws_provider.NewAWSProvider(viper.GetViper())
 	if err != nil {
 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
@@ -273,7 +273,7 @@ func initAWSProvider(c *cloudProvider) error {
 }
 
 func initAzureProvider(c *cloudProvider) error {
-	azureProvider, err := azurepackage.NewAzureProviderFunc()
+	azureProvider, err := azure_provider.NewAzureProviderFunc()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
@@ -283,7 +283,7 @@ func initAzureProvider(c *cloudProvider) error {
 
 func initGCPProvider(c *cloudProvider) error {
 	ctx := context.Background()
-	gcpProvider, err := gcppackage.NewGCPProviderFunc(ctx)
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}

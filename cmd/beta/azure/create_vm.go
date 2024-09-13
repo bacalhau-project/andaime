@@ -78,11 +78,11 @@ func createVM(cmd *cobra.Command, args []string) error {
 
 	// Print the VM details
 	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		fmt.Printf(
 			"VM created successfully: %s (External IP: %s)\n",
-			machine.Name,
-			machine.PublicIP,
+			machine.GetName(),
+			machine.GetPublicIP(),
 		)
 	}
 

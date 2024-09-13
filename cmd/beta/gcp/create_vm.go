@@ -85,6 +85,11 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("billing account ID is not set")
 	}
 
+	diskSizeGB := viper.GetInt("gcp.default_disk_size_gb")
+	if diskSizeGB == 0 {
+		diskSizeGB = 30
+	}
+
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
@@ -95,18 +100,19 @@ func createVM(cmd *cobra.Command, args []string) error {
 	m.Deployment.GCP.BillingAccountID = billingAccountID
 	m.Deployment.GCP.Region = getRegionFromZone(zone)
 	m.Deployment.GCP.Zone = zone
-	m.Deployment.Machines = map[string]*models.Machine{
-		vmName: {
-			Name:                 vmName,
-			VMSize:               machineType,
-			SSHUser:              sshUser,
-			SSHPublicKeyMaterial: publicKeyMaterial,
-			CloudSpecific: models.CloudSpecificInfo{
-				Zone:   zone,
-				Region: getRegionFromZone(zone),
-			},
+	machine, err := models.NewMachine(
+		models.DeploymentTypeGCP,
+		vmName,
+		machineType,
+		diskSizeGB,
+		models.CloudSpecificInfo{
+			Zone:   zone,
+			Region: getRegionFromZone(zone),
 		},
-	}
+	)
+	m.Deployment.SetMachines(map[string]models.Machiner{
+		vmName: machine,
+	})
 
 	vm, err := p.GetGCPClient().CreateComputeInstance(ctx, vmName)
 	if err != nil {

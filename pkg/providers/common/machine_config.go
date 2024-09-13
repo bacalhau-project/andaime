@@ -10,9 +10,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/general"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
 
@@ -27,7 +25,7 @@ func ProcessMachinesConfig(
 
 	lowerProviderType := strings.ToLower(string(providerType))
 
-	rawMachines := []general.RawMachine{}
+	rawMachines := []RawMachine{}
 	if err := viper.UnmarshalKey(lowerProviderType+".machines", &rawMachines); err != nil {
 		return fmt.Errorf("error unmarshaling machines: %w", err)
 	}
@@ -106,9 +104,9 @@ func ProcessMachinesConfig(
 		vmSize   string
 	}
 	var allBadMachineLocationCombos []badMachineLocationCombo
-	newMachines := make(map[string]*models.Machine)
+	newMachines := make(map[string]models.Machiner)
 	for _, rawMachine := range rawMachines {
-		count := utils.GetCountOfMachines(rawMachine.Parameters, defaultCount)
+		count := getCountOfMachines(rawMachine.Parameters, defaultCount)
 		thisVMType := defaultType
 		if rawMachine.Parameters.Type != "" {
 			thisVMType = rawMachine.Parameters.Type
@@ -131,7 +129,7 @@ func ProcessMachinesConfig(
 
 		diskImageFamily := defaultDiskImageFamily
 		diskImageURL := defaultDiskImageURL
-		if rawMachine.Parameters != (general.RawMachineParams{}) {
+		if rawMachine.Parameters != (RawMachineParams{}) {
 			if rawMachine.Parameters.DiskImageFamily != "" {
 				diskImageFamily = rawMachine.Parameters.DiskImageFamily
 			}
@@ -143,7 +141,7 @@ func ProcessMachinesConfig(
 			newMachine, err := createNewMachine(
 				providerType,
 				rawMachine.Location,
-				utils.GetSafeDiskSize(defaultDiskSize),
+				defaultDiskSize,
 				thisVMType,
 				privateKeyBytes,
 				sshPort,
@@ -154,13 +152,13 @@ func ProcessMachinesConfig(
 				return fmt.Errorf("failed to create new machine: %w", err)
 			}
 
-			if rawMachine.Parameters != (general.RawMachineParams{}) {
+			if rawMachine.Parameters != (RawMachineParams{}) {
 				if rawMachine.Parameters.Orchestrator {
-					newMachine.Orchestrator = true
+					newMachine.SetOrchestrator(true)
 				}
 			}
-			newMachines[newMachine.Name] = newMachine
-			newMachines[newMachine.Name].SetResourceState(
+			newMachines[newMachine.GetName()] = newMachine
+			newMachines[newMachine.GetName()].SetMachineResourceState(
 				string(providerType)+"VM",
 				models.ResourceStateNotStarted,
 			)
@@ -179,15 +177,15 @@ func ProcessMachinesConfig(
 	orchestratorFound := false
 	for name, machine := range newMachines {
 		if orchestratorIP != "" {
-			newMachines[name].OrchestratorIP = orchestratorIP
+			newMachines[name].SetOrchestratorIP(orchestratorIP)
 			orchestratorFound = true
-		} else if machine.Orchestrator {
+		} else if machine.IsOrchestrator() {
 			orchestratorFound = true
 		}
 	}
 	if !orchestratorFound && len(newMachines) > 0 {
 		for _, machine := range newMachines {
-			machine.Orchestrator = true
+			machine.SetOrchestrator(true)
 			break
 		}
 		orchestratorFound = true
@@ -196,7 +194,7 @@ func ProcessMachinesConfig(
 		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
 	}
 
-	m.Deployment.Machines = newMachines
+	m.Deployment.SetMachines(newMachines)
 	for k := range locations {
 		m.Deployment.Locations = append(m.Deployment.Locations, k)
 	}
@@ -207,15 +205,21 @@ func ProcessMachinesConfig(
 func createNewMachine(
 	providerType models.DeploymentType,
 	location string,
-	diskSizeGB int32,
+	diskSizeGB int,
 	vmSize string,
 	privateKeyBytes []byte,
 	sshPort int,
 	diskImageFamily string,
 	diskImageURL string,
-) (*models.Machine, error) {
+) (models.Machiner, error) {
 	l := logger.Get()
-	newMachine, err := models.NewMachine(providerType, location, vmSize, diskSizeGB)
+	newMachine, err := models.NewMachine(
+		providerType,
+		location,
+		vmSize,
+		diskSizeGB,
+		models.CloudSpecificInfo{},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new machine: %w", err)
 	}
@@ -228,9 +232,9 @@ func createNewMachine(
 		newMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
 	}
 
-	newMachine.SSHUser = "azureuser"
-	newMachine.SSHPort = sshPort
-	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
+	newMachine.SetSSHUser("azureuser")
+	newMachine.SetSSHPort(sshPort)
+	newMachine.SetSSHPrivateKeyMaterial(privateKeyBytes)
 
 	if providerType == models.DeploymentTypeGCP {
 		if diskImageFamily == "" && diskImageURL == "" {
@@ -245,7 +249,7 @@ func createNewMachine(
 			if err != nil {
 				return nil, fmt.Errorf("failed to validate disk image family: %w", err)
 			}
-			newMachine.DiskImageFamily = diskImageFamily
+			newMachine.SetDiskImageFamily(diskImageFamily)
 			if diskImageURL != returnedDiskImageURL && diskImageURL != "" {
 				l.Warnf(
 					"disk image URL (%s) does not match, using provided URL: %s",
@@ -256,9 +260,20 @@ func createNewMachine(
 				diskImageURL = returnedDiskImageURL
 			}
 		}
-		newMachine.DiskImageURL = diskImageURL
-		newMachine.DiskImageFamily = diskImageFamily
+		newMachine.SetDiskImageURL(diskImageURL)
+		newMachine.SetDiskImageFamily(diskImageFamily)
 	}
 
 	return newMachine, nil
+}
+
+func getCountOfMachines(params RawMachineParams, defaultCount int) int {
+	if params.Count > 0 {
+		return params.Count
+	}
+
+	if defaultCount == 0 {
+		return 1
+	}
+	return defaultCount
 }

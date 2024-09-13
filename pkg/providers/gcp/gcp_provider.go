@@ -65,7 +65,10 @@ func (p *GCPProvider) processUpdate(update UpdateAction) {
 	if update.UpdateData.UpdateType == UpdateTypeComplete {
 		machine.SetComplete()
 	} else if update.UpdateData.UpdateType == UpdateTypeResource {
-		machine.SetResourceState(update.UpdateData.ResourceType.ResourceString, update.UpdateData.ResourceState)
+		machine.SetMachineResourceState(
+			update.UpdateData.ResourceType.ResourceString,
+			update.UpdateData.ResourceState,
+		)
 	} else if update.UpdateData.UpdateType == UpdateTypeService {
 		machine.SetServiceState(update.UpdateData.ServiceType.Name, update.UpdateData.ServiceState)
 	}

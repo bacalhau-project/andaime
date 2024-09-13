@@ -44,70 +44,6 @@ import (
 const maximumProjectIDLength = 18
 const maximumUniqueProjectIDLength = 26
 
-type GCPClienter interface {
-	EnsureProject(
-		ctx context.Context,
-		projectID string,
-	) (string, error)
-	DestroyProject(ctx context.Context, projectID string) error
-	ListProjects(
-		ctx context.Context,
-		req *resourcemanagerpb.ListProjectsRequest,
-	) ([]*resourcemanagerpb.Project, error)
-	ListAllAssetsInProject(
-		ctx context.Context,
-		projectID string,
-	) ([]*assetpb.Asset, error)
-	StartResourcePolling(ctx context.Context) error
-
-	CheckAuthentication(ctx context.Context) error
-	CheckPermissions(ctx context.Context) error
-	EnableAPI(ctx context.Context, projectID, apiName string) error
-	CreateVPCNetwork(ctx context.Context, networkName string) error
-	CreateFirewallRules(ctx context.Context, networkName string) error
-	CreateStorageBucket(ctx context.Context, bucketName string) error
-	CreateComputeInstance(
-		ctx context.Context,
-		instanceName string,
-	) (*computepb.Instance, error)
-	waitForOperation(
-		ctx context.Context,
-		project, zone, operation string,
-	) error
-	SetBillingAccount(ctx context.Context, billingAccountID string) error
-	ListBillingAccounts(ctx context.Context) ([]string, error)
-	CreateServiceAccount(
-		ctx context.Context,
-		projectID string,
-	) (*iam.ServiceAccount, error)
-	CreateServiceAccountKey(
-		ctx context.Context,
-		projectID, serviceAccountEmail string,
-	) (*iam.ServiceAccountKey, error)
-	waitForRegionalOperation(
-		ctx context.Context,
-		project, region, operation string,
-	) error
-	IsAPIEnabled(ctx context.Context, projectID, apiName string) (bool, error)
-	GetVMExternalIP(ctx context.Context, projectID, zone, vmName string) (string, error)
-	waitForGlobalOperation(
-		ctx context.Context,
-		project, operation string,
-	) error
-	getVMZone(
-		ctx context.Context,
-		projectID, vmName string,
-	) (string, error)
-	checkFirewallRuleExists(
-		ctx context.Context,
-		projectID, ruleName string,
-	) error
-	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
-	EnsureVPCNetwork(ctx context.Context, networkName string) error
-	EnsureFirewallRules(ctx context.Context, networkName string) error
-	// EnsureStorageBucket(ctx context.Context, location, bucketName string) error
-}
-
 type LiveGCPClient struct {
 	parentString           string
 	projectClient          *resourcemanager.ProjectsClient
@@ -167,7 +103,10 @@ type CloseableClient interface {
 	Close() error
 }
 
-func NewGCPClient(ctx context.Context, organizationID string) (GCPClienter, func(), error) {
+func NewGCPClient(
+	ctx context.Context,
+	organizationID string,
+) (GCPClienter, func(), error) {
 	l := logger.Get()
 
 	// Centralized credential handling (adjust as needed)
@@ -583,7 +522,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 
 func (c *LiveGCPClient) allMachinesComplete(m *display.DisplayModel) bool {
 	for _, machine := range m.Deployment.Machines {
-		if !machine.Complete() {
+		if !machine.IsComplete() {
 			return false
 		}
 	}
@@ -654,7 +593,7 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 // UpdateResourceState updates the state of a resource in the deployment
 func (c *LiveGCPClient) UpdateResourceState(
 	resourceName, resourceType string,
-	state models.ResourceState,
+	state models.MachineResourceState,
 ) error {
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
@@ -665,11 +604,11 @@ func (c *LiveGCPClient) UpdateResourceState(
 	// Find the machine that owns this resource
 	for _, machine := range m.Deployment.Machines {
 		if strings.Contains(strings.ToLower(resourceName),
-			strings.ToLower(machine.Name)) {
-			if machine.GetResourceState(resourceType) < state {
-				machine.SetResourceState(resourceType, state)
+			strings.ToLower(machine.GetName())) {
+			if machine.GetMachineResourceState(resourceType) < state {
+				machine.SetMachineResourceState(resourceType, state)
 				m.UpdateStatus(models.NewDisplayStatusWithText(
-					machine.Name,
+					machine.GetName(),
 					models.GetGCPResourceType(resourceType),
 					state,
 					resourceType+" deployed.",
@@ -678,10 +617,10 @@ func (c *LiveGCPClient) UpdateResourceState(
 			return nil
 		} else if strings.Contains(strings.ToLower(resourceName), "/global/") {
 			foundResource = true
-			if machine.GetResourceState(resourceType) < state {
-				machine.SetResourceState(resourceType, state)
+			if machine.GetMachineResourceState(resourceType) < state {
+				machine.SetMachineResourceState(resourceType, state)
 				m.UpdateStatus(models.NewDisplayStatusWithText(
-					machine.Name,
+					machine.GetName(),
 					models.GetGCPResourceType(resourceType),
 					state,
 					resourceType+" deployed.",
@@ -813,7 +752,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	for _, port := range allowedPorts {
 		for _, machine := range m.Deployment.Machines {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
-				machine.Name,
+				machine.GetName(),
 				models.GCPResourceTypeFirewall,
 				models.ResourceStatePending,
 				fmt.Sprintf("Creating FW for port %d", port),
@@ -879,7 +818,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 
 		for _, machine := range m.Deployment.Machines {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
-				machine.Name,
+				machine.GetName(),
 				models.GCPResourceTypeFirewall,
 				models.ResourceStateRunning,
 				fmt.Sprintf("Created or verified FW Rule for port %d", port),
@@ -949,7 +888,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 	}
 
 	// Get the zone from the vmConfig
-	zone := machine.Location
+	zone := machine.GetLocation()
 
 	// Validate the zone
 	if err := c.validateZone(ctx, projectID, zone); err != nil {
@@ -964,7 +903,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 	}
 
 	// Get the SSH user from the deployment model
-	sshUser := machine.SSHUser
+	sshUser := machine.GetSSHUser()
 
 	if sshUser == "" {
 		return nil, fmt.Errorf("SSH user is not set in the deployment model")
@@ -996,11 +935,11 @@ func (c *LiveGCPClient) CreateComputeInstance(
 		return nil, fmt.Errorf("failed to execute startup script template: %w", err)
 	}
 
-	if machine.VMSize == "" {
+	if machine.GetVMSize() == "" {
 		return nil, fmt.Errorf("vm size is not set on this machine")
 	}
 
-	if machine.DiskSizeGB == 0 {
+	if machine.GetDiskSizeGB() == 0 {
 		return nil, fmt.Errorf("disk size is not set on this machine")
 	}
 
@@ -1009,7 +948,7 @@ func (c *LiveGCPClient) CreateComputeInstance(
 		MachineType: to.Ptr(fmt.Sprintf(
 			"zones/%s/machineTypes/%s",
 			zone, // Use the provided zone
-			machine.VMSize,
+			machine.GetVMSize(),
 		)),
 		Disks: []*computepb.AttachedDisk{
 			{
@@ -1017,8 +956,8 @@ func (c *LiveGCPClient) CreateComputeInstance(
 				Boot:       to.Ptr(true),
 				Type:       to.Ptr("PERSISTENT"),
 				InitializeParams: &computepb.AttachedDiskInitializeParams{
-					DiskSizeGb:  to.Ptr(int64(machine.DiskSizeGB)),
-					SourceImage: to.Ptr(machine.DiskImageURL),
+					DiskSizeGb:  to.Ptr(int64(machine.GetDiskSizeGB())),
+					SourceImage: to.Ptr(machine.GetDiskImageURL()),
 				},
 			},
 		},

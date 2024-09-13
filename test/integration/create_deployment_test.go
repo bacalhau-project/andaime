@@ -63,13 +63,28 @@ func setupViper(
 		viper.Set("azure.default_disk_size_gb", 30)
 		viper.Set("azure.machines", []interface{}{
 			map[string]interface{}{
+				"location": "eastus",
+			},
+			map[string]interface{}{
 				"location": "eastus2",
 				"parameters": map[string]interface{}{
-					"count": 2,
+					"count": float64(2),
 				},
 			},
 			map[string]interface{}{
 				"location": "westus",
+				"parameters": map[string]interface{}{
+					"type": "Standard_DS4_v4",
+				},
+			},
+			map[string]interface{}{
+				"location": "westus2",
+				"parameters": map[string]interface{}{
+					"type": "Standard_D8s_v3",
+				},
+			},
+			map[string]interface{}{
+				"location": "centralus",
 				"parameters": map[string]interface{}{
 					"orchestrator": true,
 				},
@@ -86,12 +101,28 @@ func setupViper(
 		viper.Set("gcp.machines", []interface{}{
 			map[string]interface{}{
 				"location": "us-central1-a",
-				"parameters": map[string]interface{}{
-					"count": 2,
-				},
 			},
 			map[string]interface{}{
 				"location": "us-central1-b",
+				"parameters": map[string]interface{}{
+					"count": float64(2),
+				},
+			},
+			map[string]interface{}{
+				"location": "us-central1-c",
+				"parameters": map[string]interface{}{
+					"type": "n2-standard-4",
+				},
+			},
+			map[string]interface{}{
+				"location": "us-central1-f",
+				"parameters": map[string]interface{}{
+					"type":              "n2-standard-8",
+					"disk_image_family": "ubuntu-2204-lts",
+				},
+			},
+			map[string]interface{}{
+				"location": "us-central1-g",
 				"parameters": map[string]interface{}{
 					"orchestrator": true,
 				},
@@ -189,6 +220,10 @@ func (m *MockAzureProvider) StartResourcePolling(ctx context.Context) {
 	m.Called(ctx).Error(0)
 }
 
+func (m *MockAzureProvider) PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
+	return m.Called(ctx).Get(0).(*models.Deployment), m.Called(ctx).Error(1)
+}
+
 var _ azure_provider.AzureProviderer = &MockAzureProvider{}
 
 func TestExecuteCreateDeployment(t *testing.T) {
@@ -211,31 +246,26 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			cmd.SetContext(context.Background())
 
 			mockClusterDeployer := new(common.MockClusterDeployer)
-			mockClusterDeployer.On("ProvisionOrchestrator",
-				mock.Anything,
-				mock.Anything,
-			).
+			mockClusterDeployer.On("CreateResources", mock.Anything).Return(nil)
+			mockClusterDeployer.On("ProvisionMachines", mock.Anything).Return(nil)
+			mockClusterDeployer.On("ProvisionBacalhauCluster", mock.Anything).Return(nil)
+			mockClusterDeployer.On("FinalizeDeployment", mock.Anything).Return(nil)
+			mockClusterDeployer.On("ProvisionOrchestrator", mock.Anything, mock.Anything).
 				Return(nil)
-			mockClusterDeployer.On("ProvisionWorker",
-				mock.Anything,
-				mock.Anything,
-			).
+			mockClusterDeployer.On("ProvisionWorker", mock.Anything, mock.Anything).Return(nil)
+			mockClusterDeployer.On("ProvisionPackagesOnMachine", mock.Anything, mock.Anything).
 				Return(nil)
-			mockClusterDeployer.On("ProvisionPackagesOnMachine",
-				mock.Anything,
-				mock.Anything,
-			).
+			mockClusterDeployer.On("WaitForAllMachinesToReachState", mock.Anything, mock.Anything, mock.Anything).
 				Return(nil)
-			mockClusterDeployer.On("WaitForAllMachinesToReachState",
-				mock.Anything,
-				mock.Anything,
-				mock.Anything,
-			).
-				Return(nil)
-			mockClusterDeployer.On("ProvisionBacalhau",
-				mock.Anything,
-			).
-				Return(nil)
+			mockClusterDeployer.On("ProvisionBacalhau", mock.Anything).Return(nil)
+			mockClusterDeployer.On("PrepareDeployment", mock.Anything, mock.Anything).
+				Return(func(ctx context.Context, deploymentType models.DeploymentType) (*models.Deployment, error) {
+					return &models.Deployment{DeploymentType: deploymentType}, nil
+				})
+			mockClusterDeployer.On("GetConfig").Return(viper.New())
+			mockClusterDeployer.On("SetConfig", mock.Anything).Return(nil)
+			mockClusterDeployer.On("GetSSHClient").Return(new(sshutils.MockSSHConfig))
+			mockClusterDeployer.On("SetSSHClient", mock.Anything).Return(nil)
 
 			var err error
 			var deployment *models.Deployment
@@ -423,26 +453,6 @@ func TestPrepareDeployment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setupViper(t, tt.provider, testSSHPublicKeyPath, testSSHPrivateKeyPath)
 
-			// Ensure the machine configurations are set correctly
-			machineConfigs := []map[string]interface{}{
-				{
-					"location": "eastus2",
-					"parameters": map[string]interface{}{
-						"count": float64(2), // Use float64 instead of int
-					},
-				},
-				{
-					"location": "westus",
-					"parameters": map[string]interface{}{
-						"orchestrator": true,
-					},
-				},
-			}
-			viper.Set(
-				fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider))),
-				machineConfigs,
-			)
-
 			ctx := context.Background()
 
 			deployment, err := common.PrepareDeployment(ctx, tt.provider)
@@ -505,17 +515,18 @@ func TestPrepareDeployment(t *testing.T) {
 
 			// Check if machines are created
 			assert.NotEmpty(t, deployment.Machines)
-			assert.Equal(
-				t,
-				3,
-				len(deployment.Machines),
-				"Expected 3 machines (2 regular + 1 orchestrator)",
-			)
 
 			// Verify machine configurations
+			machineConfigsRaw := viper.Get(
+				fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider))),
+			)
+			machineConfigs, ok := machineConfigsRaw.([]interface{})
+			assert.True(t, ok, "Machine configs should be a slice of interfaces")
+
 			expectedMachineCount := 0
 			for _, machineConfigRaw := range machineConfigs {
-				machineConfig := machineConfigRaw
+				machineConfig, ok := machineConfigRaw.(map[string]interface{})
+				assert.True(t, ok, "Each machine config should be a map")
 				if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
 					if count, ok := params["count"].(float64); ok {
 						expectedMachineCount += int(count)
@@ -528,27 +539,30 @@ func TestPrepareDeployment(t *testing.T) {
 			}
 			assert.Equal(t, expectedMachineCount, len(deployment.Machines))
 
-			for _, machine := range deployment.Machines {
-				assert.NotEmpty(t, machine.Name)
-				assert.NotEmpty(t, machine.Location)
+			for _, machine := range deployment.GetMachines() {
+				assert.NotEmpty(t, machine.GetName())
+				assert.NotEmpty(t, machine.GetLocation())
 				if tt.provider == models.DeploymentTypeAzure {
-					assert.Contains(t, []string{"eastus2", "westus"}, machine.Location)
-					assert.Equal(
+					assert.Contains(
 						t,
-						"Standard_DS4_v2",
-						machine.VMSize,
-						"Machine VM size should be set correctly",
+						[]string{"eastus", "eastus2", "westus", "westus2", "centralus"},
+						machine.GetLocation(),
+					)
+					assert.Contains(
+						t,
+						[]string{"Standard_DS4_v2", "Standard_DS4_v4", "Standard_D8s_v3"},
+						machine.GetVMSize(),
 					)
 				} else {
-					assert.Contains(t, []string{"eastus2", "westus"}, machine.Location)
-					assert.Equal(t, "n2-standard-2", machine.VMSize, "Machine VM size should be set correctly")
+					assert.Contains(t, []string{"us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f", "us-central1-g"}, machine.GetLocation())
+					assert.Equal(t, "n2-standard-2", machine.GetVMSize(), "Machine VM size should be set correctly")
 				}
 			}
 
 			// Check for orchestrator
 			orchestratorCount := 0
-			for _, machine := range deployment.Machines {
-				if machine.Orchestrator {
+			for _, machine := range deployment.GetMachines() {
+				if machine.IsOrchestrator() {
 					orchestratorCount++
 				}
 			}

@@ -17,7 +17,7 @@ import (
 )
 
 func setupTestBacalhauDeployer(
-	machines map[string]*models.Machine,
+	machines map[string]models.Machiner,
 ) (*common.ClusterDeployer, *sshutils.MockSSHConfig) {
 	mockSSH := new(sshutils.MockSSHConfig)
 	mockSSH.MockClient = new(sshutils.MockSSHClient)
@@ -26,7 +26,7 @@ func setupTestBacalhauDeployer(
 	m.Deployment.Machines = machines
 	m.Deployment.OrchestratorIP = "1.2.3.4"
 
-	deployer := common.NewClusterDeployer()
+	deployer := common.NewClusterDeployer(nil)
 
 	// Override the SSH config creation function
 	sshutils.NewSSHConfigFunc = func(host string,
@@ -43,30 +43,30 @@ func setupTestBacalhauDeployer(
 func TestFindOrchestratorMachine(t *testing.T) {
 	tests := []struct {
 		name          string
-		machines      map[string]*models.Machine
+		machines      map[string]models.Machiner
 		expectedError string
 	}{
 		{
 			name: "Single orchestrator",
-			machines: map[string]*models.Machine{
-				"orch":   {Name: "orch", Orchestrator: true},
-				"worker": {Name: "worker"},
+			machines: map[string]models.Machiner{
+				"orch":   &models.Machine{Name: "orch", Orchestrator: true},
+				"worker": &models.Machine{Name: "worker"},
 			},
 			expectedError: "",
 		},
 		{
 			name: "No orchestrator",
-			machines: map[string]*models.Machine{
-				"worker1": {Name: "worker1"},
-				"worker2": {Name: "worker2"},
+			machines: map[string]models.Machiner{
+				"worker1": &models.Machine{Name: "worker1"},
+				"worker2": &models.Machine{Name: "worker2"},
 			},
 			expectedError: "no orchestrator node found",
 		},
 		{
 			name: "Multiple orchestrators",
-			machines: map[string]*models.Machine{
-				"orch1": {Name: "orch1", Orchestrator: true},
-				"orch2": {Name: "orch2", Orchestrator: true},
+			machines: map[string]models.Machiner{
+				"orch1": &models.Machine{Name: "orch1", Orchestrator: true},
+				"orch2": &models.Machine{Name: "orch2", Orchestrator: true},
 			},
 			expectedError: "multiple orchestrator nodes found",
 		},
@@ -75,7 +75,9 @@ func TestFindOrchestratorMachine(t *testing.T) {
 	viper.Set("general.project_prefix", "test-project")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			deployer, _ := setupTestBacalhauDeployer(tt.machines)
+			m := display.GetGlobalModelFunc()
+			m.Deployment.SetMachines(tt.machines)
+			deployer, _ := setupTestBacalhauDeployer(m.Deployment.Machines)
 			machine, err := deployer.FindOrchestratorMachine()
 
 			if tt.expectedError != "" {
@@ -84,7 +86,7 @@ func TestFindOrchestratorMachine(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, machine)
-				assert.True(t, machine.Orchestrator)
+				assert.True(t, machine.IsOrchestrator())
 			}
 		})
 	}
@@ -95,9 +97,9 @@ func TestSetupNodeConfigMetadata(t *testing.T) {
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
 
-	m.Deployment.Machines = map[string]*models.Machine{
-		"test": {Name: "test", VMSize: "Standard_DS4_v2", Location: "eastus2"},
-	}
+	m.Deployment.SetMachines(map[string]models.Machiner{
+		"test": &models.Machine{Name: "test", VMSize: "Standard_DS4_v2", Location: "eastus2"},
+	})
 	deployer, mockSSHConfig := setupTestBacalhauDeployer(m.Deployment.Machines)
 
 	mockSSHConfig.On("PushFile", ctx, "/tmp/get-node-config-metadata.sh", mock.Anything, true).
@@ -106,7 +108,7 @@ func TestSetupNodeConfigMetadata(t *testing.T) {
 
 	err := deployer.SetupNodeConfigMetadata(
 		ctx,
-		m.Deployment.Machines["test"],
+		m.Deployment.GetMachine("test"),
 		mockSSHConfig,
 		"compute",
 	)
@@ -119,10 +121,10 @@ func TestInstallBacalhau(t *testing.T) {
 	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
-	m.Deployment.Machines = map[string]*models.Machine{
-		"test": {Name: "test", Orchestrator: true},
-	}
-	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+	m.Deployment.SetMachines(map[string]models.Machiner{
+		"test": &models.Machine{Name: "test", Orchestrator: true},
+	})
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.GetMachines())
 
 	mockSSH.On("PushFile", ctx, "/tmp/install-bacalhau.sh", mock.Anything, true).
 		Return(nil).
@@ -142,10 +144,8 @@ func TestInstallBacalhauRun(t *testing.T) {
 	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
-	m.Deployment.Machines = map[string]*models.Machine{
-		"test": {Name: "test", Orchestrator: true},
-	}
-	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+	m.Deployment.SetMachine("test", &models.Machine{Name: "test", Orchestrator: true})
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.GetMachines())
 
 	mockSSH.On("PushFile", ctx, "/tmp/install-run-bacalhau.sh", mock.Anything, true).
 		Return(nil).
@@ -165,10 +165,8 @@ func TestSetupBacalhauService(t *testing.T) {
 	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	ctx := context.Background()
-	m.Deployment.Machines = map[string]*models.Machine{
-		"test": {Name: "test"},
-	}
-	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+	m.Deployment.SetMachine("test", &models.Machine{Name: "test", Orchestrator: true})
+	deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.GetMachines())
 
 	mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
 	mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
@@ -208,8 +206,8 @@ func TestVerifyBacalhauDeployment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			deployer, mockSSH := setupTestBacalhauDeployer(map[string]*models.Machine{
-				"test": {Name: "test"},
+			deployer, mockSSH := setupTestBacalhauDeployer(map[string]models.Machiner{
+				"test": &models.Machine{Name: "test"},
 			})
 
 			mockSSH.On("ExecuteCommand", ctx, "bacalhau node list --output json --api-host 0.0.0.0").
@@ -241,7 +239,7 @@ func TestDeployBacalhauNode(t *testing.T) {
 		name          string
 		nodeType      string
 		setupMock     func(*sshutils.MockSSHConfig)
-		machines      map[string]*models.Machine
+		machines      map[string]models.Machiner
 		expectedError string
 	}{
 		{
@@ -255,16 +253,16 @@ func TestDeployBacalhauNode(t *testing.T) {
 				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
 				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 			},
-			machines: map[string]*models.Machine{
-				"test": {Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
+			machines: map[string]models.Machiner{
+				"test": &models.Machine{Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
 			},
 			expectedError: "",
 		},
 		{
 			name:     "Failed orchestrator deployment",
 			nodeType: "requester",
-			machines: map[string]*models.Machine{
-				"test": {Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
+			machines: map[string]models.Machiner{
+				"test": &models.Machine{Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
 			},
 			setupMock: func(mockSSH *sshutils.MockSSHConfig) {
 				mockSSH.On("PushFile", ctx, mock.Anything, mock.Anything, true).
@@ -283,8 +281,8 @@ func TestDeployBacalhauNode(t *testing.T) {
 				mockSSH.On("InstallSystemdService", ctx, "bacalhau", mock.Anything).Return(nil)
 				mockSSH.On("RestartService", ctx, "bacalhau").Return(nil)
 			},
-			machines: map[string]*models.Machine{
-				"test": {
+			machines: map[string]models.Machiner{
+				"test": &models.Machine{
 					Name:           "test",
 					Orchestrator:   false,
 					PublicIP:       "2.3.4.5",
@@ -298,8 +296,8 @@ func TestDeployBacalhauNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := display.GetGlobalModelFunc()
-			m.Deployment.Machines = tt.machines
-			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+			m.Deployment.SetMachines(tt.machines)
+			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.GetMachines())
 
 			tt.setupMock(mockSSH)
 
@@ -362,14 +360,14 @@ func TestDeployOrchestrator(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		machines      map[string]*models.Machine
+		machines      map[string]models.Machiner
 		setupMock     func(*sshutils.MockSSHConfig, map[string][]byte)
 		expectedError string
 	}{
 		{
 			name: "Successful orchestrator deployment",
-			machines: map[string]*models.Machine{
-				"orch": {Name: hostname,
+			machines: map[string]models.Machiner{
+				"orch": &models.Machine{Name: hostname,
 					Orchestrator: true,
 					PublicIP:     ip,
 					VMSize:       vmSize,
@@ -414,8 +412,8 @@ func TestDeployOrchestrator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := display.GetGlobalModelFunc()
-			m.Deployment.Machines = tt.machines
-			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
+			m.Deployment.SetMachines(tt.machines)
+			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.GetMachines())
 
 			renderedScripts := make(map[string][]byte)
 			tt.setupMock(mockSSH, renderedScripts)
@@ -460,21 +458,21 @@ func TestDeployWorkers(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
 		name          string
-		machines      map[string]*models.Machine
+		machines      map[string]models.Machiner
 		setupMock     func(*sshutils.MockSSHConfig)
 		expectedError string
 	}{
 		{
 			name: "Successful workers deployment",
-			machines: map[string]*models.Machine{
-				"orch": {Name: "orch", Orchestrator: true, PublicIP: "1.2.3.4"},
-				"worker1": {
+			machines: map[string]models.Machiner{
+				"orch": &models.Machine{Name: "orch", Orchestrator: true, PublicIP: "1.2.3.4"},
+				"worker1": &models.Machine{
 					Name:           "worker1",
 					Orchestrator:   false,
 					PublicIP:       "2.3.4.5",
 					OrchestratorIP: "1.2.3.4",
 				},
-				"worker2": {
+				"worker2": &models.Machine{
 					Name:           "worker2",
 					Orchestrator:   false,
 					PublicIP:       "3.4.5.6",
@@ -502,18 +500,18 @@ func TestDeployWorkers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := display.GetGlobalModelFunc()
-			m.Deployment.Machines = tt.machines
+			m.Deployment.SetMachines(tt.machines)
 			deployer, mockSSH := setupTestBacalhauDeployer(m.Deployment.Machines)
 
 			tt.setupMock(mockSSH)
 
 			var err error
 			for _, machine := range tt.machines {
-				if !machine.Orchestrator {
-					err = deployer.ProvisionWorker(ctx, machine.Name)
+				if !machine.IsOrchestrator() {
+					err = deployer.ProvisionWorker(ctx, machine.GetName())
 					assert.NoError(t, err)
 				} else {
-					err = deployer.ProvisionOrchestrator(ctx, machine.Name)
+					err = deployer.ProvisionOrchestrator(ctx, machine.GetName())
 					assert.NoError(t, err)
 				}
 				if tt.expectedError != "" {
@@ -521,22 +519,10 @@ func TestDeployWorkers(t *testing.T) {
 					assert.Contains(t, err.Error(), tt.expectedError)
 				} else {
 					assert.NoError(t, err)
-					assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines[machine.Name].GetServiceState("Bacalhau"))
+					assert.Equal(t, models.ServiceStateSucceeded, m.Deployment.Machines[machine.GetName()].GetServiceState("Bacalhau"))
 				}
 			}
 			mockSSH.AssertExpectations(t)
 		})
-	}
-}
-
-func createMockMachine(
-	name string,
-) *models.Machine {
-	return &models.Machine{
-		Name:     name,
-		VMSize:   "fake-vm-size",
-		Location: "fake-location",
-		SSHPort:  66000,
-		SSHUser:  "fake-user",
 	}
 }

@@ -127,9 +127,9 @@ func (m *MockGCPClient) ListInstances(
 func (m *MockGCPClient) GetInstanceStatus(
 	ctx context.Context,
 	zone, instanceName string,
-) (models.ResourceState, error) {
+) (models.MachineResourceState, error) {
 	args := m.Called(ctx, zone, instanceName)
-	return args.Get(0).(models.ResourceState), args.Error(1)
+	return args.Get(0).(models.MachineResourceState), args.Error(1)
 }
 
 func (m *MockGCPClient) DeleteNetwork(
@@ -345,13 +345,6 @@ func (m *MockGCPClient) ListProjects(
 ) ([]*resourcemanagerpb.Project, error) {
 	args := m.Called(ctx, filter)
 	return args.Get(0).([]*resourcemanagerpb.Project), args.Error(1)
-}
-
-func (m *MockGCPClient) ProvisionBacalhau(
-	ctx context.Context,
-) error {
-	args := m.Called(ctx)
-	return args.Error(0)
 }
 
 func (m *MockGCPClient) ProvisionPackagesOnMachines(

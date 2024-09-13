@@ -37,7 +37,7 @@ func setupTestDisplayModel() *display.DisplayModel {
 
 	return &display.DisplayModel{
 		Deployment: &models.Deployment{
-			Machines:  make(map[string]*models.Machine),
+			Machines:  make(map[string]models.Machiner),
 			Locations: []string{"eastus"},
 			Azure: &models.AzureConfig{
 				ResourceGroupName:     "test-resource-group",
@@ -90,9 +90,9 @@ func TestProcessUpdate(t *testing.T) {
 		originalGlobalModelFunc = display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel {
 			m := setupTestDisplayModel()
-			m.Deployment.Machines[machineName] = &models.Machine{
+			m.Deployment.SetMachine(machineName, &models.Machine{
 				Name: machineName,
-			}
+			})
 			return m
 		}
 		defer func() {
@@ -103,15 +103,15 @@ func TestProcessUpdate(t *testing.T) {
 			machineName,
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
 			fmt.Printf("Update called with data: %v\n", data)
 
 			updateCalled = true
-			assert.Equal(t, machineName, m.Name)
+			assert.Equal(t, machineName, mach.GetName())
 			assert.Equal(t, UpdateTypeResource, data.UpdateType)
 			assert.Equal(t, "testResource", data.ResourceType.ResourceString)
 			assert.Equal(t, models.ResourceStateSucceeded, data.ResourceState)
@@ -134,11 +134,11 @@ func TestProcessUpdate(t *testing.T) {
 			"testMachine",
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
 			t.Error("Update function should not have been called")
 		}
 
@@ -158,11 +158,11 @@ func TestProcessUpdate(t *testing.T) {
 			"testMachine",
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
 			t.Error("Update function should not have been called")
 		}
 
@@ -176,11 +176,11 @@ func TestProcessUpdate(t *testing.T) {
 			"nonExistentMachine",
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(m *models.Machine, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
 			t.Error("Update function should not have been called")
 		}
 
@@ -194,9 +194,9 @@ func TestProcessUpdate(t *testing.T) {
 		originalGlobalModelFunc = display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel {
 			m := setupTestDisplayModel()
-			m.Deployment.Machines[machineName] = &models.Machine{
+			m.Deployment.SetMachine(machineName, &models.Machine{
 				Name: machineName,
-			}
+			})
 			return m
 		}
 		defer func() {
@@ -207,7 +207,7 @@ func TestProcessUpdate(t *testing.T) {
 			machineName,
 			UpdatePayload{
 				UpdateType:    UpdateTypeResource,
-				ResourceType:  models.ResourceTypes{ResourceString: "testResource"},
+				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
@@ -432,7 +432,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 	m := display.GetGlobalModelFunc()
 	m.Deployment = &models.Deployment{
 		Name:     "test-deployment",
-		Machines: make(map[string]*models.Machine),
+		Machines: make(map[string]models.Machiner),
 		Azure: &models.AzureConfig{
 			ResourceGroupName:     "test-resource-group",
 			ResourceGroupLocation: "eastus",
@@ -446,7 +446,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 			Name: machineName,
 		}
 		for _, resource := range requiredResources {
-			m.Deployment.Machines[machineName].SetResourceState(
+			m.Deployment.Machines[machineName].SetMachineResourceState(
 				resource.ResourceString,
 				models.ResourceStateNotStarted,
 			)
@@ -511,9 +511,9 @@ func TestPollAndUpdateResources(t *testing.T) {
 	for _, machine := range testMachines {
 		for _, resourceType := range requiredResources {
 			errgroup.Go(func() error {
-				return func(machine string, resourceType models.ResourceTypes) error {
+				return func(machine string, resourceType models.ResourceType) error {
 					for i := 0; i < 10; i++ {
-						for _, state := range []models.ResourceState{
+						for _, state := range []models.MachineResourceState{
 							models.ResourceStateNotStarted,
 							models.ResourceStatePending,
 							models.ResourceStateRunning,
@@ -586,7 +586,9 @@ func TestPollAndUpdateResources(t *testing.T) {
 	log("Checking final states")
 	for _, machine := range testMachines {
 		for _, resourceType := range requiredResources {
-			state := m.Deployment.Machines[machine].GetResourceState(resourceType.ResourceString)
+			state := m.Deployment.Machines[machine].GetMachineResourceState(
+				resourceType.ResourceString,
+			)
 			assert.Equal(
 				t,
 				models.ResourceStateSucceeded,
@@ -611,7 +613,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 
 func generateMockResource(
 	machineName string,
-	resourceType models.ResourceTypes,
+	resourceType models.ResourceType,
 ) map[string]interface{} {
 	resource := map[string]interface{}{
 		"name":              fmt.Sprintf("%s-%s", machineName, resourceType.ShortResourceName),
@@ -698,7 +700,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
-		Machines: make(map[string]*models.Machine),
+		Machines: make(map[string]models.Machiner),
 		Azure: &models.AzureConfig{
 			ResourceGroupName:     "test-resource-group",
 			ResourceGroupLocation: "eastus",
@@ -882,7 +884,7 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 
 	localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
-		Machines: make(map[string]*models.Machine),
+		Machines: make(map[string]models.Machiner),
 		Tags:     map[string]*string{"test": ptr.String("value")},
 	}
 

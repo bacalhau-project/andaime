@@ -21,7 +21,7 @@ const (
 
 type DisplayStatus struct {
 	ID              string
-	Type            ResourceTypes
+	Type            ResourceType
 	Location        string
 	StatusMessage   string
 	DetailedStatus  string
@@ -40,23 +40,23 @@ type DisplayStatus struct {
 	Bacalhau        ServiceState
 }
 
-type ResourceTypes struct {
+type ResourceType struct {
 	ResourceString    string
 	ShortResourceName string
 }
 
-func (a *ResourceTypes) GetResourceString() string {
+func (a *ResourceType) GetResourceString() string {
 	return a.ResourceString
 }
 
-func (a *ResourceTypes) GetShortResourceName() string {
+func (a *ResourceType) GetShortResourceName() string {
 	return a.ShortResourceName
 }
 
-type ResourceState int
+type MachineResourceState int
 
 const (
-	ResourceStateUnknown ResourceState = iota
+	ResourceStateUnknown MachineResourceState = iota
 	ResourceStateNotStarted
 	ResourceStatePending
 	ResourceStateRunning
@@ -76,8 +76,8 @@ var SkippedResourceTypes = []string{
 
 func NewDisplayStatusWithText(
 	resourceID string,
-	resourceType ResourceTypes,
-	state ResourceState,
+	resourceType ResourceType,
+	state MachineResourceState,
 	text string,
 ) *DisplayStatus {
 	return &DisplayStatus{
@@ -102,7 +102,7 @@ func NewDisplayStatusWithText(
 // - state is the state of the resource (e.g. AzureResourceStateSucceeded)
 func NewDisplayVMStatus(
 	machineName string,
-	state ResourceState,
+	state MachineResourceState,
 ) *DisplayStatus {
 	return NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
 }
@@ -117,8 +117,8 @@ func NewDisplayVMStatus(
 func NewDisplayStatus(
 	machineName string,
 	resourceID string,
-	resourceType ResourceTypes,
-	state ResourceState,
+	resourceType ResourceType,
+	state MachineResourceState,
 ) *DisplayStatus {
 	l := logger.Get()
 	l.Debugf(
@@ -190,8 +190,8 @@ const (
 )
 
 func CreateStateMessageWithText(
-	resource ResourceTypes,
-	resourceState ResourceState,
+	resource ResourceType,
+	resourceState MachineResourceState,
 	resourceName string,
 	text string,
 ) string {
@@ -199,8 +199,8 @@ func CreateStateMessageWithText(
 }
 
 func CreateStateMessage(
-	resource ResourceTypes,
-	resourceState ResourceState,
+	resource ResourceType,
+	resourceState MachineResourceState,
 	resourceName string,
 ) string {
 	l := logger.Get()
@@ -259,7 +259,7 @@ func ConvertFromRawResourceToStatus(
 	var statuses []DisplayStatus
 
 	if location := GetLocationFromResourceName(resourceName); location != "" {
-		machinesNames, err := GetMachinesInLocation(location, deployment.Machines)
+		machinesNames, err := GetMachinesInLocation(location, deployment.GetMachines())
 		if err != nil {
 			return nil, err
 		}
@@ -333,15 +333,15 @@ func machineNeedsUpdating(
 	currentState := ConvertFromAzureStringToResourceState(resourceState)
 
 	needsUpdate := 0
-	if (deployment.Machines[machineName].GetResource(resourceType) == MachineResource{}) ||
-		(deployment.Machines[machineName].GetResource(resourceType).ResourceState < currentState) {
-		deployment.Machines[machineName].SetResource(resourceType, currentState)
+	if (deployment.Machines[machineName].GetMachineResource(resourceType) == MachineResource{}) ||
+		(deployment.Machines[machineName].GetMachineResource(resourceType).ResourceState < currentState) {
+		deployment.Machines[machineName].SetMachineResource(resourceType, currentState)
 		needsUpdate++
 	}
 	return needsUpdate > 0
 }
 
-func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([]string, error) {
+func GetMachinesInLocation(resourceName string, machines map[string]Machiner) ([]string, error) {
 	location := strings.Split(resourceName, "-")[0]
 
 	if location == "" {
@@ -351,8 +351,8 @@ func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([
 	var machinesInLocation []string
 
 	for _, machine := range machines {
-		if machine.Location == location {
-			machinesInLocation = append(machinesInLocation, machine.Name)
+		if machine.GetLocation() == location {
+			machinesInLocation = append(machinesInLocation, machine.GetName())
 		}
 	}
 

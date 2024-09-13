@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/globals"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
@@ -43,6 +44,7 @@ func PrepareDeployment(
 	ctx context.Context,
 	provider models.DeploymentType,
 ) (*models.Deployment, error) {
+	l := logger.Get()
 	deployment, err := models.NewDeployment()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new deployment: %w", err)
@@ -78,23 +80,6 @@ func PrepareDeployment(
 		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
 	}
 
-	if provider == models.DeploymentTypeAzure {
-		deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
-		deployment.Azure.SubscriptionID = viper.GetString("azure.subscription_id")
-		deployment.Azure.DefaultVMSize = viper.GetString("azure.default_vm_size")
-		deployment.Azure.DefaultDiskSizeGB = utils.GetSafeDiskSize(
-			viper.GetInt("azure.default_disk_size_gb"),
-		)
-		deployment.Azure.ResourceGroupName = viper.GetString("azure.resource_group_name")
-		deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
-	} else if provider == models.DeploymentTypeGCP {
-		deployment.GCP.Region = viper.GetString("gcp.region")
-		deployment.GCP.Zone = viper.GetString("gcp.zone")
-		deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
-		deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
-		deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
-	}
-
 	// Add this after setting provider-specific configurations
 	machineConfigsRaw := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(provider))))
 	if machineConfigsRaw == nil {
@@ -121,9 +106,11 @@ func PrepareDeployment(
 		)
 	}
 
+	orchestratorMachineName := ""
+	orchestratorLocation := ""
+	orchestratorMessagePrinted := false
 	for _, machineConfig := range machineConfigs {
 		machine := &models.Machine{
-			Name:     fmt.Sprintf("%s-%s", deployment.Name, utils.GenerateUniqueID()),
 			Location: machineConfig["location"].(string),
 			VMSize: viper.GetString(
 				fmt.Sprintf("%s.default_machine_type", strings.ToLower(string(provider))),
@@ -131,20 +118,32 @@ func PrepareDeployment(
 		}
 
 		if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
-			if orchestrator, ok := params["orchestrator"].(bool); ok {
-				machine.Orchestrator = orchestrator
+			var count float64
+			if count, ok = params["count"].(float64); !ok || count < 1 {
+				count = 1
 			}
-			if count, ok := params["count"].(float64); ok && count > 0 {
-				for i := 0; i < int(count); i++ {
-					machineCopy := *machine
-					machineCopy.Name = fmt.Sprintf("%s-%d", machine.Name, i+1)
-					deployment.Machines[machineCopy.Name] = &machineCopy
+
+			if orchestrator, ok := params["orchestrator"].(bool); ok &&
+				orchestratorMachineName == "" {
+				machine.Orchestrator = orchestrator
+				orchestratorMachineName = machine.Name
+				orchestratorLocation = machine.Location
+				if count > 1 && !orchestratorMessagePrinted {
+					l.Infof(
+						"Orchestrator flag is set, but count is greater than 1. Making the first machine the orchestrator.",
+					)
 				}
-			} else {
-				deployment.Machines[machine.Name] = machine
+			} else if orchestratorMachineName != "" {
+				l.Infof("Orchestrator flag must be set in a single location. Ignoring flag.")
+				l.Infof("Orchestrator machine name: %s", orchestratorMachineName)
+				l.Infof("Orchestrator location: %s", orchestratorLocation)
+			}
+			for i := 0; i < int(count); i++ {
+				machine.Name = fmt.Sprintf("%s-vm", utils.GenerateUniqueID())
+				deployment.SetMachine(machine.GetName(), machine)
 			}
 		} else {
-			deployment.Machines[machine.Name] = machine
+			deployment.SetMachine(machine.GetName(), machine)
 		}
 	}
 
@@ -154,6 +153,11 @@ func PrepareDeployment(
 func setDeploymentBasicInfo(deployment *models.Deployment, provider models.DeploymentType) error {
 	projectPrefix := viper.GetString("general.project_prefix")
 	uniqueID := viper.GetString("general.unique_id")
+
+	if uniqueID == "" {
+		uniqueID = time.Now().Format("060102150405")
+	}
+
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
 
 	if provider == models.DeploymentTypeAzure {

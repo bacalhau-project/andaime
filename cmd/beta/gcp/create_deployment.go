@@ -7,14 +7,11 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -47,15 +44,16 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	uniqueID := time.Now().Format("0601021504")
-	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
-
-	p, err := gcp_provider.NewGCPProviderFunc(ctx)
+	providerRaw, err := gcp_provider.NewGCPProviderFunc(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
+	p, ok := providerRaw.(*gcp_provider.GCPProvider)
+	if !ok {
+		return fmt.Errorf("failed to cast GCP provider: %w", err)
+	}
 
-	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeGCP)
+	deployment, err := p.PrepareDeployment(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
@@ -66,54 +64,16 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
 
-	// Check permissions before starting deployment
-	// if err := p.GetGCPClient().CheckPermissions(ctx); err != nil {
-	// 	l.Error(fmt.Sprintf("Permission check failed: %v", err))
-	// 	return fmt.Errorf("insufficient permissions to deploy: %w", err)
-	// }
-
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
 
 	go p.StartResourcePolling(ctx)
 
-	go func() {
-		deploymentErr := p.CreateResources(ctx)
-		if deploymentErr != nil {
-			l.Error(fmt.Sprintf("Error creating resources: %v", deploymentErr))
-			cancel()
-		}
-		err := p.GetClusterDeployer().
-			WaitForAllMachinesToReachState(ctx,
-				models.GCPResourceTypeInstance.ResourceString,
-				models.ResourceStateSucceeded,
-			)
-		if err != nil {
-			l.Error(fmt.Sprintf("Error waiting for all machines to reach state: %v", err))
-			cancel()
-		}
-
-		var dockerErrGroup errgroup.Group
-		for _, machine := range deployment.Machines {
-			internalMachine := machine
-			dockerErrGroup.Go(func() error {
-				return internalMachine.InstallDockerAndCorePackages(ctx)
-			})
-		}
-		if err := dockerErrGroup.Wait(); err != nil {
-			l.Error(fmt.Sprintf("Error installing Docker and core packages: %v", err))
-			cancel()
-		}
-
-		var bacalhauErrGroup errgroup.Group
-		bacalhauErrGroup.Go(func() error {
-			return p.GetClusterDeployer().ProvisionBacalhau(ctx)
-		})
-		if err := bacalhauErrGroup.Wait(); err != nil {
-			l.Error(fmt.Sprintf("Error installing Bacalhau: %v", err))
-			cancel()
-		}
-	}()
+	deploymentErr := runDeployment(ctx, p)
+	if deploymentErr != nil {
+		l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
+		cancel()
+	}
 
 	_, err = prog.Run()
 	if err != nil {
@@ -125,6 +85,30 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		// Clear the screen and print final table
 		fmt.Print("\033[H\033[2J")
 		fmt.Println(m.RenderFinalTable())
+	}
+
+	return deploymentErr
+}
+
+func runDeployment(ctx context.Context, p *gcp_provider.GCPProvider) error {
+	// Create resources
+	if err := p.CreateResources(ctx); err != nil {
+		return fmt.Errorf("failed to create resources: %w", err)
+	}
+
+	// Provision machines
+	if err := p.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
+		return fmt.Errorf("failed to provision machines: %w", err)
+	}
+
+	// Provision Bacalhau cluster
+	if err := p.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
+	}
+
+	// Finalize deployment
+	if err := p.FinalizeDeployment(ctx); err != nil {
+		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
 
 	return nil
