@@ -8,8 +8,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -44,22 +44,18 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	providerRaw, err := gcp_provider.NewGCPProviderFunc(ctx)
+	provider, err := providers.ProviderFactory(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to initialize GCP provider: %w", err)
-	}
-	p, ok := providerRaw.(*gcp_provider.GCPProvider)
-	if !ok {
-		return fmt.Errorf("failed to cast GCP provider: %w", err)
+		return fmt.Errorf("failed to initialize provider: %w", err)
 	}
 
-	deployment, err := p.PrepareDeployment(ctx)
+	deployment, err := provider.PrepareDeployment(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
 	m := display.NewDisplayModel(deployment)
-	err = gcp_provider.ProcessMachinesConfig()
+	err = common.ProcessMachinesConfig()
 	if err != nil {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
@@ -67,9 +63,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
 
-	go p.StartResourcePolling(ctx)
+	go provider.StartResourcePolling(ctx)
 
-	deploymentErr := runDeployment(ctx, p)
+	deploymentErr := runDeployment(ctx, provider)
 	if deploymentErr != nil {
 		l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
 		cancel()
@@ -90,7 +86,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, p *gcp_provider.GCPProvider) error {
+func runDeployment(ctx context.Context, p providers.Provider) error {
 	// Create resources
 	if err := p.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
