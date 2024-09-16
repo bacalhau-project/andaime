@@ -10,6 +10,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+// NewGCPProviderFunc is a function type that creates a new GCPProvider
+type NewGCPProviderFunc func(client GCPClienter) *GCPProvider
+
+// DefaultNewGCPProvider is the default implementation of NewGCPProviderFunc
+var DefaultNewGCPProvider NewGCPProviderFunc = NewGCPProvider
+
 type GCPProvider struct {
 	Client          GCPClienter
 	Config          *viper.Viper
