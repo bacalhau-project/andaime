@@ -9,24 +9,38 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
 
-// NewAzureProviderFunc is a function type that creates a new AzureProvider
-// This is used for overriding the provisioning of the AzureProvider during tests
-type NewAzureProviderFunc func(client AzureClienter) *AzureProvider
+type AzureProvider struct {
+	Client          AzureClienter
+	Config          *viper.Viper
+	ClusterDeployer *common.ClusterDeployer
+	SSHUser         string
+	SSHPort         int
+	updateQueue     chan common.UpdateAction
+}
 
-// DefaultNewAzureProvider is the default implementation of NewAzureProviderFunc
-var DefaultNewAzureProvider NewAzureProviderFunc = NewAzureProvider
-
-// NewAzureProvider creates a new AzureProvider
-func NewAzureProvider(client AzureClienter) *AzureProvider {
-	return &AzureProvider{
+func NewAzureProvider(ctx context.Context) (providers.Providerer, error) {
+	subscriptionID := viper.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("azure.subscription_id is required")
+	}
+	
+	client := NewAzureClient() // Implement this function to create an Azure client
+	provider := &AzureProvider{
 		Client:          client,
 		Config:          viper.GetViper(),
-		ClusterDeployer: providers.NewClusterDeployer(),
+		ClusterDeployer: common.NewClusterDeployer(),
 	}
+	
+	if err := provider.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
+	}
+	
+	return provider, nil
 }
 
 func (p *AzureProvider) Initialize(ctx context.Context) error {
