@@ -48,6 +48,9 @@ func NewAzureProvider(ctx context.Context) (providers.Providerer, error) {
 	return provider, nil
 }
 
+// Ensure AzureProvider implements the Providerer interface
+var _ providers.Providerer = &AzureProvider{}
+
 func (p *AzureProvider) Initialize(ctx context.Context) error {
 	// Check for SSH keys
 	sshPublicKeyPath := p.Config.GetString("general.ssh_public_key_path")
