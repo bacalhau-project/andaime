@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/viper"
 )
 
@@ -23,24 +22,4 @@ func ProviderFactory(ctx context.Context) (Providerer, error) {
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
-}
-
-// NewAzureProvider creates a new Azure provider
-func NewAzureProvider(ctx context.Context) (Providerer, error) {
-	subscriptionID := viper.GetString("azure.subscription_id")
-	if subscriptionID == "" {
-		return nil, fmt.Errorf("azure.subscription_id is required")
-	}
-	// Implementation details for Azure provider creation
-	return nil, fmt.Errorf("Azure provider creation not implemented")
-}
-
-// NewGCPProvider creates a new GCP provider
-func NewGCPProvider(ctx context.Context) (Providerer, error) {
-	organizationID := viper.GetString("gcp.organization_id")
-	if organizationID == "" {
-		return nil, fmt.Errorf("gcp.organization_id is required")
-	}
-	client := gcp.NewGCPClient() // Assuming you have a NewGCPClient function
-	return gcp.DefaultNewGCPProvider(client), nil
 }
