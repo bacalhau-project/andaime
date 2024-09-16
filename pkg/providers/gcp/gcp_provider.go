@@ -11,6 +11,7 @@ import (
 )
 
 // NewGCPProviderFunc is a function type that creates a new GCPProvider
+// This is used for overriding the provisioning of the GCPProvider during tests
 type NewGCPProviderFunc func(client GCPClienter) *GCPProvider
 
 // DefaultNewGCPProvider is the default implementation of NewGCPProviderFunc
