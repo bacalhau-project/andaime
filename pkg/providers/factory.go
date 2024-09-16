@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/viper"
 )
 
@@ -16,9 +18,9 @@ func ProviderFactory(ctx context.Context) (Providerer, error) {
 
 	switch providerType {
 	case "azure":
-		return NewAzureProvider(ctx)
+		return azure.NewAzureProvider(ctx)
 	case "gcp":
-		return NewGCPProvider(ctx)
+		return gcp.NewGCPProvider(ctx)
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
