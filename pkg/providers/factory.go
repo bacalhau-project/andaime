@@ -4,8 +4,23 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 )
+
+type Providerer interface {
+	Initialize(ctx context.Context) error
+	GetOrCreateResourceGroup(ctx context.Context) (*models.ResourceGroup, error)
+	DestroyResourceGroup(ctx context.Context) error
+	CreateVM(ctx context.Context, machine *models.Machine) error
+	DeleteVM(ctx context.Context, machine *models.Machine) error
+	GetVMExternalIP(ctx context.Context, machine *models.Machine) (string, error)
+	SetupNetworking(ctx context.Context) error
+	ConfigureFirewall(ctx context.Context, machine *models.Machine) error
+	ValidateMachineType(ctx context.Context, machineType string) (bool, error)
+	SetBillingAccount(ctx context.Context, accountID string) error
+	FinalizeDeployment(ctx context.Context) error
+}
 
 // ProviderFactory creates a Provider based on configuration.
 func ProviderFactory(ctx context.Context) (Providerer, error) {
