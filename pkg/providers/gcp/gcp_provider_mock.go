@@ -8,7 +8,6 @@ import (
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/api/iam/v1"
 )
@@ -23,8 +22,9 @@ func (m *MockGCPProvider) PrepareDeployment(ctx context.Context) (*models.Deploy
 	return args.Get(0).(*models.Deployment), args.Error(1)
 }
 
-func (m *MockGCPProvider) StartResourcePolling(ctx context.Context) {
-	m.Called(ctx)
+func (m *MockGCPProvider) StartResourcePolling(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
 }
 
 func (m *MockGCPProvider) PrepareResourceGroup(ctx context.Context) error {
@@ -119,15 +119,6 @@ func (m *MockGCPProvider) EnsureProject(ctx context.Context, projectID string) (
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockGCPProvider) GetSSHClient() sshutils.SSHClienter {
-	args := m.Called()
-	return args.Get(0).(sshutils.SSHClienter)
-}
-
-func (m *MockGCPProvider) SetSSHClient(client sshutils.SSHClienter) {
-	m.Called(client)
-}
-
 func (m *MockGCPProvider) GetGCPClient() GCPClienter {
 	args := m.Called()
 	return args.Get(0).(GCPClienter)
@@ -185,4 +176,4 @@ func (m *MockGCPProvider) ListBillingAccounts(
 	return args.Get(0).([]string), args.Error(1)
 }
 
-var _ GCPProviderer = &MockGCPProvider{}
+var _ common.Providerer = &MockGCPProvider{}

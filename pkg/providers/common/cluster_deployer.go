@@ -36,17 +36,13 @@ type ClusterDeployerer interface {
 // ClusterDeployer struct that implements ClusterDeployerInterface
 type ClusterDeployer struct {
 	sshClient sshutils.SSHClienter
-	provider  interface{} // AzureProviderer or GCPProviderer
+	provider  models.DeploymentType
 }
 
-func NewClusterDeployer(provider interface{}) *ClusterDeployer {
+func NewClusterDeployer(provider models.DeploymentType) *ClusterDeployer {
 	return &ClusterDeployer{
 		provider: provider,
 	}
-}
-
-func (cd *ClusterDeployer) GetSSHClient() sshutils.SSHClienter {
-	return cd.sshClient
 }
 
 func (cd *ClusterDeployer) SetSSHClient(client sshutils.SSHClienter) {
@@ -215,7 +211,7 @@ func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
 	var orchestratorMachine models.Machiner
 	orchestratorCount := 0
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if machine.IsOrchestrator() {
 			orchestratorMachine = machine
 			orchestratorCount++
@@ -471,7 +467,10 @@ func (cd *ClusterDeployer) ProvisionPackagesOnMachine(
 	machineName string,
 ) error {
 	m := display.GetGlobalModelFunc()
-	mach := m.Deployment.Machines[machineName]
+	mach := m.Deployment.GetMachine(machineName)
+	if mach == nil {
+		return fmt.Errorf("machine %s not found", machineName)
+	}
 
 	m.UpdateStatus(models.NewDisplayStatusWithText(
 		machineName,

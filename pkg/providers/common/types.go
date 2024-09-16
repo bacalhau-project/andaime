@@ -1,18 +1,5 @@
 package common
 
-import (
-	"context"
-
-	"github.com/bacalhau-project/andaime/pkg/models"
-)
-
-type Providerer interface {
-	PrepareDeployment(ctx context.Context) (*models.Deployment, error)
-	StartResourcePolling(ctx context.Context)
-	CreateResources(ctx context.Context) error
-	FinalizeDeployment(ctx context.Context) error
-}
-
 type RawMachineParams struct {
 	Count           int    `yaml:"count,omitempty"`
 	Type            string `yaml:"type,omitempty"`

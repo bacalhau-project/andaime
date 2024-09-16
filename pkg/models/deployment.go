@@ -59,8 +59,9 @@ type Disk struct {
 type DeploymentType string
 
 const (
-	DeploymentTypeAzure DeploymentType = "Azure"
-	DeploymentTypeGCP   DeploymentType = "GCP"
+	DeploymentTypeUnknown DeploymentType = "Unknown"
+	DeploymentTypeAzure   DeploymentType = "Azure"
+	DeploymentTypeGCP     DeploymentType = "GCP"
 )
 
 type Deployment struct {
@@ -171,8 +172,7 @@ func (d *Deployment) SetMachine(name string, machine Machiner) {
 }
 
 func (d *Deployment) SetMachines(machines map[string]Machiner) {
-	d.deploymentMutex.Lock()
-	defer d.deploymentMutex.Unlock()
+	d.Machines = make(map[string]Machiner)
 	for name, machine := range machines {
 		d.SetMachine(name, machine)
 	}
@@ -221,6 +221,7 @@ type AzureConfig struct {
 	DefaultVMSize         string
 	DefaultDiskSizeGB     int32
 	DefaultLocation       string
+	Tags                  map[string]*string
 }
 
 type GCPConfig struct {
@@ -233,4 +234,5 @@ type GCPConfig struct {
 	BillingAccountID       string
 	ServiceAccountEmail    string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
+	Tags                   map[string]*string
 }

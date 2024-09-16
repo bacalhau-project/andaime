@@ -20,6 +20,7 @@ type Machiner interface {
 	// Basic information
 	GetID() string
 	GetName() string
+	SetName(string)
 	GetType() ResourceType
 	GetVMSize() string
 	GetDiskSizeGB() int
@@ -618,6 +619,10 @@ func (mach *Machine) GetID() string {
 
 func (mach *Machine) GetName() string {
 	return mach.Name
+}
+
+func (mach *Machine) SetName(name string) {
+	mach.Name = name
 }
 
 func (mach *Machine) GetType() ResourceType {

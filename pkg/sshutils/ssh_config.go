@@ -10,6 +10,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+var NullCallback = func(int64, int64) {}
+
 type SSHConfig struct {
 	Host               string
 	Port               int
@@ -33,7 +35,15 @@ type SSHConfiger interface {
 	Connect() (SSHClienter, error)
 	WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error
 	ExecuteCommand(ctx context.Context, command string) (string, error)
+	ExecuteCommandWithCallback(ctx context.Context,
+		command string,
+		callback func(string)) (string, error)
 	PushFile(ctx context.Context, remotePath string, content []byte, executable bool) error
+	PushFileWithCallback(ctx context.Context,
+		remotePath string,
+		content []byte,
+		executable bool,
+		callback func(int64, int64)) error
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
 	StartService(ctx context.Context, serviceName string) error
 	RestartService(ctx context.Context, serviceName string) error
@@ -212,11 +222,17 @@ func (c *SSHConfig) NewSession() (SSHSessioner, error) {
 	return c.SSHClient.NewSession()
 }
 
-// ExecuteCommand runs a command on the remote server over SSH.
+func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
+	return c.ExecuteCommandWithCallback(ctx, command, nil)
+}
+
+// ExecuteCommandWithCallback runs a command on the remote server over SSH.
 // It takes the command as a string argument.
 // It retries the execution a configurable number of times if it fails.
 // It returns the output of the command as a string and any error encountered.
-func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
+func (c *SSHConfig) ExecuteCommandWithCallback(ctx context.Context,
+	command string,
+	callback func(string)) (string, error) {
 	l := logger.Get()
 	l.Infof("Executing command: %s", command)
 
@@ -239,15 +255,30 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 	return output, err
 }
 
-// PushFile copies a local file to the remote server.
-// It takes the local file path and the remote file path as arguments.
-// The file is copied over an SSH session using the stdin pipe.
-// It returns an error if any step of the process fails.
 func (c *SSHConfig) PushFile(
 	ctx context.Context,
 	remotePath string,
 	content []byte,
 	executable bool,
+) error {
+	return c.PushFileWithCallback(ctx,
+		remotePath,
+		content,
+		executable,
+		NullCallback,
+	)
+}
+
+// PushFile copies a local file to the remote server.
+// It takes the local file path and the remote file path as arguments.
+// The file is copied over an SSH session using the stdin pipe.
+// It returns an error if any step of the process fails.
+func (c *SSHConfig) PushFileWithCallback(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+	_ func(int64, int64),
 ) error {
 	l := logger.Get()
 	l.Infof("Pushing file to: %s", remotePath)

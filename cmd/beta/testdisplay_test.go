@@ -142,11 +142,10 @@ func TestDisplayLayout(t *testing.T) {
 		expectedLineSprintfString += "│"
 		// "│ %-9s %-5s %-14s %-30s %-20s %-9s %-14s %-14s %-2s %-2s %-2s %-2s │",
 
-		machineResource := machine.GetMachineResource(models.AzureResourceTypeVM.ResourceString)
 		expectedLine := fmt.Sprintf(
 			expectedLineSprintfString,
 			machine.GetName(),
-			machineResource.ResourceType.ShortResourceName,
+			models.AzureResourceTypeVM.ShortResourceName,
 			machine.GetLocation(),
 			machine.GetStatusMessage(),
 			"██████████████████",

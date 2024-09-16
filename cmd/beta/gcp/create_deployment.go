@@ -8,6 +8,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/cobra"
@@ -44,14 +45,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	providerFactory, err := providers.GetProviderFactory()
+	provider, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
-		return fmt.Errorf("failed to get provider factory: %w", err)
-	}
-
-	provider, err := providerFactory(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize provider: %w", err)
+		return fmt.Errorf("failed to get provider: %w", err)
 	}
 
 	deployment, err := provider.PrepareDeployment(ctx)
@@ -61,7 +57,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 
 	m := display.NewDisplayModel(deployment)
 	err = common.ProcessMachinesConfig(
-		deployment.Type,
+		deployment.DeploymentType,
 		func(ctx context.Context, machineName string, machineType string) (bool, error) {
 			return true, nil
 		},
@@ -96,7 +92,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, p providers.GCPProviderer) error {
+func runDeployment(ctx context.Context, p providers.Providerer) error {
 	// Create resources
 	if err := p.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)

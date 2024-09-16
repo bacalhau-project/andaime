@@ -16,6 +16,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -99,20 +100,20 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 		updateCalled := false
-		update := NewUpdateAction(
+		update := common.NewUpdateAction(
 			machineName,
-			UpdatePayload{
-				UpdateType:    UpdateTypeResource,
+			common.UpdatePayload{
+				UpdateType:    common.UpdateTypeResource,
 				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
 			fmt.Printf("Update called with data: %v\n", data)
 
 			updateCalled = true
 			assert.Equal(t, machineName, mach.GetName())
-			assert.Equal(t, UpdateTypeResource, data.UpdateType)
+			assert.Equal(t, common.UpdateTypeResource, data.UpdateType)
 			assert.Equal(t, "testResource", data.ResourceType.ResourceString)
 			assert.Equal(t, models.ResourceStateSucceeded, data.ResourceState)
 		}
@@ -130,15 +131,15 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := NewUpdateAction(
+		update := common.NewUpdateAction(
 			"testMachine",
-			UpdatePayload{
-				UpdateType:    UpdateTypeResource,
+			common.UpdatePayload{
+				UpdateType:    common.UpdateTypeResource,
 				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
 			t.Error("Update function should not have been called")
 		}
 
@@ -154,15 +155,15 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := NewUpdateAction(
+		update := common.NewUpdateAction(
 			"testMachine",
-			UpdatePayload{
-				UpdateType:    UpdateTypeResource,
+			common.UpdatePayload{
+				UpdateType:    common.UpdateTypeResource,
 				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
 			t.Error("Update function should not have been called")
 		}
 
@@ -172,15 +173,15 @@ func TestProcessUpdate(t *testing.T) {
 	t.Run("NonExistentMachine", func(t *testing.T) {
 		provider := &AzureProvider{}
 
-		update := NewUpdateAction(
+		update := common.NewUpdateAction(
 			"nonExistentMachine",
-			UpdatePayload{
-				UpdateType:    UpdateTypeResource,
+			common.UpdatePayload{
+				UpdateType:    common.UpdateTypeResource,
 				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
 			t.Error("Update function should not have been called")
 		}
 
@@ -203,10 +204,10 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := NewUpdateAction(
+		update := common.NewUpdateAction(
 			machineName,
-			UpdatePayload{
-				UpdateType:    UpdateTypeResource,
+			common.UpdatePayload{
+				UpdateType:    common.UpdateTypeResource,
 				ResourceType:  models.ResourceType{ResourceString: "testResource"},
 				ResourceState: models.ResourceStateSucceeded,
 			},
@@ -308,6 +309,9 @@ func TestCreateResources(t *testing.T) {
 			provider := &AzureProvider{
 				Client: mockAzureClient,
 			}
+
+			mockAzureClient.On("ListResourceGroups", mock.Anything).
+				Return([]*armresources.ResourceGroup{}, nil)
 
 			for _, location := range tt.locations {
 				for i := 0; i < tt.machinesPerLocation; i++ {
@@ -459,7 +463,7 @@ func TestPollAndUpdateResources(t *testing.T) {
 	provider := &AzureProvider{
 		Client:              mockClient,
 		Config:              mockConfig,
-		updateQueue:         make(chan UpdateAction, 100),
+		updateQueue:         make(chan common.UpdateAction, 100),
 		servicesProvisioned: false,
 	}
 
@@ -528,10 +532,10 @@ func TestPollAndUpdateResources(t *testing.T) {
 								),
 							)
 							select {
-							case provider.updateQueue <- NewUpdateAction(
+							case provider.updateQueue <- common.NewUpdateAction(
 								machine,
-								UpdatePayload{
-									UpdateType:    UpdateTypeResource,
+								common.UpdatePayload{
+									UpdateType:    common.UpdateTypeResource,
 									ResourceType:  resourceType,
 									ResourceState: state,
 								},
@@ -727,7 +731,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	provider := &AzureProvider{
 		Client:              mockClient,
 		Config:              testConfig,
-		updateQueue:         make(chan UpdateAction, 100),
+		updateQueue:         make(chan common.UpdateAction, 100),
 		servicesProvisioned: false,
 	}
 
@@ -757,10 +761,10 @@ func TestRandomServiceUpdates(t *testing.T) {
 				newState := models.ServiceState(rng.Intn(int(models.ServiceStateFailed)-1) + 2)
 
 				select {
-				case provider.updateQueue <- NewUpdateAction(
+				case provider.updateQueue <- common.NewUpdateAction(
 					machine,
-					UpdatePayload{
-						UpdateType:   UpdateTypeService,
+					common.UpdatePayload{
+						UpdateType:   common.UpdateTypeService,
 						ServiceType:  service,
 						ServiceState: newState,
 					},
@@ -906,7 +910,7 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 	provider := &AzureProvider{
 		Client:              mockClient,
 		Config:              testConfig,
-		updateQueue:         make(chan UpdateAction, 100),
+		updateQueue:         make(chan common.UpdateAction, 100),
 		servicesProvisioned: false,
 	}
 
@@ -940,10 +944,10 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 				) // Exclude NotStarted state
 
 				select {
-				case provider.updateQueue <- NewUpdateAction(
+				case provider.updateQueue <- common.NewUpdateAction(
 					machine,
-					UpdatePayload{
-						UpdateType:   UpdateTypeService,
+					common.UpdatePayload{
+						UpdateType:   common.UpdateTypeService,
 						ServiceType:  service,
 						ServiceState: newState,
 					},

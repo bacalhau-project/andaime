@@ -14,9 +14,9 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
@@ -45,9 +45,9 @@ var shouldInitAzureFlag bool
 var shouldInitGCPFlag bool
 
 type cloudProvider struct {
-	awsProvider   aws_provider.AWSProviderer
-	azureProvider azure_provider.AzureProviderer
-	gcpProvider   gcp_provider.GCPProviderer
+	awsProvider   providers.Providerer
+	azureProvider providers.Providerer
+	gcpProvider   providers.Providerer
 }
 
 func Execute() error {
@@ -273,7 +273,8 @@ func initAWSProvider(c *cloudProvider) error {
 }
 
 func initAzureProvider(c *cloudProvider) error {
-	azureProvider, err := azure_provider.NewAzureProviderFunc()
+	ctx := context.Background()
+	azureProvider, err := providers.GetProvider(ctx, models.DeploymentTypeAzure)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
@@ -283,7 +284,7 @@ func initAzureProvider(c *cloudProvider) error {
 
 func initGCPProvider(c *cloudProvider) error {
 	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFunc(ctx)
+	gcpProvider, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}

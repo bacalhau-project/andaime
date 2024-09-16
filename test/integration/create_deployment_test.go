@@ -166,10 +166,6 @@ func (m *MockAzureProvider) GetConfig() *viper.Viper {
 	return m.Called().Get(0).(*viper.Viper)
 }
 
-func (m *MockAzureProvider) GetSSHClient() sshutils.SSHClienter {
-	return m.Called().Get(0).(sshutils.SSHClienter)
-}
-
 func (m *MockAzureProvider) GetVMExternalIP(
 	ctx context.Context,
 	resourceGroup string,
@@ -224,8 +220,6 @@ func (m *MockAzureProvider) PrepareDeployment(ctx context.Context) (*models.Depl
 	return m.Called(ctx).Get(0).(*models.Deployment), m.Called(ctx).Error(1)
 }
 
-var _ azure_provider.AzureProviderer = &MockAzureProvider{}
-
 func TestExecuteCreateDeployment(t *testing.T) {
 	cleanup, testSSHPublicKeyPath, testSSHPrivateKeyPath := setupTestEnvironment(t)
 	defer cleanup()
@@ -264,8 +258,6 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				})
 			mockClusterDeployer.On("GetConfig").Return(viper.New())
 			mockClusterDeployer.On("SetConfig", mock.Anything).Return(nil)
-			mockClusterDeployer.On("GetSSHClient").Return(new(sshutils.MockSSHConfig))
-			mockClusterDeployer.On("SetSSHClient", mock.Anything).Return(nil)
 
 			var err error
 			var deployment *models.Deployment

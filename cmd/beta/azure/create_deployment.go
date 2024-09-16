@@ -8,7 +8,10 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	provider_common "github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -39,12 +42,15 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
+	subscriptionID := viper.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return fmt.Errorf("subscription_id is not set in the configuration")
+	}
 	// Initialize the Azure provider
-	p, err := azure_provider.NewAzureProviderFunc()
+	p, err := providers.GetProvider(ctx, models.DeploymentTypeAzure)
 	if err != nil {
 		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
-
 	if p == nil {
 		return fmt.Errorf("azure provider is nil")
 	}
@@ -56,7 +62,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	m := display.NewDisplayModel(deployment)
-	err = azure_provider.ProcessMachinesConfig()
+	err = azure_provider.ProcessMachinesConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
@@ -133,7 +139,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 
 func runDeployment(
 	ctx context.Context,
-	p azure_provider.AzureProviderer,
+	p provider_common.Providerer,
 ) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()

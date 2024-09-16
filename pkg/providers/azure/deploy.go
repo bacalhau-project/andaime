@@ -636,36 +636,6 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	}
 }
 
-// finalizeDeployment performs any necessary cleanup and final steps
-func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
-	goRoutineID := m.RegisterGoroutine(
-		fmt.Sprintf("FinalizeDeployment-%s", m.Deployment.Azure.ResourceGroupName),
-	)
-	defer m.DeregisterGoroutine(goRoutineID)
-
-	l := logger.Get()
-
-	// Check for context cancellation
-	if err := ctx.Err(); err != nil {
-		l.Info("Deployment cancelled during finalization")
-		return fmt.Errorf("deployment cancelled: %w", err)
-	}
-
-	// Log successful completion
-	l.Info("Azure deployment completed successfully")
-
-	// Ensure all configurations are saved
-	if err := m.Deployment.UpdateViperConfig(); err != nil {
-		l.Errorf("Failed to save final configuration: %v", err)
-		return fmt.Errorf("failed to save final configuration: %w", err)
-	}
-
-	l.Info("Deployment finalized successfully")
-
-	return nil
-}
-
 func (p *AzureProvider) GetVMIPAddresses(
 	ctx context.Context,
 	resourceGroupName, vmName string,

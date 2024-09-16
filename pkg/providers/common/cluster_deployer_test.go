@@ -90,7 +90,7 @@ func TestProvisionAllMachinesWithPackages(t *testing.T) {
 	viper.Set("general.project_prefix", "test-project")
 
 	t.Run("successful provisioning", func(t *testing.T) {
-		cd := NewClusterDeployer(nil)
+		cd := NewClusterDeployer(models.DeploymentTypeUnknown)
 
 		sshBehavior := sshutils.ExpectedSSHBehavior{
 			PushFileExpectations: []sshutils.PushFileExpectation{
@@ -164,7 +164,7 @@ func TestProvisionAllMachinesWithPackages(t *testing.T) {
 	})
 
 	t.Run("error with SSH", func(t *testing.T) {
-		cd := NewClusterDeployer(nil)
+		cd := NewClusterDeployer(models.DeploymentTypeUnknown)
 
 		sshBehavior := sshutils.ExpectedSSHBehavior{
 			PushFileExpectations: []sshutils.PushFileExpectation{
@@ -209,7 +209,7 @@ func TestProvisionAllMachinesWithPackages(t *testing.T) {
 	})
 
 	t.Run("error during provisioning", func(t *testing.T) {
-		cd := NewClusterDeployer(nil)
+		cd := NewClusterDeployer(models.DeploymentTypeUnknown)
 
 		sshBehaviorSuccess := sshutils.ExpectedSSHBehavior{
 			PushFileExpectations: []sshutils.PushFileExpectation{
@@ -424,7 +424,7 @@ func TestProvisionBacalhauCluster(t *testing.T) {
 		m.Deployment.Machines["orch"] = orchestratorMachine
 		m.Deployment.Machines["worker1"] = workerMachine
 
-		cd := NewClusterDeployer(nil)
+		cd := NewClusterDeployer(models.DeploymentTypeUnknown)
 		err := cd.ProvisionBacalhauCluster(ctx)
 
 		assert.NoError(t, err)
@@ -436,7 +436,7 @@ func TestProvisionBacalhauCluster(t *testing.T) {
 }
 
 func TestFindOrchestratorMachine(t *testing.T) {
-	cd := NewClusterDeployer(nil)
+	cd := NewClusterDeployer(models.DeploymentTypeUnknown)
 
 	viper.Set("general.project_prefix", "test-project")
 

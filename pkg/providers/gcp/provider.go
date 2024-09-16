@@ -14,14 +14,15 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
+// Constants related to GCP APIs and configurations
 var GCPRequiredAPIs = []string{
 	"compute.googleapis.com",
 	"networkmanagement.googleapis.com",
@@ -35,69 +36,9 @@ func GetRequiredAPIs() []string {
 	return GCPRequiredAPIs
 }
 
-const (
-	UpdateQueueSize         = 100
-	ResourcePollingInterval = 2 * time.Second
-	DebugFilePath           = "/tmp/andaime-debug.log"
-	DebugFilePermissions    = 0644
-	WaitingForMachinesTime  = 1 * time.Minute
-)
-
-type UpdateAction struct {
-	MachineName string
-	UpdateData  UpdatePayload
-	UpdateFunc  func(machine models.Machiner, update UpdatePayload)
-}
-
-func NewUpdateAction(
-	machineName string,
-	updateData UpdatePayload,
-) UpdateAction {
-	l := logger.Get()
-	updateFunc := func(machine models.Machiner, update UpdatePayload) {
-		if update.UpdateType == UpdateTypeResource {
-			machine.SetMachineResourceState(
-				update.ResourceType.ResourceString,
-				update.ResourceState,
-			)
-		} else if update.UpdateType == UpdateTypeService {
-			machine.SetServiceState(update.ServiceType.Name, update.ServiceState)
-		} else {
-			l.Errorf("Invalid update type: %s", update.UpdateType)
-		}
-	}
-	return UpdateAction{
-		MachineName: machineName,
-		UpdateData:  updateData,
-		UpdateFunc:  updateFunc,
-	}
-}
-
-type UpdatePayload struct {
-	UpdateType    UpdateType
-	ServiceType   models.ServiceType
-	ServiceState  models.ServiceState
-	ResourceType  models.ResourceType
-	ResourceState models.MachineResourceState
-	Complete      bool
-}
-
-func (u *UpdatePayload) String() string {
-	if u.UpdateType == UpdateTypeResource {
-		return fmt.Sprintf("%s: %s", u.UpdateType, u.ResourceType.ResourceString)
-	}
-	return fmt.Sprintf("%s: %s", u.UpdateType, u.ServiceType.Name)
-}
-
-type UpdateType string
-
-const (
-	UpdateTypeResource UpdateType = "resource"
-	UpdateTypeService  UpdateType = "service"
-	UpdateTypeComplete UpdateType = "complete"
-)
-
+// GCPProvider implements the Providerer interface for GCP
 type GCPProvider struct {
+	common.Providerer
 	Client              GCPClienter
 	ClusterDeployer     common.ClusterDeployerer
 	CleanupClient       func()
@@ -105,103 +46,62 @@ type GCPProvider struct {
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
 	SSHPort             int
-	updateQueue         chan UpdateAction
+	updateQueue         chan common.UpdateAction
 	updateProcessorDone chan struct{} //nolint:unused
 	updateMutex         sync.Mutex    //nolint:unused
 	serviceMutex        sync.Mutex    //nolint:unused
 	servicesProvisioned bool          //nolint:unused
 }
 
-var NewGCPProviderFunc = NewGCPProvider
+// Ensure GCPProvider implements the Providerer interface
+var _ providers.Providerer = &GCPProvider{}
+var _ GCPProviderer = &GCPProvider{}
 
-func NewGCPProvider(ctx context.Context) (GCPProviderer, error) {
-	config := viper.GetViper()
-	if !config.IsSet("gcp") {
-		return nil, fmt.Errorf("gcp configuration is required")
+// NewGCPProvider creates a new GCP provider
+func NewGCPProvider(
+	ctx context.Context,
+	projectID, organizationID, billingAccountID string,
+) (providers.Providerer, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("gcp.project_id is required")
 	}
-
-	if !config.IsSet("gcp.organization_id") {
-		return nil, fmt.Errorf(
-			"gcp.organization_id is required. Please specify a parent organization or folder - " +
-				"use 'gcloud organizations list' to get a list of your organization ids",
-		)
+	if organizationID == "" {
+		return nil, fmt.Errorf("gcp.organization_id is required")
 	}
-	organizationID := config.GetString("gcp.organization_id")
-
-	// Check if a project ID is provided
-	projectPrefix := config.GetString("general.project_prefix")
-	if projectPrefix == "" {
-		return nil, fmt.Errorf(
-			"'general.project_prefix' is not set in the configuration file: %s",
-			viper.ConfigFileUsed(),
-		)
+	if billingAccountID == "" {
+		return nil, fmt.Errorf("gcp.billing_account_id is required")
 	}
 
-	// Check for SSH keys
-	sshPublicKeyPath := config.GetString("general.ssh_public_key_path")
-	sshPrivateKeyPath := config.GetString("general.ssh_private_key_path")
-	if sshPublicKeyPath == "" {
-		return nil, fmt.Errorf("general.ssh_public_key_path is required")
-	}
-	if sshPrivateKeyPath == "" {
-		return nil, fmt.Errorf("general.ssh_private_key_path is required")
-	}
-
-	// Expand the paths
-	expandedPublicKeyPath, err := homedir.Expand(sshPublicKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand public key path: %w", err)
-	}
-	expandedPrivateKeyPath, err := homedir.Expand(sshPrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand private key path: %w", err)
-	}
-
-	// Check if the files exist
-	if _, err := os.Stat(expandedPublicKeyPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("SSH public key file does not exist: %s", expandedPublicKeyPath)
-	}
-	if _, err := os.Stat(expandedPrivateKeyPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("SSH private key file does not exist: %s", expandedPrivateKeyPath)
-	}
-
-	// Update the config with the expanded paths
-	config.Set("general.ssh_public_key_path", expandedPublicKeyPath)
-	config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
-
-	client, cleanup, err := NewGCPClientFunc(ctx, organizationID)
+	client, cleanup, err := NewGCPClient(
+		ctx,
+		organizationID,
+	) // Implement this function to create a GCP client
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP client: %w", err)
 	}
 
-	sshUser := config.GetString("general.ssh_user")
-	if sshUser == "" {
-		sshUser = "gcpuser" // Default SSH user for GCP VMs
-	}
-
-	sshPort := config.GetInt("general.ssh_port")
-	if sshPort == 0 {
-		sshPort = 22 // Default SSH port
-	}
-
 	provider := &GCPProvider{
-		Client:        client,
-		CleanupClient: cleanup,
-		Config:        config,
-		SSHUser:       sshUser,
-		SSHPort:       sshPort,
-		updateQueue:   make(chan UpdateAction, UpdateQueueSize),
+		Client:          client,
+		CleanupClient:   cleanup,
+		Config:          viper.GetViper(),
+		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeGCP),
+		updateQueue:     make(chan common.UpdateAction, common.UpdateQueueSize),
 	}
 
-	// Load deployment data from config
-	err = provider.loadDeploymentFromConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load deployment from config: %w", err)
+	if err := provider.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
 	return provider, nil
 }
 
+// Initialize initializes the GCP provider
+func (p *GCPProvider) Initialize(ctx context.Context) error {
+	// Implement initialization logic here
+	return nil
+}
+
+// loadDeploymentFromConfig loads deployment data from the configuration
 func (p *GCPProvider) loadDeploymentFromConfig() error {
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
@@ -245,22 +145,17 @@ func (p *GCPProvider) loadDeploymentFromConfig() error {
 	return nil
 }
 
+// GetGCPClient returns the current GCP client
 func (p *GCPProvider) GetGCPClient() GCPClienter {
 	return p.Client
 }
 
+// SetGCPClient sets a new GCP client
 func (p *GCPProvider) SetGCPClient(client GCPClienter) {
 	p.Client = client
 }
 
-func (p *GCPProvider) GetSSHClient() sshutils.SSHClienter {
-	return p.SSHClient
-}
-
-func (p *GCPProvider) SetSSHClient(client sshutils.SSHClienter) {
-	p.SSHClient = client
-}
-
+// EnsureProject ensures that a GCP project exists, creating it if necessary
 func (p *GCPProvider) EnsureProject(
 	ctx context.Context,
 	projectID string,
@@ -299,6 +194,7 @@ func (p *GCPProvider) EnsureProject(
 	return createdProjectID, nil
 }
 
+// DestroyProject destroys a specified GCP project
 func (p *GCPProvider) DestroyProject(
 	ctx context.Context,
 	projectID string,
@@ -306,12 +202,14 @@ func (p *GCPProvider) DestroyProject(
 	return p.Client.DestroyProject(ctx, projectID)
 }
 
+// ListProjects lists all GCP projects
 func (p *GCPProvider) ListProjects(
 	ctx context.Context,
 ) ([]*resourcemanagerpb.Project, error) {
 	return p.Client.ListProjects(ctx, &resourcemanagerpb.ListProjectsRequest{})
 }
 
+// PrepareDeployment prepares the deployment configuration
 func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
 	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeGCP)
 	if err != nil {
@@ -325,6 +223,7 @@ func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment
 	return deployment, nil
 }
 
+// StartResourcePolling starts polling resources for updates
 func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
 	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
 		// Skip display updates in test mode
@@ -336,12 +235,14 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
 	}
 }
 
+// FinalizeDeployment finalizes the deployment process
 func (p *GCPProvider) FinalizeDeployment(ctx context.Context) error {
 	l := logger.Get()
 	l.Debug("Finalizing deployment... nothing to do.")
 	return nil
 }
 
+// ListAllAssetsInProject lists all assets within a GCP project
 func (p *GCPProvider) ListAllAssetsInProject(
 	ctx context.Context,
 	projectID string,
@@ -349,10 +250,12 @@ func (p *GCPProvider) ListAllAssetsInProject(
 	return p.Client.ListAllAssetsInProject(ctx, projectID)
 }
 
+// CheckAuthentication verifies GCP authentication
 func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
 	return p.Client.CheckAuthentication(ctx)
 }
 
+// EnableRequiredAPIs enables all required GCP APIs for the project
 func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 
@@ -392,6 +295,7 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 	return nil
 }
 
+// EnableAPI enables a specific GCP API for the project
 func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -437,6 +341,7 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 	return nil
 }
 
+// CreateVPCNetwork creates a VPC network in the specified project
 func (p *GCPProvider) CreateVPCNetwork(
 	ctx context.Context,
 	networkName string,
@@ -486,6 +391,7 @@ func (p *GCPProvider) CreateVPCNetwork(
 	return nil
 }
 
+// CreateFirewallRules creates firewall rules for a specified network
 func (p *GCPProvider) CreateFirewallRules(
 	ctx context.Context,
 	networkName string,
@@ -502,6 +408,7 @@ func (p *GCPProvider) CreateFirewallRules(
 	return nil
 }
 
+// CreateStorageBucket creates a storage bucket in GCP
 func (p *GCPProvider) CreateStorageBucket(
 	ctx context.Context,
 	bucketName string,
@@ -509,10 +416,12 @@ func (p *GCPProvider) CreateStorageBucket(
 	return p.Client.CreateStorageBucket(ctx, bucketName)
 }
 
+// ListBillingAccounts lists all billing accounts associated with the GCP organization
 func (p *GCPProvider) ListBillingAccounts(ctx context.Context) ([]string, error) {
 	return p.Client.ListBillingAccounts(ctx)
 }
 
+// SetBillingAccount sets the billing account for the GCP project
 func (p *GCPProvider) SetBillingAccount(
 	ctx context.Context,
 	billingAccountID string,
@@ -531,6 +440,7 @@ func (p *GCPProvider) SetBillingAccount(
 	)
 }
 
+// GetGCPClient initializes and returns a singleton GCP client
 var (
 	gcpClientInstance GCPClienter
 	gcpClientOnce     sync.Once
@@ -545,6 +455,7 @@ func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 	return gcpClientInstance, cleanup, err
 }
 
+// GetVMExternalIP retrieves the external IP of a VM instance
 func (p *GCPProvider) GetVMExternalIP(
 	ctx context.Context,
 	projectID, zone, vmName string,
@@ -552,6 +463,7 @@ func (p *GCPProvider) GetVMExternalIP(
 	return p.Client.GetVMExternalIP(ctx, projectID, zone, vmName)
 }
 
+// GCPVMConfig holds the configuration for a GCP VM
 type GCPVMConfig struct {
 	ProjectID         string
 	Region            string
@@ -562,6 +474,7 @@ type GCPVMConfig struct {
 	PublicKeyMaterial string
 }
 
+// createNewGCPProject creates a new GCP project under the specified organization
 func createNewGCPProject(ctx context.Context, organizationID string) (string, error) {
 	projectID := fmt.Sprintf("andaime-project-%s", time.Now().Format("20060102150405"))
 
@@ -592,6 +505,7 @@ func createNewGCPProject(ctx context.Context, organizationID string) (string, er
 	return project.ProjectId, nil
 }
 
+// EnsureFirewallRules ensures that firewall rules are set for a network
 func (p *GCPProvider) EnsureFirewallRules(
 	ctx context.Context,
 	networkName string,
@@ -599,18 +513,26 @@ func (p *GCPProvider) EnsureFirewallRules(
 	return p.Client.EnsureFirewallRules(ctx, networkName)
 }
 
-// func (p *GCPProvider) EnsureStorageBucket(
-// 	ctx context.Context,
-// 	location,
-// 	bucketName string,
-// ) error {
-// 	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
-// }
-
+// GetClusterDeployer returns the current ClusterDeployer
 func (p *GCPProvider) GetClusterDeployer() common.ClusterDeployerer {
 	return p.ClusterDeployer
 }
 
+// SetClusterDeployer sets a new ClusterDeployer
 func (p *GCPProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }
+
+// Additional Methods from the Second Snippet
+
+// EnsureStorageBucket ensures that a storage bucket exists
+// Uncomment and implement if needed
+/*
+func (p *GCPProvider) EnsureStorageBucket(
+	ctx context.Context,
+	location string,
+	bucketName string,
+) error {
+	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
+}
+*/

@@ -6,7 +6,8 @@ import (
 	"strings"
 
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +52,7 @@ all projects labeled with 'andaime', or list all available projects.`,
 
 func listAllProjects() error {
 	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc(ctx)
+	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
@@ -89,7 +90,7 @@ func listAllProjects() error {
 
 func runDestroyAllProjects() error {
 	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc(ctx)
+	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
@@ -150,7 +151,7 @@ func runDestroyAllProjects() error {
 
 func runDestroyProject(cmd *cobra.Command, projectID string) error {
 	ctx := context.Background()
-	p, err := gcp.NewGCPProviderFunc(ctx)
+	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}

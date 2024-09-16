@@ -14,8 +14,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -133,31 +133,31 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	if destroyAll {
 		// Query the subscription for any remaining resource groups with the CreatedBy tag
-		azureProvider, err := azure.NewAzureProviderFunc()
+		azureProvider, err := providers.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider: %v", err)
 			return fmt.Errorf("failed to create Azure provider: %v", err)
 		}
-		resourceGroups, err := azureProvider.GetAzureClient().ListAllResourceGroups(cmd.Context())
+		resourceGroups, err := azureProvider.ListAllResourceGroups(cmd.Context())
 		if err != nil {
 			l.Errorf("Failed to get resource groups: %v", err)
 			return fmt.Errorf("failed to get resource groups: %v", err)
 		}
 
-		for rgName, rgLocation := range resourceGroups {
-			rg, err := azureProvider.GetAzureClient().
-				GetResourceGroup(cmd.Context(), rgLocation, rgName)
+		for _, rg := range resourceGroups {
+			rg, err := azureProvider.
+				GetResourceGroup(cmd.Context(), *rg.Location, *rg.Name)
 			if err != nil {
-				l.Errorf("Failed to get resource group %s: %v", rgName, err)
+				l.Errorf("Failed to get resource group %s: %v", rg.Name, err)
 				continue
 			}
 			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil &&
 				strings.EqualFold(*createdBy, "andaime") {
-				l.Infof("Found resource group %s with CreatedBy tag", rgName)
+				l.Infof("Found resource group %s with CreatedBy tag", rg.Name)
 				// Only add the resource group if it is not already in the list
 				found := false
 				for _, dep := range deployments {
-					if dep.Name == rgName {
+					if dep.Name == *rg.Name {
 						found = true
 						break
 					}
@@ -165,15 +165,15 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 				// Test to see if the resource group is already being destroyed
 				if *rg.Properties.ProvisioningState == "Deleting" {
-					l.Infof("Resource group %s is already being destroyed", rgName)
+					l.Infof("Resource group %s is already being destroyed", rg.Name)
 					continue
 				}
 
 				if !found {
 					deployments = append(deployments, ConfigDeployment{
-						Name: rgName,
+						Name: *rg.Name,
 						Type: "Azure",
-						ID:   rgName,
+						ID:   *rg.Name,
 					})
 				}
 			}
@@ -253,7 +253,7 @@ func destroyDeployment(dep ConfigDeployment) error {
 	started := false
 
 	if dep.Type == models.DeploymentTypeAzure {
-		azureProvider, err := azure.NewAzureProviderFunc()
+		azureProvider, err := providers.GetProvider(ctx, models.DeploymentTypeAzure)
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)

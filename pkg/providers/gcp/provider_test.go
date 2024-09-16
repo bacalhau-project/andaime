@@ -12,6 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -71,7 +72,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	provider := &GCPProvider{
 		Client:      mockClient,
 		Config:      testConfig,
-		updateQueue: make(chan UpdateAction, 100),
+		updateQueue: make(chan common.UpdateAction, 100),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -90,9 +91,9 @@ func TestRandomServiceUpdates(t *testing.T) {
 	updatesPerMachine := 1000 // Increase the number of updates per machine
 	expectedUpdates := int32(len(testMachines) * updatesPerMachine)
 
-	for _, machine := range testMachines {
+	for _, machineName := range testMachines {
 		wg.Add(1)
-		go func(machine string) {
+		go func(innerMachineName string) {
 			defer wg.Done()
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 			for i := 0; i < updatesPerMachine; i++ {
@@ -102,20 +103,20 @@ func TestRandomServiceUpdates(t *testing.T) {
 				) // Exclude NotStarted state
 
 				select {
-				case provider.updateQueue <- NewUpdateAction(
-					machine,
-					UpdatePayload{
-						UpdateType:   UpdateTypeService,
+				case provider.updateQueue <- common.UpdateAction{
+					MachineName: innerMachineName,
+					UpdateData: common.UpdatePayload{
+						UpdateType:   common.UpdateTypeService,
 						ServiceType:  service,
 						ServiceState: newState,
 					},
-				):
+				}:
 					atomic.AddInt32(&updatesSent, 1)
 				case <-ctx.Done():
 					l.Debug(
 						fmt.Sprintf(
 							"Context cancelled while sending update for %s, %s",
-							machine,
+							innerMachineName,
 							service.Name,
 						),
 					)
@@ -123,7 +124,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 				}
 				time.Sleep(time.Duration(rng.Intn(20)) * time.Millisecond)
 			}
-		}(machine)
+		}(machineName)
 	}
 
 	l.Debug("Started sending updates")

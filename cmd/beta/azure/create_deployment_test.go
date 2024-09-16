@@ -18,6 +18,7 @@ import (
 )
 
 func TestProcessMachinesConfig(t *testing.T) {
+	ctx := context.Background()
 	_,
 		cleanupPublicKey,
 		testPrivateKeyPath,
@@ -31,12 +32,6 @@ func TestProcessMachinesConfig(t *testing.T) {
 	mockAzureClient := new(azure_provider.MockAzureClient)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
-
-	origNewAzureClientFunc := azure_provider.NewAzureClientFunc
-	t.Cleanup(func() { azure_provider.NewAzureClientFunc = origNewAzureClientFunc })
-	azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_provider.AzureClienter, error) {
-		return mockAzureClient, nil
-	}
 
 	deployment, err := models.NewDeployment()
 	assert.NoError(t, err)
@@ -126,7 +121,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 			viper.Set("general.unique_id", "test-unique-id")
 			viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
 
-			err := azure_provider.ProcessMachinesConfig()
+			err := azure_provider.ProcessMachinesConfig(ctx)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -175,14 +170,6 @@ func TestPrepareDeployment(t *testing.T) {
 	mockAzureClient := new(azure.MockAzureClient)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
-
-	origNewAzureClientFunc := azure.NewAzureClientFunc
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure_provider.AzureClienter, error) {
-		return mockAzureClient, nil
-	}
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-
 	// Setup
 	ctx := context.Background()
 

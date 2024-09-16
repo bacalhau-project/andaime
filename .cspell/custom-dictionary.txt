@@ -190,6 +190,9 @@ SNET
 southcentralus
 southeastasia
 sqlserver
+sshbehavior
+sshclient
+sshmock
 sshuser
 sshutils
 staticcheck

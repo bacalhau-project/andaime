@@ -7,7 +7,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -53,7 +53,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := cmd.Context()
-	p, err := gcp.NewGCPProviderFunc(ctx)
+	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		vmName: machine,
 	})
 
-	vm, err := p.GetGCPClient().CreateComputeInstance(ctx, vmName)
+	vm, err := p.CreateComputeInstance(ctx, vmName)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
@@ -126,12 +126,15 @@ func createVM(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the external IP address of the VM
-	externalIP, err := p.GetGCPClient().GetVMExternalIP(ctx, projectID, zone, *vm.Name)
+	externalIP, err := p.GetVMExternalIP(ctx, vm.GetName(), map[string]string{
+		"project_id": projectID,
+		"zone":       zone,
+	})
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("VM created successfully: %s (External IP: %s)\n", *vm.Name, externalIP)
+	fmt.Printf("VM created successfully: %s (External IP: %s)\n", vm.GetName(), externalIP)
 	return nil
 }
 
