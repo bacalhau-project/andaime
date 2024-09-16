@@ -44,7 +44,12 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	provider, err := providers.ProviderFactory(ctx)
+	providerFactory, err := providers.GetProviderFactory()
+	if err != nil {
+		return fmt.Errorf("failed to get provider factory: %w", err)
+	}
+
+	provider, err := providerFactory(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize provider: %w", err)
 	}

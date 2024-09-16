@@ -1,16 +1,13 @@
 package providers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/viper"
 )
 
-// ProviderFactory creates a Provider based on configuration.
-func ProviderFactory(ctx context.Context) (Providerer, error) {
+// GetProviderFactory returns the appropriate ProviderFactory based on the configuration
+func GetProviderFactory() (ProviderFactory, error) {
 	providerType := viper.GetString("deployment.provider")
 	if providerType == "" {
 		return nil, fmt.Errorf("deployment.provider is not set in configuration")
@@ -18,9 +15,9 @@ func ProviderFactory(ctx context.Context) (Providerer, error) {
 
 	switch providerType {
 	case "azure":
-		return azure.NewAzureProvider(ctx)
+		return NewAzureProvider, nil
 	case "gcp":
-		return gcp.NewGCPProvider(ctx)
+		return NewGCPProvider, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
