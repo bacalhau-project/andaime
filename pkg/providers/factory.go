@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/viper"
 )
 
@@ -40,6 +41,6 @@ func NewGCPProvider(ctx context.Context) (Providerer, error) {
 	if organizationID == "" {
 		return nil, fmt.Errorf("gcp.organization_id is required")
 	}
-	// Implementation details for GCP provider creation
-	return nil, fmt.Errorf("GCP provider creation not implemented")
+	client := gcp.NewGCPClient() // Assuming you have a NewGCPClient function
+	return gcp.DefaultNewGCPProvider(client), nil
 }
