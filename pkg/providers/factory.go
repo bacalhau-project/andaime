@@ -8,7 +8,7 @@ import (
 )
 
 // ProviderFactory creates a Provider based on configuration.
-func ProviderFactory(ctx context.Context) (Provider, error) {
+func ProviderFactory(ctx context.Context) (Providerer, error) {
 	providerType := viper.GetString("deployment.provider")
 	if providerType == "" {
 		return nil, fmt.Errorf("deployment.provider is not set in configuration")
@@ -25,7 +25,7 @@ func ProviderFactory(ctx context.Context) (Provider, error) {
 }
 
 // NewAzureProvider creates a new Azure provider
-func NewAzureProvider(ctx context.Context) (Provider, error) {
+func NewAzureProvider(ctx context.Context) (Providerer, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {
 		return nil, fmt.Errorf("azure.subscription_id is required")
@@ -35,7 +35,7 @@ func NewAzureProvider(ctx context.Context) (Provider, error) {
 }
 
 // NewGCPProvider creates a new GCP provider
-func NewGCPProvider(ctx context.Context) (Provider, error) {
+func NewGCPProvider(ctx context.Context) (Providerer, error) {
 	organizationID := viper.GetString("gcp.organization_id")
 	if organizationID == "" {
 		return nil, fmt.Errorf("gcp.organization_id is required")
