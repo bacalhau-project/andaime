@@ -5,20 +5,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
-
-type AzureProvider struct {
-	Client      AzureClienter
-	Config      *viper.Viper
-	SSHUser     string
-	SSHPort     int
-	updateQueue chan UpdateAction
-}
 
 func NewAzureProvider(client AzureClienter) *AzureProvider {
 	return &AzureProvider{
@@ -76,14 +69,21 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (p *AzureProvider) GetOrCreateResourceGroup(ctx context.Context) (*models.ResourceGroup, error) {
+func (p *AzureProvider) GetOrCreateResourceGroup(
+	ctx context.Context,
+) (*models.ResourceGroup, error) {
 	resourceGroupName := p.Config.GetString("azure.resource_group_name")
 	location := p.Config.GetString("azure.location")
 
 	resourceGroup, err := p.Client.GetResourceGroup(ctx, resourceGroupName, location)
 	if err != nil {
 		if azureErr, ok := err.(AzureError); ok && azureErr.IsNotFound() {
-			resourceGroup, err = p.Client.GetOrCreateResourceGroup(ctx, resourceGroupName, location, nil)
+			resourceGroup, err = p.Client.GetOrCreateResourceGroup(
+				ctx,
+				resourceGroupName,
+				location,
+				nil,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create resource group: %w", err)
 			}
@@ -114,11 +114,6 @@ func (p *AzureProvider) DeleteVM(ctx context.Context, machine *models.Machine) e
 	return nil
 }
 
-func (p *AzureProvider) GetVMExternalIP(ctx context.Context, machine *models.Machine) (string, error) {
-	resourceGroupName := p.Config.GetString("azure.resource_group_name")
-	return p.Client.GetVMExternalIP(ctx, resourceGroupName, machine.Name)
-}
-
 func (p *AzureProvider) SetupNetworking(ctx context.Context) error {
 	// Implementation for networking setup
 	return nil
@@ -135,12 +130,38 @@ func (p *AzureProvider) ValidateMachineType(ctx context.Context, machineType str
 }
 
 func (p *AzureProvider) SetBillingAccount(ctx context.Context, accountID string) error {
-	// Azure handles billing differently; implement if necessary
+	l := logger.Get()
+	l.Warnf("AzureProvider.SetBillingAccount is not implemented (should not be called)")
 	return nil
 }
 
+// finalizeDeployment performs any necessary cleanup and final steps
 func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
-	// Finalization logic
+	m := display.GetGlobalModelFunc()
+	goRoutineID := m.RegisterGoroutine(
+		fmt.Sprintf("FinalizeDeployment-%s", m.Deployment.Azure.ResourceGroupName),
+	)
+	defer m.DeregisterGoroutine(goRoutineID)
+
+	l := logger.Get()
+
+	// Check for context cancellation
+	if err := ctx.Err(); err != nil {
+		l.Info("Deployment cancelled during finalization")
+		return fmt.Errorf("deployment cancelled: %w", err)
+	}
+
+	// Log successful completion
+	l.Info("Azure deployment completed successfully")
+
+	// Ensure all configurations are saved
+	if err := m.Deployment.UpdateViperConfig(); err != nil {
+		l.Errorf("Failed to save final configuration: %v", err)
+		return fmt.Errorf("failed to save final configuration: %w", err)
+	}
+
+	l.Info("Deployment finalized successfully")
+
 	return nil
 }
 
