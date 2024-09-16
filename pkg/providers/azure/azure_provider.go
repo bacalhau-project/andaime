@@ -14,6 +14,7 @@ import (
 )
 
 // NewAzureProviderFunc is a function type that creates a new AzureProvider
+// This is used for overriding the provisioning of the AzureProvider during tests
 type NewAzureProviderFunc func(client AzureClienter) *AzureProvider
 
 // DefaultNewAzureProvider is the default implementation of NewAzureProviderFunc
