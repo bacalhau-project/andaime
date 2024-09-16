@@ -6,19 +6,22 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/viper"
 )
 
 type GCPProvider struct {
-	Client      GCPClienter
-	Config      *viper.Viper
-	updateQueue chan UpdateAction
+	Client          GCPClienter
+	Config          *viper.Viper
+	updateQueue     chan UpdateAction
+	ClusterDeployer *common.ClusterDeployer
 }
 
 func NewGCPProvider(client GCPClienter) *GCPProvider {
 	return &GCPProvider{
-		Client: client,
-		Config: viper.GetViper(),
+		Client:          client,
+		Config:          viper.GetViper(),
+		ClusterDeployer: common.NewClusterDeployer(),
 	}
 }
 
@@ -90,6 +93,10 @@ func (p *GCPProvider) SetBillingAccount(ctx context.Context, accountID string) e
 func (p *GCPProvider) FinalizeDeployment(ctx context.Context) error {
 	// Finalization logic
 	return nil
+}
+
+func (p *GCPProvider) GetClusterDeployer() *common.ClusterDeployer {
+	return p.ClusterDeployer
 }
 
 // Ensure GCPProvider implements the Provider interface
