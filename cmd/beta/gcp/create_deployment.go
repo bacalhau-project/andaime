@@ -55,7 +55,12 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	m := display.NewDisplayModel(deployment)
-	err = common.ProcessMachinesConfig()
+	err = common.ProcessMachinesConfig(
+		deployment.Type,
+		func(ctx context.Context, machineName string, machineType string) (bool, error) {
+			return true, nil
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
@@ -86,7 +91,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, p providers.Provider) error {
+func runDeployment(ctx context.Context, p providers.GCPProviderer) error {
 	// Create resources
 	if err := p.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)

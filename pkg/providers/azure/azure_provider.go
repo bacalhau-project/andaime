@@ -28,18 +28,23 @@ func NewAzureProvider(ctx context.Context) (providers.Providerer, error) {
 	if subscriptionID == "" {
 		return nil, fmt.Errorf("azure.subscription_id is required")
 	}
-	
-	client := NewAzureClient() // Implement this function to create an Azure client
+
+	client, err := NewAzureClient(
+		subscriptionID,
+	) // Implement this function to create an Azure client
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure client: %w", err)
+	}
 	provider := &AzureProvider{
 		Client:          client,
 		Config:          viper.GetViper(),
-		ClusterDeployer: common.NewClusterDeployer(),
+		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAzure),
 	}
-	
+
 	if err := provider.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
-	
+
 	return provider, nil
 }
 
