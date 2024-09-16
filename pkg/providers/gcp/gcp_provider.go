@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/spf13/viper"
 )
 
@@ -58,7 +59,10 @@ func (p *GCPProvider) DeleteVM(ctx context.Context, machine *models.Machine) err
 	return nil
 }
 
-func (p *GCPProvider) GetVMExternalIP(ctx context.Context, machine *models.Machine) (string, error) {
+func (p *GCPProvider) GetVMExternalIP(
+	ctx context.Context,
+	machine *models.Machine,
+) (string, error) {
 	projectID := p.Config.GetString("gcp.project_id")
 	zone := p.Config.GetString("gcp.zone")
 	return p.Client.GetVMExternalIP(ctx, projectID, zone, machine.Name)
@@ -89,7 +93,7 @@ func (p *GCPProvider) FinalizeDeployment(ctx context.Context) error {
 }
 
 // Ensure GCPProvider implements the Provider interface
-var _ providers.Provider = &GCPProvider{}
+var _ providers.Providerer = &GCPProvider{}
 
 func (p *GCPProvider) startUpdateProcessor(ctx context.Context) {
 	// Implementation remains the same
