@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/spf13/viper"
 )
 
@@ -15,7 +14,7 @@ type GCPProvider struct {
 	updateQueue chan UpdateAction
 }
 
-func NewGCPProvider(client GCPClienter) providers.Provider {
+func NewGCPProvider(client GCPClienter) *GCPProvider {
 	return &GCPProvider{
 		Client: client,
 		Config: viper.GetViper(),

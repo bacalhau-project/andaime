@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/viper"
 )
 
@@ -18,28 +16,30 @@ func ProviderFactory(ctx context.Context) (Provider, error) {
 
 	switch providerType {
 	case "azure":
-		subscriptionID := viper.GetString("azure.subscription_id")
-		if subscriptionID == "" {
-			return nil, fmt.Errorf("azure.subscription_id is required")
-		}
-		azureClient, err := azure.NewAzureClient(subscriptionID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Azure client: %v", err)
-		}
-		return azure.NewAzureProvider(azureClient), nil
+		return NewAzureProvider(ctx)
 	case "gcp":
-		organizationID := viper.GetString("gcp.organization_id")
-		if organizationID == "" {
-			return nil, fmt.Errorf("gcp.organization_id is required")
-		}
-		gcpClient, cleanup, err := gcp.NewGCPClient(ctx, organizationID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GCP client: %v", err)
-		}
-		// You might want to handle cleanup elsewhere if needed
-		_ = cleanup
-		return gcp.NewGCPProvider(gcpClient), nil
+		return NewGCPProvider(ctx)
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
+}
+
+// NewAzureProvider creates a new Azure provider
+func NewAzureProvider(ctx context.Context) (Provider, error) {
+	subscriptionID := viper.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("azure.subscription_id is required")
+	}
+	// Implementation details for Azure provider creation
+	return nil, fmt.Errorf("Azure provider creation not implemented")
+}
+
+// NewGCPProvider creates a new GCP provider
+func NewGCPProvider(ctx context.Context) (Provider, error) {
+	organizationID := viper.GetString("gcp.organization_id")
+	if organizationID == "" {
+		return nil, fmt.Errorf("gcp.organization_id is required")
+	}
+	// Implementation details for GCP provider creation
+	return nil, fmt.Errorf("GCP provider creation not implemented")
 }

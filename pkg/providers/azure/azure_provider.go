@@ -7,7 +7,6 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -21,7 +20,7 @@ type AzureProvider struct {
 	updateQueue chan UpdateAction
 }
 
-func NewAzureProvider(client AzureClienter) providers.Provider {
+func NewAzureProvider(client AzureClienter) *AzureProvider {
 	return &AzureProvider{
 		Client: client,
 		Config: viper.GetViper(),
