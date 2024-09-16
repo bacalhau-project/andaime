@@ -13,10 +13,18 @@ import (
 	"github.com/spf13/viper"
 )
 
+// NewAzureProviderFunc is a function type that creates a new AzureProvider
+type NewAzureProviderFunc func(client AzureClienter) *AzureProvider
+
+// DefaultNewAzureProvider is the default implementation of NewAzureProviderFunc
+var DefaultNewAzureProvider NewAzureProviderFunc = NewAzureProvider
+
+// NewAzureProvider creates a new AzureProvider
 func NewAzureProvider(client AzureClienter) *AzureProvider {
 	return &AzureProvider{
-		Client: client,
-		Config: viper.GetViper(),
+		Client:          client,
+		Config:          viper.GetViper(),
+		ClusterDeployer: providers.NewClusterDeployer(),
 	}
 }
 
