@@ -112,12 +112,12 @@ func (p *AzureProvider) PrepareResourceGroup(
 		)
 	}
 
-	client := p.GetAzureClient()
+	client := p.GetClient()
 	_, err := client.GetOrCreateResourceGroup(
 		ctx,
 		m.Deployment.Azure.ResourceGroupName,
 		m.Deployment.Azure.ResourceGroupLocation,
-		m.Deployment.Tags,
+		m.Deployment.Azure.Tags,
 	)
 	if err != nil {
 		l.Errorf(
@@ -421,7 +421,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	dnsFailed := false
 	for retry := 0; retry < maxRetries; retry++ {
-		client := p.GetAzureClient()
+		client := p.GetClient()
 		poller, err := client.DeployTemplate(
 			ctx,
 			m.Deployment.Azure.ResourceGroupName,
@@ -566,14 +566,14 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	return nil
 }
 
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
+func (p *AzureProvider) PollResources(ctx context.Context) ([]interface{}, error) {
 	l := logger.Get()
 	start := time.Now()
 	defer func() {
-		l.Debugf("PollAndUpdateResources took %v", time.Since(start))
+		l.Debugf("PollResources took %v", time.Since(start))
 	}()
 	m := display.GetGlobalModelFunc()
-	client := p.GetAzureClient()
+	client := p.GetClient()
 	resources, err := client.GetResources(
 		ctx,
 		m.Deployment.Azure.SubscriptionID,
@@ -623,15 +623,15 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	}
 
 	defer func() {
-		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+		l.Debugf("PollResources execution took %v", time.Since(start))
 	}()
 
 	select {
 	case <-ctx.Done():
-		l.Debug("Cancel command received in PollAndUpdateResources")
+		l.Debug("Cancel command received in PollResources")
 		return nil, ctx.Err()
 	default:
-		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+		l.Debugf("PollResources execution took %v", time.Since(start))
 		return resources, nil
 	}
 }
@@ -642,7 +642,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 ) (string, string, error) {
 	l := logger.Get()
 	l.Debugf("Getting IP addresses for VM %s in resource group %s", vmName, resourceGroupName)
-	client := p.GetAzureClient()
+	client := p.GetClient()
 
 	// Get the VM
 	vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)

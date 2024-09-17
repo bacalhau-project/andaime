@@ -1,3 +1,4 @@
+// pkg/providers/gcp/provider.go
 package gcp
 
 import (
@@ -11,16 +12,43 @@ import (
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
-	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
+
+// Ensure GCPProvider implements the Providerer interface.
+var _ GCPProviderer = &GCPProvider{}
+
+// NewGCPProviderFactory is the factory function for GCPProvider.
+func NewGCPProviderFactory(
+	ctx context.Context,
+) (common.Providerer, error) {
+	projectID := viper.GetString("gcp.project_id")
+	if projectID == "" {
+		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
+	}
+	organizationID := viper.GetString("gcp.organization_id")
+	if organizationID == "" {
+		return nil, fmt.Errorf("gcp.organization_id is not set in configuration")
+	}
+	billingAccountID := viper.GetString("gcp.billing_account_id")
+	if billingAccountID == "" {
+		return nil, fmt.Errorf("gcp.billing_account_id is not set in configuration")
+	}
+	return NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
+}
+
+func init() {
+	factory.RegisterProvider(models.DeploymentTypeGCP, NewGCPProviderFactory)
+}
 
 // Constants related to GCP APIs and configurations
 var GCPRequiredAPIs = []string{
@@ -38,7 +66,9 @@ func GetRequiredAPIs() []string {
 
 // GCPProvider implements the Providerer interface for GCP
 type GCPProvider struct {
-	common.Providerer
+	ProjectID           string
+	OrganizationID      string
+	BillingAccountID    string
 	Client              GCPClienter
 	ClusterDeployer     common.ClusterDeployerer
 	CleanupClient       func()
@@ -46,7 +76,7 @@ type GCPProvider struct {
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
 	SSHPort             int
-	updateQueue         chan common.UpdateAction
+	updateQueue         chan display.UpdateAction
 	updateProcessorDone chan struct{} //nolint:unused
 	updateMutex         sync.Mutex    //nolint:unused
 	serviceMutex        sync.Mutex    //nolint:unused
@@ -54,14 +84,29 @@ type GCPProvider struct {
 }
 
 // Ensure GCPProvider implements the Providerer interface
-var _ providers.Providerer = &GCPProvider{}
 var _ GCPProviderer = &GCPProvider{}
+
+func GetProvider(ctx context.Context) (common.Providerer, error) {
+	projectID := viper.GetString("gcp.project_id")
+	if projectID == "" {
+		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
+	}
+	organizationID := viper.GetString("gcp.organization_id")
+	if organizationID == "" {
+		return nil, fmt.Errorf("gcp.organization_id is not set in configuration")
+	}
+	billingAccountID := viper.GetString("gcp.billing_account_id")
+	if billingAccountID == "" {
+		return nil, fmt.Errorf("gcp.billing_account_id is not set in configuration")
+	}
+	return NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
+}
 
 // NewGCPProvider creates a new GCP provider
 func NewGCPProvider(
 	ctx context.Context,
 	projectID, organizationID, billingAccountID string,
-) (providers.Providerer, error) {
+) (GCPProviderer, error) {
 	if projectID == "" {
 		return nil, fmt.Errorf("gcp.project_id is required")
 	}
@@ -81,11 +126,13 @@ func NewGCPProvider(
 	}
 
 	provider := &GCPProvider{
-		Client:          client,
-		CleanupClient:   cleanup,
-		Config:          viper.GetViper(),
-		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeGCP),
-		updateQueue:     make(chan common.UpdateAction, common.UpdateQueueSize),
+		Client:           client,
+		CleanupClient:    cleanup,
+		ProjectID:        projectID,
+		OrganizationID:   organizationID,
+		BillingAccountID: billingAccountID,
+		ClusterDeployer:  common.NewClusterDeployer(models.DeploymentTypeGCP),
+		updateQueue:      make(chan display.UpdateAction, common.UpdateQueueSize),
 	}
 
 	if err := provider.Initialize(ctx); err != nil {
@@ -194,6 +241,13 @@ func (p *GCPProvider) EnsureProject(
 	return createdProjectID, nil
 }
 
+func (p *GCPProvider) DestroyResources(
+	ctx context.Context,
+	projectID string,
+) error {
+	return p.DestroyProject(ctx, projectID)
+}
+
 // DestroyProject destroys a specified GCP project
 func (p *GCPProvider) DestroyProject(
 	ctx context.Context,
@@ -223,16 +277,28 @@ func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment
 	return deployment, nil
 }
 
+func (p *GCPProvider) StartResourcePolling(ctx context.Context) error {
+	return p.StartResourcePolling(ctx)
+}
+
 // StartResourcePolling starts polling resources for updates
-func (p *GCPProvider) StartResourcePolling(ctx context.Context) {
+func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) {
 	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
 		// Skip display updates in test mode
-		return
+		return []interface{}{}, nil
 	}
 	l := logger.Get()
-	if err := p.Client.StartResourcePolling(ctx); err != nil {
+	resources, err := p.Client.ListAllAssetsInProject(ctx, p.ProjectID)
+	if err != nil {
 		l.Errorf("Failed to start resource polling: %v", err)
+		return nil, err
 	}
+
+	interfaceResources := make([]interface{}, len(resources))
+	for i, r := range resources {
+		interfaceResources[i] = r
+	}
+	return interfaceResources, nil
 }
 
 // FinalizeDeployment finalizes the deployment process
@@ -458,9 +524,10 @@ func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, func
 // GetVMExternalIP retrieves the external IP of a VM instance
 func (p *GCPProvider) GetVMExternalIP(
 	ctx context.Context,
-	projectID, zone, vmName string,
+	vmName string,
+	locationData map[string]string,
 ) (string, error) {
-	return p.Client.GetVMExternalIP(ctx, projectID, zone, vmName)
+	return p.Client.GetVMExternalIP(ctx, vmName, locationData)
 }
 
 // GCPVMConfig holds the configuration for a GCP VM
@@ -505,6 +572,13 @@ func createNewGCPProject(ctx context.Context, organizationID string) (string, er
 	return project.ProjectId, nil
 }
 
+func (p *GCPProvider) EnsureVPCNetwork(
+	ctx context.Context,
+	vpcNetworkName string,
+) error {
+	return p.Client.EnsureVPCNetwork(ctx, vpcNetworkName)
+}
+
 // EnsureFirewallRules ensures that firewall rules are set for a network
 func (p *GCPProvider) EnsureFirewallRules(
 	ctx context.Context,
@@ -523,16 +597,30 @@ func (p *GCPProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }
 
-// Additional Methods from the Second Snippet
-
-// EnsureStorageBucket ensures that a storage bucket exists
-// Uncomment and implement if needed
-/*
-func (p *GCPProvider) EnsureStorageBucket(
+// Creates the VM and returns the public and private IP addresses
+func (p *GCPProvider) CreateVM(
 	ctx context.Context,
-	location string,
-	bucketName string,
-) error {
-	return p.Client.EnsureStorageBucket(ctx, location, bucketName)
+	vmName string,
+) (string, string, error) {
+	instance, err := p.Client.CreateVM(ctx, vmName)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create VM: %w", err)
+	}
+
+	var publicIP string
+	var privateIP string
+
+	if len(instance.NetworkInterfaces) > 0 && len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
+		publicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+	} else {
+		return "", "", fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
+	}
+
+	if len(instance.NetworkInterfaces) > 0 && instance.NetworkInterfaces[0].NetworkIP != nil {
+		privateIP = *instance.NetworkInterfaces[0].NetworkIP
+	} else {
+		return "", "", fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
+	}
+
+	return publicIP, privateIP, nil
 }
-*/

@@ -101,6 +101,9 @@ func TestProcessMachinesConfig(t *testing.T) {
 		},
 	}
 
+	azureProvider, err := azure_provider.NewAzureProvider(ctx, "test-subscription-id")
+	assert.NoError(t, err)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset the machines slice for each test
@@ -121,7 +124,9 @@ func TestProcessMachinesConfig(t *testing.T) {
 			viper.Set("general.unique_id", "test-unique-id")
 			viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
 
-			err := azure_provider.ProcessMachinesConfig(ctx)
+			machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)
+			deployment.SetMachines(machines)
+			deployment.SetLocations(locations)
 
 			if tt.expectError {
 				assert.Error(t, err)

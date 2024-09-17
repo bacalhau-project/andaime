@@ -10,15 +10,33 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/mitchellh/go-homedir"
+	"github.com/spf13/viper"
+
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/goroutine"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/mitchellh/go-homedir"
-	"github.com/spf13/viper"
 )
+
+// Ensure AzureProvider implements the Providerer interface.
+var _ common.Providerer = &AzureProvider{}
+
+// NewAzureProviderFactory is the factory function for AzureProvider.
+func NewAzureProviderFactory(ctx context.Context) (common.Providerer, error) {
+	subscriptionID := viper.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
+	}
+	return NewAzureProvider(ctx, subscriptionID)
+}
+
+func init() {
+	factory.RegisterProvider(models.DeploymentTypeAzure, NewAzureProviderFactory)
+}
 
 // Constants related to Azure Provider configurations.
 const (
@@ -33,23 +51,38 @@ const (
 
 // AzureProvider implements the Providerer interface.
 type AzureProvider struct {
+	common.Providerer
 	Client              AzureClienter
-	Config              *viper.Viper
 	ClusterDeployer     common.ClusterDeployerer
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
 	SSHPort             int
 	lastResourceQuery   time.Time
 	cachedResources     []interface{}
-	updateQueue         chan common.UpdateAction
-	updateMutex         sync.Mutex
-	updateProcessorDone chan struct{}
 	serviceMutex        sync.Mutex //nolint:unused
-	servicesProvisioned bool       //nolint:unused
+	servicesProvisioned bool
+	UpdateQueue         chan display.UpdateAction
+	UpdateMutex         sync.Mutex
 }
 
 // Ensure AzureProvider implements the Providerer interface.
 var _ common.Providerer = &AzureProvider{}
+
+func GetProvider(ctx context.Context) (common.Providerer, error) {
+	subscriptionID := viper.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
+	}
+	return NewAzureProvider(ctx, subscriptionID)
+}
+
+func (p *AzureProvider) GetClient() AzureClienter {
+	return p.Client
+}
+
+func (p *AzureProvider) SetClient(client AzureClienter) {
+	p.Client = client
+}
 
 // NewAzureProvider creates and initializes a new AzureProvider instance with subscriptionID.
 func NewAzureProvider(ctx context.Context, subscriptionID string) (common.Providerer, error) {
@@ -62,9 +95,7 @@ func NewAzureProvider(ctx context.Context, subscriptionID string) (common.Provid
 	// Create the AzureProvider instance.
 	provider := &AzureProvider{
 		Client:          client,
-		Config:          viper.GetViper(),
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAzure),
-		updateQueue:     make(chan common.UpdateAction, UpdateQueueSize),
 	}
 
 	// Initialize the provider (e.g., setup SSH keys, start update processor).
@@ -77,7 +108,7 @@ func NewAzureProvider(ctx context.Context, subscriptionID string) (common.Provid
 
 func (p *AzureProvider) CheckAuthentication(ctx context.Context) error {
 	// Attempt to list resource groups as a simple authentication check
-	_, err := p.Client.ListResourceGroups(ctx)
+	_, err := p.Client.ListAllResourceGroups(ctx)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
@@ -87,8 +118,8 @@ func (p *AzureProvider) CheckAuthentication(ctx context.Context) error {
 // Initialize sets up the AzureProvider by configuring SSH keys and starting the update processor.
 func (p *AzureProvider) Initialize(ctx context.Context) error {
 	// Retrieve SSH key paths from configuration.
-	sshPublicKeyPath := p.Config.GetString("general.ssh_public_key_path")
-	sshPrivateKeyPath := p.Config.GetString("general.ssh_private_key_path")
+	sshPublicKeyPath := viper.GetString("general.ssh_public_key_path")
+	sshPrivateKeyPath := viper.GetString("general.ssh_private_key_path")
 
 	// Validate SSH key paths.
 	if sshPublicKeyPath == "" {
@@ -117,17 +148,17 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 	}
 
 	// Update the configuration with the expanded SSH key paths.
-	p.Config.Set("general.ssh_public_key_path", expandedPublicKeyPath)
-	p.Config.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
+	viper.Set("general.ssh_public_key_path", expandedPublicKeyPath)
+	viper.Set("general.ssh_private_key_path", expandedPrivateKeyPath)
 
 	// Set SSH user with a default fallback.
-	p.SSHUser = p.Config.GetString("general.ssh_user")
+	p.SSHUser = viper.GetString("general.ssh_user")
 	if p.SSHUser == "" {
 		p.SSHUser = DefaultSSHUser // Default SSH user for Azure VMs.
 	}
 
 	// Set SSH port with a default fallback.
-	p.SSHPort = p.Config.GetInt("general.ssh_port")
+	p.SSHPort = viper.GetInt("general.ssh_port")
 	if p.SSHPort == 0 {
 		p.SSHPort = DefaultSSHPort // Default SSH port.
 	}
@@ -135,9 +166,8 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 	// Initialize the SSH client if needed (placeholder).
 	// p.SSHClient = sshutils.NewSSHClient(...)
 
-	// Initialize the update queue and start the update processor goroutine.
-	p.updateQueue = make(chan common.UpdateAction, UpdateQueueSize)
-	go p.startUpdateProcessor(ctx)
+	// Start the update processor goroutine.
+	go display.GetGlobalModelFunc().StartUpdateProcessor(ctx)
 
 	return nil
 }
@@ -155,34 +185,25 @@ func (p *AzureProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
 // GetOrCreateResourceGroup retrieves an existing resource group or creates a new one if it doesn't exist.
 func (p *AzureProvider) GetOrCreateResourceGroup(
 	ctx context.Context,
+	resourceGroupName string,
+	locationData string,
+	tags map[string]string,
 ) (*armresources.ResourceGroup, error) {
-	resourceGroupName := p.Config.GetString("azure.resource_group_name")
-	location := p.Config.GetString("azure.location")
-
-	resourceGroup, err := p.Client.GetResourceGroup(ctx, location, resourceGroupName)
+	resourceGroup, err := p.Client.GetOrCreateResourceGroup(
+		ctx,
+		resourceGroupName,
+		locationData,
+		tags,
+	)
 	if err != nil {
-		if azureErr, ok := err.(AzureError); ok && azureErr.IsNotFound() {
-			// Resource group not found; attempt to create it.
-			resourceGroup, err = p.Client.GetOrCreateResourceGroup(
-				ctx,
-				location,
-				resourceGroupName,
-				nil,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create resource group: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to get resource group: %w", err)
-		}
+		return nil, fmt.Errorf("failed to get or create resource group: %w", err)
 	}
-
 	return resourceGroup, nil
 }
 
 // DestroyResourceGroup deletes the specified resource group.
 func (p *AzureProvider) DestroyResourceGroup(ctx context.Context) error {
-	resourceGroupName := p.Config.GetString("azure.resource_group_name")
+	resourceGroupName := viper.GetString("azure.resource_group_name")
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
@@ -214,117 +235,26 @@ func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName 
 	return nil
 }
 
-// PollAndUpdateResources polls Azure resources and updates their states.
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return nil, fmt.Errorf("global model or deployment is nil")
-	}
-
-	subscriptionID := m.Deployment.Azure.SubscriptionID
-	tags := m.Deployment.Azure.Tags
-
-	resources, err := p.Client.ListAllResourcesInSubscription(ctx, subscriptionID, tags)
-	if err != nil {
-		return nil, err
-	}
-
-	// Implement logic to update the state of resources based on polling results.
-	// For example, updating machine states, handling provisioning statuses, etc.
-
-	return resources, nil
-}
-
 // GetVMExternalIP retrieves the external IP of a VM instance.
 func (p *AzureProvider) GetVMExternalIP(
 	ctx context.Context,
-	resourceGroupName, vmName string,
+	vmName string,
+	locationData map[string]string,
 ) (string, error) {
-	return p.Client.GetVMExternalIP(ctx, resourceGroupName, vmName)
-}
-
-// startUpdateProcessor processes update actions from the updateQueue.
-func (p *AzureProvider) startUpdateProcessor(ctx context.Context) {
-	l := logger.Get()
-	if p == nil {
-		l.Debug("startUpdateProcessor: Provider is nil")
-		return
+	if locationData["location"] == "" {
+		return "", fmt.Errorf("location data is empty")
 	}
-	p.updateProcessorDone = make(chan struct{})
-	l.Debug("startUpdateProcessor: Started")
-	defer close(p.updateProcessorDone)
-	defer l.Debug("startUpdateProcessor: Finished")
-
-	for {
-		select {
-		case <-ctx.Done():
-			l.Debug("startUpdateProcessor: Context cancelled")
-			return
-		case update, ok := <-p.updateQueue:
-			if !ok {
-				l.Debug("startUpdateProcessor: Update queue closed")
-				return
-			}
-			l.Debug(
-				fmt.Sprintf(
-					"startUpdateProcessor: Processing update for %s, %s",
-					update.MachineName,
-					update.UpdateData.ResourceType,
-				),
-			)
-			p.processUpdate(update)
-		}
-	}
-}
-
-// processUpdate applies the update action to the specified machine.
-func (p *AzureProvider) processUpdate(update common.UpdateAction) {
-	l := logger.Get()
-	p.updateMutex.Lock()
-	defer p.updateMutex.Unlock()
-
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil || m.Deployment.Machines == nil {
-		l.Debug("processUpdate: Global model, deployment, or machines is nil")
-		return
-	}
-
-	machine, ok := m.Deployment.Machines[update.MachineName]
-	if !ok {
-		l.Debug(fmt.Sprintf("processUpdate: Machine %s not found", update.MachineName))
-		return
-	}
-
-	if update.UpdateFunc == nil {
-		l.Error("processUpdate: UpdateFunc is nil")
-		return
-	}
-
-	switch update.UpdateData.UpdateType {
-	case common.UpdateTypeComplete:
-		machine.SetComplete()
-	case common.UpdateTypeResource:
-		machine.SetMachineResourceState(
-			update.UpdateData.ResourceType.ResourceString,
-			update.UpdateData.ResourceState,
-		)
-	case common.UpdateTypeService:
-		machine.SetServiceState(update.UpdateData.ServiceType.Name, update.UpdateData.ServiceState)
-	default:
-		l.Errorf("processUpdate: Unknown UpdateType %s", update.UpdateData.UpdateType)
-	}
-
-	update.UpdateFunc(machine, update.UpdateData)
+	return p.Client.GetVMExternalIP(ctx, vmName, locationData)
 }
 
 // StartResourcePolling starts polling Azure resources for updates.
-func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
+func (p *AzureProvider) StartResourcePolling(ctx context.Context) error {
 	l := logger.Get()
 	writeToDebugLog("Starting StartResourcePolling")
 
 	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
 		l.Debug("ANDAIME_TEST_MODE is set to true, skipping resource polling")
-		return
+		return nil
 	}
 
 	resourceTicker := time.NewTicker(ResourcePollingInterval)
@@ -355,18 +285,18 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 			m := display.GetGlobalModelFunc()
 			if m.Quitting {
 				writeToDebugLog("Quitting detected, stopping resource polling")
-				return
+				return nil
 			}
 			pollCount++
 			start := time.Now()
 			writeToDebugLog(fmt.Sprintf("Starting poll #%d", pollCount))
 
-			resources, err := p.PollAndUpdateResources(ctx)
+			resources, err := p.PollResources(ctx)
 			if err != nil {
 				l.Errorf("Failed to poll and update resources: %v", err)
 				writeToDebugLog(fmt.Sprintf("Failed to poll and update resources: %v", err))
 				p.CancelAllDeployments(ctx)
-				return
+				return err
 			}
 
 			writeToDebugLog(fmt.Sprintf("Poll #%d: Found %d resources", pollCount, len(resources)))
@@ -404,13 +334,13 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) {
 				writeToDebugLog(
 					"All resources provisioned and machines completed, stopping resource polling",
 				)
-				return
+				return nil
 			}
 
 		case <-quit:
 			l.Debug("Quit signal received, exiting resource polling")
 			writeToDebugLog("Quit signal received, exiting resource polling")
-			return
+			return nil
 		}
 	}
 }

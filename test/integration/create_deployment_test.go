@@ -168,19 +168,19 @@ func (m *MockAzureProvider) GetConfig() *viper.Viper {
 
 func (m *MockAzureProvider) GetVMExternalIP(
 	ctx context.Context,
-	resourceGroup string,
 	vmName string,
+	locationData map[string]string,
 ) (string, error) {
-	return m.Called(ctx, resourceGroup, vmName).Get(0).(string), m.Called(ctx, resourceGroup, vmName).
+	return m.Called(ctx, vmName, locationData).Get(0).(string), m.Called(ctx, vmName, locationData).
 		Error(1)
 }
 
 func (m *MockAzureProvider) GetVMInternalIP(
 	ctx context.Context,
-	resourceGroup string,
 	vmName string,
+	locationData map[string]string,
 ) (string, error) {
-	return m.Called(ctx, resourceGroup, vmName).Get(0).(string), m.Called(ctx, resourceGroup, vmName).
+	return m.Called(ctx, vmName, locationData).Get(0).(string), m.Called(ctx, vmName, locationData).
 		Error(1)
 }
 
@@ -272,13 +272,6 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				).
 					Return(true, nil)
 
-				azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_provider.AzureClienter, error) {
-					return mockAzureClient, nil
-				}
-				t.Cleanup(func() {
-					azure_provider.NewAzureClientFunc = azure_provider.NewAzureClient
-				})
-
 				// Create a mock provider
 				mockAzureProvider := new(MockAzureProvider)
 				mockAzureProvider.On("StartResourcePolling", mock.Anything).Return(nil)
@@ -289,14 +282,6 @@ func TestExecuteCreateDeployment(t *testing.T) {
 					Return(mockClusterDeployer)
 				mockAzureProvider.On("FinalizeDeployment", mock.Anything).
 					Return(nil)
-
-				originalGetProviderFunc := azure_provider.NewAzureProviderFunc
-				azure_provider.NewAzureProviderFunc = func() (azure_provider.AzureProviderer, error) {
-					return mockAzureProvider, nil
-				}
-				t.Cleanup(func() {
-					azure_provider.NewAzureProviderFunc = originalGetProviderFunc
-				})
 
 				stringMatcher := mock.MatchedBy(func(s string) bool {
 					return strings.Contains(
@@ -380,14 +365,6 @@ func TestExecuteCreateDeployment(t *testing.T) {
 					Return(mockClusterDeployer)
 				mockGCPProvider.On("FinalizeDeployment", mock.Anything).
 					Return(nil)
-
-				originalGetGCPProviderFunc := gcp_provider.NewGCPProviderFunc
-				gcp_provider.NewGCPProviderFunc = func(ctx context.Context) (gcp_provider.GCPProviderer, error) {
-					return mockGCPProvider, nil
-				}
-				t.Cleanup(func() {
-					gcp_provider.NewGCPProviderFunc = originalGetGCPProviderFunc
-				})
 
 				err = gcp.ExecuteCreateDeployment(cmd, []string{})
 

@@ -23,6 +23,15 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+var skippedTypes = []string{
+	"Microsoft.Network/virtualNetworks",
+	"Microsoft.Network/networkSecurityGroups",
+	"Microsoft.Network/networkInterfaces",
+	"Microsoft.Network/publicIPAddresses",
+	"Microsoft.Network/loadBalancers",
+	"Microsoft.Network/applicationGateways",
+}
+
 // AzureError represents a custom error type for Azure operations.
 type AzureError struct {
 	Code    string
@@ -41,6 +50,8 @@ func (e AzureError) IsNotFound() bool {
 
 // LiveAzureClient implements the AzureClienter interface using the Azure SDK.
 type LiveAzureClient struct {
+	subscriptionID       string
+	cred                 *azidentity.DefaultAzureCredential
 	resourceGroupsClient *armresources.ResourceGroupsClient
 	resourceGraphClient  *armresourcegraph.Client
 	resourcesSKUClient   *armcompute.ResourceSKUsClient
@@ -102,6 +113,8 @@ func NewAzureClient(subscriptionID string) (AzureClienter, error) {
 	}
 
 	return &LiveAzureClient{
+		subscriptionID:       subscriptionID,
+		cred:                 cred,
 		resourceGroupsClient: resourceGroupsClient,
 		resourcesSKUClient:   resourcesSKUClient,
 		resourceGraphClient:  resourceGraphClient,
@@ -172,16 +185,16 @@ func (c *LiveAzureClient) NewSubscriptionListPager(
 // ListAllResourceGroups lists all resource groups.
 func (c *LiveAzureClient) ListAllResourceGroups(
 	ctx context.Context,
-) (map[string]string, error) {
+) ([]*armresources.ResourceGroup, error) {
 	rgList := c.resourceGroupsClient.NewListPager(nil)
-	resourceGroups := make(map[string]string)
+	var resourceGroups []*armresources.ResourceGroup
 	for rgList.More() {
 		page, err := rgList.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
 		for _, rg := range page.ResourceGroupListResult.Value {
-			resourceGroups[*rg.Name] = *rg.Location
+			resourceGroups = append(resourceGroups, rg)
 		}
 	}
 	return resourceGroups, nil
@@ -391,8 +404,13 @@ func (c *LiveAzureClient) ResourceGroupExists(
 // Note: Implementation depends on how IPs are managed; this is a placeholder.
 func (c *LiveAzureClient) GetVMExternalIP(
 	ctx context.Context,
-	resourceGroupName, vmName string,
+	vmName string,
+	locationData map[string]string,
 ) (string, error) {
+	resourceGroupName := locationData["resourceGroupName"]
+	if resourceGroupName == "" {
+		return "", fmt.Errorf("resourceGroupName is not set")
+	}
 	vm, err := c.GetVirtualMachine(ctx, resourceGroupName, vmName)
 	if err != nil {
 		return "", err

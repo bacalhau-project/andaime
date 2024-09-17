@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
-	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
@@ -37,12 +36,12 @@ func (m *MockGCPProvider) CreateResources(ctx context.Context) error {
 	return args.Error(0)
 }
 
-func (m *MockGCPProvider) CreateComputeInstance(
+func (m *MockGCPProvider) CreateVM(
 	ctx context.Context,
 	machineName string,
-) (*computepb.Instance, error) {
+) (models.Machiner, error) {
 	args := m.Called(ctx, machineName)
-	return args.Get(0).(*computepb.Instance), args.Error(1)
+	return args.Get(0).(models.Machiner), args.Error(1)
 }
 
 func (m *MockGCPProvider) CreateFirewallRules(ctx context.Context, machineName string) error {

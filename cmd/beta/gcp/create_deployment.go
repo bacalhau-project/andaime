@@ -9,8 +9,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -45,7 +45,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	provider, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
+	provider, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to get provider: %w", err)
 	}
@@ -56,7 +56,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	m := display.NewDisplayModel(deployment)
-	err = common.ProcessMachinesConfig(
+	machines, locations, err := common.ProcessMachinesConfig(
 		deployment.DeploymentType,
 		func(ctx context.Context, machineName string, machineType string) (bool, error) {
 			return true, nil
@@ -65,6 +65,8 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
+	deployment.SetMachines(machines)
+	deployment.SetLocations(locations)
 
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
@@ -92,7 +94,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, p providers.Providerer) error {
+func runDeployment(ctx context.Context, p common.Providerer) error {
 	// Create resources
 	if err := p.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)

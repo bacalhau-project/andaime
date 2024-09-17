@@ -70,7 +70,7 @@ type Deployment struct {
 	DeploymentType         DeploymentType
 	Azure                  *AzureConfig
 	GCP                    *GCPConfig
-	Machines               map[string]Machiner // Change *Machiner to Machiner
+	Machines               map[string]Machiner
 	UniqueID               string
 	StartTime              time.Time
 	EndTime                time.Time
@@ -188,6 +188,19 @@ func (d *Deployment) GetMachines() map[string]Machiner {
 	return machines
 }
 
+func (d *Deployment) SetLocations(locations map[string]bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.Locations == nil {
+		d.Locations = []string{}
+	}
+
+	// Should be of the form map[location]bool
+	for location := range locations {
+		d.Locations = append(d.Locations, location)
+	}
+}
+
 type StatusUpdateMsg struct {
 	Status *DisplayStatus
 }
@@ -221,7 +234,7 @@ type AzureConfig struct {
 	DefaultVMSize         string
 	DefaultDiskSizeGB     int32
 	DefaultLocation       string
-	Tags                  map[string]*string
+	Tags                  map[string]string
 }
 
 type GCPConfig struct {
@@ -234,5 +247,5 @@ type GCPConfig struct {
 	BillingAccountID       string
 	ServiceAccountEmail    string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
-	Tags                   map[string]*string
+	Tags                   map[string]string
 }

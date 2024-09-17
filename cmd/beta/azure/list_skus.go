@@ -7,7 +7,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -47,12 +48,16 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("location is required")
 	}
 
-	p, err := providers.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
+	p, err := factory.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
 	if err != nil {
 		return err
 	}
+	azureProvider, ok := p.(azure_provider.AzureProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
+	}
 
-	skus, err := p.GetSKUsByLocation(cmd.Context(), location)
+	skus, err := azureProvider.GetSKUsByLocation(cmd.Context(), location)
 	if err != nil {
 		return err
 	}

@@ -51,7 +51,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				"Creating VM",
 			))
 
-			instance, err := p.Client.CreateComputeInstance(
+			publicIP, privateIP, err := p.CreateVM(
 				ctx,
 				machine.GetName(),
 			)
@@ -64,8 +64,8 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				return err
 			}
 
-			machine.SetPublicIP(*instance.NetworkInterfaces[0].AccessConfigs[0].NatIP)
-			machine.SetPrivateIP(*instance.NetworkInterfaces[0].NetworkIP)
+			machine.SetPublicIP(publicIP)
+			machine.SetPrivateIP(privateIP)
 
 			sshConfig, err := sshutils.NewSSHConfigFunc(
 				machine.GetPublicIP(),
@@ -110,20 +110,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				models.ResourceStateRunning,
 			)
 
-			if len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
-				machine.SetPublicIP(*instance.NetworkInterfaces[0].AccessConfigs[0].NatIP)
-			} else {
-				return fmt.Errorf("no access configs found for instance %s - could not get public IP", machine.GetName())
-			}
-
 			l.Infof("Instance %s created successfully", machine.GetName())
-
-			// Create or ensure Cloud Storage bucket
-			// bucketName := fmt.Sprintf("%s-storage", m.Deployment.ProjectID)
-			// l.Infof("Ensuring Cloud Storage bucket: %s\n", bucketName)
-			// if err := p.EnsureStorageBucket(ctx, machine.Location, bucketName); err != nil {
-			// 	return fmt.Errorf("failed to ensure storage bucket: %v", err)
-			// }
 
 			return nil
 		})

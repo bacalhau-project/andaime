@@ -9,16 +9,21 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 )
 
-func ProcessMachinesConfig() error {
-	validateMachineType := func(ctx context.Context, location, machineType string) (bool, error) {
-		if !internal_gcp.IsValidGCPLocation(location) {
-			return false, fmt.Errorf("invalid location for GCP: %s", location)
-		}
-		if !internal_gcp.IsValidGCPMachineType(location, machineType) {
-			return false, fmt.Errorf("invalid machine type for GCP: %s", machineType)
-		}
-		return true, nil
-	}
+func (p *GCPProvider) ProcessMachinesConfig(
+	ctx context.Context,
+) (map[string]models.Machiner, map[string]bool, error) {
+	return common.ProcessMachinesConfig(models.DeploymentTypeGCP, p.ValidateMachineType)
+}
 
-	return common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
+func (p *GCPProvider) ValidateMachineType(
+	ctx context.Context,
+	location, machineType string,
+) (bool, error) {
+	if !internal_gcp.IsValidGCPLocation(location) {
+		return false, fmt.Errorf("invalid location for GCP: %s", location)
+	}
+	if !internal_gcp.IsValidGCPMachineType(location, machineType) {
+		return false, fmt.Errorf("invalid machine type for GCP: %s", machineType)
+	}
+	return true, nil
 }

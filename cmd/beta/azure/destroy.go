@@ -14,8 +14,9 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -133,10 +134,14 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	if destroyAll {
 		// Query the subscription for any remaining resource groups with the CreatedBy tag
-		azureProvider, err := providers.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
+		p, err := factory.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider: %v", err)
 			return fmt.Errorf("failed to create Azure provider: %v", err)
+		}
+		azureProvider, ok := p.(azure_provider.AzureProviderer)
+		if !ok {
+			return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 		}
 		resourceGroups, err := azureProvider.ListAllResourceGroups(cmd.Context())
 		if err != nil {
@@ -146,7 +151,12 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 		for _, rg := range resourceGroups {
 			rg, err := azureProvider.
-				GetResourceGroup(cmd.Context(), *rg.Location, *rg.Name)
+				GetOrCreateResourceGroup(
+					cmd.Context(),
+					*rg.Name,
+					*rg.Location,
+					map[string]string{},
+				)
 			if err != nil {
 				l.Errorf("Failed to get resource group %s: %v", rg.Name, err)
 				continue
@@ -253,7 +263,7 @@ func destroyDeployment(dep ConfigDeployment) error {
 	started := false
 
 	if dep.Type == models.DeploymentTypeAzure {
-		azureProvider, err := providers.GetProvider(ctx, models.DeploymentTypeAzure)
+		azureProvider, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
@@ -274,7 +284,7 @@ func destroyDeployment(dep ConfigDeployment) error {
 			// Stop the display
 		}
 	} else if dep.Type == "AWS" {
-		awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
+		awsProvider, err := aws_provider.NewAWSProvider(viper.GetViper())
 		dep.FullViperKey = fmt.Sprintf("deployments.aws.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create AWS provider for %s: %v", dep.Name, err)

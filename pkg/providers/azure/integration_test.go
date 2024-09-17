@@ -131,7 +131,7 @@ func setupTest(t *testing.T) *testSetup {
 		viper.Reset()
 	}
 
-	clusterDeployer := common.NewClusterDeployer(provider)
+	clusterDeployer := common.NewClusterDeployer(models.DeploymentTypeAzure)
 
 	return &testSetup{
 		provider:        provider,

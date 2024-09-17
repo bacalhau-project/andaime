@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -16,7 +15,7 @@ import (
 func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	rgName string,
 	rgLocation string,
-	tags map[string]*string) (*armresources.ResourceGroup, error) {
+	tags map[string]string) (*armresources.ResourceGroup, error) {
 	log := logger.Get()
 
 	// Get the base resource group name from the config
@@ -38,14 +37,16 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 		return existing, nil
 	}
 
+	dereferencedTags := make(map[string]*string)
+	for k, v := range tags {
+		dereferencedTags[k] = &v
+	}
+
 	// Create the resource group
 	parameters := armresources.ResourceGroup{
 		Name:     to.Ptr(rgName),
 		Location: to.Ptr(rgLocation),
-		Tags: map[string]*string{
-			"CreatedBy": to.Ptr("Andaime"),
-			"CreatedOn": to.Ptr(time.Now().Format(time.RFC3339)),
-		},
+		Tags:     dereferencedTags,
 	}
 
 	result, err := c.resourceGroupsClient.CreateOrUpdate(ctx, rgName, parameters, nil)

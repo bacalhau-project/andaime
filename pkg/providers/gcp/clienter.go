@@ -7,18 +7,25 @@ import (
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"google.golang.org/api/iam/v1"
+
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 )
 
 type GCPClienter interface {
+	common.Clienter
+
+	// GCP-specific methods
+	ListProjects(
+		ctx context.Context,
+		req *resourcemanagerpb.ListProjectsRequest,
+	) ([]*resourcemanagerpb.Project, error)
+
 	EnsureProject(
 		ctx context.Context,
 		projectID string,
 	) (string, error)
 	DestroyProject(ctx context.Context, projectID string) error
-	ListProjects(
-		ctx context.Context,
-		req *resourcemanagerpb.ListProjectsRequest,
-	) ([]*resourcemanagerpb.Project, error)
+
 	ListAllAssetsInProject(
 		ctx context.Context,
 		projectID string,
@@ -31,9 +38,9 @@ type GCPClienter interface {
 	CreateVPCNetwork(ctx context.Context, networkName string) error
 	CreateFirewallRules(ctx context.Context, networkName string) error
 	CreateStorageBucket(ctx context.Context, bucketName string) error
-	CreateComputeInstance(
+	CreateVM(
 		ctx context.Context,
-		instanceName string,
+		vmName string,
 	) (*computepb.Instance, error)
 	waitForOperation(
 		ctx context.Context,
@@ -54,7 +61,11 @@ type GCPClienter interface {
 		project, region, operation string,
 	) error
 	IsAPIEnabled(ctx context.Context, projectID, apiName string) (bool, error)
-	GetVMExternalIP(ctx context.Context, projectID, zone, vmName string) (string, error)
+	GetVMExternalIP(
+		ctx context.Context,
+		vmName string,
+		locationData map[string]string,
+	) (string, error)
 	waitForGlobalOperation(
 		ctx context.Context,
 		project, operation string,

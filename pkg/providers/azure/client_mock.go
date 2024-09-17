@@ -89,7 +89,7 @@ func (m *MockAzureClient) GetOrCreateResourceGroup(
 	ctx context.Context,
 	resourceGroupName string,
 	location string,
-	tags map[string]*string,
+	tags map[string]string,
 ) (*armresources.ResourceGroup, error) {
 	args := m.Called(ctx, resourceGroupName, location, tags)
 	return args.Get(0).(*armresources.ResourceGroup), args.Error(1)
@@ -133,9 +133,9 @@ func (m *MockAzureClient) GetVirtualMachine(
 
 func (m *MockAzureClient) ListAllResourceGroups(
 	ctx context.Context,
-) (map[string]string, error) {
+) ([]*armresources.ResourceGroup, error) {
 	args := m.Called(ctx)
-	return args.Get(0).(map[string]string), args.Error(1)
+	return args.Get(0).([]*armresources.ResourceGroup), args.Error(1)
 }
 
 func (m *MockAzureClient) NewSubscriptionListPager(
@@ -155,8 +155,9 @@ func (m *MockAzureClient) ResourceGroupExists(
 
 func (m *MockAzureClient) GetVMExternalIP(
 	ctx context.Context,
-	resourceGroupName, vmName string,
+	vmName string,
+	locationData map[string]string,
 ) (string, error) {
-	args := m.Called(ctx, resourceGroupName, vmName)
+	args := m.Called(ctx, vmName, locationData)
 	return args.Get(0).(string), args.Error(1)
 }

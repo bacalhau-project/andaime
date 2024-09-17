@@ -28,6 +28,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
@@ -450,7 +451,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 	retryBackoff := backoff.NewExponentialBackOff()
 	retryBackoff.MaxElapsedTime = 5 * time.Minute
 
-	resourceTicker := time.NewTicker(ResourcePollingInterval)
+	resourceTicker := time.NewTicker(common.ResourcePollingInterval)
 	defer resourceTicker.Stop()
 
 	allResourcesProvisioned := false
@@ -867,7 +868,7 @@ func (c *LiveGCPClient) CreateStorageBucket(ctx context.Context, bucketName stri
 	return nil
 }
 
-func (c *LiveGCPClient) CreateComputeInstance(
+func (c *LiveGCPClient) CreateVM(
 	ctx context.Context,
 	instanceName string,
 ) (*computepb.Instance, error) {
@@ -1085,7 +1086,7 @@ func (c *LiveGCPClient) waitForGlobalOperation(
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			time.Sleep(ResourcePollingInterval)
+			time.Sleep(common.ResourcePollingInterval)
 		}
 	}
 }
@@ -1117,7 +1118,7 @@ func (c *LiveGCPClient) waitForOperation(
 			return ctx.Err()
 		default:
 			// Wait before checking again
-			time.Sleep(ResourcePollingInterval)
+			time.Sleep(common.ResourcePollingInterval)
 		}
 	}
 }
@@ -1298,7 +1299,7 @@ func (c *LiveGCPClient) waitForRegionalOperation(
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			time.Sleep(ResourcePollingInterval)
+			time.Sleep(common.ResourcePollingInterval)
 		}
 	}
 }
@@ -1334,8 +1335,16 @@ func (c *LiveGCPClient) IsAPIEnabled(
 
 func (c *LiveGCPClient) GetVMExternalIP(
 	ctx context.Context,
-	projectID, zone, vmName string,
+	vmName string,
+	locationData map[string]string,
 ) (string, error) {
+	projectID := locationData["projectID"]
+	zone := locationData["zone"]
+
+	if projectID == "" || zone == "" {
+		return "", fmt.Errorf("projectID or zone is not set")
+	}
+
 	l := logger.Get()
 	l.Infof(
 		"Getting external IP address for VM %s in project %s and zone %s",

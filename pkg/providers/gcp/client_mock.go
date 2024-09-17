@@ -310,9 +310,10 @@ func (m *MockGCPClient) FinalizeDeployment(
 
 func (m *MockGCPClient) GetVMExternalIP(
 	ctx context.Context,
-	zone, instanceName, projectID string,
+	vmName string,
+	locationData map[string]string,
 ) (string, error) {
-	args := m.Called(ctx, zone, instanceName, projectID)
+	args := m.Called(ctx, vmName, locationData)
 	return args.String(0), args.Error(1)
 }
 
@@ -424,4 +425,12 @@ func (m *MockGCPClient) CheckPermissions(
 ) error {
 	args := m.Called(ctx)
 	return args.Error(0)
+}
+
+func (m *MockGCPClient) CreateVM(
+	ctx context.Context,
+	vmName string,
+) (*computepb.Instance, error) {
+	args := m.Called(ctx, vmName)
+	return args.Get(0).(*computepb.Instance), args.Error(1)
 }

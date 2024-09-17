@@ -41,6 +41,7 @@ charmbracelet
 circularbuffer
 Clienter
 cloudasset
+cloudassetpb
 cloudbilling
 cloudbillingpb
 cloudfunctions
@@ -57,6 +58,7 @@ Deallocation
 Debugf
 depguard
 Deployerer
+deregisters
 Dialerer
 diskimage
 diskimagefamily
@@ -129,6 +131,7 @@ locabs
 logutils
 lostcancel
 Machiner
+Machinerer
 mapstructure
 maxint
 mgmt

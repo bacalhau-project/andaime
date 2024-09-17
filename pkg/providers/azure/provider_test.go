@@ -16,12 +16,10 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"golang.org/x/sync/errgroup"
 )
 
 var originalGlobalModelFunc func() *display.DisplayModel
@@ -86,7 +84,6 @@ func TestProcessUpdate(t *testing.T) {
 	defer teardownTest(t)
 
 	t.Run("ValidUpdate", func(t *testing.T) {
-		provider := &AzureProvider{}
 		machineName := "testMachine"
 		originalGlobalModelFunc = display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel {
@@ -100,97 +97,89 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 		updateCalled := false
-		update := common.NewUpdateAction(
+		update := display.NewUpdateAction(
 			machineName,
-			common.UpdatePayload{
-				UpdateType:    common.UpdateTypeResource,
-				ResourceType:  models.ResourceType{ResourceString: "testResource"},
+			display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  display.ResourceType("testResource"),
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data display.UpdateData) {
 			fmt.Printf("Update called with data: %v\n", data)
 
 			updateCalled = true
 			assert.Equal(t, machineName, mach.GetName())
-			assert.Equal(t, common.UpdateTypeResource, data.UpdateType)
-			assert.Equal(t, "testResource", data.ResourceType.ResourceString)
+			assert.Equal(t, display.UpdateTypeResource, data.UpdateType)
+			assert.Equal(t, display.ResourceType("testResource"), data.ResourceType)
 			assert.Equal(t, models.ResourceStateSucceeded, data.ResourceState)
 		}
 
-		provider.processUpdate(update)
+		display.GetGlobalModelFunc().ProcessUpdate(update)
 		assert.True(t, updateCalled, "Update function should have been called")
 	})
 
 	t.Run("NilGlobalModel", func(t *testing.T) {
-		provider := &AzureProvider{}
-
 		originalGlobalModelFunc := display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel { return nil }
 		defer func() {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := common.NewUpdateAction(
+		update := display.NewUpdateAction(
 			"testMachine",
-			common.UpdatePayload{
-				UpdateType:    common.UpdateTypeResource,
-				ResourceType:  models.ResourceType{ResourceString: "testResource"},
+			display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  display.ResourceType("testResource"),
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data display.UpdateData) {
 			t.Error("Update function should not have been called")
 		}
 
-		provider.processUpdate(update)
+		display.GetGlobalModelFunc().ProcessUpdate(update)
 	})
 
 	t.Run("NilDeployment", func(t *testing.T) {
-		provider := &AzureProvider{}
-
 		originalGlobalModelFunc = display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel { return nil }
 		defer func() {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := common.NewUpdateAction(
+		update := display.NewUpdateAction(
 			"testMachine",
-			common.UpdatePayload{
-				UpdateType:    common.UpdateTypeResource,
-				ResourceType:  models.ResourceType{ResourceString: "testResource"},
+			display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  display.ResourceType("testResource"),
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data display.UpdateData) {
 			t.Error("Update function should not have been called")
 		}
 
-		provider.processUpdate(update)
+		display.GetGlobalModelFunc().ProcessUpdate(update)
 	})
 
 	t.Run("NonExistentMachine", func(t *testing.T) {
-		provider := &AzureProvider{}
-
-		update := common.NewUpdateAction(
+		update := display.NewUpdateAction(
 			"nonExistentMachine",
-			common.UpdatePayload{
-				UpdateType:    common.UpdateTypeResource,
-				ResourceType:  models.ResourceType{ResourceString: "testResource"},
+			display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  display.ResourceType("testResource"),
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
-		update.UpdateFunc = func(mach models.Machiner, data common.UpdatePayload) {
+		update.UpdateFunc = func(mach models.Machiner, data display.UpdateData) {
 			t.Error("Update function should not have been called")
 		}
 
-		provider.processUpdate(update)
+		display.GetGlobalModelFunc().ProcessUpdate(update)
 	})
 
 	t.Run("NilUpdateFunc", func(t *testing.T) {
-		provider := &AzureProvider{}
-
 		machineName := "testMachine"
 		originalGlobalModelFunc = display.GetGlobalModelFunc
 		display.GetGlobalModelFunc = func() *display.DisplayModel {
@@ -204,17 +193,17 @@ func TestProcessUpdate(t *testing.T) {
 			display.GetGlobalModelFunc = originalGlobalModelFunc
 		}()
 
-		update := common.NewUpdateAction(
+		update := display.NewUpdateAction(
 			machineName,
-			common.UpdatePayload{
-				UpdateType:    common.UpdateTypeResource,
-				ResourceType:  models.ResourceType{ResourceString: "testResource"},
+			display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  display.ResourceType("testResource"),
 				ResourceState: models.ResourceStateSucceeded,
 			},
 		)
 		update.UpdateFunc = nil
 
-		provider.processUpdate(update)
+		display.GetGlobalModelFunc().ProcessUpdate(update)
 	})
 }
 
@@ -417,16 +406,11 @@ type MockResourceGraphClient struct {
 	mock.Mock
 }
 
-func TestPollAndUpdateResources(t *testing.T) {
+func TestPollResources(t *testing.T) {
 	setupUpdateTest(t)
 	defer teardownTest(t)
 	l := logger.Get()
 
-	start := time.Now()
-	log := func(msg string) {
-		l.Debugf("%v: %s", time.Since(start).Round(time.Millisecond), msg)
-	}
-	log("TestPollAndUpdateResources started")
 	mockConfig := viper.New()
 	mockConfig.Set("azure.subscription_id", "test-subscription-id")
 
@@ -457,162 +441,84 @@ func TestPollAndUpdateResources(t *testing.T) {
 		}
 	}
 
-	log("Deployment model initialized")
-
 	mockClient := new(MockAzureClient)
-	provider := &AzureProvider{
+	azureProvider := &AzureProvider{
 		Client:              mockClient,
-		Config:              mockConfig,
-		updateQueue:         make(chan common.UpdateAction, 100),
+		UpdateQueue:         make(chan display.UpdateAction, 100),
 		servicesProvisioned: false,
 	}
-
-	defer mockClient.AssertExpectations(t)
-
-	mockResponse := []interface{}{}
-	for _, machine := range testMachines {
-		for _, resource := range requiredResources {
-			mockResponse = append(
-				mockResponse,
-				generateMockResource(machine, resource),
-			)
-		}
-	}
-
-	log("Mock response generated")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	log("Starting update processor goroutine")
-	processorDone := make(chan struct{})
-	go func() {
-		log("Update processor started")
-		provider.startUpdateProcessor(ctx)
-		processorDone <- struct{}{}
-		log("Update processor goroutine finished")
-	}()
+	// Simulate multiple polling cycles
+	pollCycles := 5
+	for cycle := 0; cycle < pollCycles; cycle++ {
+		l.Debugf("Starting polling cycle %d", cycle)
 
-	mockClient.On("GetResources", mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-	).
-		Return(mockResponse, nil).
-		Once()
-
-	log("Calling PollAndUpdateResources")
-	resources, err := provider.PollAndUpdateResources(ctx)
-
-	assert.NoError(t, err)
-	assert.Equal(t, mockResponse, resources)
-	log("PollAndUpdateResources completed")
-
-	errgroup, ctx := errgroup.WithContext(ctx)
-	errgroup.SetLimit(models.NumberOfSimultaneousProvisionings)
-	updatesSent := int32(0)
-	for _, machine := range testMachines {
-		for _, resourceType := range requiredResources {
-			errgroup.Go(func() error {
-				return func(machine string, resourceType models.ResourceType) error {
-					for i := 0; i < 10; i++ {
-						for _, state := range []models.MachineResourceState{
-							models.ResourceStateNotStarted,
-							models.ResourceStatePending,
-							models.ResourceStateRunning,
-							models.ResourceStateSucceeded,
-						} {
-							log(
-								fmt.Sprintf(
-									"Sending update for machine %s, resource type %s, state %d",
-									machine,
-									resourceType.ResourceString,
-									state,
-								),
-							)
-							select {
-							case provider.updateQueue <- common.NewUpdateAction(
-								machine,
-								common.UpdatePayload{
-									UpdateType:    common.UpdateTypeResource,
-									ResourceType:  resourceType,
-									ResourceState: state,
-								},
-							):
-								atomic.AddInt32(&updatesSent, 1)
-							case <-ctx.Done():
-								log(
-									fmt.Sprintf(
-										"Context cancelled while sending update for %s, %s",
-										machine,
-										resourceType.ResourceString,
-									),
-								)
-								return nil
-							}
-							time.Sleep(50 * time.Millisecond)
-						}
-					}
-					return nil
-				}(machine, resourceType)
-			})
+		mockResponse := []interface{}{}
+		for _, machine := range testMachines {
+			for _, resource := range requiredResources {
+				mockResponse = append(
+					mockResponse,
+					generateMockResource(machine, resource),
+				)
+			}
 		}
-	}
 
-	log("Started sending updates")
+		mockClient.On("GetResources", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(mockResponse, nil).
+			Once()
 
-	if err := errgroup.Wait(); err != nil {
-		t.Fatal(err)
-	}
+		resources, err := azureProvider.PollResources(ctx)
 
-	log(
-		fmt.Sprintf(
-			"All updates sent successfully. Total updates: %d",
-			atomic.LoadInt32(&updatesSent),
-		),
-	)
+		assert.NoError(t, err)
+		assert.Equal(t, mockResponse, resources)
 
-	log("Closing update queue")
-	close(provider.updateQueue)
+		// Process updates
+		for len(azureProvider.UpdateQueue) > 0 {
+			update := <-azureProvider.UpdateQueue
+			m.ProcessUpdate(update)
+		}
 
-	log("TestPollAndUpdateResources completed")
-
-	log("Waiting for update processor to finish")
-	select {
-	case <-processorDone:
-		log("Update processor finished successfully")
-	case <-time.After(5 * time.Second):
-		log("Update processor did not stop in time")
-		t.Fatal("Update processor did not stop in time")
-	}
-
-	log("Checking final states")
-	for _, machine := range testMachines {
-		for _, resourceType := range requiredResources {
-			state := m.Deployment.Machines[machine].GetMachineResourceState(
-				resourceType.ResourceString,
-			)
-			assert.Equal(
-				t,
-				models.ResourceStateSucceeded,
-				state,
-				"Unexpected final state for machine %s, resource %s",
-				machine,
-				resourceType.ResourceString,
-			)
-			log(
-				fmt.Sprintf(
-					"Final state for machine %s, resource %s: %d",
-					machine,
-					resourceType.ResourceString,
+		// Verify resource states after each cycle
+		for _, machine := range testMachines {
+			for _, resource := range requiredResources {
+				state := m.Deployment.Machines[machine].GetMachineResourceState(
+					resource.ResourceString,
+				)
+				expectedState := getSimulatedResourceState(cycle, pollCycles)
+				assert.Equal(
+					t,
+					expectedState,
 					state,
-				),
-			)
+					"Unexpected state for machine %s, resource %s in cycle %d",
+					machine,
+					resource.ResourceString,
+					cycle,
+				)
+			}
 		}
+
+		// Short delay between cycles
+		time.Sleep(100 * time.Millisecond)
 	}
 
-	log("Test completed successfully")
+	l.Debug("All polling cycles completed")
+}
+
+func getSimulatedResourceState(currentCycle, totalCycles int) models.MachineResourceState {
+	progress := float64(currentCycle) / float64(totalCycles-1)
+	switch {
+	case progress < 0.25:
+		return models.ResourceStateNotStarted
+	case progress < 0.5:
+		return models.ResourceStatePending
+	case progress < 0.75:
+		return models.ResourceStateRunning
+	default:
+		return models.ResourceStateSucceeded
+	}
 }
 
 func generateMockResource(
@@ -686,7 +592,6 @@ func generateMockResource(
 
 func TestRandomServiceUpdates(t *testing.T) {
 	t.Parallel() // Allow this test to run in parallel with others
-
 	l := logger.Get()
 
 	// Create a new Viper instance for this test
@@ -727,21 +632,13 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	l.Debug("Deployment model initialized")
 
-	mockClient := new(MockAzureClient)
-	provider := &AzureProvider{
-		Client:              mockClient,
-		Config:              testConfig,
-		updateQueue:         make(chan common.UpdateAction, 100),
-		servicesProvisioned: false,
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	processorDone := make(chan struct{})
 	go func() {
 		l.Debug("Update processor started")
-		provider.startUpdateProcessor(ctx)
+		display.GetGlobalModelFunc().StartUpdateProcessor(ctx)
 		close(processorDone)
 		l.Debug("Update processor finished")
 	}()
@@ -761,14 +658,14 @@ func TestRandomServiceUpdates(t *testing.T) {
 				newState := models.ServiceState(rng.Intn(int(models.ServiceStateFailed)-1) + 2)
 
 				select {
-				case provider.updateQueue <- common.NewUpdateAction(
-					machine,
-					common.UpdatePayload{
-						UpdateType:   common.UpdateTypeService,
-						ServiceType:  service,
+				case display.GetGlobalModelFunc().UpdateQueue <- display.UpdateAction{
+					MachineName: machine,
+					UpdateData: display.UpdateData{
+						UpdateType:   display.UpdateTypeService,
+						ServiceType:  display.ServiceType(service.Name),
 						ServiceState: newState,
 					},
-				):
+				}:
 					atomic.AddInt32(&updatesSent, 1)
 				case <-ctx.Done():
 					l.Debug(
@@ -810,7 +707,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	}
 
 	l.Debug("Closing update queue")
-	close(provider.updateQueue)
+	close(display.GetGlobalModelFunc().UpdateQueue)
 
 	l.Debug("Waiting for update processor to finish")
 	select {
@@ -906,21 +803,13 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 
 	l.Debug("Deployment model initialized")
 
-	mockClient := new(MockAzureClient)
-	provider := &AzureProvider{
-		Client:              mockClient,
-		Config:              testConfig,
-		updateQueue:         make(chan common.UpdateAction, 100),
-		servicesProvisioned: false,
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	processorDone := make(chan struct{})
 	go func() {
 		l.Debug("Update processor started")
-		provider.startUpdateProcessor(ctx)
+		display.GetGlobalModelFunc().StartUpdateProcessor(ctx)
 		processorDone <- struct{}{}
 		l.Debug("Update processor finished")
 	}()
@@ -944,14 +833,14 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 				) // Exclude NotStarted state
 
 				select {
-				case provider.updateQueue <- common.NewUpdateAction(
-					machine,
-					common.UpdatePayload{
-						UpdateType:   common.UpdateTypeService,
-						ServiceType:  service,
+				case display.GetGlobalModelFunc().UpdateQueue <- display.UpdateAction{
+					MachineName: machine,
+					UpdateData: display.UpdateData{
+						UpdateType:   display.UpdateTypeService,
+						ServiceType:  display.ServiceType(service.Name),
 						ServiceState: newState,
 					},
-				):
+				}:
 					atomic.AddInt32(&updatesSent, 1)
 				case <-ctx.Done():
 					l.Debug(
@@ -993,7 +882,7 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 	}
 
 	l.Debug("Closing update queue")
-	close(provider.updateQueue)
+	close(display.GetGlobalModelFunc().UpdateQueue)
 
 	l.Debug("Waiting for update processor to finish")
 	select {

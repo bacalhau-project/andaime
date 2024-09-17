@@ -12,7 +12,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -71,8 +70,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	mockClient := new(MockGCPClient)
 	provider := &GCPProvider{
 		Client:      mockClient,
-		Config:      testConfig,
-		updateQueue: make(chan common.UpdateAction, 100),
+		updateQueue: make(chan display.UpdateAction, 100),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -81,7 +79,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	processorDone := make(chan struct{})
 	go func() {
 		l.Debug("Update processor started")
-		provider.startUpdateProcessor(ctx)
+		localModel.StartUpdateProcessor(ctx)
 		processorDone <- struct{}{}
 		l.Debug("Update processor finished")
 	}()
@@ -103,11 +101,11 @@ func TestRandomServiceUpdates(t *testing.T) {
 				) // Exclude NotStarted state
 
 				select {
-				case provider.updateQueue <- common.UpdateAction{
+				case localModel.UpdateQueue <- display.UpdateAction{
 					MachineName: innerMachineName,
-					UpdateData: common.UpdatePayload{
-						UpdateType:   common.UpdateTypeService,
-						ServiceType:  service,
+					UpdateData: display.UpdateData{
+						UpdateType:   display.UpdateTypeService,
+						ServiceType:  display.ServiceType(service.Name),
 						ServiceState: newState,
 					},
 				}:

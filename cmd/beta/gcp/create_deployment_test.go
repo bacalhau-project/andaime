@@ -69,7 +69,13 @@ func TestProcessMachinesConfig(t *testing.T) {
 			return true, nil
 		}
 
-		err = common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
+		machines, locations, err := common.ProcessMachinesConfig(
+			models.DeploymentTypeGCP,
+			validateMachineType,
+		)
+		deployment.SetMachines(machines)
+		deployment.SetLocations(locations)
+
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name
@@ -105,7 +111,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 			return true, nil
 		}
 
-		err = common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
+		machines, locations, err := common.ProcessMachinesConfig(
+			models.DeploymentTypeGCP,
+			validateMachineType,
+		)
+		deployment.SetMachines(machines)
+		deployment.SetLocations(locations)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "bad-location-2")
 	})
@@ -133,7 +144,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 			return true, nil
 		}
 
-		err = common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
+		machines, locations, err := common.ProcessMachinesConfig(
+			models.DeploymentTypeGCP,
+			validateMachineType,
+		)
+		deployment.SetMachines(machines)
+		deployment.SetLocations(locations)
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 
@@ -169,7 +185,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 			return false, fmt.Errorf("machine type not found")
 		}
 
-		err = common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
+		machines, locations, err := common.ProcessMachinesConfig(
+			models.DeploymentTypeGCP,
+			validateMachineType,
+		)
+		deployment.SetMachines(machines)
+		deployment.SetLocations(locations)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid machine type and location combinations")
 	})
@@ -197,7 +218,12 @@ func TestProcessMachinesConfig(t *testing.T) {
 			return true, nil
 		}
 
-		err = common.ProcessMachinesConfig(models.DeploymentTypeGCP, validateMachineType)
+		machines, locations, err := common.ProcessMachinesConfig(
+			models.DeploymentTypeGCP,
+			validateMachineType,
+		)
+		deployment.SetMachines(machines)
+		deployment.SetLocations(locations)
 		assert.NoError(t, err)
 		assert.Len(t, deployment.Machines, 1)
 		// Get first machine - it will have a generated name

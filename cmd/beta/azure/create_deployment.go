@@ -9,9 +9,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	provider_common "github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -47,12 +46,33 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("subscription_id is not set in the configuration")
 	}
 	// Initialize the Azure provider
-	p, err := providers.GetProvider(ctx, models.DeploymentTypeAzure)
+	pCommon, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
+
+	var p azure_provider.AzureProviderer
 	if err != nil {
 		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
 	if p == nil {
 		return fmt.Errorf("azure provider is nil")
+	}
+
+	if p, ok := pCommon.(azure_provider.AzureProviderer); ok {
+		p = p
+	} else {
+		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
+	}
+
+	// Perform type assertion to common.AzureProviderer to access Azure-specific methods
+	azureProvider, ok := p.(azure_provider.AzureProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
+	}
+
+	// Now you can use Azure-specific methods
+	err = azureProvider.CreateResources(ctx)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to create Azure resources: %v", err))
+		return fmt.Errorf("failed to create Azure resources: %w", err)
 	}
 
 	// Prepare the deployment
@@ -62,10 +82,12 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	m := display.NewDisplayModel(deployment)
-	err = azure_provider.ProcessMachinesConfig(ctx)
+	machines, locations, err := p.ProcessMachinesConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
+	m.Deployment.SetMachines(machines)
+	m.Deployment.SetLocations(locations)
 
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
@@ -82,7 +104,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 			l.Debug("Deployment cancelled")
 			return
 		default:
-			deploymentErr = runDeployment(ctx, p)
+			deploymentErr = runDeployment(ctx, azureProvider)
 			if deploymentErr != nil {
 				l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
 				cancel() // Cancel the context on error
@@ -139,7 +161,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 
 func runDeployment(
 	ctx context.Context,
-	p provider_common.Providerer,
+	azureProvider azure_provider.AzureProviderer,
 ) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
@@ -150,7 +172,7 @@ func runDeployment(
 
 	// Prepare resource group
 	l.Debug("Preparing resource group")
-	err := p.PrepareResourceGroup(ctx)
+	err := azureProvider.PrepareResourceGroup(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %w", err)
@@ -158,22 +180,22 @@ func runDeployment(
 	l.Debug("Resource group prepared successfully")
 
 	// Create resources
-	if err := p.CreateResources(ctx); err != nil {
+	if err := azureProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
 
 	// Provision machines
-	if err := p.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
+	if err := azureProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
 		return fmt.Errorf("failed to provision machines: %w", err)
 	}
 
 	// Provision Bacalhau cluster
-	if err := p.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
+	if err := azureProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 
 	// Finalize deployment
-	if err := p.FinalizeDeployment(ctx); err != nil {
+	if err := azureProvider.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
 

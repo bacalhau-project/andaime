@@ -6,7 +6,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,9 +34,13 @@ func GetGCPCreateProjectCmd() *cobra.Command {
 
 func createProject(ctx context.Context, projectID string) error {
 	m := display.GetGlobalModelFunc()
-	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
+	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to get provider: %w", err)
+	}
+	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}
 
 	billingAccountID := viper.GetString("gcp.billing_account_id")
@@ -45,7 +50,7 @@ func createProject(ctx context.Context, projectID string) error {
 	m.Deployment.GCP.BillingAccountID = billingAccountID
 
 	// Use EnsureProject to create or reuse an existing project
-	m.Deployment.ProjectID, err = p.EnsureProject(ctx, projectID)
+	m.Deployment.ProjectID, err = gcpProvider.EnsureProject(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("failed to ensure project: %w", err)
 	}
@@ -74,7 +79,7 @@ func createProject(ctx context.Context, projectID string) error {
 	}
 
 	// Set Billing Account
-	if err := p.SetBillingAccount(ctx, billingAccountID); err != nil {
+	if err := gcpProvider.SetBillingAccount(ctx, billingAccountID); err != nil {
 		return handleGCPError(fmt.Errorf("failed to set billing account: %v", err))
 	}
 
@@ -82,7 +87,7 @@ func createProject(ctx context.Context, projectID string) error {
 
 	fmt.Println("Enabling necessary APIs...")
 	for _, api := range apisToEnable {
-		if err := p.EnableAPI(ctx, projectID, api); err != nil {
+		if err := gcpProvider.EnableAPI(ctx, api); err != nil {
 			return handleGCPError(fmt.Errorf("failed to enable API %s: %v", api, err))
 		}
 		fmt.Printf("Enabled API: %s\n", api)
@@ -91,7 +96,7 @@ func createProject(ctx context.Context, projectID string) error {
 	// Create or ensure VPC network
 	networkName := "andaime-network"
 	fmt.Printf("Ensuring VPC network: %s\n", networkName)
-	err = p.EnsureVPCNetwork(ctx, networkName)
+	err = gcpProvider.EnsureVPCNetwork(ctx, networkName)
 	if err != nil {
 		return handleGCPError(fmt.Errorf("failed to ensure VPC network: %v", err))
 	}
@@ -100,7 +105,7 @@ func createProject(ctx context.Context, projectID string) error {
 
 	// Create or ensure firewall rules
 	fmt.Println("Ensuring firewall rules...")
-	if err := p.EnsureFirewallRules(ctx, networkName); err != nil {
+	if err := gcpProvider.EnsureFirewallRules(ctx, networkName); err != nil {
 		return handleGCPError(fmt.Errorf("failed to ensure firewall rules: %v", err))
 	}
 

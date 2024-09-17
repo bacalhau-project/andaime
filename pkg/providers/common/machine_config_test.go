@@ -58,8 +58,13 @@ func TestProcessMachinesConfig(t *testing.T) {
 		return true, nil
 	}
 
-	err = ProcessMachinesConfig(models.DeploymentTypeAzure, mockValidateMachineType)
+	machines, locations, err := ProcessMachinesConfig(
+		models.DeploymentTypeAzure,
+		mockValidateMachineType,
+	)
 	assert.NoError(t, err)
+	deployment.SetMachines(machines)
+	deployment.SetLocations(locations)
 
 	// Verify the results
 	assert.Len(t, deployment.Machines, 3)
@@ -133,10 +138,13 @@ func TestProcessMachinesConfigErrors(t *testing.T) {
 				return true, nil
 			}
 
-			err := ProcessMachinesConfig(
+			machines, locations, err := ProcessMachinesConfig(
 				models.DeploymentTypeAzure,
 				mockValidateMachineType,
 			)
+
+			assert.Nil(t, machines)
+			assert.Nil(t, locations)
 			assert.EqualError(t, err, tt.expectedError)
 		})
 	}

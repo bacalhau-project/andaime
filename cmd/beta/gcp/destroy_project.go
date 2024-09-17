@@ -7,7 +7,8 @@ import (
 
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 )
 
@@ -52,12 +53,17 @@ all projects labeled with 'andaime', or list all available projects.`,
 
 func listAllProjects() error {
 	ctx := context.Background()
-	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
+	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
 
-	projects, err := p.ListProjects(ctx)
+	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
+	}
+
+	projects, err := gcpProvider.ListProjects(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list projects: %v", err)
 	}
@@ -90,12 +96,17 @@ func listAllProjects() error {
 
 func runDestroyAllProjects() error {
 	ctx := context.Background()
-	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
+	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
 
-	projects, err := p.ListProjects(ctx)
+	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
+	}
+
+	projects, err := gcpProvider.ListProjects(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list projects: %v", err)
 	}
@@ -136,7 +147,7 @@ func runDestroyAllProjects() error {
 
 	for _, project := range andaimeProjects {
 		fmt.Printf("Deleting project: %s\n", project.ProjectId)
-		err := p.DestroyProject(ctx, project.ProjectId)
+		err := gcpProvider.DestroyProject(ctx, project.ProjectId)
 		if err != nil {
 			fmt.Printf("Failed to delete project %s: %v\n", project.ProjectId, err)
 		} else {
@@ -151,9 +162,13 @@ func runDestroyAllProjects() error {
 
 func runDestroyProject(cmd *cobra.Command, projectID string) error {
 	ctx := context.Background()
-	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
+	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
+	}
+	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}
 
 	fmt.Printf("Are you sure you want to delete project %s? (y/N): ", projectID)
@@ -166,7 +181,7 @@ func runDestroyProject(cmd *cobra.Command, projectID string) error {
 		return nil
 	}
 
-	err = p.DestroyProject(ctx, projectID)
+	err = gcpProvider.DestroyProject(ctx, projectID)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Error: Failed to delete project %s\n", projectID)
 		fmt.Fprintf(cmd.ErrOrStderr(), "Reason: Authentication issue with Google Cloud\n")

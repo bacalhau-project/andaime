@@ -8,8 +8,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,13 +25,17 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		projectPrefix := viper.GetString("general.project_prefix")
 		uniqueID := viper.GetString("general.unique_id")
-		tags := azure.GenerateTags(projectPrefix, uniqueID)
+		tags := azure_provider.GenerateTags(projectPrefix, uniqueID)
 
 		log.Info("Listing Azure resources...")
 
-		azureProvider, err := providers.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
+		p, err := factory.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
 		if err != nil {
 			log.Fatalf("Failed to create Azure provider: %v", err)
+		}
+		azureProvider, ok := p.(azure_provider.AzureProviderer)
+		if !ok {
+			log.Fatal("failed to assert provider to common.AzureProviderer")
 		}
 
 		allFlag, _ := cmd.Flags().GetBool("all")

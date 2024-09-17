@@ -17,8 +17,8 @@ import (
 //nolint:funlen,gocyclo
 func ProcessMachinesConfig(
 	providerType models.DeploymentType,
-	validateMachineType func(context.Context, string, string) (bool, error),
-) error {
+	validateMachineTypeFn func(context.Context, string, string) (bool, error),
+) (map[string]models.Machiner, map[string]bool, error) {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	locations := make(map[string]bool)
@@ -27,20 +27,20 @@ func ProcessMachinesConfig(
 
 	rawMachines := []RawMachine{}
 	if err := viper.UnmarshalKey(lowerProviderType+".machines", &rawMachines); err != nil {
-		return fmt.Errorf("error unmarshaling machines: %w", err)
+		return nil, nil, fmt.Errorf("error unmarshaling machines: %w", err)
 	}
 
 	defaultCount := viper.GetInt(lowerProviderType + ".default_count_per_zone")
 	if defaultCount == 0 {
 		errorMessage := fmt.Sprintf("%s.default_count_per_zone is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf(errorMessage)
 	}
 	defaultType := viper.GetString(lowerProviderType + ".default_machine_type")
 	if defaultType == "" {
 		errorMessage := fmt.Sprintf("%s.default_machine_type is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf(errorMessage)
 	}
 
 	defaultDiskImageFamily := viper.GetString(lowerProviderType + ".default_disk_image_family")
@@ -59,19 +59,19 @@ func ProcessMachinesConfig(
 	if defaultDiskSize == 0 {
 		errorMessage := fmt.Sprintf("%s.default_disk_size_gb is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf(errorMessage)
 	}
 
 	privateKeyPath := viper.GetString("general.ssh_private_key_path")
 	if privateKeyPath == "" {
-		return fmt.Errorf("general.ssh_private_key_path is not set")
+		return nil, nil, fmt.Errorf("general.ssh_private_key_path is not set")
 	}
 
 	privateKeyBytes, err := sshutils.ReadPrivateKey(privateKeyPath)
 	if err != nil {
 		errorMessage := fmt.Sprintf("failed to read private key: %v", err)
 		l.Error(errorMessage)
-		return fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf(errorMessage)
 	}
 
 	sshPort, err := strconv.Atoi(viper.GetString("general.ssh_port"))
@@ -96,7 +96,7 @@ func ProcessMachinesConfig(
 	}
 
 	if len(orchestratorLocations) > 1 {
-		return fmt.Errorf("multiple orchestrator nodes found")
+		return nil, nil, fmt.Errorf("multiple orchestrator nodes found")
 	}
 
 	type badMachineLocationCombo struct {
@@ -113,7 +113,7 @@ func ProcessMachinesConfig(
 		}
 
 		fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
-		valid, err := validateMachineType(context.Background(), rawMachine.Location, thisVMType)
+		valid, err := validateMachineTypeFn(context.Background(), rawMachine.Location, thisVMType)
 		if !valid || err != nil {
 			allBadMachineLocationCombos = append(
 				allBadMachineLocationCombos,
@@ -149,7 +149,7 @@ func ProcessMachinesConfig(
 				diskImageURL,
 			)
 			if err != nil {
-				return fmt.Errorf("failed to create new machine: %w", err)
+				return nil, nil, fmt.Errorf("failed to create new machine: %w", err)
 			}
 
 			if rawMachine.Parameters != (RawMachineParams{}) {
@@ -168,7 +168,7 @@ func ProcessMachinesConfig(
 	}
 
 	if len(allBadMachineLocationCombos) > 0 {
-		return fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"invalid machine type and location combinations: %v",
 			allBadMachineLocationCombos,
 		)
@@ -191,15 +191,15 @@ func ProcessMachinesConfig(
 		orchestratorFound = true
 	}
 	if !orchestratorFound {
-		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
+		return nil, nil, fmt.Errorf("no orchestrator node and orchestratorIP is not set")
 	}
 
-	m.Deployment.SetMachines(newMachines)
+	uniqueLocations := make(map[string]bool)
 	for k := range locations {
-		m.Deployment.Locations = append(m.Deployment.Locations, k)
+		uniqueLocations[k] = true
 	}
 
-	return nil
+	return newMachines, uniqueLocations, nil
 }
 
 func createNewMachine(

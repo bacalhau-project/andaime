@@ -7,7 +7,8 @@ import (
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers"
+	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -34,12 +35,16 @@ func GetListAllAssetsInProjectCmd() *cobra.Command {
 
 func listAllAssetsInProject(projectID string) error {
 	ctx := context.Background()
-	p, err := providers.GetProvider(ctx, models.DeploymentTypeGCP)
+	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
 	if err != nil {
 		return handleGCPError(err)
 	}
+	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	if !ok {
+		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
+	}
 
-	resources, err := p.ListAllAssetsInProject(ctx, projectID)
+	resources, err := gcpProvider.ListAllAssetsInProject(ctx, projectID)
 	if err != nil {
 		return handleGCPError(err)
 	}
