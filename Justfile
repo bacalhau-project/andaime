@@ -5,5 +5,5 @@ default:
 # Generate mocks
 genmock:
     @echo "Generating mocks..."
-    @docker run --rm -v "${PWD}:/src" -w /src vektra/mockery --all --keeptree --with-expecter
+    @mockery --all --dir=./pkg/providers --outpkg=mocks
     @echo "Mocks generated successfully."

@@ -184,7 +184,7 @@ func (m *MockAzureProvider) GetVMInternalIP(
 		Error(1)
 }
 
-func (m *MockAzureProvider) PollAndUpdateResources(
+func (m *MockAzureProvider) PollResources(
 	ctx context.Context,
 ) ([]interface{}, error) {
 	return m.Called(ctx).Get(0).([]interface{}), m.Called(ctx).Error(1)

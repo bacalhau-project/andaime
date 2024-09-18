@@ -99,6 +99,7 @@ godotenv
 gofmt
 goimports
 golangci
+gomega
 gomnd
 gomock
 googleapi
@@ -155,6 +156,7 @@ northeurope
 NSGID
 nsgs
 olekukonko
+onsi
 optup
 orchestratorip
 panicnil

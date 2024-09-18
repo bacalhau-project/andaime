@@ -39,7 +39,6 @@ func TestProcessMachinesConfig(t *testing.T) {
 	viper.Set("gcp.default_machine_type", "n2-standard-2")
 	viper.Set("gcp.default_disk_size_gb", 10)
 	viper.Set("gcp.organization_id", "test-org-id")
-	viper.Set("general.project_prefix", "andaime-test")
 	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
 	viper.Set("general.ssh_port", 22)
 	viper.Set("general.project_prefix", "test-project")

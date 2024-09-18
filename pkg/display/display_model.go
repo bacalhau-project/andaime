@@ -323,14 +323,24 @@ func (m *DisplayModel) getTotalRunTime() time.Duration {
 // getSuccessfulOperationsCount returns the number of successful operations
 func (m *DisplayModel) getSuccessfulOperationsCount() int {
 	count := 0
-	// TODO: Implement counter for all successful operations
+	// TODO: Implement
+	// for _, machine := range m.Deployment.GetMachines() {
+	// 	if machine. == models.StatusSucceeded {
+	// 		count++
+	// 	}
+	// }
 	return count
 }
 
 // getFailedOperationsCount returns the number of failed operations
 func (m *DisplayModel) getFailedOperationsCount() int {
 	count := 0
-	// TODO: Implement counter for all failed operations
+	// TODO: Implement
+	// for _, machine := range m.Deployment.Machines {
+	// 	if machine.GetStatus() == models.MachineStatusFailed {
+	// 		count++
+	// 	}
+	// }
 	return count
 }
 

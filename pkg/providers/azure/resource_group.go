@@ -20,7 +20,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 
 	// Get the base resource group name from the config
 	if rgName == "" {
-		return nil, fmt.Errorf("azure.resource_group_name is not set in the configuration")
+		return nil, fmt.Errorf("rgName is not set")
 	}
 
 	if !common.IsValidResourceGroupName(rgName) {

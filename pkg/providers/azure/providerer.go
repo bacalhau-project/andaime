@@ -20,7 +20,7 @@ type AzureProviderer interface {
 		locationData string,
 		tags map[string]string,
 	) (*armresources.ResourceGroup, error)
-	DestroyResourceGroup(ctx context.Context) error
+	DestroyResourceGroup(ctx context.Context, resourceGroupName string) error
 	ListAllResourceGroups(ctx context.Context) ([]*armresources.ResourceGroup, error)
 
 	// Resource Management
@@ -34,7 +34,7 @@ type AzureProviderer interface {
 		ctx context.Context,
 		tags map[string]*string,
 	) ([]interface{}, error)
-	PollAndUpdateResources(ctx context.Context) ([]interface{}, error)
+	PollResources(ctx context.Context) ([]interface{}, error)
 
 	// Deployment Management
 	CancelAllDeployments(ctx context.Context)

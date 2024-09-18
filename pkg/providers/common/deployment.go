@@ -161,7 +161,6 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
 
 	if provider == models.DeploymentTypeAzure {
-		deployment.Azure.ResourceGroupName = viper.GetString("azure.resource_group_name")
 		deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 		deployment.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
 		deployment.Azure.DefaultVMSize = viper.GetString("azure.default_vm_size")

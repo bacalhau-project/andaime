@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
+	andaime_mocks "github.com/bacalhau-project/andaime/mocks"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -17,21 +19,35 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func setupTest() {
+	_ = logger.Get()
+}
+
 func TestProcessMachinesConfig(t *testing.T) {
 	ctx := context.Background()
-	_,
+	testSSHPublicKeyPath,
 		cleanupPublicKey,
 		testPrivateKeyPath,
 		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	viper.Set("general.project_prefix", "test-project")
-	viper.Set("general.unique_id", "test-unique-id")
-
-	mockAzureClient := new(azure_provider.MockAzureClient)
+	mockAzureClient := new(andaime_mocks.MockClienter)
 	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
+
+	viper.Set("general.project_prefix", "test-project")
+	viper.Set("general.unique_id", "test-unique-id")
+	viper.Set("general.project_prefix", "test-project")
+	viper.Set("general.unique_id", "test-unique-id")
+	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
+	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
+	viper.Set("azure.subscription_id", "test-subscription-id")
+	// Create a mock AzureProvider
+	p, err := azure_provider.NewAzureProvider(ctx, "test-subscription-id")
+	assert.NoError(t, err)
+	assert.NotNil(t, p)
+	azureProvider := p.(azure.AzureProviderer)
 
 	deployment, err := models.NewDeployment()
 	assert.NoError(t, err)
@@ -101,9 +117,6 @@ func TestProcessMachinesConfig(t *testing.T) {
 		},
 	}
 
-	azureProvider, err := azure_provider.NewAzureProvider(ctx, "test-subscription-id")
-	assert.NoError(t, err)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset the machines slice for each test
@@ -120,10 +133,8 @@ func TestProcessMachinesConfig(t *testing.T) {
 			viper.Set("azure.default_machine_type", "Standard_DS4_v2")
 			viper.Set("azure.default_disk_size_gb", 30)
 			viper.Set("general.orchestrator_ip", tt.orchestratorIP)
-			viper.Set("general.project_prefix", "test-project")
-			viper.Set("general.unique_id", "test-unique-id")
-			viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
 
+			// Use the mock AzureProvider instead of creating a new one
 			machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)
 			deployment.SetMachines(machines)
 			deployment.SetLocations(locations)

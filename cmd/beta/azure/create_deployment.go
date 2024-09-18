@@ -48,22 +48,11 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Initialize the Azure provider
 	pCommon, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
 
-	var p azure_provider.AzureProviderer
+	var azureProvider azure_provider.AzureProviderer
 	if err != nil {
 		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
-	if p == nil {
-		return fmt.Errorf("azure provider is nil")
-	}
-
-	if p, ok := pCommon.(azure_provider.AzureProviderer); ok {
-		p = p
-	} else {
-		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
-	}
-
-	// Perform type assertion to common.AzureProviderer to access Azure-specific methods
-	azureProvider, ok := p.(azure_provider.AzureProviderer)
+	azureProvider, ok := pCommon.(azure_provider.AzureProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 	}
@@ -76,13 +65,13 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	// Prepare the deployment
-	deployment, err := p.PrepareDeployment(ctx)
+	deployment, err := azureProvider.PrepareDeployment(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
 	m := display.NewDisplayModel(deployment)
-	machines, locations, err := p.ProcessMachinesConfig(ctx)
+	machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
@@ -92,7 +81,13 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
 
-	go p.StartResourcePolling(ctx)
+	go func() {
+		defer cancel()
+		err = azureProvider.StartResourcePolling(ctx)
+		if err != nil {
+			l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
+		}
+	}()
 
 	var deploymentErr error
 	deploymentDone := make(chan struct{})

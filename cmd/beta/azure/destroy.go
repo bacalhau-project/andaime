@@ -158,12 +158,12 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 					map[string]string{},
 				)
 			if err != nil {
-				l.Errorf("Failed to get resource group %s: %v", rg.Name, err)
+				l.Errorf("Failed to get resource group %s: %v", *rg.Name, err)
 				continue
 			}
 			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil &&
 				strings.EqualFold(*createdBy, "andaime") {
-				l.Infof("Found resource group %s with CreatedBy tag", rg.Name)
+				l.Infof("Found resource group %s with CreatedBy tag", *rg.Name)
 				// Only add the resource group if it is not already in the list
 				found := false
 				for _, dep := range deployments {
@@ -175,7 +175,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 				// Test to see if the resource group is already being destroyed
 				if *rg.Properties.ProvisioningState == "Deleting" {
-					l.Infof("Resource group %s is already being destroyed", rg.Name)
+					l.Infof("Resource group %s is already being destroyed", *rg.Name)
 					continue
 				}
 

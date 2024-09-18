@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -52,6 +53,9 @@ const (
 // AzureProvider implements the Providerer interface.
 type AzureProvider struct {
 	common.Providerer
+	SubscriptionID      string
+	ResourceGroupName   string
+	Tags                map[string]*string
 	Client              AzureClienter
 	ClusterDeployer     common.ClusterDeployerer
 	SSHClient           sshutils.SSHClienter
@@ -94,6 +98,7 @@ func NewAzureProvider(ctx context.Context, subscriptionID string) (common.Provid
 
 	// Create the AzureProvider instance.
 	provider := &AzureProvider{
+		SubscriptionID:  subscriptionID,
 		Client:          client,
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAzure),
 	}
@@ -101,6 +106,18 @@ func NewAzureProvider(ctx context.Context, subscriptionID string) (common.Provid
 	// Initialize the provider (e.g., setup SSH keys, start update processor).
 	if err := provider.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
+	}
+
+	if provider.SubscriptionID == "" {
+		return nil, fmt.Errorf("subscription ID is not set in configuration")
+	}
+
+	if provider.ResourceGroupName == "" {
+		return nil, fmt.Errorf("resource group name is not set in configuration")
+	}
+
+	if provider.Tags == nil {
+		return nil, fmt.Errorf("tags are not set in configuration")
 	}
 
 	return provider, nil
@@ -163,6 +180,21 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 		p.SSHPort = DefaultSSHPort // Default SSH port.
 	}
 
+	p.ResourceGroupName = viper.GetString("azure.resource_group_name")
+	if p.ResourceGroupName == "" {
+		// Check if the resource group name already contains a timestamp
+		rgName := viper.GetString("azure.resource_group_name")
+		if rgName == "" {
+			rgName = "andaime-rg" + "-" + time.Now().Format("20060102150405")
+		}
+		p.ResourceGroupName = rgName
+	}
+
+	p.Tags = GenerateTags(
+		viper.GetString("general.project_prefix"),
+		viper.GetString("general.unique_id"),
+	)
+
 	// Initialize the SSH client if needed (placeholder).
 	// p.SSHClient = sshutils.NewSSHClient(...)
 
@@ -202,8 +234,7 @@ func (p *AzureProvider) GetOrCreateResourceGroup(
 }
 
 // DestroyResourceGroup deletes the specified resource group.
-func (p *AzureProvider) DestroyResourceGroup(ctx context.Context) error {
-	resourceGroupName := viper.GetString("azure.resource_group_name")
+func (p *AzureProvider) DestroyResourceGroup(ctx context.Context, resourceGroupName string) error {
 	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
 }
 
@@ -326,7 +357,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) error {
 			}
 
 			elapsed := time.Since(start)
-			writeToDebugLog(fmt.Sprintf("PollAndUpdateResources #%d took %v", pollCount, elapsed))
+			writeToDebugLog(fmt.Sprintf("PollResources #%d took %v", pollCount, elapsed))
 
 			p.logDeploymentStatus()
 
@@ -408,6 +439,14 @@ func (p *AzureProvider) logDeploymentStatus() {
 	}
 }
 
+func (p *AzureProvider) GetResources(
+	ctx context.Context,
+	resourceGroupName string,
+	tags map[string]*string,
+) ([]interface{}, error) {
+	return p.Client.GetResources(ctx, p.SubscriptionID, resourceGroupName, tags)
+}
+
 // writeToDebugLog writes a message to the debug log file with a timestamp.
 func writeToDebugLog(message string) {
 	debugFilePath := common.DebugFilePath
@@ -458,3 +497,34 @@ func (p *AzureProvider) AllMachinesComplete() bool {
 	}
 	return true
 }
+
+func (p *AzureProvider) GetSKUsByLocation(
+	ctx context.Context,
+	location string,
+) ([]armcompute.ResourceSKU, error) {
+	return p.Client.GetSKUsByLocation(ctx, location)
+}
+
+func (p *AzureProvider) ListAllResourceGroups(
+	ctx context.Context,
+) ([]*armresources.ResourceGroup, error) {
+	return p.Client.ListAllResourceGroups(ctx)
+}
+
+func (p *AzureProvider) ListAllResourcesInSubscription(
+	ctx context.Context,
+	tags map[string]*string,
+) ([]interface{}, error) {
+	return p.Client.ListAllResourcesInSubscription(ctx, p.SubscriptionID, p.Tags)
+}
+
+// Add this method to the AzureProvider struct
+
+func (p *AzureProvider) ValidateMachineType(
+	ctx context.Context,
+	location, machineType string,
+) (bool, error) {
+	return p.Client.ValidateMachineType(ctx, location, machineType)
+}
+
+var _ AzureProviderer = (*AzureProvider)(nil)

@@ -50,8 +50,8 @@ func (ls *lineSpinner) Start() {
 	go func() {
 		for {
 			ls.update()
-			time.Sleep(ls.Delay)
-			if !ls.Active() {
+			time.Sleep(ls.Spinner.Delay)
+			if !ls.Spinner.Active() {
 				break
 			}
 		}

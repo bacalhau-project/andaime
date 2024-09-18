@@ -89,6 +89,16 @@ type Deployment struct {
 	deploymentMutex        sync.RWMutex
 }
 
+type DeploymentStatus string
+
+const (
+	DeploymentStatusUnknown    DeploymentStatus = "Unknown"
+	DeploymentStatusNotStarted DeploymentStatus = "NotStarted"
+	DeploymentStatusInProgress DeploymentStatus = "InProgress"
+	DeploymentStatusSucceeded  DeploymentStatus = "Succeeded"
+	DeploymentStatusFailed     DeploymentStatus = "Failed"
+)
+
 func NewDeployment() (*Deployment, error) {
 	projectPrefix := viper.GetString("general.project_prefix")
 	if projectPrefix == "" {

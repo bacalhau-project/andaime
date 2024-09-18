@@ -41,7 +41,6 @@ func (p *AzureProvider) PrepareDeployment(
 	deployment.Azure.DefaultDiskSizeGB = utils.GetSafeDiskSize(
 		viper.GetInt("azure.default_disk_size_gb"),
 	)
-	deployment.Azure.ResourceGroupName = viper.GetString("azure.resource_group_name")
 	deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 
 	return deployment, nil
@@ -72,12 +71,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 		return fmt.Errorf("deployment object is not initialized")
 	}
 
-	// Check if the resource group name already contains a timestamp
-	if m.Deployment.Azure.ResourceGroupName == "" {
-		m.Deployment.Azure.ResourceGroupName = "andaime-rg"
-	}
-	newRGName := m.Deployment.Azure.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	m.Deployment.Azure.ResourceGroupName = newRGName
+	m.Deployment.Azure.ResourceGroupName = p.ResourceGroupName
 
 	resourceGroupLocation := m.Deployment.Azure.ResourceGroupLocation
 	// If ResourceGroupLocation is not set, use the first location from the Machines

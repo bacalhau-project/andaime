@@ -154,22 +154,23 @@ func (m *DisplayModel) QueueUpdate(update UpdateAction) {
 
 // StartUpdateProcessor begins processing updates
 func (m *DisplayModel) StartUpdateProcessor(ctx context.Context) {
-	m.logger.Debug("StartUpdateProcessor: Started")
+	l := logger.Get()
+	l.Debug("StartUpdateProcessor: Started")
 	defer close(m.UpdateProcessorDone)
-	defer m.logger.Debug("StartUpdateProcessor: Finished")
+	defer l.Debug("StartUpdateProcessor: Finished")
 
 	for {
 		select {
 		case <-ctx.Done():
-			m.logger.Debug("StartUpdateProcessor: Context cancelled")
+			l.Debug("StartUpdateProcessor: Context cancelled")
 			return
 		case update, ok := <-m.UpdateQueue:
 			if !ok {
-				m.logger.Debug("StartUpdateProcessor: Update queue closed")
+				l.Debug("StartUpdateProcessor: Update queue closed")
 				return
 			}
-			m.logger.Debugf(
-				"Processing update for %s, %s",
+			l.Debugf(
+				"Processing update for %s, %v",
 				update.MachineName,
 				update.UpdateData,
 			)
