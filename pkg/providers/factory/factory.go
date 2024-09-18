@@ -7,11 +7,11 @@ import (
 	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 )
 
 // FactoryFunc defines the signature for provider factory functions.
-type FactoryFunc func(ctx context.Context) (common.Providerer, error)
+type FactoryFunc func(ctx context.Context) (common_interface.Providerer, error)
 
 // registry holds the mapping from DeploymentType to FactoryFunc.
 var (
@@ -34,7 +34,7 @@ func RegisterProvider(providerType models.DeploymentType,
 func GetProvider(
 	ctx context.Context,
 	providerType models.DeploymentType,
-) (common.Providerer, error) {
+) (common_interface.Providerer, error) {
 	registryMu.RLock()
 	factoryFunc, exists := registry[providerType]
 	registryMu.RUnlock()

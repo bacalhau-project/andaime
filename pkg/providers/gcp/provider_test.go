@@ -14,6 +14,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+
+	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
 )
 
 func TestRandomServiceUpdates(t *testing.T) {
@@ -67,7 +69,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	l.Debug("Deployment model initialized")
 
-	mockClient := new(MockGCPClient)
+	mockClient := new(gcp_mock.MockGCPClienter)
 	provider := &GCPProvider{
 		Client:      mockClient,
 		updateQueue: make(chan display.UpdateAction, 100),

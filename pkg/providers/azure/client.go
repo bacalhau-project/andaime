@@ -21,6 +21,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 )
 
 var skippedTypes = []string{
@@ -63,10 +65,10 @@ type LiveAzureClient struct {
 }
 
 // Ensure LiveAzureClient implements the AzureClienter interface.
-var _ AzureClienter = &LiveAzureClient{}
+var _ azure_interface.AzureClienter = &LiveAzureClient{}
 
 // NewAzureClient creates a new AzureClient.
-func NewAzureClient(subscriptionID string) (AzureClienter, error) {
+func NewAzureClient(subscriptionID string) (azure_interface.AzureClienter, error) {
 	// Get credential from CLI.
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
@@ -136,7 +138,7 @@ func (c *LiveAzureClient) DeployTemplate(
 	template map[string]interface{},
 	params map[string]interface{},
 	tags map[string]*string,
-) (Pollerer, error) {
+) (azure_interface.Pollerer, error) {
 	l := logger.Get()
 	l.Debugf("DeployTemplate: Beginning - %s", deploymentName)
 

@@ -7,8 +7,8 @@ import (
 
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 )
 
@@ -58,7 +58,7 @@ func listAllProjects() error {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
 
-	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}
@@ -101,7 +101,7 @@ func runDestroyAllProjects() error {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
 
-	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}
@@ -166,7 +166,7 @@ func runDestroyProject(cmd *cobra.Command, projectID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create GCP provider: %v", err)
 	}
-	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}

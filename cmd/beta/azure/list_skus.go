@@ -7,7 +7,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -52,7 +52,7 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	azureProvider, ok := p.(azure_provider.AzureProviderer)
+	azureProvider, ok := p.(azure_interface.AzureProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 	}

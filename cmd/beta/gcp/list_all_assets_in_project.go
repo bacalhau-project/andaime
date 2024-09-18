@@ -7,8 +7,8 @@ import (
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -39,7 +39,7 @@ func listAllAssetsInProject(projectID string) error {
 	if err != nil {
 		return handleGCPError(err)
 	}
-	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}

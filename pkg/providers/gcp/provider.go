@@ -19,18 +19,20 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
 // Ensure GCPProvider implements the Providerer interface.
-var _ GCPProviderer = &GCPProvider{}
+var _ gcp_interface.GCPProviderer = &GCPProvider{}
 
 // NewGCPProviderFactory is the factory function for GCPProvider.
 func NewGCPProviderFactory(
 	ctx context.Context,
-) (common.Providerer, error) {
+) (common_interface.Providerer, error) {
 	projectID := viper.GetString("gcp.project_id")
 	if projectID == "" {
 		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
@@ -69,8 +71,8 @@ type GCPProvider struct {
 	ProjectID           string
 	OrganizationID      string
 	BillingAccountID    string
-	Client              GCPClienter
-	ClusterDeployer     common.ClusterDeployerer
+	Client              gcp_interface.GCPClienter
+	ClusterDeployer     common_interface.ClusterDeployerer
 	CleanupClient       func()
 	Config              *viper.Viper
 	SSHClient           sshutils.SSHClienter
@@ -84,9 +86,9 @@ type GCPProvider struct {
 }
 
 // Ensure GCPProvider implements the Providerer interface
-var _ GCPProviderer = &GCPProvider{}
+var _ gcp_interface.GCPProviderer = &GCPProvider{}
 
-func GetProvider(ctx context.Context) (common.Providerer, error) {
+func GetProvider(ctx context.Context) (common_interface.Providerer, error) {
 	projectID := viper.GetString("gcp.project_id")
 	if projectID == "" {
 		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
@@ -106,7 +108,7 @@ func GetProvider(ctx context.Context) (common.Providerer, error) {
 func NewGCPProvider(
 	ctx context.Context,
 	projectID, organizationID, billingAccountID string,
-) (GCPProviderer, error) {
+) (gcp_interface.GCPProviderer, error) {
 	if projectID == "" {
 		return nil, fmt.Errorf("gcp.project_id is required")
 	}
@@ -193,12 +195,12 @@ func (p *GCPProvider) loadDeploymentFromConfig() error {
 }
 
 // GetGCPClient returns the current GCP client
-func (p *GCPProvider) GetGCPClient() GCPClienter {
+func (p *GCPProvider) GetGCPClient() gcp_interface.GCPClienter {
 	return p.Client
 }
 
 // SetGCPClient sets a new GCP client
-func (p *GCPProvider) SetGCPClient(client GCPClienter) {
+func (p *GCPProvider) SetGCPClient(client gcp_interface.GCPClienter) {
 	p.Client = client
 }
 
@@ -508,11 +510,14 @@ func (p *GCPProvider) SetBillingAccount(
 
 // GetGCPClient initializes and returns a singleton GCP client
 var (
-	gcpClientInstance GCPClienter
+	gcpClientInstance gcp_interface.GCPClienter
 	gcpClientOnce     sync.Once
 )
 
-func GetGCPClient(ctx context.Context, organizationID string) (GCPClienter, func(), error) {
+func GetGCPClient(
+	ctx context.Context,
+	organizationID string,
+) (gcp_interface.GCPClienter, func(), error) {
 	var err error
 	var cleanup func()
 	gcpClientOnce.Do(func() {
@@ -588,12 +593,12 @@ func (p *GCPProvider) EnsureFirewallRules(
 }
 
 // GetClusterDeployer returns the current ClusterDeployer
-func (p *GCPProvider) GetClusterDeployer() common.ClusterDeployerer {
+func (p *GCPProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
 	return p.ClusterDeployer
 }
 
 // SetClusterDeployer sets a new ClusterDeployer
-func (p *GCPProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
+func (p *GCPProvider) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }
 

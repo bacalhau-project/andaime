@@ -7,8 +7,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -58,7 +58,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	gcpProvider, ok := p.(gcp_provider.GCPProviderer)
+	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
 	}

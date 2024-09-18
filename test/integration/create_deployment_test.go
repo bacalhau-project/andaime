@@ -17,10 +17,15 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+
+	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
+	common_mock "github.com/bacalhau-project/andaime/mocks/common"
+	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
 )
 
 func setupTestEnvironment(_ *testing.T) (func(), string, string) {
@@ -154,12 +159,12 @@ func (m *MockAzureProvider) FinalizeDeployment(ctx context.Context) error {
 	return m.Called(ctx).Error(0)
 }
 
-func (m *MockAzureProvider) GetAzureClient() azure_provider.AzureClienter {
-	return m.Called().Get(0).(azure_provider.AzureClienter)
+func (m *MockAzureProvider) GetAzureClient() azure_interface.AzureClienter {
+	return m.Called().Get(0).(azure_interface.AzureClienter)
 }
 
-func (m *MockAzureProvider) GetClusterDeployer() common.ClusterDeployerer {
-	return m.Called().Get(0).(common.ClusterDeployerer)
+func (m *MockAzureProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
+	return m.Called().Get(0).(common_interface.ClusterDeployerer)
 }
 
 func (m *MockAzureProvider) GetConfig() *viper.Viper {
@@ -196,11 +201,11 @@ func (m *MockAzureProvider) PrepareResourceGroup(
 	return m.Called(ctx).Error(0)
 }
 
-func (m *MockAzureProvider) SetAzureClient(client azure_provider.AzureClienter) {
+func (m *MockAzureProvider) SetAzureClient(client azure_interface.AzureClienter) {
 	m.Called(client).Error(0)
 }
 
-func (m *MockAzureProvider) SetClusterDeployer(clusterDeployer common.ClusterDeployerer) {
+func (m *MockAzureProvider) SetClusterDeployer(clusterDeployer common_interface.ClusterDeployerer) {
 	m.Called(clusterDeployer).Error(0)
 }
 
@@ -239,7 +244,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			cmd := cmd.SetupRootCommand()
 			cmd.SetContext(context.Background())
 
-			mockClusterDeployer := new(common.MockClusterDeployer)
+			mockClusterDeployer := new(common_mock.MockClusterDeployerer)
 			mockClusterDeployer.On("CreateResources", mock.Anything).Return(nil)
 			mockClusterDeployer.On("ProvisionMachines", mock.Anything).Return(nil)
 			mockClusterDeployer.On("ProvisionBacalhauCluster", mock.Anything).Return(nil)
@@ -264,7 +269,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			if tt.provider == models.DeploymentTypeAzure {
 				viper.Set("azure.subscription_id", "4a45a76b-5754-461d-84a1-f5e47b0a7198")
 
-				mockAzureClient := new(azure_provider.MockAzureClient)
+				mockAzureClient := new(azure_mock.MockAzureClienter)
 				mockAzureClient.On("ValidateMachineType",
 					mock.Anything,
 					mock.Anything,
@@ -348,7 +353,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				viper.Set("gcp.project_id", "test-1292-gcp")
 				viper.Set("gcp.organization_id", "org-1234567890")
 
-				mockGCPClient := new(gcp_provider.MockGCPClient)
+				mockGCPClient := new(gcp_mock.MockGCPClienter)
 				mockGCPClient.On("ValidateMachineType",
 					mock.Anything,
 					mock.Anything,

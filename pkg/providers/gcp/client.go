@@ -40,6 +40,8 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
 const maximumProjectIDLength = 18
@@ -90,7 +92,7 @@ func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, networkName string
 	}
 
 	opName := op.Name()
-	err = c.waitForGlobalOperation(ctx, c.parentString, opName)
+	err = c.WaitForGlobalOperation(ctx, c.parentString, opName)
 	if err != nil {
 		return fmt.Errorf("failed to wait for VPC network creation: %v", err)
 	}
@@ -107,7 +109,7 @@ type CloseableClient interface {
 func NewGCPClient(
 	ctx context.Context,
 	organizationID string,
-) (GCPClienter, func(), error) {
+) (gcp_interface.GCPClienter, func(), error) {
 	l := logger.Get()
 
 	// Centralized credential handling (adjust as needed)
@@ -708,7 +710,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 			return fmt.Errorf("failed to create network: %v", err)
 		}
 
-		err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+		err = c.WaitForGlobalOperation(ctx, projectID, op.Name())
 		if err != nil {
 			return fmt.Errorf("failed to wait for VPC network creation: %v", err)
 		}
@@ -798,7 +800,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 				return backoff.Permanent(fmt.Errorf("failed to create firewall rule: %v", err))
 			}
 
-			err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+			err = c.WaitForGlobalOperation(ctx, projectID, op.Name())
 			if err != nil {
 				return fmt.Errorf("failed to wait for firewall rule creation: %v", err)
 			}
@@ -1053,7 +1055,7 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 		return nil, fmt.Errorf("failed to create network: %v", err)
 	}
 
-	err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+	err = c.WaitForGlobalOperation(ctx, projectID, op.Name())
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for network creation: %v", err)
 	}
@@ -1064,7 +1066,7 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	})
 }
 
-func (c *LiveGCPClient) waitForGlobalOperation(
+func (c *LiveGCPClient) WaitForGlobalOperation(
 	ctx context.Context,
 	project, operation string,
 ) error {
@@ -1367,7 +1369,7 @@ func (c *LiveGCPClient) GetVMExternalIP(
 	return *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP, nil
 }
 
-func (c *LiveGCPClient) getVMZone(
+func (c *LiveGCPClient) GetVMZone(
 	ctx context.Context,
 	projectID, vmName string,
 ) (string, error) {
@@ -1414,7 +1416,7 @@ func (c *LiveGCPClient) validateZone(ctx context.Context, projectID, zone string
 	return fmt.Errorf("zone %s not found", zone)
 }
 
-func (c *LiveGCPClient) checkFirewallRuleExists(
+func (c *LiveGCPClient) CheckFirewallRuleExists(
 	ctx context.Context,
 	projectID, ruleName string,
 ) error {
@@ -1516,7 +1518,7 @@ func (c *LiveGCPClient) EnsureFirewallRules(
 
 		l.Debugf("Firewall rule %s created, waiting for operation to complete", firewallRuleName)
 
-		err = c.waitForGlobalOperation(ctx, projectID, op.Name())
+		err = c.WaitForGlobalOperation(ctx, projectID, op.Name())
 		if err != nil {
 			return fmt.Errorf("failed to wait for firewall rule creation: %v", err)
 		}

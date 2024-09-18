@@ -6,13 +6,14 @@ import (
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/api/iam/v1"
 )
 
 type MockGCPProvider struct {
-	common.Providerer
+	common_interface.Providerer
 	mock.Mock
 }
 
@@ -62,9 +63,9 @@ func (m *MockGCPProvider) CreateServiceAccount(
 	return args.Get(0).(*iam.ServiceAccount), args.Error(1)
 }
 
-func (m *MockGCPProvider) GetClusterDeployer() common.ClusterDeployerer {
+func (m *MockGCPProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
 	args := m.Called()
-	return args.Get(0).(common.ClusterDeployerer)
+	return args.Get(0).(common_interface.ClusterDeployerer)
 }
 
 func (m *MockGCPProvider) FinalizeDeployment(ctx context.Context) error {
@@ -118,16 +119,16 @@ func (m *MockGCPProvider) EnsureProject(ctx context.Context, projectID string) (
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockGCPProvider) GetGCPClient() GCPClienter {
+func (m *MockGCPProvider) GetGCPClient() gcp_interface.GCPClienter {
 	args := m.Called()
-	return args.Get(0).(GCPClienter)
+	return args.Get(0).(gcp_interface.GCPClienter)
 }
 
-func (m *MockGCPProvider) SetGCPClient(client GCPClienter) {
+func (m *MockGCPProvider) SetGCPClient(client gcp_interface.GCPClienter) {
 	m.Called(client)
 }
 
-func (m *MockGCPProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
+func (m *MockGCPProvider) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
 	m.Called(deployer)
 }
 
@@ -175,4 +176,4 @@ func (m *MockGCPProvider) ListBillingAccounts(
 	return args.Get(0).([]string), args.Error(1)
 }
 
-var _ common.Providerer = &MockGCPProvider{}
+var _ common_interface.Providerer = &MockGCPProvider{}

@@ -9,6 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/spf13/cobra"
@@ -94,7 +95,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, p common.Providerer) error {
+func runDeployment(ctx context.Context, p common_interface.Providerer) error {
 	// Create resources
 	if err := p.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)

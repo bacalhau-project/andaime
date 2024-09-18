@@ -6,6 +6,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
+
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 )
 
 // DestroyDeployment initiates the deletion of the specified Azure resource group
@@ -16,7 +18,7 @@ func (p *AzureProvider) DestroyDeployment(
 	l := logger.Get()
 	l.Infof("Initiating destruction of Azure deployment (Resource Group: %s)", resourceGroupName)
 
-	client := p.GetClient()
+	client := p.GetAzureClient()
 
 	err := client.DestroyResourceGroup(ctx, resourceGroupName)
 	if err != nil {
@@ -55,4 +57,4 @@ func (c *LiveAzureClient) InitiateResourceGroupDeletion(
 }
 
 // Ensure AzureProvider implements AzureProviderer interface
-var _ AzureClienter = (*LiveAzureClient)(nil)
+var _ azure_interface.AzureClienter = (*LiveAzureClient)(nil)

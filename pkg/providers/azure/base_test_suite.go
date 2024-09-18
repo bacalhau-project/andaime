@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/interfaces"
 	"github.com/spf13/viper"
@@ -16,7 +17,7 @@ var cleanupMutex sync.Mutex
 
 type BaseAzureTestSuite struct {
 	suite.Suite
-	MockAzureClient    *MockAzureClienter
+	MockAzureClient    *azure_mocks.MockAzureClienter
 	MockResourceGroups []interfaces.ResourceGroup
 	Ctx                context.Context
 	TestDisplayModel   *display.DisplayModel

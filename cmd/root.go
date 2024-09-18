@@ -15,7 +15,7 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
@@ -49,9 +49,9 @@ var shouldInitAzureFlag bool
 var shouldInitGCPFlag bool
 
 type cloudProvider struct {
-	awsProvider   common.Providerer
-	azureProvider common.Providerer
-	gcpProvider   common.Providerer
+	awsProvider   common_interface.Providerer
+	azureProvider common_interface.Providerer
+	gcpProvider   common_interface.Providerer
 }
 
 func Execute() error {

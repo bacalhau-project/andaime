@@ -106,7 +106,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 		)
 	}
 
-	client := p.GetClient()
+	client := p.GetAzureClient()
 	_, err := client.GetOrCreateResourceGroup(
 		ctx,
 		m.Deployment.Azure.ResourceGroupName,
@@ -415,7 +415,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 
 	dnsFailed := false
 	for retry := 0; retry < maxRetries; retry++ {
-		client := p.GetClient()
+		client := p.GetAzureClient()
 		poller, err := client.DeployTemplate(
 			ctx,
 			m.Deployment.Azure.ResourceGroupName,
@@ -567,7 +567,7 @@ func (p *AzureProvider) PollResources(ctx context.Context) ([]interface{}, error
 		l.Debugf("PollResources took %v", time.Since(start))
 	}()
 	m := display.GetGlobalModelFunc()
-	client := p.GetClient()
+	client := p.GetAzureClient()
 	resources, err := client.GetResources(
 		ctx,
 		m.Deployment.Azure.SubscriptionID,
@@ -636,7 +636,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 ) (string, string, error) {
 	l := logger.Get()
 	l.Debugf("Getting IP addresses for VM %s in resource group %s", vmName, resourceGroupName)
-	client := p.GetClient()
+	client := p.GetAzureClient()
 
 	// Get the VM
 	vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)

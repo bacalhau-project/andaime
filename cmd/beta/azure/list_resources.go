@@ -8,6 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/spf13/cobra"
@@ -33,7 +34,7 @@ var AzureListResourcesCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Failed to create Azure provider: %v", err)
 		}
-		azureProvider, ok := p.(azure_provider.AzureProviderer)
+		azureProvider, ok := p.(azure_interface.AzureProviderer)
 		if !ok {
 			log.Fatal("failed to assert provider to common.AzureProviderer")
 		}

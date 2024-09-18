@@ -9,7 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -48,11 +48,11 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Initialize the Azure provider
 	pCommon, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
 
-	var azureProvider azure_provider.AzureProviderer
+	var azureProvider azure_interface.AzureProviderer
 	if err != nil {
 		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
-	azureProvider, ok := pCommon.(azure_provider.AzureProviderer)
+	azureProvider, ok := pCommon.(azure_interface.AzureProviderer)
 	if !ok {
 		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 	}
@@ -156,7 +156,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 
 func runDeployment(
 	ctx context.Context,
-	azureProvider azure_provider.AzureProviderer,
+	azureProvider azure_interface.AzureProviderer,
 ) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()

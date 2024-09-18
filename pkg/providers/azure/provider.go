@@ -18,16 +18,15 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/goroutine"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
-// Ensure AzureProvider implements the Providerer interface.
-var _ common.Providerer = &AzureProvider{}
-
 // NewAzureProviderFactory is the factory function for AzureProvider.
-func NewAzureProviderFactory(ctx context.Context) (common.Providerer, error) {
+func NewAzureProviderFactory(ctx context.Context) (common_interface.Providerer, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {
 		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
@@ -52,12 +51,12 @@ const (
 
 // AzureProvider implements the Providerer interface.
 type AzureProvider struct {
-	common.Providerer
+	common_interface.Providerer
 	SubscriptionID      string
 	ResourceGroupName   string
 	Tags                map[string]*string
-	Client              AzureClienter
-	ClusterDeployer     common.ClusterDeployerer
+	Client              azure_interface.AzureClienter
+	ClusterDeployer     common_interface.ClusterDeployerer
 	SSHClient           sshutils.SSHClienter
 	SSHUser             string
 	SSHPort             int
@@ -69,10 +68,7 @@ type AzureProvider struct {
 	UpdateMutex         sync.Mutex
 }
 
-// Ensure AzureProvider implements the Providerer interface.
-var _ common.Providerer = &AzureProvider{}
-
-func GetProvider(ctx context.Context) (common.Providerer, error) {
+func GetProvider(ctx context.Context) (common_interface.Providerer, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {
 		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
@@ -80,16 +76,19 @@ func GetProvider(ctx context.Context) (common.Providerer, error) {
 	return NewAzureProvider(ctx, subscriptionID)
 }
 
-func (p *AzureProvider) GetClient() AzureClienter {
+func (p *AzureProvider) GetAzureClient() azure_interface.AzureClienter {
 	return p.Client
 }
 
-func (p *AzureProvider) SetClient(client AzureClienter) {
+func (p *AzureProvider) SetAzureClient(client azure_interface.AzureClienter) {
 	p.Client = client
 }
 
 // NewAzureProvider creates and initializes a new AzureProvider instance with subscriptionID.
-func NewAzureProvider(ctx context.Context, subscriptionID string) (common.Providerer, error) {
+func NewAzureProvider(
+	ctx context.Context,
+	subscriptionID string,
+) (common_interface.Providerer, error) {
 	// Initialize the Azure client.
 	client, err := NewAzureClient(subscriptionID)
 	if err != nil {
@@ -205,12 +204,12 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 }
 
 // GetClusterDeployer returns the current ClusterDeployer.
-func (p *AzureProvider) GetClusterDeployer() common.ClusterDeployerer {
+func (p *AzureProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
 	return p.ClusterDeployer
 }
 
 // SetClusterDeployer sets a new ClusterDeployer.
-func (p *AzureProvider) SetClusterDeployer(deployer common.ClusterDeployerer) {
+func (p *AzureProvider) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }
 
@@ -527,4 +526,4 @@ func (p *AzureProvider) ValidateMachineType(
 	return p.Client.ValidateMachineType(ctx, location, machineType)
 }
 
-var _ AzureProviderer = (*AzureProvider)(nil)
+var _ azure_interface.AzureProviderer = (*AzureProvider)(nil)

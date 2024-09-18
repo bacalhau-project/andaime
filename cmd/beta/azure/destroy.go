@@ -14,8 +14,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
@@ -139,7 +139,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 			l.Errorf("Failed to create Azure provider: %v", err)
 			return fmt.Errorf("failed to create Azure provider: %v", err)
 		}
-		azureProvider, ok := p.(azure_provider.AzureProviderer)
+		azureProvider, ok := p.(azure_interface.AzureProviderer)
 		if !ok {
 			return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 		}
