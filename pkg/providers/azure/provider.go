@@ -27,9 +27,21 @@ import (
 func NewAzureProviderFactory(ctx context.Context) (*AzureProvider, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {
-		return &AzureProvider{}, fmt.Errorf("azure.subscription_id is not set in configuration")
+		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
 	}
-	return NewAzureProvider(ctx, subscriptionID)
+
+	client, err := NewAzureClient(subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure client: %w", err)
+	}
+
+	provider, err := NewAzureProvider(ctx, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure provider: %w", err)
+	}
+
+	provider.SetAzureClient(client)
+	return provider, nil
 }
 
 // Constants related to Azure Provider configurations.
@@ -74,34 +86,27 @@ func NewAzureProvider(
 	ctx context.Context,
 	subscriptionID string,
 ) (*AzureProvider, error) {
-	// Initialize the Azure client.
-	client, err := NewAzureClient(subscriptionID)
-	if err != nil {
-		return &AzureProvider{}, fmt.Errorf("failed to create Azure client: %w", err)
-	}
-
 	// Create the AzureProvider instance.
 	provider := &AzureProvider{
 		SubscriptionID:  subscriptionID,
-		Client:          client,
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAzure),
 	}
 
 	// Initialize the provider (e.g., setup SSH keys, start update processor).
 	if err := provider.Initialize(ctx); err != nil {
-		return &AzureProvider{}, fmt.Errorf("failed to initialize Azure provider: %w", err)
+		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
 
 	if provider.SubscriptionID == "" {
-		return &AzureProvider{}, fmt.Errorf("subscription ID is not set in configuration")
+		return nil, fmt.Errorf("subscription ID is not set in configuration")
 	}
 
 	if provider.ResourceGroupName == "" {
-		return &AzureProvider{}, fmt.Errorf("resource group name is not set in configuration")
+		return nil, fmt.Errorf("resource group name is not set in configuration")
 	}
 
 	if provider.Tags == nil {
-		return &AzureProvider{}, fmt.Errorf("tags are not set in configuration")
+		return nil, fmt.Errorf("tags are not set in configuration")
 	}
 
 	return provider, nil

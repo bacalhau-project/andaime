@@ -31,15 +31,29 @@ func NewGCPProviderFactory(
 	projectID, organizationID, billingAccountID string,
 ) (*GCPProvider, error) {
 	if projectID == "" {
-		return &GCPProvider{}, fmt.Errorf("gcp.project_id is not set in configuration")
+		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
 	}
 	if organizationID == "" {
-		return &GCPProvider{}, fmt.Errorf("gcp.organization_id is not set in configuration")
+		return nil, fmt.Errorf("gcp.organization_id is not set in configuration")
 	}
 	if billingAccountID == "" {
-		return &GCPProvider{}, fmt.Errorf("gcp.billing_account_id is not set in configuration")
+		return nil, fmt.Errorf("gcp.billing_account_id is not set in configuration")
 	}
-	return NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
+
+	client, cleanup, err := NewGCPClient(ctx, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP client: %w", err)
+	}
+
+	provider, err := NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("failed to create GCP provider: %w", err)
+	}
+
+	provider.SetGCPClient(client)
+	provider.CleanupClient = cleanup
+	return provider, nil
 }
 
 // Constants related to GCP APIs and configurations
@@ -80,17 +94,7 @@ func NewGCPProvider(
 	ctx context.Context,
 	projectID, organizationID, billingAccountID string,
 ) (*GCPProvider, error) {
-	client, cleanup, err := NewGCPClient(
-		ctx,
-		organizationID,
-	)
-	if err != nil {
-		return &GCPProvider{}, fmt.Errorf("failed to create GCP client: %w", err)
-	}
-
 	gcpProvider := &GCPProvider{
-		Client:           client,
-		CleanupClient:    cleanup,
 		ProjectID:        projectID,
 		OrganizationID:   organizationID,
 		BillingAccountID: billingAccountID,
@@ -99,7 +103,7 @@ func NewGCPProvider(
 	}
 
 	if err := gcpProvider.Initialize(ctx); err != nil {
-		return &GCPProvider{}, fmt.Errorf("failed to initialize GCP provider: %w", err)
+		return nil, fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
 	return gcpProvider, nil
