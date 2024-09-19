@@ -22,34 +22,24 @@ import (
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
-
-// Ensure GCPProvider implements the Providerer interface.
-var _ gcp_interface.GCPProviderer = &GCPProvider{}
 
 // NewGCPProviderFactory is the factory function for GCPProvider.
 func NewGCPProviderFactory(
 	ctx context.Context,
-) (common_interface.Providerer, error) {
-	projectID := viper.GetString("gcp.project_id")
+	projectID, organizationID, billingAccountID string,
+) (*GCPProvider, error) {
 	if projectID == "" {
-		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
+		return &GCPProvider{}, fmt.Errorf("gcp.project_id is not set in configuration")
 	}
-	organizationID := viper.GetString("gcp.organization_id")
 	if organizationID == "" {
-		return nil, fmt.Errorf("gcp.organization_id is not set in configuration")
+		return &GCPProvider{}, fmt.Errorf("gcp.organization_id is not set in configuration")
 	}
-	billingAccountID := viper.GetString("gcp.billing_account_id")
 	if billingAccountID == "" {
-		return nil, fmt.Errorf("gcp.billing_account_id is not set in configuration")
+		return &GCPProvider{}, fmt.Errorf("gcp.billing_account_id is not set in configuration")
 	}
 	return NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
-}
-
-func init() {
-	factory.RegisterProvider(models.DeploymentTypeGCP, NewGCPProviderFactory)
 }
 
 // Constants related to GCP APIs and configurations
@@ -85,49 +75,20 @@ type GCPProvider struct {
 	servicesProvisioned bool          //nolint:unused
 }
 
-// Ensure GCPProvider implements the Providerer interface
-var _ gcp_interface.GCPProviderer = &GCPProvider{}
-
-func GetProvider(ctx context.Context) (common_interface.Providerer, error) {
-	projectID := viper.GetString("gcp.project_id")
-	if projectID == "" {
-		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
-	}
-	organizationID := viper.GetString("gcp.organization_id")
-	if organizationID == "" {
-		return nil, fmt.Errorf("gcp.organization_id is not set in configuration")
-	}
-	billingAccountID := viper.GetString("gcp.billing_account_id")
-	if billingAccountID == "" {
-		return nil, fmt.Errorf("gcp.billing_account_id is not set in configuration")
-	}
-	return NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
-}
-
 // NewGCPProvider creates a new GCP provider
 func NewGCPProvider(
 	ctx context.Context,
 	projectID, organizationID, billingAccountID string,
-) (gcp_interface.GCPProviderer, error) {
-	if projectID == "" {
-		return nil, fmt.Errorf("gcp.project_id is required")
-	}
-	if organizationID == "" {
-		return nil, fmt.Errorf("gcp.organization_id is required")
-	}
-	if billingAccountID == "" {
-		return nil, fmt.Errorf("gcp.billing_account_id is required")
-	}
-
+) (*GCPProvider, error) {
 	client, cleanup, err := NewGCPClient(
 		ctx,
 		organizationID,
-	) // Implement this function to create a GCP client
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create GCP client: %w", err)
+		return &GCPProvider{}, fmt.Errorf("failed to create GCP client: %w", err)
 	}
 
-	provider := &GCPProvider{
+	gcpProvider := &GCPProvider{
 		Client:           client,
 		CleanupClient:    cleanup,
 		ProjectID:        projectID,
@@ -137,11 +98,11 @@ func NewGCPProvider(
 		updateQueue:      make(chan display.UpdateAction, common.UpdateQueueSize),
 	}
 
-	if err := provider.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("failed to initialize GCP provider: %w", err)
+	if err := gcpProvider.Initialize(ctx); err != nil {
+		return &GCPProvider{}, fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
-	return provider, nil
+	return gcpProvider, nil
 }
 
 // Initialize initializes the GCP provider
@@ -279,8 +240,16 @@ func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment
 	return deployment, nil
 }
 
-func (p *GCPProvider) StartResourcePolling(ctx context.Context) error {
-	return p.StartResourcePolling(ctx)
+// Modify the StartResourcePolling method to return a channel
+func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(errChan)
+		// Your existing polling logic here
+		// If an error occurs, send it to the channel:
+		// errChan <- err
+	}()
+	return errChan
 }
 
 // StartResourcePolling starts polling resources for updates

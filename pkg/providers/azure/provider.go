@@ -21,21 +21,15 @@ import (
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
-// NewAzureProviderFactory is the factory function for AzureProvider.
-func NewAzureProviderFactory(ctx context.Context) (common_interface.Providerer, error) {
+func NewAzureProviderFactory(ctx context.Context) (*AzureProvider, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {
-		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
+		return &AzureProvider{}, fmt.Errorf("azure.subscription_id is not set in configuration")
 	}
 	return NewAzureProvider(ctx, subscriptionID)
-}
-
-func init() {
-	factory.RegisterProvider(models.DeploymentTypeAzure, NewAzureProviderFactory)
 }
 
 // Constants related to Azure Provider configurations.
@@ -51,7 +45,6 @@ const (
 
 // AzureProvider implements the Providerer interface.
 type AzureProvider struct {
-	common_interface.Providerer
 	SubscriptionID      string
 	ResourceGroupName   string
 	Tags                map[string]*string
@@ -68,14 +61,6 @@ type AzureProvider struct {
 	UpdateMutex         sync.Mutex
 }
 
-func GetProvider(ctx context.Context) (common_interface.Providerer, error) {
-	subscriptionID := viper.GetString("azure.subscription_id")
-	if subscriptionID == "" {
-		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
-	}
-	return NewAzureProvider(ctx, subscriptionID)
-}
-
 func (p *AzureProvider) GetAzureClient() azure_interface.AzureClienter {
 	return p.Client
 }
@@ -88,11 +73,11 @@ func (p *AzureProvider) SetAzureClient(client azure_interface.AzureClienter) {
 func NewAzureProvider(
 	ctx context.Context,
 	subscriptionID string,
-) (common_interface.Providerer, error) {
+) (*AzureProvider, error) {
 	// Initialize the Azure client.
 	client, err := NewAzureClient(subscriptionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Azure client: %w", err)
+		return &AzureProvider{}, fmt.Errorf("failed to create Azure client: %w", err)
 	}
 
 	// Create the AzureProvider instance.
@@ -104,19 +89,19 @@ func NewAzureProvider(
 
 	// Initialize the provider (e.g., setup SSH keys, start update processor).
 	if err := provider.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("failed to initialize Azure provider: %w", err)
+		return &AzureProvider{}, fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
 
 	if provider.SubscriptionID == "" {
-		return nil, fmt.Errorf("subscription ID is not set in configuration")
+		return &AzureProvider{}, fmt.Errorf("subscription ID is not set in configuration")
 	}
 
 	if provider.ResourceGroupName == "" {
-		return nil, fmt.Errorf("resource group name is not set in configuration")
+		return &AzureProvider{}, fmt.Errorf("resource group name is not set in configuration")
 	}
 
 	if provider.Tags == nil {
-		return nil, fmt.Errorf("tags are not set in configuration")
+		return &AzureProvider{}, fmt.Errorf("tags are not set in configuration")
 	}
 
 	return provider, nil
@@ -526,4 +511,6 @@ func (p *AzureProvider) ValidateMachineType(
 	return p.Client.ValidateMachineType(ctx, location, machineType)
 }
 
-var _ azure_interface.AzureProviderer = (*AzureProvider)(nil)
+func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
+	return nil
+}
