@@ -54,9 +54,6 @@ func (suite *CreateResourceTestSuite) TestCreateResources() {
 		suite.Run(tt.name, func() {
 			provider := &AzureProvider{}
 
-			suite.MockAzureClient.On("ListResourceGroups", suite.Ctx).
-				Return(suite.MockResourceGroups, nil)
-
 			testModel := &models.Deployment{
 				Locations: tt.locations,
 				Machines:  make(map[string]models.Machiner),
