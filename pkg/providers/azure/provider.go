@@ -24,6 +24,10 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
+func init() {
+	logger.InitProduction()
+}
+
 func NewAzureProviderFactory(ctx context.Context) (*AzureProvider, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {

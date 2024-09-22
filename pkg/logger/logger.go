@@ -247,14 +247,13 @@ func SetGlobalLogger(logger *Logger) {
 
 // Get returns the global logger instance
 func Get() *Logger {
+	loggerMutex.RLock()
+	defer loggerMutex.RUnlock()
+
 	if globalLogger == nil {
 		InitProduction()
 	}
-	l := &Logger{Logger: globalLogger, verbose: false}
-	if l.Logger == nil {
-		l = NewNopLogger()
-	}
-	return l
+	return &Logger{Logger: globalLogger, verbose: false}
 }
 
 func (l *Logger) syncIfNeeded() {
