@@ -30,7 +30,7 @@ func NewAzureProviderFactory(ctx context.Context) (*AzureProvider, error) {
 		return nil, fmt.Errorf("azure.subscription_id is not set in configuration")
 	}
 
-	client, err := NewAzureClient(subscriptionID)
+	client, err := NewAzureClientFunc(subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
@@ -265,29 +265,6 @@ func (p *AzureProvider) GetVMExternalIP(
 		return "", fmt.Errorf("location data is empty")
 	}
 	return p.Client.GetVMExternalIP(ctx, vmName, locationData)
-}
-
-// GetClusterDetails retrieves the details of a specific cluster.
-func (p *AzureProvider) GetClusterDetails(ctx context.Context, clusterName string) (*ClusterDetails, error) {
-	cluster, err := p.Client.GetCluster(ctx, p.ResourceGroupName, clusterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster details in Azure: %w", err)
-	}
-
-	if cluster == nil {
-		return nil, fmt.Errorf("cluster %s not found in Azure", clusterName)
-	}
-
-	clusterDetails := &ClusterDetails{
-		Name:              *cluster.Name,
-		CloudProvider:     models.CloudProviderAzure,
-		DeploymentType:    models.DeploymentTypeAzure,
-		KubernetesVersion: *cluster.KubernetesVersion,
-		NodeCount:         int(*cluster.AgentPoolProfiles[0].Count),
-		NodeTypes:         []string{*cluster.AgentPoolProfiles[0].VMSize},
-	}
-
-	return clusterDetails, nil
 }
 
 // StartResourcePolling starts polling Azure resources for updates.

@@ -30,6 +30,7 @@ var (
 
 var (
 	globalLogger *zap.Logger
+	loggerMutex  sync.RWMutex
 	once         sync.Once
 	DEBUG        zapcore.Level = zapcore.DebugLevel
 	INFO         zapcore.Level = zapcore.InfoLevel
@@ -192,12 +193,26 @@ func InitProduction() {
 	})
 }
 
+// NewTestLogger creates a new Logger instance for testing
+func NewTestLogger(tb zaptest.TestingT) *Logger {
+	core := zapcore.NewCore(
+		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
+		zapcore.AddSync(&testingWriter{tb: tb}),
+		zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+			return lvl >= zapcore.DebugLevel
+		}),
+	)
+	return &Logger{
+		Logger:  zap.New(core),
+		verbose: true,
+	}
+}
+
 type testingWriter struct {
 	tb zaptest.TestingT
 }
 
 func (tw *testingWriter) Write(p []byte) (n int, err error) {
-	// Attempt to assert tb to *testing.T to access the Log method directly.
 	if t, ok := tw.tb.(*testing.T); ok {
 		t.Log(string(p))
 	} else {
@@ -221,6 +236,13 @@ func InitTest(tb zaptest.TestingT) {
 
 		globalLogger = zap.New(core)
 	})
+}
+
+// SetGlobalLogger sets the global logger instance
+func SetGlobalLogger(logger *Logger) {
+	loggerMutex.Lock()
+	defer loggerMutex.Unlock()
+	globalLogger = logger.Logger
 }
 
 // Get returns the global logger instance
