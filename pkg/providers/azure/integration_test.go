@@ -182,10 +182,10 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	defer cancel()
 
 	// Initialize the global display model
-	m := display.NewDisplayModel(setup.provider.Deployment)
-	display.SetGlobalModelFunc(func() *display.DisplayModel {
-		return m
-	})
+	deployment, err := models.NewDeployment()
+	assert.NoError(t, err)
+	m := display.NewDisplayModel(deployment)
+	display.SetGlobalModel(m)
 
 	// Define ExpectedSSHBehavior
 	sshBehavior := sshutils.ExpectedSSHBehavior{
@@ -305,8 +305,8 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 		return mockSSHConfig, nil
 	}
 
-	m := display.GetGlobalModelFunc()
-	err := setup.provider.CreateResources(ctx)
+	globalModel := display.GetGlobalModel()
+	err = setup.provider.CreateResources(ctx)
 	setup.provider.SetClusterDeployer(setup.clusterDeployer)
 
 	for _, machine := range m.Deployment.Machines {
