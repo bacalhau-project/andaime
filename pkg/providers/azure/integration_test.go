@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
-	andaime_mocks "github.com/bacalhau-project/andaime/mocks"
-
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
@@ -25,7 +24,7 @@ import (
 type testSetup struct {
 	provider        *AzureProvider
 	clusterDeployer common_interface.ClusterDeployerer
-	mockAzureClient *andaime_mocks.MockAzureClienter
+	mockAzureClient *azure_mocks.MockAzureClienter
 	mockPoller      *MockPoller
 	cleanup         func()
 }
@@ -57,7 +56,7 @@ func setupTest(t *testing.T) *testSetup {
 		Return(armresources.DeploymentsClientCreateOrUpdateResponse{
 			DeploymentExtended: testdata.FakeDeployment(),
 		}, nil)
-	mockAzureClient := new(andaime_mocks.MockAzureClienter)
+	mockAzureClient := new(azure_mocks.MockAzureClienter)
 	mockAzureClient.On("DeployTemplate",
 		mock.Anything,
 		mock.Anything,
@@ -144,7 +143,7 @@ func setupTest(t *testing.T) *testSetup {
 	}
 }
 
-func setupMockDeployment(mockAzureClient *andaime_mocks.MockAzureClienter) *MockPoller {
+func setupMockDeployment(mockAzureClient *azure_mocks.MockAzureClienter) *MockPoller {
 	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
 	successState := armresources.ProvisioningStateSucceeded
 	props.Properties = &armresources.DeploymentPropertiesExtended{
@@ -164,7 +163,7 @@ func setupMockDeployment(mockAzureClient *andaime_mocks.MockAzureClienter) *Mock
 	return mockArmDeploymentPoller
 }
 
-func setupMockVMAndNetwork(mockAzureClient *andaime_mocks.MockAzureClienter) {
+func setupMockVMAndNetwork(mockAzureClient *azure_mocks.MockAzureClienter) {
 	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeVirtualMachine(), nil)
 
