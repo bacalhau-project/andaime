@@ -191,10 +191,13 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 		)
 
 		errgroup.Go(func() error {
-			goRoutineID := m.RegisterGoroutine(
-				fmt.Sprintf("DeployMachinesInLocation-%s", location),
-			)
-			defer m.DeregisterGoroutine(goRoutineID)
+			goRoutineID := ""
+			if m != nil {
+				goRoutineID = m.RegisterGoroutine(
+					fmt.Sprintf("DeployMachinesInLocation-%s", location),
+				)
+				defer m.DeregisterGoroutine(goRoutineID)
+			}
 
 			log.Infof("Starting deployment for location %s", location)
 
