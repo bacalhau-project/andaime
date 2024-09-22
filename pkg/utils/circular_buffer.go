@@ -16,6 +16,9 @@ func NewCircularBuffer[T any](size int) *CircularBuffer[T] {
 }
 
 func (cb *CircularBuffer[T]) Add(line T) {
+	if cb == nil || cb.lines == nil {
+		return // Safely handle nil receiver or uninitialized buffer
+	}
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 

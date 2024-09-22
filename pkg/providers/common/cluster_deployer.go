@@ -452,17 +452,21 @@ func (cd *ClusterDeployer) ProvisionPackagesOnMachine(
 	machineName string,
 ) error {
 	m := display.GetGlobalModelFunc()
+	if m == nil {
+		return fmt.Errorf("global display model is not initialized")
+	}
 	mach := m.Deployment.GetMachine(machineName)
 	if mach == nil {
 		return fmt.Errorf("machine %s not found", machineName)
 	}
 
-	m.UpdateStatus(models.NewDisplayStatusWithText(
+	status := models.NewDisplayStatusWithText(
 		machineName,
 		models.AzureResourceTypeVM,
 		models.ResourceStatePending,
 		"Provisioning Docker & packages on machine",
-	))
+	)
+	m.UpdateStatus(status)
 	err := mach.InstallDockerAndCorePackages(ctx)
 	if err != nil {
 		m.UpdateStatus(models.NewDisplayStatusWithText(

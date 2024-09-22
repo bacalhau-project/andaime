@@ -181,6 +181,12 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	// Initialize the global display model
+	m := display.NewDisplayModel(setup.provider.Deployment)
+	display.SetGlobalModelFunc(func() *display.DisplayModel {
+		return m
+	})
+
 	// Define ExpectedSSHBehavior
 	sshBehavior := sshutils.ExpectedSSHBehavior{
 		PushFileExpectations: []sshutils.PushFileExpectation{
