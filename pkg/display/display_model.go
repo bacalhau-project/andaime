@@ -147,7 +147,7 @@ func (m *DisplayModel) DeregisterGoroutine(id int64) {
 
 // UpdateStatus updates the status of a machine
 func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
-	if status == nil || status.Name == "" {
+	if m == nil || m.updateBuffer == nil || status == nil || status.Name == "" {
 		return
 	}
 
