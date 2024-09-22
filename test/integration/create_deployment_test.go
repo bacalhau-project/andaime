@@ -364,7 +364,13 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				).
 					Return(true, nil)
 
-				err = gcp.ExecuteCreateDeployment(cmd, []string{})
+				// Initialize deployment with at least one machine
+				m := display.GetGlobalModelFunc()
+				m.Deployment, _ = models.NewDeployment()
+				machine, _ := models.NewMachine(models.DeploymentTypeAzure, "eastus", "Standard_D2s_v3", 30, models.CloudSpecificInfo{})
+				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
+
+				err = azure.ExecuteCreateDeployment(cmd, []string{})
 
 				m := display.GetGlobalModelFunc()
 				assert.NotNil(t, m)
@@ -497,8 +503,18 @@ func TestPrepareDeployment(t *testing.T) {
 				machineConfig, ok := machineConfigRaw.(map[string]interface{})
 				assert.True(t, ok, "Each machine config should be a map")
 				if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
-					if count, ok := params["count"].(float64); ok {
-						expectedMachineCount += int(count)
+					if count, ok := params["count"]; ok {
+						if countFloat, ok := count.(float64); ok {
+							expectedMachineCount += int(countFloat)
+						} else if countStr, ok := count.(string); ok {
+							if countInt, err := strconv.Atoi(countStr); err == nil {
+								expectedMachineCount += countInt
+							} else {
+								expectedMachineCount++
+							}
+						} else {
+							expectedMachineCount++
+						}
 					} else {
 						expectedMachineCount++
 					}

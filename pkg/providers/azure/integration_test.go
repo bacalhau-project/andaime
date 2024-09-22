@@ -61,7 +61,9 @@ func setupTest(t *testing.T) *testSetup {
 	mockAzureClient.On("DeployTemplate",
 		mock.Anything,
 		mock.Anything,
-		mock.Anything,
+		mock.MatchedBy(func(s string) bool {
+			return strings.HasPrefix(s, "deployment-")
+		}),
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
