@@ -37,7 +37,7 @@ func (p *AzureProvider) PrepareDeployment(
 	}
 	deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
 	deployment.Azure.SubscriptionID = viper.GetString("azure.subscription_id")
-	deployment.Azure.DefaultVMSize = viper.GetString("azure.default_vm_size")
+	deployment.Azure.DefaultVMSize = viper.GetString("azure.default_machine_type")
 	deployment.Azure.DefaultDiskSizeGB = utils.GetSafeDiskSize(
 		viper.GetInt("azure.default_disk_size_gb"),
 	)
