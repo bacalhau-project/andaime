@@ -163,6 +163,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 	case <-processorDone:
 		l.Info("Update processor finished successfully")
 	case <-time.After(5 * time.Second):
+		l.Error("Update processor did not stop in time")
 		t.Fatal("Update processor did not stop in time")
 	}
 

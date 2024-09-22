@@ -334,6 +334,9 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				})
 
 				err = azure.ExecuteCreateDeployment(cmd, []string{})
+				if err != nil {
+					t.Fatalf("ExecuteCreateDeployment failed: %v", err)
+				}
 				m := display.GetGlobalModelFunc()
 				assert.NotNil(t, m)
 
