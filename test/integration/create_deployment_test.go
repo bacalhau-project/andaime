@@ -426,8 +426,8 @@ func TestPrepareDeployment(t *testing.T) {
 			if err != nil {
 				t.Logf("PrepareDeployment error: %v", err)
 			}
-			require.NoError(t, err, "PrepareDeployment failed")
-			require.NotNil(t, deployment)
+			assert.NoError(t, err, "PrepareDeployment failed")
+			assert.NotNil(t, deployment)
 
 			assert.NotEmpty(t, deployment.Name)
 			assert.Equal(t, tt.provider, deployment.DeploymentType)

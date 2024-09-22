@@ -61,6 +61,7 @@ type DeploymentType string
 const (
 	DeploymentTypeUnknown DeploymentType = "Unknown"
 	DeploymentTypeAzure   DeploymentType = "Azure"
+	DeploymentTypeAWS     DeploymentType = "AWS"
 	DeploymentTypeGCP     DeploymentType = "GCP"
 )
 
@@ -134,8 +135,20 @@ func (d *Deployment) ToMap() map[string]interface{} {
 func (d *Deployment) UpdateViperConfig() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	v := viper.GetViper()
-	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.Azure.ResourceGroupName)
+	var deploymentPath string
+	if d.DeploymentType == DeploymentTypeAzure {
+		deploymentPath = fmt.Sprintf(
+			"deployments.%s.azure.%s",
+			d.UniqueID,
+			d.Azure.ResourceGroupName,
+		)
+	} else if d.DeploymentType == DeploymentTypeGCP {
+		deploymentPath = fmt.Sprintf(
+			"deployments.%s.gcp.%s",
+			d.UniqueID,
+			d.GCP.ProjectID,
+		)
+	}
 	viperMachines := make(map[string]map[string]interface{})
 	for _, machine := range d.Machines {
 		viperMachines[machine.GetName()] = map[string]interface{}{
@@ -145,9 +158,8 @@ func (d *Deployment) UpdateViperConfig() error {
 			"Orchestrator": machine.IsOrchestrator(),
 		}
 	}
-
-	v.Set(deploymentPath, viperMachines)
-	return v.WriteConfig()
+	viper.Set(deploymentPath, viperMachines)
+	return viper.WriteConfig()
 }
 
 func (d *Deployment) GetMachine(name string) Machiner {
@@ -250,8 +262,8 @@ type AzureConfig struct {
 type GCPConfig struct {
 	ProjectID              string
 	OrganizationID         string
-	Region                 string
-	Zone                   string
+	DefaultRegion          string
+	DefaultZone            string
 	DefaultMachineType     string
 	DefaultDiskSizeGB      int32
 	BillingAccountID       string

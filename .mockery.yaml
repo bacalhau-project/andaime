@@ -2,27 +2,17 @@ with-expecter: true
 inpackage: false
 dir: "./mocks/{{.PackagePath}}"
 packages:
-  github.com/bacalhau-project/andaime/pkg/interfaces:
-    config:
-      all: true
-      recursive: true
-      dir: "./mocks/interfaces"
-  github.com/bacalhau-project/andaime/pkg/providers/aws:
-    config:
-      all: true
-      recursive: true
-      dir: "./mocks/aws"
-  github.com/bacalhau-project/andaime/pkg/providers/azure:
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/azure:
     config:
       all: true
       recursive: true
       dir: "./mocks/azure"
-  github.com/bacalhau-project/andaime/pkg/providers/gcp:
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp:
     config:
       all: true
       recursive: true
       dir: "./mocks/gcp"
-  github.com/bacalhau-project/andaime/pkg/providers/common:
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/common:
     config:
       all: true
       recursive: true

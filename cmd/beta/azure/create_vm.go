@@ -47,7 +47,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 
 	// Set values from flags
 	viper.Set("azure.resource_group_location", location)
-	viper.Set("azure.default_vm_size", vmSize)
+	viper.Set("azure.default_machine_type", vmSize)
 
 	// Handle resource group
 	var resourceGroupName string

@@ -67,6 +67,8 @@ type LiveAzureClient struct {
 // Ensure LiveAzureClient implements the AzureClienter interface.
 var _ azure_interface.AzureClienter = &LiveAzureClient{}
 
+var NewAzureClientFunc = NewAzureClient
+
 // NewAzureClient creates a new AzureClient.
 func NewAzureClient(subscriptionID string) (azure_interface.AzureClienter, error) {
 	// Get credential from CLI.

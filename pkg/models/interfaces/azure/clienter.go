@@ -1,5 +1,4 @@
-// pkg/providers/azure/clienter.go
-package azure
+package azure_interface
 
 import (
 	"context"

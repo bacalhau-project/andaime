@@ -14,9 +14,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -133,14 +131,9 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	})
 
 	if destroyAll {
-		// Query the subscription for any remaining resource groups with the CreatedBy tag
-		p, err := factory.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
+		subscriptionID := viper.GetString("azure.subscription_id")
+		azureProvider, err := azure_provider.NewAzureProvider(cmd.Context(), subscriptionID)
 		if err != nil {
-			l.Errorf("Failed to create Azure provider: %v", err)
-			return fmt.Errorf("failed to create Azure provider: %v", err)
-		}
-		azureProvider, ok := p.(azure_interface.AzureProviderer)
-		if !ok {
 			return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 		}
 		resourceGroups, err := azureProvider.ListAllResourceGroups(cmd.Context())
@@ -263,7 +256,10 @@ func destroyDeployment(dep ConfigDeployment) error {
 	started := false
 
 	if dep.Type == models.DeploymentTypeAzure {
-		azureProvider, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
+		azureProvider, err := azure_provider.NewAzureProvider(
+			ctx,
+			viper.GetString("azure.subscription_id"),
+		)
 		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
@@ -283,19 +279,25 @@ func destroyDeployment(dep ConfigDeployment) error {
 			l.Infof("Azure deployment %s destruction started successfully", dep.Name)
 			// Stop the display
 		}
-	} else if dep.Type == "AWS" {
-		awsProvider, err := aws_provider.NewAWSProvider(viper.GetViper())
-		dep.FullViperKey = fmt.Sprintf("deployments.aws.%s", dep.Name)
-		if err != nil {
-			l.Errorf("Failed to create AWS provider for %s: %v", dep.Name, err)
-			return fmt.Errorf("failed to create AWS provider for %s: %v", dep.Name, err)
-		}
-		l.Debugf("Destroying AWS resources for %s", dep.Name)
-		err = awsProvider.DestroyResources(ctx, dep.ID)
-		if err != nil {
-			l.Errorf("Failed to destroy AWS deployment %s: %v", dep.Name, err)
-			return fmt.Errorf("failed to destroy AWS deployment %s: %v", dep.Name, err)
-		}
+	} else if dep.Type == models.DeploymentTypeAWS {
+		// awsProvider, err := aws_provider.NewAWSProvider(
+		// 	ctx,
+		// 	viper.GetString("aws.access_key_id"),
+		// 	viper.GetString("aws.secret_access_key"),
+		// 	viper.GetString("aws.region"),
+		// )
+		// dep.FullViperKey = fmt.Sprintf("deployments.aws.%s", dep.Name)
+		// if err != nil {
+		// 	l.Errorf("Failed to create AWS provider for %s: %v", dep.Name, err)
+		// 	return fmt.Errorf("failed to create AWS provider for %s: %v", dep.Name, err)
+		// }
+		// l.Debugf("Destroying AWS resources for %s", dep.Name)
+		// err = awsProvider.DestroyResources(ctx, dep.ID)
+		// if err != nil {
+		// 	l.Errorf("Failed to destroy AWS deployment %s: %v", dep.Name, err)
+		// 	return fmt.Errorf("failed to destroy AWS deployment %s: %v", dep.Name, err)
+		// }
+		l.Warnf("AWS destroy is not implemented yet")
 		started = true
 	}
 

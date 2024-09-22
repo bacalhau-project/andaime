@@ -6,10 +6,9 @@ import (
 	"strings"
 
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func GetGCPDestroyProjectCmd() *cobra.Command {
@@ -53,16 +52,15 @@ all projects labeled with 'andaime', or list all available projects.`,
 
 func listAllProjects() error {
 	ctx := context.Background()
-	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
+	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+		ctx,
+		viper.GetString("gcp.project_id"),
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
 	if err != nil {
-		return fmt.Errorf("failed to create GCP provider: %v", err)
+		return fmt.Errorf("failed to get provider: %w", err)
 	}
-
-	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
-	}
-
 	projects, err := gcpProvider.ListProjects(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list projects: %v", err)
@@ -96,14 +94,14 @@ func listAllProjects() error {
 
 func runDestroyAllProjects() error {
 	ctx := context.Background()
-	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
+	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+		ctx,
+		viper.GetString("gcp.project_id"),
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
 	if err != nil {
-		return fmt.Errorf("failed to create GCP provider: %v", err)
-	}
-
-	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
+		return fmt.Errorf("failed to get provider: %w", err)
 	}
 
 	projects, err := gcpProvider.ListProjects(ctx)
@@ -162,13 +160,14 @@ func runDestroyAllProjects() error {
 
 func runDestroyProject(cmd *cobra.Command, projectID string) error {
 	ctx := context.Background()
-	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
+	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+		ctx,
+		projectID,
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
 	if err != nil {
-		return fmt.Errorf("failed to create GCP provider: %v", err)
-	}
-	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
+		return fmt.Errorf("failed to get provider: %w", err)
 	}
 
 	fmt.Printf("Are you sure you want to delete project %s? (y/N): ", projectID)

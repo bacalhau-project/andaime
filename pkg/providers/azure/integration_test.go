@@ -12,6 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
@@ -175,6 +176,9 @@ func setupMockVMAndNetwork(mockAzureClient *azure_mocks.MockAzureClienter) {
 }
 
 func TestProvisionResourcesSuccess(t *testing.T) {
+	l := logger.Get()
+	l.Info("Starting TestProvisionResourcesSuccess")
+
 	setup := setupTest(t)
 	defer setup.cleanup()
 
@@ -305,7 +309,6 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 		return mockSSHConfig, nil
 	}
 
-	globalModel := display.GetGlobalModel()
 	err = setup.provider.CreateResources(ctx)
 	setup.provider.SetClusterDeployer(setup.clusterDeployer)
 

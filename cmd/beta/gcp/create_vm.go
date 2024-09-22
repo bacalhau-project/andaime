@@ -7,8 +7,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -54,15 +53,6 @@ func createVM(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := cmd.Context()
-	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
-	if err != nil {
-		return err
-	}
-	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
-	}
-
 	sshUser := viper.GetString("general.ssh_user")
 	if sshUser == "" {
 		return fmt.Errorf("ssh user is not set")
@@ -90,6 +80,16 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("billing account ID is not set")
 	}
 
+	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+		ctx,
+		projectID,
+		organizationID,
+		billingAccountID,
+	)
+	if err != nil {
+		return err
+	}
+
 	diskSizeGB := viper.GetInt("gcp.default_disk_size_gb")
 	if diskSizeGB == 0 {
 		diskSizeGB = 30
@@ -103,8 +103,8 @@ func createVM(cmd *cobra.Command, args []string) error {
 	m.Deployment.GCP.ProjectID = projectID
 	m.Deployment.GCP.OrganizationID = organizationID
 	m.Deployment.GCP.BillingAccountID = billingAccountID
-	m.Deployment.GCP.Region = getRegionFromZone(zone)
-	m.Deployment.GCP.Zone = zone
+	m.Deployment.GCP.DefaultRegion = getRegionFromZone(zone)
+	m.Deployment.GCP.DefaultZone = zone
 	machine, err := models.NewMachine(
 		models.DeploymentTypeGCP,
 		vmName,
@@ -115,6 +115,9 @@ func createVM(cmd *cobra.Command, args []string) error {
 			Region: getRegionFromZone(zone),
 		},
 	)
+	if err != nil {
+		return err
+	}
 	m.Deployment.SetMachines(map[string]models.Machiner{
 		vmName: machine,
 	})

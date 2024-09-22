@@ -49,7 +49,6 @@ type DisplayModel struct {
 	quitChan            chan bool
 	goroutineCount      int64
 	keyEventChan        chan tea.KeyMsg
-	logger              *logger.Logger
 	activeGoroutines    sync.Map
 	UpdateMutex         sync.Mutex
 	UpdateQueue         chan UpdateAction
@@ -99,7 +98,6 @@ func NewDisplayModel(deployment *models.Deployment) *DisplayModel {
 		UpdateTimesSize:  updateTimesBufferSize,
 		quitChan:         make(chan bool),
 		keyEventChan:     make(chan tea.KeyMsg),
-		logger:           logger.Get(),
 		updateBuffer:     utils.NewCircularBuffer[models.DisplayStatus](1000),
 	}
 	go model.handleKeyEvents()
@@ -109,20 +107,21 @@ func NewDisplayModel(deployment *models.Deployment) *DisplayModel {
 
 // handleKeyEvents processes key events in a separate goroutine
 func (m *DisplayModel) handleKeyEvents() {
+	l := logger.Get()
 	for {
 		select {
 		case <-m.quitChan:
-			m.logger.Debug("Quit signal received in handleKeyEvents")
+			l.Debug("Quit signal received in handleKeyEvents")
 			return
 		case key := <-m.keyEventChan:
 			if (key.String() == "q" || key.String() == "ctrl+c") && !m.Quitting {
 				m.Quitting = true
-				m.logger.Debugf(
+				l.Debugf(
 					"Quit command received (q or ctrl+c) at %s",
 					time.Now().Format(time.RFC3339Nano),
 				)
 				close(m.quitChan)
-				m.logger.Debug("Quit channel closed")
+				l.Debug("Quit channel closed")
 				return
 			}
 		}
@@ -131,16 +130,18 @@ func (m *DisplayModel) handleKeyEvents() {
 
 // RegisterGoroutine registers a new goroutine with a label
 func (m *DisplayModel) RegisterGoroutine(label string) int64 {
+	l := logger.Get()
 	id := atomic.AddInt64(&m.goroutineCount, 1)
 	m.activeGoroutines.Store(id, label)
-	m.logger.Debugf("Goroutine started: %s (ID: %d)", label, id)
+	l.Debugf("Goroutine started: %s (ID: %d)", label, id)
 	return id
 }
 
 // DeregisterGoroutine deregisters a goroutine by its ID
 func (m *DisplayModel) DeregisterGoroutine(id int64) {
+	l := logger.Get()
 	if label, ok := m.activeGoroutines.LoadAndDelete(id); ok {
-		m.logger.Debugf("Goroutine finished: %s (ID: %d)", label, id)
+		l.Debugf("Goroutine finished: %s (ID: %d)", label, id)
 	}
 	atomic.AddInt64(&m.goroutineCount, -1)
 }

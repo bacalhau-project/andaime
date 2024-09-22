@@ -14,8 +14,6 @@ type MockClient struct {
 	mock.Mock
 }
 
-// Implement all methods of Client interface here...
-
 // NewMockClient creates a new MockClient with common expectations set
 func NewMockClient() *MockClient {
 	mockClient := new(MockClient)
@@ -44,5 +42,3 @@ func AssertResourceGroupCreated(
 func NewTestContext() context.Context {
 	return context.Background()
 }
-
-// More helper functions...

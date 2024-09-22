@@ -10,7 +10,7 @@ import (
 
 	armsubscription "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 
-	azure "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 
 	context "context"
 
@@ -33,23 +33,23 @@ func (_m *MockAzureClienter) EXPECT() *MockAzureClienter_Expecter {
 }
 
 // DeployTemplate provides a mock function with given fields: ctx, resourceGroupName, deploymentName, template, params, tags
-func (_m *MockAzureClienter) DeployTemplate(ctx context.Context, resourceGroupName string, deploymentName string, template map[string]interface{}, params map[string]interface{}, tags map[string]*string) (azure.Pollerer, error) {
+func (_m *MockAzureClienter) DeployTemplate(ctx context.Context, resourceGroupName string, deploymentName string, template map[string]interface{}, params map[string]interface{}, tags map[string]*string) (azure_interface.Pollerer, error) {
 	ret := _m.Called(ctx, resourceGroupName, deploymentName, template, params, tags)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeployTemplate")
 	}
 
-	var r0 azure.Pollerer
+	var r0 azure_interface.Pollerer
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}, map[string]interface{}, map[string]*string) (azure.Pollerer, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}, map[string]interface{}, map[string]*string) (azure_interface.Pollerer, error)); ok {
 		return rf(ctx, resourceGroupName, deploymentName, template, params, tags)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}, map[string]interface{}, map[string]*string) azure.Pollerer); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}, map[string]interface{}, map[string]*string) azure_interface.Pollerer); ok {
 		r0 = rf(ctx, resourceGroupName, deploymentName, template, params, tags)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(azure.Pollerer)
+			r0 = ret.Get(0).(azure_interface.Pollerer)
 		}
 	}
 
@@ -85,12 +85,12 @@ func (_c *MockAzureClienter_DeployTemplate_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockAzureClienter_DeployTemplate_Call) Return(_a0 azure.Pollerer, _a1 error) *MockAzureClienter_DeployTemplate_Call {
+func (_c *MockAzureClienter_DeployTemplate_Call) Return(_a0 azure_interface.Pollerer, _a1 error) *MockAzureClienter_DeployTemplate_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockAzureClienter_DeployTemplate_Call) RunAndReturn(run func(context.Context, string, string, map[string]interface{}, map[string]interface{}, map[string]*string) (azure.Pollerer, error)) *MockAzureClienter_DeployTemplate_Call {
+func (_c *MockAzureClienter_DeployTemplate_Call) RunAndReturn(run func(context.Context, string, string, map[string]interface{}, map[string]interface{}, map[string]*string) (azure_interface.Pollerer, error)) *MockAzureClienter_DeployTemplate_Call {
 	_c.Call.Return(run)
 	return _c
 }

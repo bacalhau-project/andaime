@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,16 +26,17 @@ func SetDefaultConfigurations(provider models.DeploymentType) {
 	viper.SetDefault("general.ssh_port", 22)
 
 	if provider == models.DeploymentTypeAzure {
+		viper.SetDefault("azure.default_count_per_zone", 1)
 		viper.SetDefault("azure.resource_group_name", "andaime-rg")
 		viper.SetDefault("azure.resource_group_location", "eastus")
 		viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
-		viper.SetDefault("azure.default_vm_size", "Standard_B2s")
+		viper.SetDefault("azure.default_machine_type", "Standard_B2s")
 		viper.SetDefault("azure.default_disk_size_gb", globals.DefaultDiskSizeGB)
 		viper.SetDefault("azure.default_location", "eastus")
 	} else if provider == models.DeploymentTypeGCP {
-		viper.SetDefault("gcp.region", "us-central1")
-		viper.SetDefault("gcp.zone", "us-central1-a")
-		viper.SetDefault("gcp.machine_type", "e2-medium")
+		viper.SetDefault("gcp.default_region", "us-central1")
+		viper.SetDefault("gcp.default_zone", "us-central1-a")
+		viper.SetDefault("gcp.default_machine_type", "e2-medium")
 		viper.SetDefault("gcp.disk_size_gb", globals.DefaultDiskSizeGB)
 		viper.SetDefault("gcp.allowed_ports", globals.DefaultAllowedPorts)
 	}
@@ -118,9 +120,35 @@ func PrepareDeployment(
 		}
 
 		if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
-			var count float64
-			if count, ok = params["count"].(float64); !ok || count < 1 {
+			var count int
+			switch countValue := params["count"].(type) {
+			case int:
+				count = countValue
+			case string:
+				parsedCount, err := strconv.Atoi(countValue)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse count as string: %w", err)
+				}
+				count = parsedCount
+			default:
+				countStr := fmt.Sprintf("%v", countValue)
+				parsedCount, err := strconv.Atoi(countStr)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse count %q: %w", countStr, err)
+				}
+				count = parsedCount
+			}
+
+			if count < 1 {
 				count = 1
+			}
+
+			if vmSize, ok := params["machine_type"].(string); ok && vmSize != "" {
+				machine.VMSize = vmSize
+			}
+
+			if diskSizeGB, ok := params["disk_size_gb"].(int); ok && diskSizeGB > 0 {
+				machine.DiskSizeGB = diskSizeGB
 			}
 
 			if orchestrator, ok := params["orchestrator"].(bool); ok &&
@@ -138,7 +166,7 @@ func PrepareDeployment(
 				l.Infof("Orchestrator machine name: %s", orchestratorMachineName)
 				l.Infof("Orchestrator location: %s", orchestratorLocation)
 			}
-			for i := 0; i < int(count); i++ {
+			for i := 0; i < count; i++ {
 				machine.Name = fmt.Sprintf("%s-vm", utils.GenerateUniqueID())
 				deployment.SetMachine(machine.GetName(), machine)
 			}
@@ -161,17 +189,48 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
 
 	if provider == models.DeploymentTypeAzure {
+		deployment.Azure.ResourceGroupName = viper.GetString("azure.resource_group_name")
+		if deployment.Azure.ResourceGroupName == "" {
+			return fmt.Errorf("azure.resource_group_name is not set")
+		}
 		deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
+		if deployment.Azure.ResourceGroupLocation == "" {
+			return fmt.Errorf("azure.resource_group_location is not set")
+		}
 		deployment.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
-		deployment.Azure.DefaultVMSize = viper.GetString("azure.default_vm_size")
+		deployment.Azure.DefaultVMSize = viper.GetString("azure.default_machine_type")
+		if deployment.Azure.DefaultVMSize == "" {
+			return fmt.Errorf("azure.default_machine_type is not set")
+		}
 		deployment.Azure.DefaultDiskSizeGB = utils.GetSafeDiskSize(
 			viper.GetInt("azure.default_disk_size_gb"),
 		)
 		deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
 	} else if provider == models.DeploymentTypeGCP {
 		deployment.GCP.ProjectID = viper.GetString("gcp.project_id")
+		if deployment.GCP.ProjectID == "" {
+			return fmt.Errorf("gcp.project_id is not set")
+		}
 		deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
+		if deployment.GCP.OrganizationID == "" {
+			return fmt.Errorf("gcp.organization_id is not set")
+		}
 		deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
+		if deployment.GCP.BillingAccountID == "" {
+			return fmt.Errorf("gcp.billing_account_id is not set")
+		}
+		deployment.GCP.DefaultRegion = viper.GetString("gcp.default_region")
+		if deployment.GCP.DefaultRegion == "" {
+			return fmt.Errorf("gcp.default_region is not set")
+		}
+		deployment.GCP.DefaultZone = viper.GetString("gcp.default_zone")
+		if deployment.GCP.DefaultZone == "" {
+			return fmt.Errorf("gcp.default_zone is not set")
+		}
+		deployment.GCP.DefaultMachineType = viper.GetString("gcp.default_machine_type")
+		if deployment.GCP.DefaultMachineType == "" {
+			return fmt.Errorf("gcp.default_machine_type is not set")
+		}
 	}
 
 	return nil

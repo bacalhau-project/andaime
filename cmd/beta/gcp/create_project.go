@@ -5,9 +5,7 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,20 +32,16 @@ func GetGCPCreateProjectCmd() *cobra.Command {
 
 func createProject(ctx context.Context, projectID string) error {
 	m := display.GetGlobalModelFunc()
-	p, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
+	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+		ctx,
+		projectID,
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
+	m.Deployment.GCP.BillingAccountID = gcpProvider.BillingAccountID
 	if err != nil {
 		return fmt.Errorf("failed to get provider: %w", err)
 	}
-	gcpProvider, ok := p.(gcp_interface.GCPProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.GCPProviderer")
-	}
-
-	billingAccountID := viper.GetString("gcp.billing_account_id")
-	if billingAccountID == "" {
-		return fmt.Errorf("billing_account_id is not set in the configuration")
-	}
-	m.Deployment.GCP.BillingAccountID = billingAccountID
 
 	// Use EnsureProject to create or reuse an existing project
 	m.Deployment.ProjectID, err = gcpProvider.EnsureProject(ctx, projectID)
@@ -77,13 +71,6 @@ func createProject(ctx context.Context, projectID string) error {
 		"cloudfunctions.googleapis.com",
 		"cloudresourcemanager.googleapis.com",
 	}
-
-	// Set Billing Account
-	if err := gcpProvider.SetBillingAccount(ctx, billingAccountID); err != nil {
-		return handleGCPError(fmt.Errorf("failed to set billing account: %v", err))
-	}
-
-	fmt.Println("Billing account set successfully.")
 
 	fmt.Println("Enabling necessary APIs...")
 	for _, api := range apisToEnable {

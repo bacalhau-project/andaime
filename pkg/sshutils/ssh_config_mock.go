@@ -2,6 +2,7 @@ package sshutils
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/stretchr/testify/mock"
@@ -113,6 +114,7 @@ func (m *MockSSHConfig) PushFile(
 	fileContents []byte,
 	executable bool,
 ) error {
+	fmt.Printf("PushFile called with: %s\n", dst)
 	args := m.Called(ctx, dst, fileContents, executable)
 	return args.Error(0)
 }
@@ -132,6 +134,7 @@ func (m *MockSSHConfig) ExecuteCommand(
 	ctx context.Context,
 	cmd string,
 ) (string, error) {
+	fmt.Printf("ExecuteCommand called with: %s\n", cmd)
 	args := m.Called(ctx, cmd)
 	return args.String(0), args.Error(1)
 }

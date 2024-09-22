@@ -8,9 +8,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -46,15 +45,10 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("subscription_id is not set in the configuration")
 	}
 	// Initialize the Azure provider
-	pCommon, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
-
-	var azureProvider azure_interface.AzureProviderer
+	azureProvider, err := azure.NewAzureProvider(ctx, subscriptionID)
 	if err != nil {
+		l.Error(fmt.Sprintf("Failed to create Azure provider: %v", err))
 		return fmt.Errorf("failed to create Azure provider: %w", err)
-	}
-	azureProvider, ok := pCommon.(azure_interface.AzureProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 	}
 
 	// Now you can use Azure-specific methods
@@ -156,7 +150,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 
 func runDeployment(
 	ctx context.Context,
-	azureProvider azure_interface.AzureProviderer,
+	azureProvider *azure_provider.AzureProvider,
 ) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()

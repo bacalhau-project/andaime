@@ -74,6 +74,54 @@ func (_c *MockGCPClienter_CheckAuthentication_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// CheckFirewallRuleExists provides a mock function with given fields: ctx, projectID, ruleName
+func (_m *MockGCPClienter) CheckFirewallRuleExists(ctx context.Context, projectID string, ruleName string) error {
+	ret := _m.Called(ctx, projectID, ruleName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckFirewallRuleExists")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, projectID, ruleName)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockGCPClienter_CheckFirewallRuleExists_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckFirewallRuleExists'
+type MockGCPClienter_CheckFirewallRuleExists_Call struct {
+	*mock.Call
+}
+
+// CheckFirewallRuleExists is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - ruleName string
+func (_e *MockGCPClienter_Expecter) CheckFirewallRuleExists(ctx interface{}, projectID interface{}, ruleName interface{}) *MockGCPClienter_CheckFirewallRuleExists_Call {
+	return &MockGCPClienter_CheckFirewallRuleExists_Call{Call: _e.mock.On("CheckFirewallRuleExists", ctx, projectID, ruleName)}
+}
+
+func (_c *MockGCPClienter_CheckFirewallRuleExists_Call) Run(run func(ctx context.Context, projectID string, ruleName string)) *MockGCPClienter_CheckFirewallRuleExists_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockGCPClienter_CheckFirewallRuleExists_Call) Return(_a0 error) *MockGCPClienter_CheckFirewallRuleExists_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockGCPClienter_CheckFirewallRuleExists_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_CheckFirewallRuleExists_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CheckPermissions provides a mock function with given fields: ctx
 func (_m *MockGCPClienter) CheckPermissions(ctx context.Context) error {
 	ret := _m.Called(ctx)
@@ -743,6 +791,64 @@ func (_c *MockGCPClienter_GetVMExternalIP_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
+// GetVMZone provides a mock function with given fields: ctx, projectID, vmName
+func (_m *MockGCPClienter) GetVMZone(ctx context.Context, projectID string, vmName string) (string, error) {
+	ret := _m.Called(ctx, projectID, vmName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetVMZone")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (string, error)); ok {
+		return rf(ctx, projectID, vmName)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = rf(ctx, projectID, vmName)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, projectID, vmName)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockGCPClienter_GetVMZone_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetVMZone'
+type MockGCPClienter_GetVMZone_Call struct {
+	*mock.Call
+}
+
+// GetVMZone is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - vmName string
+func (_e *MockGCPClienter_Expecter) GetVMZone(ctx interface{}, projectID interface{}, vmName interface{}) *MockGCPClienter_GetVMZone_Call {
+	return &MockGCPClienter_GetVMZone_Call{Call: _e.mock.On("GetVMZone", ctx, projectID, vmName)}
+}
+
+func (_c *MockGCPClienter_GetVMZone_Call) Run(run func(ctx context.Context, projectID string, vmName string)) *MockGCPClienter_GetVMZone_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockGCPClienter_GetVMZone_Call) Return(_a0 string, _a1 error) *MockGCPClienter_GetVMZone_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockGCPClienter_GetVMZone_Call) RunAndReturn(run func(context.Context, string, string) (string, error)) *MockGCPClienter_GetVMZone_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsAPIEnabled provides a mock function with given fields: ctx, projectID, apiName
 func (_m *MockGCPClienter) IsAPIEnabled(ctx context.Context, projectID string, apiName string) (bool, error) {
 	ret := _m.Called(ctx, projectID, apiName)
@@ -1128,118 +1234,12 @@ func (_c *MockGCPClienter_ValidateMachineType_Call) RunAndReturn(run func(contex
 	return _c
 }
 
-// checkFirewallRuleExists provides a mock function with given fields: ctx, projectID, ruleName
-func (_m *MockGCPClienter) checkFirewallRuleExists(ctx context.Context, projectID string, ruleName string) error {
-	ret := _m.Called(ctx, projectID, ruleName)
-
-	if len(ret) == 0 {
-		panic("no return value specified for checkFirewallRuleExists")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, projectID, ruleName)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockGCPClienter_checkFirewallRuleExists_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'checkFirewallRuleExists'
-type MockGCPClienter_checkFirewallRuleExists_Call struct {
-	*mock.Call
-}
-
-// checkFirewallRuleExists is a helper method to define mock.On call
-//   - ctx context.Context
-//   - projectID string
-//   - ruleName string
-func (_e *MockGCPClienter_Expecter) checkFirewallRuleExists(ctx interface{}, projectID interface{}, ruleName interface{}) *MockGCPClienter_checkFirewallRuleExists_Call {
-	return &MockGCPClienter_checkFirewallRuleExists_Call{Call: _e.mock.On("checkFirewallRuleExists", ctx, projectID, ruleName)}
-}
-
-func (_c *MockGCPClienter_checkFirewallRuleExists_Call) Run(run func(ctx context.Context, projectID string, ruleName string)) *MockGCPClienter_checkFirewallRuleExists_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *MockGCPClienter_checkFirewallRuleExists_Call) Return(_a0 error) *MockGCPClienter_checkFirewallRuleExists_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockGCPClienter_checkFirewallRuleExists_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_checkFirewallRuleExists_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// getVMZone provides a mock function with given fields: ctx, projectID, vmName
-func (_m *MockGCPClienter) getVMZone(ctx context.Context, projectID string, vmName string) (string, error) {
-	ret := _m.Called(ctx, projectID, vmName)
-
-	if len(ret) == 0 {
-		panic("no return value specified for getVMZone")
-	}
-
-	var r0 string
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (string, error)); ok {
-		return rf(ctx, projectID, vmName)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
-		r0 = rf(ctx, projectID, vmName)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, projectID, vmName)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockGCPClienter_getVMZone_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'getVMZone'
-type MockGCPClienter_getVMZone_Call struct {
-	*mock.Call
-}
-
-// getVMZone is a helper method to define mock.On call
-//   - ctx context.Context
-//   - projectID string
-//   - vmName string
-func (_e *MockGCPClienter_Expecter) getVMZone(ctx interface{}, projectID interface{}, vmName interface{}) *MockGCPClienter_getVMZone_Call {
-	return &MockGCPClienter_getVMZone_Call{Call: _e.mock.On("getVMZone", ctx, projectID, vmName)}
-}
-
-func (_c *MockGCPClienter_getVMZone_Call) Run(run func(ctx context.Context, projectID string, vmName string)) *MockGCPClienter_getVMZone_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *MockGCPClienter_getVMZone_Call) Return(_a0 string, _a1 error) *MockGCPClienter_getVMZone_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockGCPClienter_getVMZone_Call) RunAndReturn(run func(context.Context, string, string) (string, error)) *MockGCPClienter_getVMZone_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// waitForGlobalOperation provides a mock function with given fields: ctx, project, operation
-func (_m *MockGCPClienter) waitForGlobalOperation(ctx context.Context, project string, operation string) error {
+// WaitForGlobalOperation provides a mock function with given fields: ctx, project, operation
+func (_m *MockGCPClienter) WaitForGlobalOperation(ctx context.Context, project string, operation string) error {
 	ret := _m.Called(ctx, project, operation)
 
 	if len(ret) == 0 {
-		panic("no return value specified for waitForGlobalOperation")
+		panic("no return value specified for WaitForGlobalOperation")
 	}
 
 	var r0 error
@@ -1252,42 +1252,42 @@ func (_m *MockGCPClienter) waitForGlobalOperation(ctx context.Context, project s
 	return r0
 }
 
-// MockGCPClienter_waitForGlobalOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'waitForGlobalOperation'
-type MockGCPClienter_waitForGlobalOperation_Call struct {
+// MockGCPClienter_WaitForGlobalOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitForGlobalOperation'
+type MockGCPClienter_WaitForGlobalOperation_Call struct {
 	*mock.Call
 }
 
-// waitForGlobalOperation is a helper method to define mock.On call
+// WaitForGlobalOperation is a helper method to define mock.On call
 //   - ctx context.Context
 //   - project string
 //   - operation string
-func (_e *MockGCPClienter_Expecter) waitForGlobalOperation(ctx interface{}, project interface{}, operation interface{}) *MockGCPClienter_waitForGlobalOperation_Call {
-	return &MockGCPClienter_waitForGlobalOperation_Call{Call: _e.mock.On("waitForGlobalOperation", ctx, project, operation)}
+func (_e *MockGCPClienter_Expecter) WaitForGlobalOperation(ctx interface{}, project interface{}, operation interface{}) *MockGCPClienter_WaitForGlobalOperation_Call {
+	return &MockGCPClienter_WaitForGlobalOperation_Call{Call: _e.mock.On("WaitForGlobalOperation", ctx, project, operation)}
 }
 
-func (_c *MockGCPClienter_waitForGlobalOperation_Call) Run(run func(ctx context.Context, project string, operation string)) *MockGCPClienter_waitForGlobalOperation_Call {
+func (_c *MockGCPClienter_WaitForGlobalOperation_Call) Run(run func(ctx context.Context, project string, operation string)) *MockGCPClienter_WaitForGlobalOperation_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
 
-func (_c *MockGCPClienter_waitForGlobalOperation_Call) Return(_a0 error) *MockGCPClienter_waitForGlobalOperation_Call {
+func (_c *MockGCPClienter_WaitForGlobalOperation_Call) Return(_a0 error) *MockGCPClienter_WaitForGlobalOperation_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockGCPClienter_waitForGlobalOperation_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_waitForGlobalOperation_Call {
+func (_c *MockGCPClienter_WaitForGlobalOperation_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_WaitForGlobalOperation_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// waitForOperation provides a mock function with given fields: ctx, project, zone, operation
-func (_m *MockGCPClienter) waitForOperation(ctx context.Context, project string, zone string, operation string) error {
+// WaitForOperation provides a mock function with given fields: ctx, project, zone, operation
+func (_m *MockGCPClienter) WaitForOperation(ctx context.Context, project string, zone string, operation string) error {
 	ret := _m.Called(ctx, project, zone, operation)
 
 	if len(ret) == 0 {
-		panic("no return value specified for waitForOperation")
+		panic("no return value specified for WaitForOperation")
 	}
 
 	var r0 error
@@ -1300,43 +1300,43 @@ func (_m *MockGCPClienter) waitForOperation(ctx context.Context, project string,
 	return r0
 }
 
-// MockGCPClienter_waitForOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'waitForOperation'
-type MockGCPClienter_waitForOperation_Call struct {
+// MockGCPClienter_WaitForOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitForOperation'
+type MockGCPClienter_WaitForOperation_Call struct {
 	*mock.Call
 }
 
-// waitForOperation is a helper method to define mock.On call
+// WaitForOperation is a helper method to define mock.On call
 //   - ctx context.Context
 //   - project string
 //   - zone string
 //   - operation string
-func (_e *MockGCPClienter_Expecter) waitForOperation(ctx interface{}, project interface{}, zone interface{}, operation interface{}) *MockGCPClienter_waitForOperation_Call {
-	return &MockGCPClienter_waitForOperation_Call{Call: _e.mock.On("waitForOperation", ctx, project, zone, operation)}
+func (_e *MockGCPClienter_Expecter) WaitForOperation(ctx interface{}, project interface{}, zone interface{}, operation interface{}) *MockGCPClienter_WaitForOperation_Call {
+	return &MockGCPClienter_WaitForOperation_Call{Call: _e.mock.On("WaitForOperation", ctx, project, zone, operation)}
 }
 
-func (_c *MockGCPClienter_waitForOperation_Call) Run(run func(ctx context.Context, project string, zone string, operation string)) *MockGCPClienter_waitForOperation_Call {
+func (_c *MockGCPClienter_WaitForOperation_Call) Run(run func(ctx context.Context, project string, zone string, operation string)) *MockGCPClienter_WaitForOperation_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
 
-func (_c *MockGCPClienter_waitForOperation_Call) Return(_a0 error) *MockGCPClienter_waitForOperation_Call {
+func (_c *MockGCPClienter_WaitForOperation_Call) Return(_a0 error) *MockGCPClienter_WaitForOperation_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockGCPClienter_waitForOperation_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockGCPClienter_waitForOperation_Call {
+func (_c *MockGCPClienter_WaitForOperation_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockGCPClienter_WaitForOperation_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// waitForRegionalOperation provides a mock function with given fields: ctx, project, region, operation
-func (_m *MockGCPClienter) waitForRegionalOperation(ctx context.Context, project string, region string, operation string) error {
+// WaitForRegionalOperation provides a mock function with given fields: ctx, project, region, operation
+func (_m *MockGCPClienter) WaitForRegionalOperation(ctx context.Context, project string, region string, operation string) error {
 	ret := _m.Called(ctx, project, region, operation)
 
 	if len(ret) == 0 {
-		panic("no return value specified for waitForRegionalOperation")
+		panic("no return value specified for WaitForRegionalOperation")
 	}
 
 	var r0 error
@@ -1349,33 +1349,33 @@ func (_m *MockGCPClienter) waitForRegionalOperation(ctx context.Context, project
 	return r0
 }
 
-// MockGCPClienter_waitForRegionalOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'waitForRegionalOperation'
-type MockGCPClienter_waitForRegionalOperation_Call struct {
+// MockGCPClienter_WaitForRegionalOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitForRegionalOperation'
+type MockGCPClienter_WaitForRegionalOperation_Call struct {
 	*mock.Call
 }
 
-// waitForRegionalOperation is a helper method to define mock.On call
+// WaitForRegionalOperation is a helper method to define mock.On call
 //   - ctx context.Context
 //   - project string
 //   - region string
 //   - operation string
-func (_e *MockGCPClienter_Expecter) waitForRegionalOperation(ctx interface{}, project interface{}, region interface{}, operation interface{}) *MockGCPClienter_waitForRegionalOperation_Call {
-	return &MockGCPClienter_waitForRegionalOperation_Call{Call: _e.mock.On("waitForRegionalOperation", ctx, project, region, operation)}
+func (_e *MockGCPClienter_Expecter) WaitForRegionalOperation(ctx interface{}, project interface{}, region interface{}, operation interface{}) *MockGCPClienter_WaitForRegionalOperation_Call {
+	return &MockGCPClienter_WaitForRegionalOperation_Call{Call: _e.mock.On("WaitForRegionalOperation", ctx, project, region, operation)}
 }
 
-func (_c *MockGCPClienter_waitForRegionalOperation_Call) Run(run func(ctx context.Context, project string, region string, operation string)) *MockGCPClienter_waitForRegionalOperation_Call {
+func (_c *MockGCPClienter_WaitForRegionalOperation_Call) Run(run func(ctx context.Context, project string, region string, operation string)) *MockGCPClienter_WaitForRegionalOperation_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
 
-func (_c *MockGCPClienter_waitForRegionalOperation_Call) Return(_a0 error) *MockGCPClienter_waitForRegionalOperation_Call {
+func (_c *MockGCPClienter_WaitForRegionalOperation_Call) Return(_a0 error) *MockGCPClienter_WaitForRegionalOperation_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockGCPClienter_waitForRegionalOperation_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockGCPClienter_waitForRegionalOperation_Call {
+func (_c *MockGCPClienter_WaitForRegionalOperation_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockGCPClienter_WaitForRegionalOperation_Call {
 	_c.Call.Return(run)
 	return _c
 }

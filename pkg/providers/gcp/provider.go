@@ -40,7 +40,7 @@ func NewGCPProviderFactory(
 		return nil, fmt.Errorf("gcp.billing_account_id is not set in configuration")
 	}
 
-	client, cleanup, err := NewGCPClient(ctx, organizationID)
+	client, cleanup, err := NewGCPClientFunc(ctx, organizationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP client: %w", err)
 	}
@@ -236,11 +236,6 @@ func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
-	deployment.GCP.Region = viper.GetString("gcp.region")
-	deployment.GCP.Zone = viper.GetString("gcp.zone")
-	deployment.GCP.BillingAccountID = viper.GetString("gcp.billing_account_id")
-	deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
-
 	return deployment, nil
 }
 

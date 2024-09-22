@@ -399,16 +399,12 @@ func TestProvisionBacalhauCluster(t *testing.T) {
 
 		m := display.GetGlobalModelFunc()
 
-		behavior := ExpectedMachineBehavior{
-			InstallDockerAndCorePackagesError: nil,
-		}
-
-		orchestratorMachine := NewMockMachineWithBehavior("orch", testPrivateKeyPath, behavior)
+		orchestratorMachine := NewMockMachine("orch", testPrivateKeyPath)
 		orchestratorMachine.Name = "orch"
 		orchestratorMachine.Orchestrator = true
 		orchestratorMachine.PublicIP = "1.1.1.1"
 
-		workerMachine := NewMockMachineWithBehavior("worker1", testPrivateKeyPath, behavior)
+		workerMachine := NewMockMachine("worker1", testPrivateKeyPath)
 		workerMachine.Name = "worker1"
 		workerMachine.PublicIP = "2.2.2.2"
 
@@ -421,8 +417,8 @@ func TestProvisionBacalhauCluster(t *testing.T) {
 		workerMachine.On("SetServiceState", "Bacalhau", models.ServiceStateSucceeded).Return()
 		workerMachine.On("SetComplete").Return()
 
-		m.Deployment.Machines["orch"] = orchestratorMachine
-		m.Deployment.Machines["worker1"] = workerMachine
+		m.Deployment.SetMachine("orch", orchestratorMachine)
+		m.Deployment.SetMachine("worker1", workerMachine)
 
 		cd := NewClusterDeployer(models.DeploymentTypeUnknown)
 		err := cd.ProvisionBacalhauCluster(ctx)

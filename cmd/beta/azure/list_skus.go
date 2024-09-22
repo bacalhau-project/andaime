@@ -6,13 +6,12 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var azureListSKUsCmd = &cobra.Command{
@@ -48,13 +47,12 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("location is required")
 	}
 
-	p, err := factory.GetProvider(cmd.Context(), models.DeploymentTypeAzure)
+	azureProvider, err := azure_provider.NewAzureProvider(
+		cmd.Context(),
+		viper.GetString("azure.subscription_id"),
+	)
 	if err != nil {
 		return err
-	}
-	azureProvider, ok := p.(azure_interface.AzureProviderer)
-	if !ok {
-		return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 	}
 
 	skus, err := azureProvider.GetSKUsByLocation(cmd.Context(), location)

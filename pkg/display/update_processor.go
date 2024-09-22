@@ -82,12 +82,13 @@ type batchedUpdatesAppliedMsg struct{}
 
 // applyBatchedUpdatesCmd returns a command to apply batched updates
 func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
+	l := logger.Get()
 	return func() tea.Msg {
 		atomic.AddInt64(&m.goroutineCount, 1)
 		defer atomic.AddInt64(&m.goroutineCount, -1)
 
 		if m.Quitting {
-			m.logger.Debug("Quitting, skipping batch updates")
+			l.Debug("Quitting, skipping batch updates")
 			return tea.Quit
 		}
 
@@ -108,17 +109,18 @@ func (m *DisplayModel) applyBatchedUpdates() {
 
 // ProcessUpdate processes a single update action
 func (m *DisplayModel) ProcessUpdate(update UpdateAction) {
+	l := logger.Get()
 	m.UpdateMutex.Lock()
 	defer m.UpdateMutex.Unlock()
 
 	machine, ok := m.Deployment.Machines[update.MachineName]
 	if !ok {
-		m.logger.Debug(fmt.Sprintf("ProcessUpdate: Machine %s not found", update.MachineName))
+		l.Debug(fmt.Sprintf("ProcessUpdate: Machine %s not found", update.MachineName))
 		return
 	}
 
 	if update.UpdateFunc == nil {
-		m.logger.Error("ProcessUpdate: UpdateFunc is nil")
+		l.Error("ProcessUpdate: UpdateFunc is nil")
 		return
 	}
 
@@ -136,7 +138,7 @@ func (m *DisplayModel) ProcessUpdate(update UpdateAction) {
 			models.ServiceState(update.UpdateData.ServiceState),
 		)
 	default:
-		m.logger.Errorf("ProcessUpdate: Unknown UpdateType %s", update.UpdateData.UpdateType)
+		l.Errorf("ProcessUpdate: Unknown UpdateType %s", update.UpdateData.UpdateType)
 		return
 	}
 
@@ -145,10 +147,11 @@ func (m *DisplayModel) ProcessUpdate(update UpdateAction) {
 
 // QueueUpdate queues an update to be processed
 func (m *DisplayModel) QueueUpdate(update UpdateAction) {
+	l := logger.Get()
 	select {
 	case m.UpdateQueue <- update:
 	default:
-		m.logger.Warn("Update queue is full, dropping update")
+		l.Warn("Update queue is full, dropping update")
 	}
 }
 
@@ -156,7 +159,6 @@ func (m *DisplayModel) QueueUpdate(update UpdateAction) {
 func (m *DisplayModel) StartUpdateProcessor(ctx context.Context) {
 	l := logger.Get()
 	l.Debug("StartUpdateProcessor: Started")
-	defer close(m.UpdateProcessorDone)
 	defer l.Debug("StartUpdateProcessor: Finished")
 
 	for {

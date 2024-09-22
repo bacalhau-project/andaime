@@ -1006,7 +1006,7 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Wait for the operation to complete
-	err = c.waitForOperation(ctx, projectID, zone, op.Name())
+	err = c.WaitForOperation(ctx, projectID, zone, op.Name())
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for VM creation: %v", err)
 	}
@@ -1093,7 +1093,7 @@ func (c *LiveGCPClient) WaitForGlobalOperation(
 	}
 }
 
-func (c *LiveGCPClient) waitForOperation(
+func (c *LiveGCPClient) WaitForOperation(
 	ctx context.Context,
 	project, zone, operation string,
 ) error {
@@ -1250,7 +1250,8 @@ func (c *LiveGCPClient) CreateServiceAccountKey(
 	l.Infof("Creating service account key for %s in project %s", serviceAccountEmail, projectID)
 
 	// Check if the service account exists
-	_, err := c.iamService.Projects.ServiceAccounts.Get("projects/" + projectID + "/serviceAccounts/" + serviceAccountEmail).
+	_, err := c.iamService.Projects.ServiceAccounts.
+		Get("projects/" + projectID + "/serviceAccounts/" + serviceAccountEmail).
 		Do()
 	if err != nil {
 		if isNotFoundError(err) {
@@ -1276,7 +1277,7 @@ func (c *LiveGCPClient) CreateServiceAccountKey(
 	return key, nil
 }
 
-func (c *LiveGCPClient) waitForRegionalOperation(
+func (c *LiveGCPClient) WaitForRegionalOperation(
 	ctx context.Context,
 	project, region, operation string,
 ) error {

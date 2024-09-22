@@ -7,13 +7,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-type AzureTestSuite struct {
+type PkgAzureTestSuite struct {
 	BaseAzureTestSuite
 }
 
 func TestAzure(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Azure Suite")
+	RunSpecs(t, "Pkg Azure Suite")
 }
 
 var _ = BeforeSuite(func() {

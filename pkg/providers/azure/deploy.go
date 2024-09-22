@@ -191,7 +191,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 		)
 
 		errgroup.Go(func() error {
-			goRoutineID := ""
+			var goRoutineID int64
 			if m != nil {
 				goRoutineID = m.RegisterGoroutine(
 					fmt.Sprintf("DeployMachinesInLocation-%s", location),

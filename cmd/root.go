@@ -14,14 +14,12 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
-	"github.com/bacalhau-project/andaime/pkg/providers/factory"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	// Register providers
-	_ "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	_ "github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -49,9 +47,9 @@ var shouldInitAzureFlag bool
 var shouldInitGCPFlag bool
 
 type cloudProvider struct {
-	awsProvider   common_interface.Providerer
-	azureProvider common_interface.Providerer
-	gcpProvider   common_interface.Providerer
+	awsProvider   *aws_provider.AWSProvider
+	azureProvider *azure_provider.AzureProvider
+	gcpProvider   *gcp_provider.GCPProvider
 }
 
 func Execute() error {
@@ -278,7 +276,10 @@ func initializeCloudProviders() (*cloudProvider, error) {
 
 func initAzureProvider(c *cloudProvider) error {
 	ctx := context.Background()
-	azureProvider, err := factory.GetProvider(ctx, models.DeploymentTypeAzure)
+	azureProvider, err := azure_provider.NewAzureProvider(
+		ctx,
+		viper.GetString("azure.subscription_id"),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
@@ -288,7 +289,12 @@ func initAzureProvider(c *cloudProvider) error {
 
 func initGCPProvider(c *cloudProvider) error {
 	ctx := context.Background()
-	gcpProvider, err := factory.GetProvider(ctx, models.DeploymentTypeGCP)
+	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+		ctx,
+		viper.GetString("gcp.project_id"),
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
