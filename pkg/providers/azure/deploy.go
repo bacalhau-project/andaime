@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
@@ -18,6 +19,17 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
+
+var (
+	loggerOnce sync.Once
+	log        *logger.Logger
+)
+
+func init() {
+	loggerOnce.Do(func() {
+		log = logger.Get()
+	})
+}
 
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
@@ -143,8 +155,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 }
 
 func (p *AzureProvider) CreateResources(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Deploying ARM template")
+	log.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
 	if len(m.Deployment.Machines) == 0 {
@@ -173,7 +184,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 
 	for location, machines := range machinesByLocation {
 		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
-		l.Infof(
+		log.Infof(
 			"Preparing to deploy machines in location %s with %d machines",
 			location,
 			len(machines),
@@ -185,15 +196,15 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 			)
 			defer m.DeregisterGoroutine(goRoutineID)
 
-			l.Infof("Starting deployment for location %s", location)
+			log.Infof("Starting deployment for location %s", location)
 
 			if len(machines) == 0 {
-				l.Errorf("No machines to deploy in location %s", location)
+				log.Errorf("No machines to deploy in location %s", location)
 				return fmt.Errorf("no machines to deploy in location %s", location)
 			}
 
 			for _, machine := range machines {
-				l.Infof("Deploying machine %s in location %s", machine.GetName(), location)
+				log.Infof("Deploying machine %s in location %s", machine.GetName(), location)
 
 				m.UpdateStatus(
 					models.NewDisplayVMStatus(
@@ -271,7 +282,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 						err,
 					)
 				}
-				l.Infof(
+				log.Infof(
 					"Successfully deployed machine %s in location %s",
 					machine.GetName(),
 					location,
@@ -287,17 +298,17 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				machine.SetServiceState("SSH", models.ServiceStateSucceeded)
 			}
 
-			l.Infof("Successfully deployed all machines in location %s", location)
+			log.Infof("Successfully deployed all machines in location %s", location)
 			return nil
 		})
 	}
 
 	if err := errgroup.Wait(); err != nil {
-		l.Errorf("Deployment failed: %v", err)
+		log.Errorf("Deployment failed: %v", err)
 		return fmt.Errorf("deployment failed: %w", err)
 	}
 
-	l.Info("ARM template deployment completed successfully")
+	log.Info("ARM template deployment completed successfully")
 	return nil
 }
 
