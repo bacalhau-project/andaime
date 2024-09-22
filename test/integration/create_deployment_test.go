@@ -20,7 +20,6 @@ import (
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 
 	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
@@ -352,6 +351,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			} else if tt.provider == models.DeploymentTypeGCP {
 				viper.Set("gcp.project_id", "test-1292-gcp")
 				viper.Set("gcp.organization_id", "org-1234567890")
+				viper.Set("gcp.default_region", "default_region")
 
 				mockGCPClient := new(gcp_mock.MockGCPClienter)
 				mockGCPClient.On("ValidateMachineType",
@@ -360,16 +360,6 @@ func TestExecuteCreateDeployment(t *testing.T) {
 					mock.Anything,
 				).
 					Return(true, nil)
-
-				mockGCPProvider := new(gcp_provider.MockGCPProvider)
-				mockGCPProvider.On("StartResourcePolling", mock.Anything).Return(nil)
-				mockGCPProvider.On("PrepareResourceGroup", mock.Anything).
-					Return(nil)
-				mockGCPProvider.On("CreateResources", mock.Anything).Return(nil)
-				mockGCPProvider.On("GetClusterDeployer", mock.Anything).
-					Return(mockClusterDeployer)
-				mockGCPProvider.On("FinalizeDeployment", mock.Anything).
-					Return(nil)
 
 				err = gcp.ExecuteCreateDeployment(cmd, []string{})
 
@@ -475,16 +465,17 @@ func TestPrepareDeployment(t *testing.T) {
 				)
 				assert.Equal(
 					t,
-					viper.GetString("azure.default_vm_size"),
+					viper.GetString("azure.default_machine_type"),
 					deployment.Azure.DefaultVMSize,
-					"Default VM size should be set correctly",
+					"Default machine type should be set correctly",
 				)
 			} else {
 				assert.Equal(t, viper.GetString("gcp.project_id"), deployment.GCP.ProjectID)
 				assert.Equal(t, viper.GetString("gcp.organization_id"), deployment.GCP.OrganizationID)
 				assert.Equal(t, viper.GetString("gcp.billing_account_id"), deployment.GCP.BillingAccountID)
-				assert.Equal(t, viper.GetString("gcp.region"), deployment.GCP.Region)
-				assert.Equal(t, viper.GetString("gcp.zone"), deployment.GCP.Zone)
+				assert.Equal(t, viper.GetString("gcp.default_region"), deployment.GCP.DefaultRegion)
+				assert.Equal(t, viper.GetString("gcp.default_zone"), deployment.GCP.DefaultZone)
+				assert.Equal(t, viper.GetString("gcp.default_machine_type"), deployment.GCP.DefaultMachineType)
 			}
 
 			// Check if machines are created

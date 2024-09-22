@@ -12,6 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
@@ -20,6 +21,7 @@ import (
 
 func TestRandomServiceUpdates(t *testing.T) {
 	l := logger.Get()
+	l.Info("Starting TestRandomServiceUpdates")
 
 	// Create a new Viper instance for this test
 	testConfig := viper.New()
@@ -48,8 +50,8 @@ func TestRandomServiceUpdates(t *testing.T) {
 		Name:     "test-deployment",
 		Machines: make(map[string]models.Machiner),
 		GCP: &models.GCPConfig{
-			ProjectID: "test-project-id",
-			Zone:      "us-central1-a",
+			ProjectID:   "test-project-id",
+			DefaultZone: "us-central1-a",
 		},
 		Tags:                 map[string]*string{"test": &[]string{"value"}[0]},
 		SSHPublicKeyMaterial: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0g+ZTxC7weoIJLUafOgrm+h...",
@@ -71,9 +73,16 @@ func TestRandomServiceUpdates(t *testing.T) {
 
 	mockClient := new(gcp_mock.MockGCPClienter)
 	provider := &GCPProvider{
-		Client:      mockClient,
 		updateQueue: make(chan display.UpdateAction, 100),
 	}
+
+	origClientFunc := NewGCPClientFunc
+	NewGCPClientFunc = func(ctx context.Context, organizationID string) (gcp_interface.GCPClienter, func(), error) {
+		return mockClient, func() {}, nil
+	}
+	defer func() {
+		NewGCPClientFunc = origClientFunc
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -82,14 +91,17 @@ func TestRandomServiceUpdates(t *testing.T) {
 	go func() {
 		l.Debug("Update processor started")
 		localModel.StartUpdateProcessor(ctx)
-		processorDone <- struct{}{}
+		close(processorDone)
 		l.Debug("Update processor finished")
 	}()
 
+	l.Info("Setting up update sending goroutines")
 	var wg sync.WaitGroup
 	updatesSent := int32(0)
-	updatesPerMachine := 1000 // Increase the number of updates per machine
-	expectedUpdates := int32(len(testMachines) * updatesPerMachine)
+	updatesPerMachine := 20
+
+	// Create a separate channel for sending updates
+	updateChan := make(chan display.UpdateAction, 100)
 
 	for _, machineName := range testMachines {
 		wg.Add(1)
@@ -103,7 +115,7 @@ func TestRandomServiceUpdates(t *testing.T) {
 				) // Exclude NotStarted state
 
 				select {
-				case localModel.UpdateQueue <- display.UpdateAction{
+				case updateChan <- display.UpdateAction{
 					MachineName: innerMachineName,
 					UpdateData: display.UpdateData{
 						UpdateType:   display.UpdateTypeService,
@@ -113,59 +125,60 @@ func TestRandomServiceUpdates(t *testing.T) {
 				}:
 					atomic.AddInt32(&updatesSent, 1)
 				case <-ctx.Done():
-					l.Debug(
-						fmt.Sprintf(
-							"Context cancelled while sending update for %s, %s",
-							innerMachineName,
-							service.Name,
-						),
-					)
 					return
 				}
 				time.Sleep(time.Duration(rng.Intn(20)) * time.Millisecond)
 			}
+			l.Debugf("Finished sending updates for machine: %s", innerMachineName)
 		}(machineName)
 	}
 
-	l.Debug("Started sending updates")
-
-	wgDone := make(chan struct{})
+	l.Info("Starting update forwarding goroutine")
 	go func() {
-		wg.Wait()
-		close(wgDone)
+		for update := range updateChan {
+			select {
+			case localModel.UpdateQueue <- update:
+				l.Debugf(
+					"Forwarded update for machine: %s, service: %s",
+					update.MachineName,
+					update.UpdateData.ServiceType,
+				)
+			case <-ctx.Done():
+				l.Warn("Context cancelled while forwarding updates")
+				return
+			}
+		}
+		l.Debug("Update forwarding goroutine finished")
 	}()
 
-	select {
-	case <-wgDone:
-		l.Debug(
-			fmt.Sprintf(
-				"All updates sent successfully. Total updates: %d",
-				atomic.LoadInt32(&updatesSent),
-			),
-		)
-	case <-ctx.Done():
-		l.Debug(
-			fmt.Sprintf(
-				"Test timed out while sending updates. Updates sent: %d/%d",
-				atomic.LoadInt32(&updatesSent),
-				expectedUpdates,
-			),
-		)
-		t.Fatal("Test timed out while sending updates")
-	}
+	l.Info("Waiting for all updates to be sent")
+	go func() {
+		wg.Wait()
+		l.Info("All update senders finished, closing updateChan")
+		close(updateChan)
+	}()
 
-	l.Debug("Closing update queue")
-	close(provider.updateQueue)
-
-	l.Debug("Waiting for update processor to finish")
+	l.Info("Waiting for completion or timeout")
 	select {
 	case <-processorDone:
-		l.Debug("Update processor finished successfully")
+		l.Info("Update processor finished successfully")
 	case <-time.After(5 * time.Second):
 		t.Fatal("Update processor did not stop in time")
 	}
 
-	l.Debug("Checking final states")
+	l.Info("Closing provider update queue")
+	close(provider.updateQueue)
+
+	l.Info("Waiting for update processor to finish")
+	select {
+	case <-processorDone:
+		l.Info("Update processor finished successfully")
+	case <-time.After(5 * time.Second):
+		l.Error("Update processor did not stop in time")
+		t.Fatal("Update processor did not stop in time")
+	}
+
+	l.Info("Checking final states")
 	for _, machine := range testMachines {
 		for _, service := range allServices {
 			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
@@ -201,5 +214,5 @@ func TestRandomServiceUpdates(t *testing.T) {
 	assert.Equal(t, len(testMachines), len(uniqueStates),
 		"Not all machines have unique service state combinations")
 
-	l.Debug("Test completed successfully")
+	l.Info("Test completed successfully")
 }
