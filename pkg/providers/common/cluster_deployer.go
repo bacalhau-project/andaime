@@ -134,8 +134,14 @@ func (cd *ClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 }
 
 func (cd *ClusterDeployer) ProvisionOrchestrator(ctx context.Context, machineName string) error {
+	if cd == nil {
+		return fmt.Errorf("ClusterDeployer is nil")
+	}
 	m := display.GetGlobalModelFunc()
 	orchestratorMachine := m.Deployment.GetMachine(machineName)
+	if orchestratorMachine == nil {
+		return fmt.Errorf("orchestrator machine is nil")
+	}
 
 	err := cd.provisionBacalhauNode(ctx, orchestratorMachine.GetName(), "requester")
 	if err != nil {

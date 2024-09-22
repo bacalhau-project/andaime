@@ -318,8 +318,14 @@ func TestProvisionResourcesSuccess(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = setup.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
-	assert.NoError(t, err)
+	clusterDeployer := setup.provider.GetClusterDeployer()
+	if clusterDeployer == nil {
+		t.Fatal("ClusterDeployer is nil")
+	}
+	err = clusterDeployer.ProvisionOrchestrator(ctx, "orchestrator")
+	if err != nil {
+		t.Fatalf("ProvisionOrchestrator failed: %v", err)
+	}
 
 	for _, machine := range m.Deployment.Machines {
 		if machine.IsOrchestrator() {
