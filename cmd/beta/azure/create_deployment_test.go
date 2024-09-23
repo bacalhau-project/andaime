@@ -143,7 +143,7 @@ func (suite *CmdBetaAzureCreateDeploymentSuite) TestProcessMachinesConfig() {
 				}
 			}
 
-			suite.azureProvider, err = azure_provider.NewAzureProvider(
+			suite.azureProvider, err = azure_provider.NewAzureProviderFunc(
 				suite.ctx,
 				viper.GetString("azure.subscription_id"),
 			)

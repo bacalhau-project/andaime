@@ -84,15 +84,15 @@ func (cd *ClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	// Provision Bacalhau orchestrator
-	if err := cd.ProvisionOrchestrator(ctx, "orch"); err != nil {
-		l.Errorf("Failed to provision Bacalhau orchestrator: %v", err)
-		return err
-	}
-
 	orchestrator, err := cd.FindOrchestratorMachine()
 	if err != nil {
 		l.Errorf("Failed to find orchestrator machine: %v", err)
+		return err
+	}
+
+	// Provision Bacalhau orchestrator
+	if err := cd.ProvisionOrchestrator(ctx, orchestrator.GetName()); err != nil {
+		l.Errorf("Failed to provision Bacalhau orchestrator: %v", err)
 		return err
 	}
 

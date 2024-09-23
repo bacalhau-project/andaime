@@ -85,6 +85,8 @@ func (p *AzureProvider) SetAzureClient(client azure_interface.AzureClienter) {
 	p.Client = client
 }
 
+var NewAzureProviderFunc = NewAzureProvider
+
 // NewAzureProvider creates and initializes a new AzureProvider instance with subscriptionID.
 func NewAzureProvider(
 	ctx context.Context,

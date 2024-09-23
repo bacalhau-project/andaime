@@ -52,7 +52,7 @@ all projects labeled with 'andaime', or list all available projects.`,
 
 func listAllProjects() error {
 	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),
@@ -94,7 +94,7 @@ func listAllProjects() error {
 
 func runDestroyAllProjects() error {
 	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),
@@ -160,7 +160,7 @@ func runDestroyAllProjects() error {
 
 func runDestroyProject(cmd *cobra.Command, projectID string) error {
 	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		projectID,
 		viper.GetString("gcp.organization_id"),

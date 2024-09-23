@@ -132,7 +132,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	if destroyAll {
 		subscriptionID := viper.GetString("azure.subscription_id")
-		azureProvider, err := azure_provider.NewAzureProvider(cmd.Context(), subscriptionID)
+		azureProvider, err := azure_provider.NewAzureProviderFunc(cmd.Context(), subscriptionID)
 		if err != nil {
 			return fmt.Errorf("failed to assert provider to common.AzureProviderer")
 		}
@@ -256,7 +256,7 @@ func destroyDeployment(dep ConfigDeployment) error {
 	started := false
 
 	if dep.Type == models.DeploymentTypeAzure {
-		azureProvider, err := azure_provider.NewAzureProvider(
+		azureProvider, err := azure_provider.NewAzureProviderFunc(
 			ctx,
 			viper.GetString("azure.subscription_id"),
 		)

@@ -33,7 +33,7 @@ func GetListAllAssetsInProjectCmd() *cobra.Command {
 
 func listAllAssetsInProject(projectID string) error {
 	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		projectID,
 		viper.GetString("gcp.organization_id"),

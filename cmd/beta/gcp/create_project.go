@@ -32,7 +32,7 @@ func GetGCPCreateProjectCmd() *cobra.Command {
 
 func createProject(ctx context.Context, projectID string) error {
 	m := display.GetGlobalModelFunc()
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		projectID,
 		viper.GetString("gcp.organization_id"),

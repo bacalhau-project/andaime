@@ -44,7 +44,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project prefix is empty")
 	}
 
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),

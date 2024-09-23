@@ -150,7 +150,7 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 	tests := []struct {
 		name           string
-		operation      func(context.Context, string, ...string) error
+		operation      interface{}
 		serviceName    string
 		serviceContent string
 		expectedCmd    string
@@ -161,7 +161,7 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 			operation:      s.sshConfig.InstallSystemdService,
 			serviceName:    "test_service",
 			serviceContent: "service content",
-			expectedCmd:    "sudo tee /etc/systemd/system/test_service.service > /dev/null && sudo systemctl daemon-reload",
+			expectedCmd:    "echo 'service content' | sudo tee /etc/systemd/system/test_service.service > /dev/null",
 			expectError:    false,
 		},
 		{
@@ -187,10 +187,13 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 			s.mockSession.On("Close").Return(nil)
 
 			var err error
-			if tt.name == "InstallSystemdService" {
-				err = tt.operation(s.ctx, tt.serviceName, tt.serviceContent)
-			} else {
-				err = tt.operation(s.ctx, tt.serviceName)
+			switch op := tt.operation.(type) {
+			case func(context.Context, string, string) error:
+				err = op(s.ctx, tt.serviceName, tt.serviceContent)
+			case func(context.Context, string) error:
+				err = op(s.ctx, tt.serviceName)
+			default:
+				s.Fail("Unexpected operation type")
 			}
 
 			if tt.expectError {

@@ -59,7 +59,6 @@ func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	mockDialer := &MockSSHDialer{}
 	configInterface, err := NewSSHConfigFunc(
 		"example.com",
 		22, //nolint:mnd
@@ -69,8 +68,8 @@ func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
 	if err != nil {
 		panic(err)
 	}
-	config := configInterface.(*SSHConfig)
-	config.SSHDial = mockDialer
+	config := configInterface.(SSHConfiger)
+	config.SetSSHClient(&MockSSHClient{})
 
 	mockClient := &MockSSHClient{}
 	return mockClient, config

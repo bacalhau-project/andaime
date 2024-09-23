@@ -88,7 +88,7 @@ func (suite *CmdBetaGCPCreateDeploymentSuite) SetupTest() {
 	}
 
 	var err error
-	suite.gcpProvider, err = gcp_provider.NewGCPProviderFactory(
+	suite.gcpProvider, err = gcp_provider.NewGCPProviderFunc(
 		suite.ctx,
 		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),

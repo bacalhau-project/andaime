@@ -276,7 +276,7 @@ func initializeCloudProviders() (*cloudProvider, error) {
 
 func initAzureProvider(c *cloudProvider) error {
 	ctx := context.Background()
-	azureProvider, err := azure_provider.NewAzureProvider(
+	azureProvider, err := azure_provider.NewAzureProviderFunc(
 		ctx,
 		viper.GetString("azure.subscription_id"),
 	)
@@ -289,7 +289,7 @@ func initAzureProvider(c *cloudProvider) error {
 
 func initGCPProvider(c *cloudProvider) error {
 	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),

@@ -47,7 +47,7 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("location is required")
 	}
 
-	azureProvider, err := azure_provider.NewAzureProvider(
+	azureProvider, err := azure_provider.NewAzureProviderFunc(
 		cmd.Context(),
 		viper.GetString("azure.subscription_id"),
 	)

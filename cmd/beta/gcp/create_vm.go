@@ -80,7 +80,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("billing account ID is not set")
 	}
 
-	gcpProvider, err := gcp_provider.NewGCPProviderFactory(
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		projectID,
 		organizationID,

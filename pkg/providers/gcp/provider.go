@@ -25,6 +25,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
+var NewGCPProviderFunc = NewGCPProviderFactory
+
 // NewGCPProviderFactory is the factory function for GCPProvider.
 func NewGCPProviderFactory(
 	ctx context.Context,
@@ -112,50 +114,6 @@ func NewGCPProvider(
 // Initialize initializes the GCP provider
 func (p *GCPProvider) Initialize(ctx context.Context) error {
 	// Implement initialization logic here
-	return nil
-}
-
-// loadDeploymentFromConfig loads deployment data from the configuration
-func (p *GCPProvider) loadDeploymentFromConfig() error {
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("global model or deployment is nil")
-	}
-
-	// Load project ID
-	m.Deployment.ProjectID = p.Config.GetString("gcp.project_id")
-
-	// Load billing account ID
-	m.Deployment.GCP.BillingAccountID = p.Config.GetString("gcp.billing_account_id")
-
-	// Load service account email
-	m.Deployment.GCP.ServiceAccountEmail = p.Config.GetString("gcp.service_account_email")
-
-	// Load allowed ports
-	m.Deployment.AllowedPorts = p.Config.GetIntSlice("gcp.allowed_ports")
-
-	// Initialize the ProjectServiceAccounts map if it's nil
-	if m.Deployment.GCP.ProjectServiceAccounts == nil {
-		m.Deployment.GCP.ProjectServiceAccounts = make(map[string]models.ServiceAccountInfo)
-	}
-
-	// Load project-specific data
-	projectsMap := p.Config.GetStringMap("gcp.projects")
-	for projectID, projectData := range projectsMap {
-		if projectDataMap, ok := projectData.(map[string]interface{}); ok {
-			if saData, ok := projectDataMap["service_account"].(map[string]interface{}); ok {
-				email, _ := saData["email"].(string)
-				key, _ := saData["key"].(string)
-				if email != "" && key != "" {
-					m.Deployment.GCP.ProjectServiceAccounts[projectID] = models.ServiceAccountInfo{
-						Email: email,
-						Key:   key,
-					}
-				}
-			}
-		}
-	}
-
 	return nil
 }
 

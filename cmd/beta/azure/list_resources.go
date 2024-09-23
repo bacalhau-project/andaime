@@ -27,7 +27,7 @@ var AzureListResourcesCmd = &cobra.Command{
 
 		log.Info("Listing Azure resources...")
 
-		azureProvider, err := azure_provider.NewAzureProvider(
+		azureProvider, err := azure_provider.NewAzureProviderFunc(
 			cmd.Context(),
 			viper.GetString("azure.subscription_id"),
 		)

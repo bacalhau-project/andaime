@@ -45,17 +45,10 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("subscription_id is not set in the configuration")
 	}
 	// Initialize the Azure provider
-	azureProvider, err := azure.NewAzureProvider(ctx, subscriptionID)
+	azureProvider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to create Azure provider: %v", err))
 		return fmt.Errorf("failed to create Azure provider: %w", err)
-	}
-
-	// Now you can use Azure-specific methods
-	err = azureProvider.CreateResources(ctx)
-	if err != nil {
-		l.Error(fmt.Sprintf("Failed to create Azure resources: %v", err))
-		return fmt.Errorf("failed to create Azure resources: %w", err)
 	}
 
 	// Prepare the deployment
