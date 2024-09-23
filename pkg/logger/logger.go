@@ -130,15 +130,31 @@ func InitProduction() {
 		config.ErrorOutputPaths = []string{"stderr"}
 
 		var cores []zapcore.Core
+
+		// Console logging with a more readable format
+		consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
 		cores = append(cores, zapcore.NewCore(
-			zapcore.NewJSONEncoder(config.EncoderConfig),
+			consoleEncoder,
 			zapcore.AddSync(os.Stdout),
 			config.Level,
 		))
 
-		if GlobalEnableBufferLogger {
+		// File logging with JSON format (if enabled)
+		if GlobalEnableFileLogger {
+			fileEncoder := zapcore.NewJSONEncoder(config.EncoderConfig)
+			logFile, _ := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			cores = append(cores, zapcore.NewCore(
-				zapcore.NewJSONEncoder(config.EncoderConfig),
+				fileEncoder,
+				zapcore.AddSync(logFile),
+				config.Level,
+			))
+		}
+
+		// Buffer logging with JSON format (if enabled)
+		if GlobalEnableBufferLogger {
+			bufferEncoder := zapcore.NewJSONEncoder(config.EncoderConfig)
+			cores = append(cores, zapcore.NewCore(
+				bufferEncoder,
 				zapcore.AddSync(&GlobalLoggedBuffer),
 				config.Level,
 			))
