@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -379,26 +378,6 @@ func GetLastLines(n int) []string {
 	l := Get()
 	l.Warnf("In-memory buffer logging is not enabled. Unable to retrieve last lines.")
 	return []string{}
-
-	// Split the content into lines
-	lines := strings.Split(string(content), "\n")
-
-	// Get the last n lines
-	start := len(lines) - n
-	if start < 0 {
-		start = 0
-	}
-	lastLines := lines[start:]
-
-	// Remove empty lines
-	var result []string
-	for _, line := range lastLines {
-		if line != "" {
-			result = append(result, line)
-		}
-	}
-
-	return result
 }
 
 func writeToDebugLog(message string) {
@@ -424,7 +403,7 @@ func writeToDebugLog(message string) {
 func getLastLinesFromBuffer(n int) []string {
 	buffer := GlobalLoggedBuffer.String()
 	lines := strings.Split(buffer, "\n")
-	
+
 	// Get the last n lines
 	start := len(lines) - n
 	if start < 0 {
