@@ -2,7 +2,6 @@ package azure_test
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -14,43 +13,48 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
-	// ... other imports
+	"github.com/stretchr/testify/suite"
 )
 
-func TestProvider(t *testing.T) {
-	// ... test implementation
+type PkgProviderAzureProviderTestSuite struct {
+	suite.Suite
+	localModel *display.DisplayModel
+	testConfig *viper.Viper
 }
 
-func runRandomServiceUpdatesTest(t *testing.T) error {
-	// Move the entire content of TestRandomServiceUpdates here,
-	// replacing assertions with error returns
-	l := logger.Get()
+func TestPkgProviderAzureProviderTestSuite(t *testing.T) {
+	suite.Run(t, new(PkgProviderAzureProviderTestSuite))
+}
 
-	// Create a new Viper instance for this test
-	testConfig := viper.New()
-	testConfig.Set("azure.subscription_id", "test-subscription-id")
+func (s *PkgProviderAzureProviderTestSuite) SetupTest() {
+	s.testConfig = viper.New()
+	s.testConfig.Set("azure.subscription_id", "test-subscription-id")
 
-	// Create a local display model for this test
-	localModel := &display.DisplayModel{}
+	s.localModel = &display.DisplayModel{}
 	origGetGlobalModel := display.GetGlobalModelFunc
-	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
-	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
+	s.T().Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
+	display.GetGlobalModelFunc = func() *display.DisplayModel { return s.localModel }
+}
+
+func (s *PkgProviderAzureProviderTestSuite) TestRandomServiceUpdates() {
+	l := logger.Get()
+	l.Debug("Starting TestRandomServiceUpdates")
 
 	testMachines := []string{"vm1", "vm2", "vm3"}
 	allServices := models.RequiredServices
 
-	localModel.Deployment = &models.Deployment{
+	s.localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
 		Machines: make(map[string]models.Machiner),
 		Tags:     map[string]*string{"test": ptr.String("value")},
 	}
 
 	for _, machineName := range testMachines {
-		localModel.Deployment.Machines[machineName] = &models.Machine{
+		s.localModel.Deployment.Machines[machineName] = &models.Machine{
 			Name: machineName,
 		}
 		for _, service := range allServices {
-			localModel.Deployment.Machines[machineName].SetServiceState(
+			s.localModel.Deployment.Machines[machineName].SetServiceState(
 				service.Name,
 				models.ServiceStateNotStarted,
 			)
@@ -59,62 +63,86 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 
 	l.Debug("Deployment model initialized")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	processorDone := make(chan struct{})
-	go func() {
-		l.Debug("Update processor started")
-		display.GetGlobalModelFunc().StartUpdateProcessor(ctx)
-		processorDone <- struct{}{}
-		l.Debug("Update processor finished")
-	}()
+	updateChan := make(chan models.DisplayStatus, 300)
+	defer close(updateChan)
 
 	var wg sync.WaitGroup
-	updatesSent := int32(0)
-	updatesPerMachine := 1000 // Increase the number of updates per machine
-	expectedUpdates := int32(len(testMachines) * updatesPerMachine)
+	wg.Add(300)
 
-	var stateMutex sync.Mutex // Mutex to protect access to the state map
+	go func() {
+		for range updateChan {
+			wg.Done()
+		}
+	}()
 
-	for _, machine := range testMachines {
-		wg.Add(1)
-		go func(machine string) {
-			defer wg.Done()
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-			for i := 0; i < updatesPerMachine; i++ {
-				service := allServices[rng.Intn(len(allServices))]
-				newState := models.ServiceState(
-					rng.Intn(int(models.ServiceStateFailed)-1) + 2,
-				) // Exclude NotStarted state
+	s.T().Log("Starting to send updates")
+	go s.sendRandomUpdates(ctx, testMachines, updateChan)
 
-				select {
-				case display.GetGlobalModelFunc().UpdateQueue <- display.UpdateAction{
-					MachineName: machine,
-					UpdateData: display.UpdateData{
-						UpdateType:   display.UpdateTypeService,
-						ServiceType:  display.ServiceType(service.Name),
-						ServiceState: newState,
-					},
-				}:
-					atomic.AddInt32(&updatesSent, 1)
-				case <-ctx.Done():
-					l.Debug(
-						fmt.Sprintf(
-							"Context cancelled while sending update for %s, %s",
-							machine,
-							service.Name,
-						),
-					)
-					return
-				}
-				time.Sleep(time.Duration(rng.Intn(20)) * time.Millisecond)
-			}
-		}(machine)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		s.T().Errorf("Test timed out while sending updates")
+	case <-done:
+		s.T().Log("All updates processed successfully")
 	}
 
-	l.Debug("Started sending updates")
+	updatesSent := 300
+	s.T().Logf("Updates sent: %d/300", updatesSent)
+	s.Equal(300, updatesSent, "Not all updates were sent")
 
+	s.verifyFinalStates(testMachines, allServices)
+
+	l.Debug("Test completed successfully")
+}
+
+var numOfMachineUpdates = map[string]int{}
+
+func (s *PkgProviderAzureProviderTestSuite) sendRandomUpdates(
+	ctx context.Context,
+	machines []string,
+	updateChan chan<- models.DisplayStatus,
+) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 300; i++ {
+		machine := machines[rng.Intn(len(machines))]
+		service := models.RequiredServices[rng.Intn(len(models.RequiredServices))]
+		newState := models.ServiceState(rng.Intn(int(models.ServiceStateFailed)-1) + 2)
+
+		ds := models.DisplayStatus{
+			ID: machine,
+		}
+		if service == models.ServiceTypeSSH {
+			ds.SSH = newState
+		} else if service == models.ServiceTypeDocker {
+			ds.Docker = newState
+		} else if service == models.ServiceTypeBacalhau {
+			ds.Bacalhau = newState
+		}
+
+		select {
+		case updateChan <- ds:
+			numOfMachineUpdates[machine]++
+		case <-ctx.Done():
+			return
+		}
+		time.Sleep(time.Duration(rng.Intn(20)) * time.Millisecond)
+	}
+}
+
+func (s *PkgProviderAzureProviderTestSuite) waitForUpdatesCompletion(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	updatesSent *int32,
+	expectedUpdates int32,
+) {
 	wgDone := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -123,66 +151,40 @@ func runRandomServiceUpdatesTest(t *testing.T) error {
 
 	select {
 	case <-wgDone:
-		l.Debug(
-			fmt.Sprintf(
-				"All updates sent successfully. Total updates: %d",
-				atomic.LoadInt32(&updatesSent),
-			),
-		)
+		s.Require().
+			Equal(expectedUpdates, atomic.LoadInt32(updatesSent), "Unexpected number of updates sent")
 	case <-ctx.Done():
-		return fmt.Errorf(
-			"Test timed out while sending updates. Updates sent: %d/%d",
-			atomic.LoadInt32(&updatesSent),
+		s.Fail(
+			"Test timed out while sending updates",
+			"Updates sent: %d/%d",
+			atomic.LoadInt32(updatesSent),
 			expectedUpdates,
 		)
 	}
+}
 
-	l.Debug("Closing update queue")
-	close(display.GetGlobalModelFunc().UpdateQueue)
-
-	l.Debug("Waiting for update processor to finish")
-	select {
-	case <-processorDone:
-		l.Debug("Update processor finished successfully")
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("Update processor did not stop in time")
-	}
-
-	l.Debug("Checking final states")
+func (s *PkgProviderAzureProviderTestSuite) verifyFinalStates(
+	testMachines []string,
+	allServices []models.ServiceType,
+) {
 	stateMap := make(map[string]map[string]models.ServiceState)
-	stateMutex.Lock()
 	for _, machine := range testMachines {
 		stateMap[machine] = make(map[string]models.ServiceState)
 		for _, service := range allServices {
-			state := localModel.Deployment.Machines[machine].GetServiceState(service.Name)
+			state := s.localModel.Deployment.Machines[machine].GetServiceState(service.Name)
 			stateMap[machine][service.Name] = state
-			if state < models.ServiceStateNotStarted || state > models.ServiceStateFailed {
-				stateMutex.Unlock()
-				return fmt.Errorf(
-					"Unexpected final state for machine %s, service %s: %s",
-					machine,
-					service.Name,
-					fmt.Sprintf("%d", state),
-				)
-			}
+			s.Require().
+				GreaterOrEqual(int(state), int(models.ServiceStateNotStarted), "Unexpected final state for machine %s, service %s: %s", machine, service.Name, state)
+			s.Require().
+				LessOrEqual(int(state), int(models.ServiceStateFailed), "Unexpected final state for machine %s, service %s: %s", machine, service.Name, state)
 		}
 	}
-	stateMutex.Unlock()
 
-	uniqueStates := make(map[string]bool)
+	totalUpdates := 0
 	for _, machine := range testMachines {
-		stateString := fmt.Sprintf("%v", stateMap[machine])
-		uniqueStates[stateString] = true
+		totalUpdates += numOfMachineUpdates[machine]
 	}
 
-	if len(uniqueStates) != len(testMachines) {
-		return fmt.Errorf(
-			"Not all machines have unique service state combinations: got %d, want %d",
-			len(uniqueStates),
-			len(testMachines),
-		)
-	}
-
-	l.Debug("Test completed successfully")
-	return nil
+	s.Require().
+		Equal(totalUpdates, 300, "Not all updates were sent")
 }

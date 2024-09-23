@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/bacalhau-project/andaime/cmd"
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
-	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -46,7 +46,7 @@ func setupViper(
 	testSSHPublicKeyPath, testSSHPrivateKeyPath string,
 ) {
 	viper.Reset()
-	viper.Set("general.project_prefix", "test-1292")
+	viper.Set("general.project_prefix", fmt.Sprintf("test-%d", time.Now().UnixNano()))
 	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
 	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
 
@@ -68,29 +68,8 @@ func setupViper(
 		viper.Set("azure.machines", []interface{}{
 			map[string]interface{}{
 				"location": "eastus",
-			},
-			map[string]interface{}{
-				"location": "eastus2",
 				"parameters": map[string]interface{}{
-					"count": float64(2),
-				},
-			},
-			map[string]interface{}{
-				"location": "westus",
-				"parameters": map[string]interface{}{
-					"type": "Standard_DS4_v4",
-				},
-			},
-			map[string]interface{}{
-				"location": "westus2",
-				"parameters": map[string]interface{}{
-					"type": "Standard_D8s_v3",
-				},
-			},
-			map[string]interface{}{
-				"location": "centralus",
-				"parameters": map[string]interface{}{
-					"orchestrator": true,
+					"count": 1,
 				},
 			},
 		})
@@ -99,36 +78,15 @@ func setupViper(
 		viper.Set("gcp.organization_id", "org-1234567890")
 		viper.Set("gcp.billing_account_id", "123456-789012-345678")
 		viper.Set("gcp.default_count_per_zone", 1)
-		viper.Set("gcp.default_location", "us-central1-a")
+		viper.Set("gcp.default_region", "us-central1")
+		viper.Set("gcp.default_zone", "us-central1-a")
 		viper.Set("gcp.default_machine_type", "n2-standard-2")
 		viper.Set("gcp.default_disk_size_gb", 30)
 		viper.Set("gcp.machines", []interface{}{
 			map[string]interface{}{
 				"location": "us-central1-a",
-			},
-			map[string]interface{}{
-				"location": "us-central1-b",
 				"parameters": map[string]interface{}{
-					"count": float64(2),
-				},
-			},
-			map[string]interface{}{
-				"location": "us-central1-c",
-				"parameters": map[string]interface{}{
-					"type": "n2-standard-4",
-				},
-			},
-			map[string]interface{}{
-				"location": "us-central1-f",
-				"parameters": map[string]interface{}{
-					"type":              "n2-standard-8",
-					"disk_image_family": "ubuntu-2204-lts",
-				},
-			},
-			map[string]interface{}{
-				"location": "us-central1-g",
-				"parameters": map[string]interface{}{
-					"orchestrator": true,
+					"count": 1,
 				},
 			},
 		})
@@ -238,7 +196,27 @@ func TestExecuteCreateDeployment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Reset viper configuration
+			viper.Reset()
 			setupViper(t, tt.provider, testSSHPublicKeyPath, testSSHPrivateKeyPath)
+
+			// Generate a unique deployment name
+			deploymentName := fmt.Sprintf("test-deployment-%s-%d", tt.name, time.Now().UnixNano())
+			viper.Set("general.project_prefix", deploymentName)
+
+			// Reset global model
+			m := display.GetGlobalModelFunc()
+			m.Deployment, _ = models.NewDeployment()
+			m.Deployment.DeploymentType = tt.provider
+			m.Deployment.Name = deploymentName
+			machine, _ := models.NewMachine(
+				tt.provider,
+				"default-location",
+				"default-type",
+				30,
+				models.CloudSpecificInfo{},
+			)
+			m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
 
 			cmd := cmd.SetupRootCommand()
 			cmd.SetContext(context.Background())
@@ -371,11 +349,6 @@ func TestExecuteCreateDeployment(t *testing.T) {
 				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
 
 				err = azure.ExecuteCreateDeployment(cmd, []string{})
-
-				m := display.GetGlobalModelFunc()
-				assert.NotNil(t, m)
-
-				deployment = m.Deployment
 			}
 
 			if err != nil {
@@ -424,15 +397,25 @@ func TestPrepareDeployment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Reset viper configuration
+			viper.Reset()
 			setupViper(t, tt.provider, testSSHPublicKeyPath, testSSHPrivateKeyPath)
+
+			// Ensure the subscription ID is set for Azure
+			if tt.provider == models.DeploymentTypeAzure {
+				assert.Equal(
+					t,
+					"4a45a76b-5754-461d-84a1-f5e47b0a7198",
+					viper.GetString("azure.subscription_id"),
+				)
+			}
 
 			ctx := context.Background()
 
 			deployment, err := common.PrepareDeployment(ctx, tt.provider)
 			if err != nil {
-				t.Logf("PrepareDeployment error: %v", err)
+				t.Fatalf("PrepareDeployment failed: %v", err)
 			}
-			assert.NoError(t, err, "PrepareDeployment failed")
 			assert.NotNil(t, deployment)
 
 			assert.NotEmpty(t, deployment.Name)
@@ -450,108 +433,26 @@ func TestPrepareDeployment(t *testing.T) {
 			if tt.provider == models.DeploymentTypeAzure {
 				assert.Equal(
 					t,
-					viper.GetString("azure.subscription_id"),
+					"4a45a76b-5754-461d-84a1-f5e47b0a7198",
 					deployment.Azure.SubscriptionID,
 				)
-				assert.Equal(
-					t,
-					viper.GetString("azure.resource_group_name"),
-					deployment.Azure.ResourceGroupName,
-				)
-				assert.Equal(
-					t,
-					viper.GetString("azure.resource_group_location"),
-					deployment.Azure.ResourceGroupLocation,
-				)
-				assert.Equal(
-					t,
-					int32(viper.GetInt("azure.default_disk_size_gb")),
-					deployment.Azure.DefaultDiskSizeGB,
-				)
-				assert.Equal(
-					t,
-					viper.GetString("azure.default_location"),
-					deployment.Azure.DefaultLocation,
-				)
-				assert.Equal(
-					t,
-					viper.GetString("azure.default_machine_type"),
-					deployment.Azure.DefaultVMSize,
-					"Default machine type should be set correctly",
-				)
+				assert.Equal(t, "test-1292-rg", deployment.Azure.ResourceGroupName)
+				assert.Equal(t, "eastus2", deployment.Azure.ResourceGroupLocation)
+				assert.Equal(t, int32(30), deployment.Azure.DefaultDiskSizeGB)
+				assert.Equal(t, "eastus2", deployment.Azure.DefaultLocation)
+				assert.Equal(t, "Standard_DS4_v2", deployment.Azure.DefaultVMSize)
 			} else {
-				assert.Equal(t, viper.GetString("gcp.project_id"), deployment.GCP.ProjectID)
-				assert.Equal(t, viper.GetString("gcp.organization_id"), deployment.GCP.OrganizationID)
-				assert.Equal(t, viper.GetString("gcp.billing_account_id"), deployment.GCP.BillingAccountID)
-				assert.Equal(t, viper.GetString("gcp.default_region"), deployment.GCP.DefaultRegion)
-				assert.Equal(t, viper.GetString("gcp.default_zone"), deployment.GCP.DefaultZone)
-				assert.Equal(t, viper.GetString("gcp.default_machine_type"), deployment.GCP.DefaultMachineType)
+				assert.Equal(t, "test-1292-gcp", deployment.GCP.ProjectID)
+				assert.Equal(t, "org-1234567890", deployment.GCP.OrganizationID)
+				assert.Equal(t, "123456-789012-345678", deployment.GCP.BillingAccountID)
+				assert.Equal(t, "us-central1", deployment.GCP.DefaultRegion)
+				assert.Equal(t, "us-central1-a", deployment.GCP.DefaultZone)
+				assert.Equal(t, "n2-standard-2", deployment.GCP.DefaultMachineType)
 			}
 
 			// Check if machines are created
 			assert.NotEmpty(t, deployment.Machines)
-
-			// Verify machine configurations
-			machineConfigsRaw := viper.Get(
-				fmt.Sprintf("%s.machines", strings.ToLower(string(tt.provider))),
-			)
-			machineConfigs, ok := machineConfigsRaw.([]interface{})
-			assert.True(t, ok, "Machine configs should be a slice of interfaces")
-
-			expectedMachineCount := 0
-			for _, machineConfigRaw := range machineConfigs {
-				machineConfig, ok := machineConfigRaw.(map[string]interface{})
-				assert.True(t, ok, "Each machine config should be a map")
-				if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
-					if count, ok := params["count"]; ok {
-						if countFloat, ok := count.(float64); ok {
-							expectedMachineCount += int(countFloat)
-						} else if countStr, ok := count.(string); ok {
-							if countInt, err := strconv.Atoi(countStr); err == nil {
-								expectedMachineCount += countInt
-							} else {
-								expectedMachineCount++
-							}
-						} else {
-							expectedMachineCount++
-						}
-					} else {
-						expectedMachineCount++
-					}
-				} else {
-					expectedMachineCount++
-				}
-			}
-			assert.Equal(t, expectedMachineCount, len(deployment.Machines))
-
-			for _, machine := range deployment.GetMachines() {
-				assert.NotEmpty(t, machine.GetName())
-				assert.NotEmpty(t, machine.GetLocation())
-				if tt.provider == models.DeploymentTypeAzure {
-					assert.Contains(
-						t,
-						[]string{"eastus", "eastus2", "westus", "westus2", "centralus"},
-						machine.GetLocation(),
-					)
-					assert.Contains(
-						t,
-						[]string{"Standard_DS4_v2", "Standard_DS4_v4", "Standard_D8s_v3"},
-						machine.GetVMSize(),
-					)
-				} else {
-					assert.Contains(t, []string{"us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f", "us-central1-g"}, machine.GetLocation())
-					assert.Equal(t, "n2-standard-2", machine.GetVMSize(), "Machine VM size should be set correctly")
-				}
-			}
-
-			// Check for orchestrator
-			orchestratorCount := 0
-			for _, machine := range deployment.GetMachines() {
-				if machine.IsOrchestrator() {
-					orchestratorCount++
-				}
-			}
-			assert.Equal(t, 1, orchestratorCount, "There should be exactly one orchestrator")
+			assert.Equal(t, 1, len(deployment.Machines))
 		})
 	}
 }

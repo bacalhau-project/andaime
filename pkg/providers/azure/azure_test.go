@@ -1,14 +1,21 @@
 package azure
 
 import (
+	"context"
 	"testing"
 
+	"github.com/bacalhau-project/andaime/pkg/display"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/suite"
 )
 
-type PkgAzureTestSuite struct {
-	BaseAzureTestSuite
+type PkgProvidersAzureTestSuite struct {
+	suite.Suite
+	ctx                    context.Context
+	testPrivateKeyPath     string
+	cleanup                func()
+	originalGetGlobalModel func() *display.DisplayModel
 }
 
 func TestAzure(t *testing.T) {

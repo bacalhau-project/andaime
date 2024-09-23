@@ -8,19 +8,41 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestProcessMachinesConfig(t *testing.T) {
-	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
-	defer cleanupPublicKey()
-	defer cleanupPrivateKey()
+type PkgProvidersCommonMachineConfigTestSuite struct {
+	suite.Suite
+	ctx                    context.Context
+	testPrivateKeyPath     string
+	cleanup                func()
+	originalGetGlobalModel func() *display.DisplayModel
+}
 
-	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
+func (s *PkgProvidersCommonMachineConfigTestSuite) SetupSuite() {
+	s.ctx = context.Background()
+	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	s.cleanup = func() {
+		cleanupPublicKey()
+		cleanupPrivateKey()
+	}
+	s.testPrivateKeyPath = testPrivateKeyPath
+	s.originalGetGlobalModel = display.GetGlobalModelFunc
+}
+
+func (s *PkgProvidersCommonMachineConfigTestSuite) TearDownSuite() {
+	s.cleanup()
+	display.GetGlobalModelFunc = s.originalGetGlobalModel
+}
+
+func (s *PkgProvidersCommonMachineConfigTestSuite) SetupTest() {
+	viper.Reset()
+	viper.Set("general.ssh_private_key_path", s.testPrivateKeyPath)
 	viper.Set("general.ssh_port", 22)
 	viper.Set("general.project_prefix", "test")
+}
 
-	// Mock viper configuration
+func (s *PkgProvidersCommonMachineConfigTestSuite) TestProcessMachinesConfig() {
 	viper.Set("azure.machines", []map[string]interface{}{
 		{
 			"location": "eastus",
@@ -43,17 +65,14 @@ func TestProcessMachinesConfig(t *testing.T) {
 	viper.Set("azure.default_disk_size_gb", 30)
 
 	deployment, err := models.NewDeployment()
-	assert.NoError(t, err)
+	s.Require().NoError(err)
 
-	origGetDeploymentFunc := display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
 		return &display.DisplayModel{
 			Deployment: deployment,
 		}
 	}
-	defer func() {
-		display.GetGlobalModelFunc = origGetDeploymentFunc
-	}()
+
 	mockValidateMachineType := func(ctx context.Context, location, vmSize string) (bool, error) {
 		return true, nil
 	}
@@ -62,27 +81,26 @@ func TestProcessMachinesConfig(t *testing.T) {
 		models.DeploymentTypeAzure,
 		mockValidateMachineType,
 	)
-	assert.NoError(t, err)
+	s.Require().NoError(err)
 	deployment.SetMachines(machines)
 	deployment.SetLocations(locations)
 
-	// Verify the results
-	assert.Len(t, deployment.Machines, 3)
-	assert.Len(t, deployment.Locations, 2)
+	s.Len(deployment.Machines, 3)
+	s.Len(deployment.Locations, 2)
 
-	var orchestratorCount int
+	orchestratorCount := 0
 	for _, machine := range deployment.Machines {
 		if machine.IsOrchestrator() {
 			orchestratorCount++
 		}
-		assert.Equal(t, "azureuser", machine.GetSSHUser())
-		assert.Equal(t, 22, machine.GetSSHPort())
-		assert.NotNil(t, machine.GetSSHPrivateKeyMaterial())
+		s.Equal("azureuser", machine.GetSSHUser())
+		s.Equal(22, machine.GetSSHPort())
+		s.NotNil(machine.GetSSHPrivateKeyMaterial())
 	}
-	assert.Equal(t, 1, orchestratorCount)
+	s.Equal(1, orchestratorCount)
 }
 
-func TestProcessMachinesConfigErrors(t *testing.T) {
+func (s *PkgProvidersCommonMachineConfigTestSuite) TestProcessMachinesConfigErrors() {
 	tests := []struct {
 		name          string
 		viperSetup    func()
@@ -115,8 +133,8 @@ func TestProcessMachinesConfigErrors(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
+		s.Run(tt.name, func() {
+			s.SetupTest()
 			tt.viperSetup()
 
 			deployment := &models.Deployment{
@@ -124,15 +142,11 @@ func TestProcessMachinesConfigErrors(t *testing.T) {
 				SSHPort:           22,
 			}
 
-			origGetDeploymentFunc := display.GetGlobalModelFunc
 			display.GetGlobalModelFunc = func() *display.DisplayModel {
 				return &display.DisplayModel{
 					Deployment: deployment,
 				}
 			}
-			defer func() {
-				display.GetGlobalModelFunc = origGetDeploymentFunc
-			}()
 
 			mockValidateMachineType := func(ctx context.Context, location, vmSize string) (bool, error) {
 				return true, nil
@@ -143,9 +157,13 @@ func TestProcessMachinesConfigErrors(t *testing.T) {
 				mockValidateMachineType,
 			)
 
-			assert.Nil(t, machines)
-			assert.Nil(t, locations)
-			assert.EqualError(t, err, tt.expectedError)
+			s.Nil(machines)
+			s.Nil(locations)
+			s.EqualError(err, tt.expectedError)
 		})
 	}
+}
+
+func TestMachineConfigSuite(t *testing.T) {
+	suite.Run(t, new(PkgProvidersCommonMachineConfigTestSuite))
 }
