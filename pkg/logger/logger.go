@@ -108,6 +108,8 @@ func InitProduction() {
 	once.Do(func() {
 		// Enable console logging by default
 		GlobalEnableConsoleLogger = true
+		GlobalEnableFileLogger = false
+		GlobalEnableBufferLogger = false
 
 		fmt.Printf(
 			"Initializing logger with: Console=%v, File=%v, Buffer=%v, LogPath=%s, LogLevel=%s\n",
@@ -118,86 +120,24 @@ func InitProduction() {
 			GlobalLogLevel,
 		)
 
-		logPath := viper.GetString("general.log_path")
-		if logPath != "" {
-			GlobalLogPath = logPath
-		}
-
-		// Prioritize LOG_LEVEL environment variable
-		envLogLevel := os.Getenv("LOG_LEVEL")
-		if envLogLevel != "" {
-			GlobalLogLevel = envLogLevel
-		} else {
-			logLevelString := viper.GetString("general.log_level")
-			if logLevelString != "" {
-				GlobalLogLevel = logLevelString
-			}
-		}
-
 		if GlobalLogLevel == "" {
 			GlobalLogLevel = InfoLogLevel
 		}
 		logLevel := getZapLevel(GlobalLogLevel)
-		atom := zap.NewAtomicLevelAt(logLevel)
 
-		encoderConfig := zapcore.EncoderConfig{
-			TimeKey:        "time",
-			LevelKey:       "level",
-			NameKey:        "logger",
-			CallerKey:      "caller",
-			FunctionKey:    zapcore.OmitKey,
-			MessageKey:     "msg",
-			StacktraceKey:  "stacktrace",
-			LineEnding:     zapcore.DefaultLineEnding,
-			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.SecondsDurationEncoder,
-			EncodeCaller:   zapcore.ShortCallerEncoder,
+		config := zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(logLevel)
+		config.OutputPaths = []string{"stdout"}
+		config.ErrorOutputPaths = []string{"stderr"}
+
+		logger, err := config.Build()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to initialize logger: %v", err))
 		}
 
-		var cores []zapcore.Core
+		globalLogger = logger.Named("andaime")
 
-		if GlobalEnableFileLogger {
-			var err error
-			GlobalLogFile, err = os.OpenFile(
-				GlobalLogPath,
-				os.O_CREATE|os.O_WRONLY|os.O_APPEND,
-				logFilePermissions,
-			)
-			if err == nil {
-				fileWriter := zapcore.AddSync(GlobalLogFile)
-				cores = append(cores, zapcore.NewCore(
-					zapcore.NewConsoleEncoder(encoderConfig),
-					fileWriter,
-					atom,
-				))
-				fmt.Printf("Successfully opened log file: %s\n", GlobalLogPath)
-			} else {
-				fmt.Printf("Error opening log file: %v\n", err)
-			}
-		} else {
-			fmt.Println("File logging is disabled")
-		}
-
-		if GlobalEnableConsoleLogger {
-			consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
-			cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
-		}
-
-		if GlobalEnableBufferLogger {
-			cores = append(cores, zapcore.NewCore(
-				zapcore.NewConsoleEncoder(encoderConfig),
-				zapcore.AddSync(&GlobalLoggedBuffer),
-				atom,
-			))
-		}
-
-		core := zapcore.NewTee(cores...)
-		globalLogger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-
-		if GlobalLogFile == nil {
-			fmt.Println("Warning: GlobalLogFile is nil after initialization")
-		}
+		fmt.Println("Logger initialized successfully")
 	})
 }
 
@@ -255,16 +195,11 @@ func SetGlobalLogger(logger *Logger) {
 
 // Get returns the global logger instance
 func Get() *Logger {
-	loggerMutex.RLock()
-	defer loggerMutex.RUnlock()
+	loggerMutex.Lock()
+	defer loggerMutex.Unlock()
 
 	if globalLogger == nil {
-		loggerMutex.RUnlock()
-		loggerMutex.Lock()
-		defer loggerMutex.Unlock()
-		if globalLogger == nil {
-			InitProduction()
-		}
+		InitProduction()
 	}
 	return &Logger{Logger: globalLogger, verbose: false}
 }
