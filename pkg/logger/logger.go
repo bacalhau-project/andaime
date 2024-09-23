@@ -109,7 +109,7 @@ func InitProduction() {
 		// Enable console logging by default
 		GlobalEnableConsoleLogger = true
 		GlobalEnableFileLogger = false
-		GlobalEnableBufferLogger = false
+		GlobalEnableBufferLogger = true
 
 		fmt.Printf(
 			"Initializing logger with: Console=%v, File=%v, Buffer=%v, LogPath=%s, LogLevel=%s\n",
@@ -130,7 +130,23 @@ func InitProduction() {
 		config.OutputPaths = []string{"stdout"}
 		config.ErrorOutputPaths = []string{"stderr"}
 
-		logger, err := config.Build()
+		if GlobalEnableBufferLogger {
+			config.OutputPaths = append(config.OutputPaths, "buffer://")
+		}
+
+		logger, err := config.Build(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
+			if GlobalEnableBufferLogger {
+				return zapcore.NewTee(
+					core,
+					zapcore.NewCore(
+						zapcore.NewJSONEncoder(config.EncoderConfig),
+						zapcore.AddSync(&GlobalLoggedBuffer),
+						config.Level,
+					),
+				)
+			}
+			return core
+		}))
 		if err != nil {
 			panic(fmt.Sprintf("Failed to initialize logger: %v", err))
 		}
@@ -360,27 +376,24 @@ var (
 
 func GetLastLines(n int) []string {
 	l := Get()
-	if GlobalLogFile == nil {
-		l.Errorf("Error: GlobalLogFile is nil")
-		writeToDebugLog("Error: GlobalLogFile is nil in GetLastLines")
-		return make([]string, n) // Return an empty slice with length n
+	if GlobalLogFile == nil || GlobalLogPath == "" {
+		l.Warnf("GlobalLogFile is nil or GlobalLogPath is empty. Using in-memory buffer.")
+		return getLastLinesFromBuffer(n)
 	}
 
 	// Open the file for reading
 	file, err := os.Open(GlobalLogPath)
 	if err != nil {
-		l.Errorf("Failed to open GlobalLogFile: %v", err)
-		writeToDebugLog(fmt.Sprintf("Failed to open GlobalLogFile: %v", err))
-		return make([]string, n)
+		l.Warnf("Failed to open GlobalLogFile: %v. Using in-memory buffer.", err)
+		return getLastLinesFromBuffer(n)
 	}
 	defer file.Close()
 
 	// Read the entire file content
 	content, err := io.ReadAll(file)
 	if err != nil {
-		l.Errorf("Error reading GlobalLogFile: %v", err)
-		writeToDebugLog(fmt.Sprintf("Error reading GlobalLogFile: %v", err))
-		return make([]string, n)
+		l.Warnf("Error reading GlobalLogFile: %v. Using in-memory buffer.", err)
+		return getLastLinesFromBuffer(n)
 	}
 
 	// Split the content into lines
@@ -422,6 +435,28 @@ func writeToDebugLog(message string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
 	}
+}
+
+func getLastLinesFromBuffer(n int) []string {
+	buffer := GlobalLoggedBuffer.String()
+	lines := strings.Split(buffer, "\n")
+	
+	// Get the last n lines
+	start := len(lines) - n
+	if start < 0 {
+		start = 0
+	}
+	lastLines := lines[start:]
+
+	// Remove empty lines
+	var result []string
+	for _, line := range lastLines {
+		if line != "" {
+			result = append(result, line)
+		}
+	}
+
+	return result
 }
 
 func WriteToDebugLog(message string) {
