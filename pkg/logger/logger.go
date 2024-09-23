@@ -130,26 +130,23 @@ func InitProduction() {
 		config.OutputPaths = []string{"stdout"}
 		config.ErrorOutputPaths = []string{"stderr"}
 
+		var cores []zapcore.Core
+		cores = append(cores, zapcore.NewCore(
+			zapcore.NewJSONEncoder(config.EncoderConfig),
+			zapcore.AddSync(os.Stdout),
+			config.Level,
+		))
+
 		if GlobalEnableBufferLogger {
-			config.OutputPaths = append(config.OutputPaths, "buffer://")
+			cores = append(cores, zapcore.NewCore(
+				zapcore.NewJSONEncoder(config.EncoderConfig),
+				zapcore.AddSync(&GlobalLoggedBuffer),
+				config.Level,
+			))
 		}
 
-		logger, err := config.Build(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-			if GlobalEnableBufferLogger {
-				return zapcore.NewTee(
-					core,
-					zapcore.NewCore(
-						zapcore.NewJSONEncoder(config.EncoderConfig),
-						zapcore.AddSync(&GlobalLoggedBuffer),
-						config.Level,
-					),
-				)
-			}
-			return core
-		}))
-		if err != nil {
-			panic(fmt.Sprintf("Failed to initialize logger: %v", err))
-		}
+		core := zapcore.NewTee(cores...)
+		logger := zap.New(core)
 
 		globalLogger = logger.Named("andaime")
 
@@ -375,26 +372,13 @@ var (
 )
 
 func GetLastLines(n int) []string {
+	if GlobalEnableBufferLogger {
+		return getLastLinesFromBuffer(n)
+	}
+
 	l := Get()
-	if GlobalLogFile == nil || GlobalLogPath == "" {
-		l.Warnf("GlobalLogFile is nil or GlobalLogPath is empty. Using in-memory buffer.")
-		return getLastLinesFromBuffer(n)
-	}
-
-	// Open the file for reading
-	file, err := os.Open(GlobalLogPath)
-	if err != nil {
-		l.Warnf("Failed to open GlobalLogFile: %v. Using in-memory buffer.", err)
-		return getLastLinesFromBuffer(n)
-	}
-	defer file.Close()
-
-	// Read the entire file content
-	content, err := io.ReadAll(file)
-	if err != nil {
-		l.Warnf("Error reading GlobalLogFile: %v. Using in-memory buffer.", err)
-		return getLastLinesFromBuffer(n)
-	}
+	l.Warnf("In-memory buffer logging is not enabled. Unable to retrieve last lines.")
+	return []string{}
 
 	// Split the content into lines
 	lines := strings.Split(string(content), "\n")
