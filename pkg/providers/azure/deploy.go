@@ -55,6 +55,15 @@ func (p *AzureProvider) PrepareDeployment(
 	)
 	deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 
+	tags := utils.EnsureAzureTags(
+		deployment.Tags,
+		deployment.ProjectID,
+		deployment.UniqueID,
+	)
+
+	deployment.Tags = tags
+	deployment.Azure.Tags = tags
+
 	return deployment, nil
 }
 
@@ -134,11 +143,22 @@ func (p *AzureProvider) PrepareResourceGroup(
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
+	m.Deployment.ViperPath = fmt.Sprintf(
+		"deployments.%s.azure.%s",
+		m.Deployment.UniqueID,
+		m.Deployment.Azure.ResourceGroupName,
+	)
+
+	viper.Set(
+		m.Deployment.ViperPath,
+		make(map[string]models.Machiner),
+	)
+
 	for _, machine := range m.Deployment.Machines {
 		m.UpdateStatus(
 			models.NewDisplayStatus(
 				machine.GetName(),
-				machine.GetName(),
+				models.AzureResourceTypeVM.ShortResourceName,
 				models.AzureResourceTypeVM,
 				models.ResourceStateNotStarted,
 			),
@@ -155,7 +175,8 @@ func (p *AzureProvider) PrepareResourceGroup(
 }
 
 func (p *AzureProvider) CreateResources(ctx context.Context) error {
-	log.Info("Deploying ARM template")
+	l := logger.Get()
+	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
 	if len(m.Deployment.Machines) == 0 {
@@ -184,7 +205,8 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 
 	for location, machines := range machinesByLocation {
 		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
-		log.Infof(
+
+		l.Infof(
 			"Preparing to deploy machines in location %s with %d machines",
 			location,
 			len(machines),
@@ -199,11 +221,15 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				defer m.DeregisterGoroutine(goRoutineID)
 			}
 
-			log.Infof("Starting deployment for location %s", location)
+			l.Infof("Starting deployment for location %s", location)
 
 			if len(machines) == 0 {
 				log.Errorf("No machines to deploy in location %s", location)
 				return fmt.Errorf("no machines to deploy in location %s", location)
+			}
+
+			if m.Deployment.SSHPublicKeyMaterial == "" {
+				return fmt.Errorf("ssh public key material is not set on the deployment")
 			}
 
 			for _, machine := range machines {
@@ -217,20 +243,36 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				)
 				err := p.deployMachine(ctx, machine, map[string]*string{})
 				if err != nil {
-					m.UpdateStatus(
-						models.NewDisplayStatusWithText(
+					// If error contains "code": "QuotaExceeded"
+					if strings.Contains(err.Error(), "QuotaExceeded") {
+						m.UpdateStatus(
+							models.NewDisplayStatusWithText(
+								machine.GetName(),
+								models.AzureResourceTypeVM,
+								models.ResourceStateFailed,
+								fmt.Sprintf("Quota exceeded for location: %s", location),
+							),
+						)
+						return fmt.Errorf(
+							"quota exceeded for location %s",
+							location,
+						)
+					} else {
+						m.UpdateStatus(
+							models.NewDisplayStatusWithText(
+								machine.GetName(),
+								models.AzureResourceTypeVM,
+								models.ResourceStateFailed,
+								"Failed to deploy machine.",
+							),
+						)
+						return fmt.Errorf(
+							"failed to deploy machine %s in location %s: %w",
 							machine.GetName(),
-							models.AzureResourceTypeVM,
-							models.ResourceStateFailed,
-							"Failed to deploy machine.",
-						),
-					)
-					return fmt.Errorf(
-						"failed to deploy machine %s in location %s: %w",
-						machine.GetName(),
-						location,
-						err,
-					)
+							location,
+							err,
+						)
+					}
 				}
 
 				m.UpdateStatus(
@@ -320,6 +362,7 @@ func (p *AzureProvider) deployMachine(
 	machine models.Machiner,
 	tags map[string]*string,
 ) error {
+	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	goRoutineID := m.RegisterGoroutine(
 		fmt.Sprintf("DeployMachine-%s", machine.GetName()),
@@ -335,6 +378,10 @@ func (p *AzureProvider) deployMachine(
 			models.ResourceStateNotStarted,
 		),
 	)
+
+	if m.Deployment.SSHPublicKeyMaterial == "" {
+		return fmt.Errorf("ssh public key material is not set")
+	}
 
 	params := p.prepareDeploymentParams(machine)
 	vmTemplate, err := p.getAndPrepareTemplate()
@@ -356,6 +403,30 @@ func (p *AzureProvider) deployMachine(
 	m.Deployment.Machines[machine.GetName()].SetMachineResourceState(
 		models.AzureResourceTypeVM.ResourceString,
 		models.ResourceStateSucceeded,
+	)
+
+	type viperMachineStruct struct {
+		Location  string `json:"location"`
+		Size      string `json:"size"`
+		PublicIP  string `json:"public_ip"`
+		PrivateIP string `json:"private_ip"`
+	}
+
+	allMachines, ok := viper.Get(m.Deployment.ViperPath).(map[string]viperMachineStruct)
+	if !ok {
+		l.Errorf("failed to get all machines from viper")
+		allMachines = make(map[string]viperMachineStruct)
+	}
+	allMachines[machine.GetName()] = viperMachineStruct{
+		PublicIP:  machine.GetPublicIP(),
+		PrivateIP: machine.GetPrivateIP(),
+		Location:  machine.GetLocation(),
+		Size:      machine.GetVMSize(),
+	}
+
+	viper.Set(
+		m.Deployment.ViperPath,
+		allMachines,
 	)
 
 	return nil
@@ -582,11 +653,17 @@ func (p *AzureProvider) PollResources(ctx context.Context) ([]interface{}, error
 	}()
 	m := display.GetGlobalModelFunc()
 	client := p.GetAzureClient()
+
+	azureTags := make(map[string]*string)
+	for k, v := range m.Deployment.Tags {
+		azureTags[k] = &v
+	}
+
 	resources, err := client.GetResources(
 		ctx,
 		m.Deployment.Azure.SubscriptionID,
 		m.Deployment.Azure.ResourceGroupName,
-		m.Deployment.Tags,
+		azureTags,
 	)
 	if err != nil {
 		return nil, err
