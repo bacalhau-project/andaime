@@ -134,8 +134,15 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		subscriptionID := viper.GetString("azure.subscription_id")
 		azureProvider, err := azure_provider.NewAzureProviderFunc(cmd.Context(), subscriptionID)
 		if err != nil {
-			return fmt.Errorf("failed to assert provider to common.AzureProviderer")
+			l.Errorf("Failed to create Azure provider: %v", err)
+			return fmt.Errorf("failed to create Azure provider: %w", err)
 		}
+
+		if azureProvider == nil {
+			l.Error("Azure provider is nil after creation")
+			return fmt.Errorf("Azure provider is nil after creation")
+		}
+
 		resourceGroups, err := azureProvider.ListAllResourceGroups(cmd.Context())
 		if err != nil {
 			l.Errorf("Failed to get resource groups: %v", err)
