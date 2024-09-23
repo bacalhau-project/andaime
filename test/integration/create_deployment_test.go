@@ -145,6 +145,8 @@ func (s *IntegrationTestSuite) setupMockClusterDeployer() {
 }
 
 func (s *IntegrationTestSuite) setupMockSSHConfig() {
+	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker run hello-world").
+		Return("Hello from Docker!", nil)
 	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
 		Return(`[{"id": "node1", "public_ip": "1.2.3.4"}]`, nil)
 	s.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
