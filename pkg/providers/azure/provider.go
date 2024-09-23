@@ -508,6 +508,8 @@ func (p *AzureProvider) ListAllResourceGroups(
 	ctx context.Context,
 ) ([]*armresources.ResourceGroup, error) {
 	if p.Client == nil {
+		l := logger.Get()
+		l.Error("Azure client is not initialized")
 		return nil, fmt.Errorf("Azure client is not initialized")
 	}
 	return p.Client.ListAllResourceGroups(ctx)
