@@ -46,7 +46,6 @@ var (
 	GlobalLoggedBufferSize    int = 8192
 	GlobalLogFile             *os.File
 
-	logFilePermissions     = fs.FileMode(LogFilePermissions)
 	debugFilePermissions   = fs.FileMode(DebugFilePermissions)
 	profileFilePermissions = fs.FileMode(ProfileFilePermissions)
 
