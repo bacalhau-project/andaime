@@ -129,7 +129,10 @@ func InitProduction() {
 		var cores []zapcore.Core
 
 		// Console logging with a more readable format
-		consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
+		consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
+		consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		consoleEncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05")
+		consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
 		cores = append(cores, zapcore.NewCore(
 			consoleEncoder,
 			zapcore.AddSync(os.Stdout),
@@ -241,57 +244,61 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 }
 
 func (l *Logger) Debug(msg string, fields ...zap.Field) {
-	l.Logger.Debug(msg, fields...)
+	l.Logger.Debug(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Info(msg string, fields ...zap.Field) {
-	l.Logger.Info(msg, fields...)
+	l.Logger.Info(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Warn(msg string, fields ...zap.Field) {
-	l.Logger.Warn(msg, fields...)
+	l.Logger.Warn(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Error(msg string, fields ...zap.Field) {
-	l.Logger.Error(msg, fields...)
+	l.Logger.Error(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Fatal(msg string, fields ...zap.Field) {
-	l.Logger.Fatal(msg, fields...)
+	l.Logger.Fatal(formatMessage(msg), fields...)
 	// No need to sync here as Fatal will exit the program
+}
+
+func formatMessage(msg string) string {
+	return strings.TrimPrefix(msg, "andaime\t")
 }
 
 func (l *Logger) Debugf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Debug(msg)
+	l.Logger.Debug(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Infof(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Info(msg)
+	l.Logger.Info(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Warnf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Warn(msg)
+	l.Logger.Warn(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Errorf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Error(msg)
+	l.Logger.Error(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Fatalf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Fatal(msg)
+	l.Logger.Fatal(formatMessage(msg))
 	// No need to sync here as Fatalf will exit the program
 }
 
