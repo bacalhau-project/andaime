@@ -106,6 +106,9 @@ func getLogLevel(logLevel string) zapcore.Level {
 }
 func InitProduction() {
 	once.Do(func() {
+		// Enable console logging by default
+		GlobalEnableConsoleLogger = true
+
 		fmt.Printf(
 			"Initializing logger with: Console=%v, File=%v, Buffer=%v, LogPath=%s, LogLevel=%s\n",
 			GlobalEnableConsoleLogger,
@@ -140,11 +143,16 @@ func InitProduction() {
 		encoderConfig := zapcore.EncoderConfig{
 			TimeKey:        "time",
 			LevelKey:       "level",
-			MessageKey:     "message",
+			NameKey:        "logger",
+			CallerKey:      "caller",
+			FunctionKey:    zapcore.OmitKey,
+			MessageKey:     "msg",
+			StacktraceKey:  "stacktrace",
 			LineEnding:     zapcore.DefaultLineEnding,
 			EncodeLevel:    zapcore.LowercaseLevelEncoder,
 			EncodeTime:     zapcore.ISO8601TimeEncoder,
 			EncodeDuration: zapcore.SecondsDurationEncoder,
+			EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 
 		var cores []zapcore.Core
@@ -185,7 +193,7 @@ func InitProduction() {
 		}
 
 		core := zapcore.NewTee(cores...)
-		globalLogger = zap.New(core)
+		globalLogger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 
 		if GlobalLogFile == nil {
 			fmt.Println("Warning: GlobalLogFile is nil after initialization")
@@ -251,7 +259,12 @@ func Get() *Logger {
 	defer loggerMutex.RUnlock()
 
 	if globalLogger == nil {
-		InitProduction()
+		loggerMutex.RUnlock()
+		loggerMutex.Lock()
+		defer loggerMutex.Unlock()
+		if globalLogger == nil {
+			InitProduction()
+		}
 	}
 	return &Logger{Logger: globalLogger, verbose: false}
 }
