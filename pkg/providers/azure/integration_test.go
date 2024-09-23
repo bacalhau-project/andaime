@@ -48,7 +48,6 @@ func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	s.Require().NoError(err)
 
 	viper.Set("azure.subscription_id", "test-subscription-id")
-	viper.Set("azure.resource_group_name", "test-resource-group")
 	viper.Set("azure.resource_group_location", "eastus")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)

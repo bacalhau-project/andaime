@@ -96,7 +96,6 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 		viper.Set("azure.default_location", "eastus2")
 		viper.Set("azure.default_machine_type", "Standard_DS5_v2")
 		viper.Set("azure.resource_group_location", "eastus2")
-		viper.Set("azure.resource_group_name", "test-1292-rg")
 		viper.Set("azure.default_disk_size_gb", 30)
 		viper.Set("azure.machines", []interface{}{
 			map[string]interface{}{
@@ -319,7 +318,6 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 
 			if tt.provider == models.DeploymentTypeAzure {
 				s.Equal("4a45a76b-5754-461d-84a1-f5e47b0a7198", m.Deployment.Azure.SubscriptionID)
-				s.Equal("test-1292-rg", m.Deployment.Azure.ResourceGroupName)
 			} else {
 				s.Equal("test-1292-gcp", m.Deployment.GCP.ProjectID)
 				s.Equal("org-1234567890", m.Deployment.GCP.OrganizationID)
