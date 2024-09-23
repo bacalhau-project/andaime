@@ -115,6 +115,13 @@ func NewAzureProvider(
 		return nil, fmt.Errorf("tags are not set in configuration")
 	}
 
+	// Initialize the Azure client
+	client, err := NewAzureClientFunc(subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure client: %w", err)
+	}
+	provider.Client = client
+
 	return provider, nil
 }
 
@@ -500,6 +507,9 @@ func (p *AzureProvider) GetSKUsByLocation(
 func (p *AzureProvider) ListAllResourceGroups(
 	ctx context.Context,
 ) ([]*armresources.ResourceGroup, error) {
+	if p.Client == nil {
+		return nil, fmt.Errorf("Azure client is not initialized")
+	}
 	return p.Client.ListAllResourceGroups(ctx)
 }
 
