@@ -138,17 +138,13 @@ func InitProduction() {
 		atom := zap.NewAtomicLevelAt(logLevel)
 
 		encoderConfig := zapcore.EncoderConfig{
-			TimeKey:  "time",
-			LevelKey: "level",
-			// NameKey:    "logger",
-			// CallerKey:  "caller",
-			MessageKey: "message",
-			// StacktraceKey: "stacktrace",
+			TimeKey:        "time",
+			LevelKey:       "level",
+			MessageKey:     "message",
 			LineEnding:     zapcore.DefaultLineEnding,
 			EncodeLevel:    zapcore.LowercaseLevelEncoder,
 			EncodeTime:     zapcore.ISO8601TimeEncoder,
 			EncodeDuration: zapcore.SecondsDurationEncoder,
-			// EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 
 		var cores []zapcore.Core
@@ -167,29 +163,33 @@ func InitProduction() {
 					fileWriter,
 					atom,
 				))
+				fmt.Printf("Successfully opened log file: %s\n", GlobalLogPath)
 			} else {
 				fmt.Printf("Error opening log file: %v\n", err)
 			}
+		} else {
+			fmt.Println("File logging is disabled")
 		}
 
-		// if GlobalEnableBufferLogger {
-		// 	cores = append(cores, zapcore.NewCore(
-		// 		zapcore.NewConsoleEncoder(encoderConfig),
-		// 		zapcore.AddSync(&GlobalLoggedBuffer),
-		// 		atom,
-		// 	))
-		// }
+		if GlobalEnableConsoleLogger {
+			consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
+			cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
+		}
 
-		// if GlobalEnableConsoleLogger {
-		// 	// If console logging is enabled, add a console core
-		// 	consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
-		// 	cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
-		// }
+		if GlobalEnableBufferLogger {
+			cores = append(cores, zapcore.NewCore(
+				zapcore.NewConsoleEncoder(encoderConfig),
+				zapcore.AddSync(&GlobalLoggedBuffer),
+				atom,
+			))
+		}
 
 		core := zapcore.NewTee(cores...)
-		// globalLogger = zap.New(core, zap.AddCaller())
-
 		globalLogger = zap.New(core)
+
+		if GlobalLogFile == nil {
+			fmt.Println("Warning: GlobalLogFile is nil after initialization")
+		}
 	})
 }
 
