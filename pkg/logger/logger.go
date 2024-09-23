@@ -126,8 +126,6 @@ func InitProduction() {
 
 		config := zap.NewProductionConfig()
 		config.Level = zap.NewAtomicLevelAt(logLevel)
-		config.OutputPaths = []string{"stdout"}
-		config.ErrorOutputPaths = []string{"stderr"}
 
 		var cores []zapcore.Core
 
@@ -161,7 +159,7 @@ func InitProduction() {
 		}
 
 		core := zapcore.NewTee(cores...)
-		logger := zap.New(core)
+		logger := zap.New(core, zap.AddCaller())
 
 		globalLogger = logger.Named("andaime")
 
