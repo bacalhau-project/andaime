@@ -31,6 +31,7 @@ import (
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
@@ -93,7 +94,7 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 		viper.Set("azure.subscription_id", "4a45a76b-5754-461d-84a1-f5e47b0a7198")
 		viper.Set("azure.default_count_per_zone", 1)
 		viper.Set("azure.default_location", "eastus2")
-		viper.Set("azure.default_machine_type", "Standard_D2s_v3")
+		viper.Set("azure.default_machine_type", "Standard_DS5_v2")
 		viper.Set("azure.resource_group_location", "eastus2")
 		viper.Set("azure.resource_group_name", "test-1292-rg")
 		viper.Set("azure.default_disk_size_gb", 30)
@@ -239,10 +240,12 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
 					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
 
-				s.azureProvider.SetAzureClient(mockAzureClient)
 				azure_provider.NewAzureProviderFunc = func(ctx context.Context,
 					subscriptionID string) (*azure_provider.AzureProvider, error) {
 					return s.azureProvider, nil
+				}
+				azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interface.AzureClienter, error) {
+					return mockAzureClient, nil
 				}
 				err = azure.ExecuteCreateDeployment(cmd, []string{})
 				s.Require().NoError(err)

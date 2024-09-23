@@ -51,6 +51,13 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
 
+	client, err := azure.NewAzureClientFunc(subscriptionID)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to create Azure client: %v", err))
+		return fmt.Errorf("failed to create Azure client: %w", err)
+	}
+	azureProvider.SetAzureClient(client)
+
 	// Prepare the deployment
 	deployment, err := azureProvider.PrepareDeployment(ctx)
 	if err != nil {
@@ -60,6 +67,12 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	m := display.NewDisplayModel(deployment)
 	machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)
 	if err != nil {
+		if err.Error() == "no machines configuration found for provider azure" {
+			fmt.Println(
+				"You can check the skus available for a location with the command: az vm list-skus -o json -l <ZONE> | jq -r '.[].name'",
+			)
+			return nil
+		}
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
 	m.Deployment.SetMachines(machines)

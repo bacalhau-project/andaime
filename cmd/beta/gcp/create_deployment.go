@@ -67,6 +67,14 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		},
 	)
 	if err != nil {
+		fmt.Println("failed to process machines config: %w", err)
+		if err.Error() == "no machines configuration found for provider gcp" {
+			fmt.Println(
+				`You can check the skus available for a location with the command: 
+gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
+			)
+			return nil
+		}
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
 	deployment.SetMachines(machines)

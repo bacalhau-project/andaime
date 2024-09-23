@@ -108,6 +108,17 @@ func PrepareDeployment(
 		)
 	}
 
+	var defaultCountPerZone int
+	var defaultDiskSizeGB int
+
+	if provider == models.DeploymentTypeAzure {
+		defaultCountPerZone = deployment.Azure.DefaultCountPerZone
+		defaultDiskSizeGB = int(deployment.Azure.DefaultDiskSizeGB)
+	} else if provider == models.DeploymentTypeGCP {
+		defaultCountPerZone = deployment.GCP.DefaultCountPerZone
+		defaultDiskSizeGB = int(deployment.GCP.DefaultDiskSizeGB)
+	}
+
 	orchestratorMachineName := ""
 	orchestratorLocation := ""
 	orchestratorMessagePrinted := false
@@ -117,6 +128,8 @@ func PrepareDeployment(
 			VMSize: viper.GetString(
 				fmt.Sprintf("%s.default_machine_type", strings.ToLower(string(provider))),
 			),
+			DiskSizeGB:   defaultDiskSizeGB,
+			Orchestrator: false,
 		}
 
 		if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
@@ -127,14 +140,18 @@ func PrepareDeployment(
 			case string:
 				parsedCount, err := strconv.Atoi(countValue)
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse count as string: %w", err)
+					l.Infof("No count found for machine %s, setting to default: %d", machine.Name,
+						defaultCountPerZone)
+					parsedCount = defaultCountPerZone
 				}
 				count = parsedCount
 			default:
 				countStr := fmt.Sprintf("%v", countValue)
 				parsedCount, err := strconv.Atoi(countStr)
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse count %q: %w", countStr, err)
+					l.Infof("No count found for machine %s, setting to default: %d", machine.Name,
+						defaultCountPerZone)
+					parsedCount = defaultCountPerZone
 				}
 				count = parsedCount
 			}
@@ -206,6 +223,11 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 			viper.GetInt("azure.default_disk_size_gb"),
 		)
 		deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
+
+		deployment.Azure.DefaultCountPerZone = viper.GetInt("azure.default_count_per_zone")
+		if deployment.Azure.DefaultCountPerZone == 0 {
+			deployment.Azure.DefaultCountPerZone = 1
+		}
 	} else if provider == models.DeploymentTypeGCP {
 		deployment.GCP.ProjectID = viper.GetString("gcp.project_id")
 		if deployment.GCP.ProjectID == "" {
@@ -230,6 +252,14 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 		deployment.GCP.DefaultMachineType = viper.GetString("gcp.default_machine_type")
 		if deployment.GCP.DefaultMachineType == "" {
 			return fmt.Errorf("gcp.default_machine_type is not set")
+		}
+		deployment.GCP.DefaultDiskSizeGB = utils.GetSafeDiskSize(
+			viper.GetInt("gcp.default_disk_size_gb"),
+		)
+
+		deployment.GCP.DefaultCountPerZone = viper.GetInt("gcp.default_count_per_zone")
+		if deployment.GCP.DefaultCountPerZone == 0 {
+			deployment.GCP.DefaultCountPerZone = 1
 		}
 	}
 

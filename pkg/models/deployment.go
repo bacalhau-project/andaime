@@ -257,6 +257,7 @@ type AzureConfig struct {
 	DefaultDiskSizeGB     int32
 	DefaultLocation       string
 	Tags                  map[string]string
+	DefaultCountPerZone   int
 }
 
 type GCPConfig struct {
@@ -270,4 +271,5 @@ type GCPConfig struct {
 	ServiceAccountEmail    string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	Tags                   map[string]string
+	DefaultCountPerZone    int
 }
