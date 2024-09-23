@@ -190,9 +190,6 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 		viper.GetString("general.unique_id"),
 	)
 
-	// Initialize the SSH client if needed (placeholder).
-	// p.SSHClient = sshutils.NewSSHClient(...)
-
 	// Start the update processor goroutine.
 	go display.GetGlobalModelFunc().StartUpdateProcessor(ctx)
 
