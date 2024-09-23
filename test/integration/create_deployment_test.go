@@ -93,7 +93,7 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 		viper.Set("azure.subscription_id", "4a45a76b-5754-461d-84a1-f5e47b0a7198")
 		viper.Set("azure.default_count_per_zone", 1)
 		viper.Set("azure.default_location", "eastus2")
-		viper.Set("azure.default_machine_type", "Standard_D2s_v3")
+		viper.Set("azure.default_machine_type", "Standard_D2_v3")
 		viper.Set("azure.resource_group_location", "eastus2")
 		viper.Set("azure.resource_group_name", "test-1292-rg")
 		viper.Set("azure.default_disk_size_gb", 30)
@@ -192,7 +192,7 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				machine, err := models.NewMachine(
 					tt.provider,
 					"eastus",
-					"Standard_D2s_v3",
+					"Standard_D2_v3",
 					30,
 					models.CloudSpecificInfo{},
 				)
