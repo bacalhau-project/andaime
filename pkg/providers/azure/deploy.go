@@ -406,10 +406,11 @@ func (p *AzureProvider) deployMachine(
 	)
 
 	type viperMachineStruct struct {
-		Location  string `json:"location"`
-		Size      string `json:"size"`
-		PublicIP  string `json:"public_ip"`
-		PrivateIP string `json:"private_ip"`
+		Location            string `json:"location"`
+		Size                string `json:"size"`
+		PublicIP            string `json:"public_ip"`
+		PrivateIP           string `json:"private_ip"`
+		BacalhauProvisioned bool   `json:"bacalhau_provisioned"`
 	}
 
 	allMachines, ok := viper.Get(m.Deployment.ViperPath).(map[string]viperMachineStruct)
@@ -418,10 +419,11 @@ func (p *AzureProvider) deployMachine(
 		allMachines = make(map[string]viperMachineStruct)
 	}
 	allMachines[machine.GetName()] = viperMachineStruct{
-		PublicIP:  machine.GetPublicIP(),
-		PrivateIP: machine.GetPrivateIP(),
-		Location:  machine.GetLocation(),
-		Size:      machine.GetVMSize(),
+		PublicIP:             machine.GetPublicIP(),
+		PrivateIP:            machine.GetPrivateIP(),
+		Location:             machine.GetLocation(),
+		Size:                 machine.GetVMSize(),
+		BacalhauProvisioned:  machine.GetServiceState("Bacalhau") == models.ServiceStateSucceeded,
 	}
 
 	viper.Set(
