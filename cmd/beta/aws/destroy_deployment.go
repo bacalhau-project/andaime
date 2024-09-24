@@ -34,7 +34,17 @@ var destroyDeploymentCmd = &cobra.Command{
 			return fmt.Errorf("failed to destroy deployment: %w", err)
 		}
 
-		cmd.Println("AWS deployment destroyed successfully")
+		// Remove the deployment from the config file
+		deploymentID := viper.GetString("aws.deployment_id")
+		if deploymentID != "" {
+			viper.Set("deployments."+deploymentID, nil)
+			err = viper.WriteConfig()
+			if err != nil {
+				return fmt.Errorf("failed to update config file: %w", err)
+			}
+		}
+
+		cmd.Println("AWS deployment destroyed successfully and removed from config")
 		return nil
 	},
 }
