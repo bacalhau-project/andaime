@@ -16,6 +16,35 @@ import (
 	"github.com/spf13/viper"
 )
 
+func (cd *ClusterDeployer) ExecuteCustomScript(ctx context.Context, sshConfig sshutils.SSHConfiger, machine models.Machiner) error {
+	l := logger.Get()
+	customScriptPath := viper.GetString("general.custom_script_path")
+	if customScriptPath == "" {
+		l.Info("No custom script specified, skipping execution")
+		return nil
+	}
+
+	l.Infof("Executing custom script on machine %s", machine.GetName())
+
+	// Push the script to the remote machine
+	remoteScriptPath := "/tmp/custom_script.sh"
+	err := sshConfig.PushFile(ctx, customScriptPath, remoteScriptPath, 0755, nil)
+	if err != nil {
+		return fmt.Errorf("failed to push custom script to machine %s: %w", machine.GetName(), err)
+	}
+
+	// Execute the script
+	output, err := sshConfig.ExecuteCommand(ctx, fmt.Sprintf("sudo bash %s", remoteScriptPath), nil)
+	if err != nil {
+		return fmt.Errorf("failed to execute custom script on machine %s: %w", machine.GetName(), err)
+	}
+
+	l.Infof("Custom script output for machine %s: %s", machine.GetName(), output)
+	machine.SetServiceState(models.ServiceTypeScript.Name, models.ServiceStateSucceeded)
+
+	return nil
+}
+
 func isValidScript(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
