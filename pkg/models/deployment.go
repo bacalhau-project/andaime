@@ -91,6 +91,7 @@ type Deployment struct {
 	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	deploymentMutex        sync.RWMutex
+	CustomScriptPath       string
 }
 
 type DeploymentStatus string
