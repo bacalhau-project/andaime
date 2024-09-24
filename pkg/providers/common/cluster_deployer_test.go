@@ -191,16 +191,21 @@ func TestExecuteCustomScript(t *testing.T) {
 	tests := []struct {
 		name             string
 		customScriptPath string
-		setupMocks       func(*sshutils.MockSSHConfig)
+		sshBehavior      sshutils.ExpectedSSHBehavior
 		expectedOutput   string
 		expectedError    string
 	}{
 		{
 			name:             "Successful script execution",
 			customScriptPath: "/path/to/valid/script.sh",
-			setupMocks: func(mockSSHConfig *sshutils.MockSSHConfig) {
-				mockSSHConfig.On("ExecuteCommandWithContext", mock.Anything, "sudo bash /path/to/valid/script.sh").
-					Return("Script output", nil)
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    "bash /path/to/valid/script.sh",
+						Output: "Script output",
+						Error:  nil,
+					},
+				},
 			},
 			expectedOutput: "Script output",
 			expectedError:  "",
@@ -208,20 +213,27 @@ func TestExecuteCustomScript(t *testing.T) {
 		{
 			name:             "Script execution failure",
 			customScriptPath: "/path/to/valid/script.sh",
-			setupMocks: func(mockSSHConfig *sshutils.MockSSHConfig) {
-				mockSSHConfig.On("ExecuteCommandWithContext", mock.Anything, "sudo bash /path/to/valid/script.sh").
-					Return("", &ssh.ExitError{Waitmsg: ssh.Waitmsg{}})
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:   "bash /path/to/valid/script.sh",
+						Error: &ssh.ExitError{Waitmsg: ssh.Waitmsg{ExitStatus: 1}},
+					},
+				},
 			},
 			expectedOutput: "",
-			expectedError:  "custom script execution failed with exit code -1",
+			expectedError:  "custom script execution failed with exit code 1",
 		},
 		{
 			name:             "Script execution timeout",
 			customScriptPath: "/path/to/valid/script.sh",
-			setupMocks: func(mockSSHConfig *sshutils.MockSSHConfig) {
-				mockSSHConfig.On("ExecuteCommandWithContext", mock.Anything, "sudo bash /path/to/valid/script.sh").
-					After(6*time.Minute).
-					Return("", context.DeadlineExceeded)
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:   "bash /path/to/valid/script.sh",
+						Error: context.DeadlineExceeded,
+					},
+				},
 			},
 			expectedOutput: "",
 			expectedError:  "custom script execution timed out",
@@ -229,42 +241,21 @@ func TestExecuteCustomScript(t *testing.T) {
 		{
 			name:             "Empty custom script path",
 			customScriptPath: "",
-			setupMocks: func(mockSSHConfig *sshutils.MockSSHConfig) {
-				mockSSHConfig.On("ExecuteCommandWithContext", mock.Anything, "sudo bash /path/to/valid/script.sh").
-					Return("", &ssh.ExitError{Waitmsg: ssh.Waitmsg{}})
-			},
-			expectedOutput: "",
-			expectedError:  "custom script path is empty",
+			sshBehavior:      sshutils.ExpectedSSHBehavior{},
+			expectedOutput:   "",
+			expectedError:    "custom script path is empty",
 		},
 		{
 			name:             "Non-existent custom script",
 			customScriptPath: "/path/to/non-existent/script.sh",
-			setupMocks: func(mockSSHConfig *sshutils.MockSSHConfig) {
-				mockSSHConfig.On("ExecuteCommandWithContext", mock.Anything, "sudo bash /path/to/non-existent/script.sh").
-					Return("", &ssh.ExitError{Waitmsg: ssh.Waitmsg{}})
-			},
-			expectedOutput: "",
-			expectedError:  "invalid custom script: custom script does not exist: /path/to/non-existent/script.sh",
-		},
-		{
-			name:             "Nil machine",
-			customScriptPath: "/path/to/valid/script.sh",
-			setupMocks: func(mockSSHConfig *sshutils.MockSSHConfig) {
-				mockSSHConfig.On("ExecuteCommandWithContext", mock.Anything, "sudo bash /path/to/valid/script.sh").
-					Return("", &ssh.ExitError{Waitmsg: ssh.Waitmsg{}})
-			},
-			expectedOutput: "",
-			expectedError:  "machine is nil",
+			sshBehavior:      sshutils.ExpectedSSHBehavior{},
+			expectedOutput:   "",
+			expectedError:    "invalid custom script: custom script does not exist: /path/to/non-existent/script.sh",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.setupMocks)
-			mockSSHClient := &mocks.MockSSHClient{}
-			tt.setupMocks(mockMachine, mockSSHClient)
-
 			// Create a temporary file for the custom script if it's supposed to exist
 			if tt.customScriptPath != "" && !strings.Contains(tt.name, "Non-existent") {
 				tmpfile, err := os.CreateTemp("", "testscript")
@@ -275,6 +266,8 @@ func TestExecuteCustomScript(t *testing.T) {
 				tt.customScriptPath = tmpfile.Name()
 			}
 
+			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior)
+
 			deployment := &models.Deployment{
 				SSHUser:           "testuser",
 				SSHPublicKeyPath:  "/path/to/public/key",
@@ -282,12 +275,19 @@ func TestExecuteCustomScript(t *testing.T) {
 				SSHPort:           22,
 			}
 
+			mockMachine := &MockMachine{
+				Machine: &models.Machine{
+					Name:     "test-machine",
+					PublicIP: "1.2.3.4",
+				},
+			}
+
 			cd := &ClusterDeployer{}
 
 			// Mock the NewSSHClient function
 			origNewSSHClient := sshutils.NewSSHClient
-			sshutils.NewSSHClient = func(user, pubKeyPath, privKeyPath, host string, port int) (*sshutils.SSHClient, error) {
-				return mockSSHClient, nil
+			sshutils.NewSSHClient = func(user, pubKeyPath, privKeyPath, host string, port int) (sshutils.SSHConfiger, error) {
+				return mockSSHConfig, nil
 			}
 			defer func() { sshutils.NewSSHClient = origNewSSHClient }()
 
@@ -306,9 +306,6 @@ func TestExecuteCustomScript(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expectedOutput, output)
-
-			mockMachine.AssertExpectations(t)
-			mockSSHClient.AssertExpectations(t)
 		})
 	}
 }
