@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/mocks"
+	"github.com/bacalhau-project/andaime/mocks/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -20,14 +20,14 @@ func TestExecuteCustomScript(t *testing.T) {
 	tests := []struct {
 		name             string
 		customScriptPath string
-		setupMocks       func(*mocks.MockMachiner, *mocks.MockSSHClient)
+		setupMocks       func(*common.MockMachiner, *common.MockSSHClient)
 		expectedOutput   string
 		expectedError    string
 	}{
 		{
 			name:             "Successful script execution",
 			customScriptPath: "/path/to/valid/script.sh",
-			setupMocks: func(mockMachine *mocks.MockMachiner, mockSSHClient *mocks.MockSSHClient) {
+			setupMocks: func(mockMachine *common.MockMachiner, mockSSHClient *common.MockSSHClient) {
 				mockMachine.On("GetName").Return("test-machine")
 				mockMachine.On("GetPublicIP").Return("1.2.3.4")
 				mockSSHClient.On("ExecuteCommandWithContext", mock.Anything, "bash /path/to/valid/script.sh").Return("Script output", nil)
@@ -86,8 +86,8 @@ func TestExecuteCustomScript(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockMachine := &mocks.MockMachiner{}
-			mockSSHClient := &mocks.MockSSHClient{}
+			mockMachine := &common.MockMachiner{}
+			mockSSHClient := &common.MockSSHClient{}
 			tt.setupMocks(mockMachine, mockSSHClient)
 
 			// Create a temporary file for the custom script if it's supposed to exist
