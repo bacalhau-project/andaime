@@ -46,4 +46,3 @@ func ValidateSSHPublicKey(key string) error {
 
 	return nil
 }
-}
