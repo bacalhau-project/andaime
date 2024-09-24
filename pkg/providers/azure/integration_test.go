@@ -10,6 +10,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -21,6 +22,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
+
+var localCustomScriptPath string
+var localCustomScriptContent []byte
 
 type PkgProvidersAzureIntegrationTest struct {
 	suite.Suite
@@ -40,8 +44,19 @@ func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	testConfig, err := testdata.ReadTestAzureConfig()
 	s.Require().NoError(err)
 
+	f, err := os.CreateTemp("", "local_custom_script*.sh")
+	s.Require().NoError(err)
+
+	localCustomScriptContent, err = general.GetLocalCustomScript()
+	s.Require().NoError(err)
+
+	_, err = f.Write(localCustomScriptContent)
+	s.Require().NoError(err)
+
 	_, err = tempConfigFile.Write([]byte(testConfig))
 	s.Require().NoError(err)
+
+	localCustomScriptPath = f.Name()
 
 	viper.SetConfigFile(tempConfigFile.Name())
 	err = viper.ReadInConfig()
@@ -51,6 +66,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	viper.Set("azure.resource_group_location", "eastus")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
+	viper.Set("general.custom_script_path", localCustomScriptPath)
 	viper.Set("azure.default_disk_size_gb", 30)
 
 	s.mockAzureClient = new(azure_mocks.MockAzureClienter)
@@ -61,7 +77,8 @@ func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeAzure)
 
 	s.cleanup = func() {
-		os.Remove(tempConfigFile.Name())
+		_ = os.Remove(tempConfigFile.Name())
+		_ = os.Remove(localCustomScriptPath)
 		viper.Reset()
 	}
 }
@@ -172,6 +189,14 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Error:            nil,
 				Times:            3,
 			},
+			{
+				Dst:              "/tmp/custom_script.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				FileContents:     localCustomScriptContent,
+				Times:            3,
+			},
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
@@ -211,6 +236,13 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 			},
 			{
 				Cmd:              "sudo /tmp/install-run-bacalhau.sh",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo bash /tmp/custom_script.sh",
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
@@ -266,8 +298,6 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		return s.mockSSHConfig, nil
 	}
 
-	// Set up a custom script for testing
-	viper.Set("general.custom_script_path", "/path/to/custom_script.sh")
 }
 
 func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {

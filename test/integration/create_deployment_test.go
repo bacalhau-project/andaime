@@ -18,6 +18,7 @@ import (
 	"github.com/bacalhau-project/andaime/cmd"
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -33,6 +34,12 @@ import (
 
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
+)
+
+var (
+	localScriptPath     = "/tmp/local_custom_script.sh"
+	customScriptContent []byte
+	customScriptPath    = "/tmp/custom_script.sh"
 )
 
 type IntegrationTestSuite struct {
@@ -54,8 +61,20 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	s.testSSHPublicKeyPath = publicKeyPath
 	s.testSSHPrivateKeyPath = privateKeyPath
 
+	f, err := os.CreateTemp("", "local_custom_script.sh")
+	s.Require().NoError(err)
+
+	script, err := general.GetLocalCustomScript()
+	s.Require().NoError(err)
+	customScriptContent = script
+
+	_, err = f.Write(script)
+	s.Require().NoError(err)
+	localScriptPath = f.Name()
+
 	s.cleanup = func() {
 		os.Unsetenv("ANDAIME_TEST_MODE")
+		_ = os.Remove(localScriptPath)
 		cleanupPublicKey()
 		cleanupPrivateKey()
 	}
@@ -86,6 +105,7 @@ func (s *IntegrationTestSuite) setupCommonConfig() {
 	viper.Set("general.project_prefix", fmt.Sprintf("test-%d", time.Now().UnixNano()))
 	viper.Set("general.ssh_public_key_path", s.testSSHPublicKeyPath)
 	viper.Set("general.ssh_private_key_path", s.testSSHPrivateKeyPath)
+	viper.Set("general.custom_script_path", localScriptPath)
 }
 
 func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentType) {
@@ -149,6 +169,10 @@ func (s *IntegrationTestSuite) setupMockSSHConfig() {
 		Return("Hello from Docker!", nil)
 	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
 		Return(`[{"id": "node1", "public_ip": "1.2.3.4"}]`, nil)
+	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, fmt.Sprintf("sudo bash %s", customScriptPath)).
+		Return("", nil)
+	s.mockSSHConfig.On("PushFile", mock.Anything, customScriptPath, customScriptContent, mock.Anything).
+		Return(nil)
 	s.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
 	s.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).

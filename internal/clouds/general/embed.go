@@ -69,3 +69,14 @@ func GetBacalhauServiceScript() ([]byte, error) {
 	}
 	return script, nil
 }
+
+//go:embed local_custom_script.sh
+var LocalCustomScript embed.FS
+
+func GetLocalCustomScript() ([]byte, error) {
+	script, err := LocalCustomScript.ReadFile("local_custom_script.sh")
+	if err != nil {
+		return nil, err
+	}
+	return script, nil
+}
