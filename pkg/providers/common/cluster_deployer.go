@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"text/template"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -259,6 +261,10 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
+	if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
+		return cd.HandleDeploymentError(ctx, machine, err)
+	}
+
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
 
@@ -439,6 +445,37 @@ func (cd *ClusterDeployer) VerifyBacalhauDeployment(
 		orchestratorIP,
 		len(nodes),
 	)
+	return nil
+}
+
+func (cd *ClusterDeployer) ExecuteCustomScript(
+	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
+	machine models.Machiner,
+) error {
+	l := logger.Get()
+	customScriptPath := viper.GetString("general.custom_script_path")
+	if customScriptPath == "" {
+		l.Info("No custom script path provided, skipping execution")
+		return nil
+	}
+
+	scriptContent, err := ioutil.ReadFile(customScriptPath)
+	if err != nil {
+		return fmt.Errorf("failed to read custom script: %w", err)
+	}
+
+	remotePath := "/tmp/custom_script.sh"
+	if err := sshConfig.PushFile(ctx, remotePath, scriptContent, true); err != nil {
+		return fmt.Errorf("failed to push custom script: %w", err)
+	}
+
+	if _, err := sshConfig.ExecuteCommand(ctx, fmt.Sprintf("sudo bash %s", remotePath)); err != nil {
+		return fmt.Errorf("failed to execute custom script: %w", err)
+	}
+
+	l.Infof("Custom script executed successfully on machine: %s", machine.GetName())
+	machine.SetCustomScriptExecuted(true)
 	return nil
 }
 
