@@ -30,6 +30,68 @@ func isValidScript(path string) error {
 	return nil
 }
 
+func (cd *ClusterDeployer) ExecuteCustomScript(ctx context.Context, deployment *models.Deployment, machine models.Machiner, customScriptPath string) (string, error) {
+	l := logger.Get()
+
+	if machine == nil {
+		return "", fmt.Errorf("machine is nil")
+	}
+
+	if customScriptPath == "" {
+		return "", fmt.Errorf("custom script path is empty")
+	}
+
+	if err := isValidScript(customScriptPath); err != nil {
+		return "", fmt.Errorf("invalid custom script: %w", err)
+	}
+
+	l.Infof("Executing custom script on machine: %s", machine.GetName())
+
+	var sshClient *sshutils.SSHClient
+	var err error
+	maxRetries := 3
+	retryDelay := 5 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		sshClient, err = sshutils.NewSSHClient(
+			deployment.SSHUser,
+			deployment.SSHPublicKeyPath,
+			deployment.SSHPrivateKeyPath,
+			machine.GetPublicIP(),
+			deployment.SSHPort,
+		)
+		if err == nil {
+			break
+		}
+		l.Errorf("Failed to create SSH client (attempt %d/%d): %v", i+1, maxRetries, err)
+		if i < maxRetries-1 {
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to create SSH client after %d retries: %w", maxRetries, err)
+	}
+	defer sshClient.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute) // Set a 5-minute timeout
+	defer cancel()
+
+	output, err := sshClient.ExecuteCommandWithContext(ctx, fmt.Sprintf("bash %s", customScriptPath))
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("custom script execution timed out")
+		}
+		if exitErr, ok := err.(*ssh.ExitError); ok {
+			return output, fmt.Errorf("custom script execution failed with exit code %d", exitErr.ExitStatus())
+		}
+		return "", fmt.Errorf("failed to execute custom script: %w", err)
+	}
+
+	l.Infof("Custom script output:\n%s", output)
+	return output, nil
+}
+
 func SetDefaultConfigurations(provider models.DeploymentType) {
 	viper.SetDefault("general.project_prefix", "andaime")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
