@@ -1,6 +1,7 @@
 package sshutils
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"strings"
@@ -23,10 +24,16 @@ func ValidateSSHPublicKey(key string) error {
 	if len(parts) < 2 {
 		return fmt.Errorf("invalid SSH public key format")
 	}
-	
+
 	// Check if the key type is supported (ssh-rsa, ssh-ed25519, etc.)
 	keyType := parts[0]
-	supportedTypes := []string{"ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521"}
+	supportedTypes := []string{
+		"ssh-rsa",
+		"ssh-ed25519",
+		"ecdsa-sha2-nistp256",
+		"ecdsa-sha2-nistp384",
+		"ecdsa-sha2-nistp521",
+	}
 	isSupported := false
 	for _, t := range supportedTypes {
 		if keyType == t {
