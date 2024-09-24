@@ -216,7 +216,7 @@ func TestExecuteCustomScript(t *testing.T) {
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
 						Cmd:   "bash /path/to/valid/script.sh",
-						Error: &ssh.ExitError{Waitmsg: ssh.Waitmsg{ExitStatus(): 1}},
+						Error: &ssh.ExitError{Waitmsg: ssh.Waitmsg{ExitStatus: 1}},
 					},
 				},
 			},
@@ -267,13 +267,6 @@ func TestExecuteCustomScript(t *testing.T) {
 
 			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior)
 
-			deployment := &models.Deployment{
-				SSHUser:           "testuser",
-				SSHPublicKeyPath:  "/path/to/public/key",
-				SSHPrivateKeyPath: "/path/to/private/key",
-				SSHPort:           22,
-			}
-
 			mockMachine := &MockMachine{
 				Machine: &models.Machine{
 					Name:     "test-machine",
@@ -287,7 +280,6 @@ func TestExecuteCustomScript(t *testing.T) {
 				context.Background(),
 				mockSSHConfig,
 				mockMachine,
-				tt.customScriptPath,
 			)
 
 			if tt.expectedError != "" {
@@ -298,7 +290,7 @@ func TestExecuteCustomScript(t *testing.T) {
 			}
 
 			if tt.expectedOutput != "" {
-				assert.Equal(t, tt.expectedOutput, mockSSHConfig.LastOutput)
+				assert.Equal(t, tt.expectedOutput, mockSSHConfig.GetLastOutput())
 			}
 		})
 	}
