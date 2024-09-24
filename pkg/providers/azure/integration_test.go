@@ -129,6 +129,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 
 	m.Deployment.Azure.ResourceGroupLocation = "eastus"
 	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
+	m.Deployment.SSHPublicKeyMaterial = "PUBLIC KEY MATERIAL"
 
 	s.testDisplayModel = m
 
@@ -190,7 +191,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 			{
 				Cmd:              "sudo docker run hello-world",
 				ProgressCallback: mock.Anything,
-				Output:           "",
+				Output:           "Hello from Docker!",
 				Error:            nil,
 				Times:            3,
 			},

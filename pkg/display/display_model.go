@@ -159,15 +159,15 @@ func (m *DisplayModel) UpdateStatus(status *models.DisplayStatus) {
 
 		// Explicitly update progress
 		if machine, ok := m.Deployment.Machines[status.Name]; ok {
-			progress, total := machine.ResourcesComplete()
-			logger.WriteToDebugLog(
-				fmt.Sprintf(
-					"UpdateStatus: Machine: %s, Progress: %d, Total: %d",
-					status.Name,
-					progress,
-					total,
-				),
-			)
+			_, _ = machine.ResourcesComplete()
+			// logger.WriteToDebugLog(
+			// 	fmt.Sprintf(
+			// 		"UpdateStatus: Machine: %s, Progress: %d, Total: %d",
+			// 		status.Name,
+			// 		progress,
+			// 		total,
+			// 	),
+			// )
 		}
 	}
 }

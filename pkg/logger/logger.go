@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
 
+	"runtime/debug"
+
 	"github.com/spf13/viper"
 )
 
@@ -65,7 +67,7 @@ func (l *Logger) SetVerbose(verbose bool) {
 func InitLoggerOutputs() {
 	GlobalEnableConsoleLogger = false
 	GlobalEnableFileLogger = true
-	GlobalEnableBufferLogger = false
+	GlobalEnableBufferLogger = true
 	GlobalLogPath = "/tmp/andaime.log"
 	GlobalLogLevel = InfoLogLevel
 	GlobalInstantSync = false
@@ -105,8 +107,8 @@ func getLogLevel(logLevel string) zapcore.Level {
 func InitProduction() {
 	once.Do(func() {
 		// Enable console logging by default
-		GlobalEnableConsoleLogger = true
-		GlobalEnableFileLogger = false
+		GlobalEnableConsoleLogger = false
+		GlobalEnableFileLogger = true
 		GlobalEnableBufferLogger = true
 
 		fmt.Printf(
@@ -128,31 +130,62 @@ func InitProduction() {
 
 		var cores []zapcore.Core
 
-		// Console logging with a more readable format
-		consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
-		consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		consoleEncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05")
-		consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
-		cores = append(cores, zapcore.NewCore(
-			consoleEncoder,
-			zapcore.AddSync(os.Stdout),
-			config.Level,
-		))
-
-		// File logging with JSON format (if enabled)
-		if GlobalEnableFileLogger {
-			fileEncoder := zapcore.NewJSONEncoder(config.EncoderConfig)
-			logFile, _ := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if GlobalEnableConsoleLogger {
+			// Console logging with a more readable format
+			consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
+			consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+			consoleEncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02-15:04:05")
+			consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
 			cores = append(cores, zapcore.NewCore(
-				fileEncoder,
-				zapcore.AddSync(logFile),
+				consoleEncoder,
+				zapcore.AddSync(os.Stdout),
 				config.Level,
 			))
 		}
 
+		// File logging with JSON format (if enabled)
+		if GlobalEnableFileLogger {
+			fileEncoderConfig := zapcore.EncoderConfig{
+				TimeKey:        "time",
+				LevelKey:       "level",
+				NameKey:        "logger",
+				CallerKey:      "caller",
+				MessageKey:     "msg",
+				StacktraceKey:  "stacktrace",
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeLevel:    zapcore.LowercaseLevelEncoder,
+				EncodeTime:     customTimeEncoder,
+				EncodeDuration: zapcore.SecondsDurationEncoder,
+				EncodeCaller:   zapcore.ShortCallerEncoder,
+			}
+			fileEncoder := zapcore.NewJSONEncoder(fileEncoderConfig)
+			logFile, err := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				fmt.Printf("Failed to open log file: %v\n", err)
+			} else {
+				fmt.Printf("Successfully opened log file: %s\n", GlobalLogPath)
+				cores = append(cores, zapcore.NewCore(
+					fileEncoder,
+					zapcore.AddSync(logFile),
+					config.Level,
+				))
+			}
+		}
+
 		// Buffer logging with JSON format (if enabled)
 		if GlobalEnableBufferLogger {
-			bufferEncoder := zapcore.NewJSONEncoder(config.EncoderConfig)
+			bufferEncoderConfig := zapcore.EncoderConfig{
+				TimeKey:        "time",
+				LevelKey:       "level",
+				MessageKey:     "msg",
+				StacktraceKey:  "stacktrace",
+				EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeTime:     customTimeEncoder,
+				EncodeDuration: zapcore.SecondsDurationEncoder,
+				EncodeCaller:   zapcore.ShortCallerEncoder,
+			}
+			bufferEncoder := zapcore.NewConsoleEncoder(bufferEncoderConfig)
 			cores = append(cores, zapcore.NewCore(
 				bufferEncoder,
 				zapcore.AddSync(&GlobalLoggedBuffer),
@@ -496,4 +529,28 @@ func getZapLevel(level string) zapcore.Level {
 		fmt.Printf("Unrecognized log level '%s', defaulting to INFO\n", level)
 		return zapcore.InfoLevel
 	}
+}
+
+func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(fmt.Sprintf("[%s]", t.Format("2006-01-02 15:04:05")))
+}
+
+// LogPanic logs the panic message and stack trace
+func LogPanic(rec interface{}) {
+	stack := debug.Stack()
+	Get().Error("PANIC",
+		zap.Any("recover", rec),
+		zap.String("stack", string(stack)),
+	)
+}
+
+// RecoverAndLog wraps a function with panic recovery and logging
+func RecoverAndLog(f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogPanic(r)
+			panic(r) // re-panic after logging
+		}
+	}()
+	f()
 }

@@ -68,6 +68,7 @@ const (
 type Deployment struct {
 	mu                     sync.RWMutex
 	Name                   string
+	ViperPath              string
 	DeploymentType         DeploymentType
 	Azure                  *AzureConfig
 	GCP                    *GCPConfig
@@ -85,7 +86,7 @@ type Deployment struct {
 	SSHPrivateKeyPath      string
 	SSHPrivateKeyMaterial  string
 	OrchestratorIP         string
-	Tags                   map[string]*string
+	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	deploymentMutex        sync.RWMutex
 }
@@ -114,7 +115,7 @@ func NewDeployment() (*Deployment, error) {
 		Azure:                  &AzureConfig{},
 		GCP:                    &GCPConfig{},
 		ProjectID:              projectID,
-		Tags:                   make(map[string]*string),
+		Tags:                   make(map[string]string),
 		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
 	}
 	return deployment, nil

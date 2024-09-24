@@ -27,7 +27,6 @@ func SetDefaultConfigurations(provider models.DeploymentType) {
 
 	if provider == models.DeploymentTypeAzure {
 		viper.SetDefault("azure.default_count_per_zone", 1)
-		viper.SetDefault("azure.resource_group_name", "andaime-rg")
 		viper.SetDefault("azure.resource_group_location", "eastus")
 		viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
 		viper.SetDefault("azure.default_machine_type", "Standard_B2s")
@@ -206,10 +205,6 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
 
 	if provider == models.DeploymentTypeAzure {
-		deployment.Azure.ResourceGroupName = viper.GetString("azure.resource_group_name")
-		if deployment.Azure.ResourceGroupName == "" {
-			return fmt.Errorf("azure.resource_group_name is not set")
-		}
 		deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
 		if deployment.Azure.ResourceGroupLocation == "" {
 			return fmt.Errorf("azure.resource_group_location is not set")
@@ -229,10 +224,7 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 			deployment.Azure.DefaultCountPerZone = 1
 		}
 	} else if provider == models.DeploymentTypeGCP {
-		deployment.GCP.ProjectID = viper.GetString("gcp.project_id")
-		if deployment.GCP.ProjectID == "" {
-			return fmt.Errorf("gcp.project_id is not set")
-		}
+		deployment.GCP.ProjectID = fmt.Sprintf("%s-%s", deployment.Name, uniqueID)
 		deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
 		if deployment.GCP.OrganizationID == "" {
 			return fmt.Errorf("gcp.organization_id is not set")

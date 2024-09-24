@@ -99,6 +99,9 @@ func (m *DisplayModel) applyBatchedUpdatesCmd() tea.Cmd {
 
 // applyBatchedUpdates applies all batched updates
 func (m *DisplayModel) applyBatchedUpdates() {
+	if len(m.BatchedUpdates) == 0 {
+		return
+	}
 	logger.WriteToDebugLog(fmt.Sprintf("Applying %d batched updates", len(m.BatchedUpdates)))
 	for _, update := range m.BatchedUpdates {
 		m.UpdateStatus(update.Status)
@@ -130,7 +133,7 @@ func (m *DisplayModel) ProcessUpdate(update UpdateAction) {
 	case UpdateTypeResource:
 		machine.SetMachineResourceState(
 			string(update.UpdateData.ResourceType),
-			models.MachineResourceState(update.UpdateData.ResourceState),
+			update.UpdateData.ResourceState,
 		)
 	case UpdateTypeService:
 		machine.SetServiceState(

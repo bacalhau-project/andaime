@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/smithy-go/ptr"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -46,7 +45,7 @@ func (s *PkgProviderAzureProviderTestSuite) TestRandomServiceUpdates() {
 	s.localModel.Deployment = &models.Deployment{
 		Name:     "test-deployment",
 		Machines: make(map[string]models.Machiner),
-		Tags:     map[string]*string{"test": ptr.String("value")},
+		Tags:     map[string]string{"test": "value"},
 	}
 
 	for _, machineName := range testMachines {

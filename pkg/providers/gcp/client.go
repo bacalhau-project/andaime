@@ -233,7 +233,7 @@ func NewGCPClient(
 		}
 	}
 
-	log.Println("DEBUG: GCP client initialized successfully")
+	l.Debug("GCP client initialized successfully")
 
 	// Populate your LiveGCPClient struct (replace with your actual implementation)
 	liveGCPClient := &LiveGCPClient{

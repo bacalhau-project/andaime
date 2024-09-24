@@ -205,22 +205,29 @@ func CreateStateMessage(
 ) string {
 	l := logger.Get()
 	stateEmoji := ""
+	resourceStageString := ""
 	switch resourceState {
 	case ResourceStateNotStarted:
 		stateEmoji = DisplayEmojiNotStarted
+		resourceStageString = "Not Started"
 	case ResourceStatePending:
 		stateEmoji = DisplayEmojiWaiting
+		resourceStageString = "Pending"
 	case ResourceStateRunning:
 		stateEmoji = DisplayEmojiSuccess
+		resourceStageString = "Running"
 	case ResourceStateFailed:
 		stateEmoji = DisplayEmojiFailed
+		resourceStageString = "Failed"
 	case ResourceStateSucceeded:
 		stateEmoji = DisplayEmojiSuccess
+		resourceStageString = "Succeeded"
 	case ResourceStateUnknown:
 		l.Debugf("State Unknown for Resource: %s", resource)
 		l.Debugf("State Resource Name: %s", resourceName)
 		l.Debugf("State Resource State: %d", resourceState)
 		stateEmoji = DisplayEmojiQuestion
+		resourceStageString = "Unknown"
 	}
 
 	// var statusString string
@@ -240,9 +247,11 @@ func CreateStateMessage(
 	// }
 
 	statusString := fmt.Sprintf(
-		"%s %s",
+		"%s %s - %s %s",
 		resource.ShortResourceName,
 		stateEmoji,
+		resourceName,
+		resourceStageString,
 	)
 	return statusString
 }

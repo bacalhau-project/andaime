@@ -143,6 +143,7 @@ func ProcessMachinesConfig(
 				rawMachine.Location,
 				defaultDiskSize,
 				thisVMType,
+				privateKeyPath,
 				privateKeyBytes,
 				sshPort,
 				diskImageFamily,
@@ -207,6 +208,7 @@ func createNewMachine(
 	location string,
 	diskSizeGB int,
 	vmSize string,
+	privateKeyPath string,
 	privateKeyBytes []byte,
 	sshPort int,
 	diskImageFamily string,
@@ -235,6 +237,7 @@ func createNewMachine(
 	newMachine.SetSSHUser("azureuser")
 	newMachine.SetSSHPort(sshPort)
 	newMachine.SetSSHPrivateKeyMaterial(privateKeyBytes)
+	newMachine.SetSSHPrivateKeyPath(privateKeyPath)
 
 	if providerType == models.DeploymentTypeGCP {
 		if diskImageFamily == "" && diskImageURL == "" {

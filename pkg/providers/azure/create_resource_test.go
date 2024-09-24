@@ -25,7 +25,7 @@ type PkgProvidersAzureCreateResourceTestSuite struct {
 	ctx                    context.Context
 	origLogger             *logger.Logger
 	testSSHPublicKeyPath   string
-	testPrivateKeyPath     string
+	testSSHPrivateKeyPath  string
 	cleanupPublicKey       func()
 	cleanupPrivateKey      func()
 	mockAzureClient        *azure_mocks.MockAzureClienter
@@ -39,7 +39,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) SetupSuite() {
 	suite.ctx = context.Background()
 	suite.testSSHPublicKeyPath,
 		suite.cleanupPublicKey,
-		suite.testPrivateKeyPath,
+		suite.testSSHPrivateKeyPath,
 		suite.cleanupPrivateKey = testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 
 	suite.mockAzureClient = new(azure_mocks.MockAzureClienter)
@@ -68,7 +68,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) SetupTest() {
 	viper.Reset()
 	pkg_testutil.SetupViper(models.DeploymentTypeAzure,
 		suite.testSSHPublicKeyPath,
-		suite.testPrivateKeyPath,
+		suite.testSSHPrivateKeyPath,
 	)
 
 	suite.azureProvider = &AzureProvider{}
@@ -126,6 +126,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 				Azure: &models.AzureConfig{
 					ResourceGroupName: "test-rg-name",
 				},
+				SSHPublicKeyMaterial: "PUBLIC KEY MATERIAL",
 			}
 
 			for _, location := range tt.locations {
@@ -135,7 +136,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 						Name:              machineName,
 						Location:          location,
 						SSHPublicKeyPath:  suite.testSSHPublicKeyPath,
-						SSHPrivateKeyPath: suite.testPrivateKeyPath,
+						SSHPrivateKeyPath: suite.testSSHPrivateKeyPath,
 					})
 				}
 			}

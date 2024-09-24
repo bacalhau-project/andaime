@@ -182,15 +182,7 @@ func (p *AzureProvider) Initialize(ctx context.Context) error {
 		p.SSHPort = DefaultSSHPort // Default SSH port.
 	}
 
-	p.ResourceGroupName = viper.GetString("azure.resource_group_name")
-	if p.ResourceGroupName == "" {
-		// Check if the resource group name already contains a timestamp
-		rgName := viper.GetString("azure.resource_group_name")
-		if rgName == "" {
-			rgName = "andaime-rg" + "-" + time.Now().Format("20060102150405")
-		}
-		p.ResourceGroupName = rgName
-	}
+	p.ResourceGroupName = "andaime-rg" + "-" + time.Now().Format("20060102150405")
 
 	p.Tags = GenerateTags(
 		viper.GetString("general.project_prefix"),
@@ -364,9 +356,19 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) error {
 				writeToDebugLog(
 					"All resources provisioned and machines completed, stopping resource polling",
 				)
+
+				// Just for visual, set all the machines to complete
+				for _, machine := range m.Deployment.Machines {
+					allMachineResources := machine.GetMachineResources()
+					for _, resource := range allMachineResources {
+						machine.SetMachineResourceState(
+							resource.ResourceName,
+							models.ResourceStateSucceeded,
+						)
+					}
+				}
 				return nil
 			}
-
 		case <-quit:
 			l.Debug("Quit signal received, exiting resource polling")
 			writeToDebugLog("Quit signal received, exiting resource polling")

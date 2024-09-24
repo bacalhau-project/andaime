@@ -63,6 +63,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
+	deployment.Azure.ResourceGroupName = azureProvider.ResourceGroupName
 
 	m := display.NewDisplayModel(deployment)
 	machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)

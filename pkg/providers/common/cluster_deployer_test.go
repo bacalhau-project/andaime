@@ -56,7 +56,12 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionAllMachinesWit
 				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{Cmd: "sudo /tmp/install-docker.sh", Error: nil, Times: 1},
-					{Cmd: "sudo docker run hello-world", Error: nil, Times: 1},
+					{
+						Cmd:    "sudo docker run hello-world",
+						Error:  nil,
+						Times:  1,
+						Output: "Hello from Docker!",
+					},
 					{Cmd: "sudo /tmp/install-core-packages.sh", Error: nil, Times: 1},
 				},
 			},

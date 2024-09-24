@@ -241,13 +241,6 @@ func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment_MissingReq
 		expectedErr string
 	}{
 		{
-			name: "Missing resource_group_name",
-			setupConfig: func() {
-				viper.Set("azure.resource_group_name", "")
-			},
-			expectedErr: "azure.resource_group_name is not set",
-		},
-		{
 			name: "Missing resource_group_location",
 			setupConfig: func() {
 				viper.Set("azure.resource_group_location", "")

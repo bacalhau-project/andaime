@@ -16,7 +16,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	rgName string,
 	rgLocation string,
 	tags map[string]string) (*armresources.ResourceGroup, error) {
-	log := logger.Get()
+	l := logger.Get()
 
 	// Get the base resource group name from the config
 	if rgName == "" {
@@ -39,6 +39,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 
 	dereferencedTags := make(map[string]*string)
 	for k, v := range tags {
+		v := v
 		dereferencedTags[k] = &v
 	}
 
@@ -54,7 +55,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 		return nil, fmt.Errorf("failed to create resource group: %v", err)
 	}
 
-	log.Infof("Created resource group: %s", rgName)
+	l.Infof("Created resource group: %s", rgName)
 	return &result.ResourceGroup, nil
 }
 

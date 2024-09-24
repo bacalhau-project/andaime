@@ -20,7 +20,7 @@ import (
 
 type ConfigDeployment struct {
 	Name         string
-	Type         models.DeploymentType // "Azure" or "AWS"
+	Type         models.DeploymentType // "Azure" or "AWS" or "GCP"
 	ID           string                // Resource Group for Azure, VPC ID for AWS
 	FullViperKey string                // The full key in the Viper config file
 }
@@ -74,54 +74,60 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	// Extract deployments from config
 	var deployments []ConfigDeployment
-	azureDeployments := viper.Get("deployments.azure")
-	if azureMap, ok := azureDeployments.(map[string]interface{}); ok {
-		for name, details := range azureMap {
-			deploymentDetails, ok := details.(map[string]interface{})
+	allDeployments := viper.Get("deployments")
+	if deploymentMap, ok := allDeployments.(map[string]interface{}); ok {
+		for _, deploymentDetails := range deploymentMap {
+			deploymentClouds, ok := deploymentDetails.(map[string]interface{})
 			if !ok {
 				l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
-				l.Debugf("Details: %v", details)
+				l.Debugf("Details: %v", deploymentDetails)
 				continue
 			}
-			resourceGroupName, ok := deploymentDetails["resourcegroupname"].(string)
-			if !ok {
-				l.Warnf("Resource group name not found for Azure deployment %s, skipping", name)
-				continue
+			if deploymentClouds["azure"] != nil {
+				deploymentCloudsAzure, ok := deploymentClouds["azure"].(map[string]interface{})
+				if !ok {
+					l.Warnf("Does not appear to have a resource group name %s, skipping", name)
+					l.Debugf("Details: %v", deploymentCloudsAzure)
+					continue
+				}
+
+				for rgName := range deploymentCloudsAzure {
+					dep := ConfigDeployment{
+						Name: rgName,
+						Type: models.DeploymentTypeAzure,
+						ID:   rgName,
+					}
+					deployments = append(deployments, dep)
+				}
 			}
-			dep := ConfigDeployment{
-				Name: name,
-				Type: models.DeploymentTypeAzure,
-				ID:   resourceGroupName,
-			}
-			deployments = append(deployments, dep)
 		}
 	} else {
 		l.Warn("Azure deployments are not in the expected format")
 	}
 
-	awsDeployments := viper.Get("deployments.aws")
-	if awsMap, ok := awsDeployments.(map[string]interface{}); ok {
-		for name, details := range awsMap {
-			deploymentDetails, ok := details.(map[string]interface{})
-			if !ok {
-				l.Warnf("Invalid deployment details for AWS deployment %s, skipping", name)
-				continue
-			}
-			vpcID, ok := deploymentDetails["vpc_id"].(string)
-			if !ok {
-				l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
-				continue
-			}
-			dep := ConfigDeployment{
-				Name: name,
-				Type: "AWS",
-				ID:   vpcID,
-			}
-			deployments = append(deployments, dep)
-		}
-	} else {
-		l.Warn("AWS deployments are not in the expected format")
-	}
+	// awsDeployments := viper.Get("deployments.aws")
+	// if awsMap, ok := awsDeployments.(map[string]interface{}); ok {
+	// 	for name, details := range awsMap {
+	// 		deploymentDetails, ok := details.(map[string]interface{})
+	// 		if !ok {
+	// 			l.Warnf("Invalid deployment details for AWS deployment %s, skipping", name)
+	// 			continue
+	// 		}
+	// 		vpcID, ok := deploymentDetails["vpc_id"].(string)
+	// 		if !ok {
+	// 			l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
+	// 			continue
+	// 		}
+	// 		dep := ConfigDeployment{
+	// 			Name: name,
+	// 			Type: "AWS",
+	// 			ID:   vpcID,
+	// 		}
+	// 		deployments = append(deployments, dep)
+	// 	}
+	// } else {
+	// 	l.Warn("AWS deployments are not in the expected format")
+	// }
 
 	l.Debugf("Found %d deployments", len(deployments))
 
@@ -140,7 +146,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 		if azureProvider == nil {
 			l.Error("Azure provider is nil after creation")
-			return fmt.Errorf("Azure provider is nil after creation")
+			return fmt.Errorf("azure provider is nil after creation")
 		}
 
 		resourceGroups, err := azureProvider.ListAllResourceGroups(cmd.Context())

@@ -287,13 +287,6 @@ func (suite *CmdBetaGCPCreateDeploymentSuite) TestPrepareDeployment_MissingRequi
 		expectedErr string
 	}{
 		{
-			name: "Missing project_id",
-			setupConfig: func() {
-				viper.Set("gcp.project_id", "")
-			},
-			expectedErr: "gcp.project_id is not set",
-		},
-		{
 			name: "Missing organization_id",
 			setupConfig: func() {
 				viper.Set("gcp.organization_id", "")

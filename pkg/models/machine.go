@@ -529,9 +529,8 @@ func (mach *Machine) verifyDocker(ctx context.Context) error {
 		return err
 	}
 
-	if strings.Contains(output, "Hello from Docker!") {
-		l.Errorf("Failed to verify Docker on machine %s: %v", mach.Name, err)
-		return err
+	if !strings.Contains(output, "Hello from Docker!") {
+		return fmt.Errorf("failed to verify Docker on machine %s: output: %s", mach.Name, output)
 	}
 
 	return nil

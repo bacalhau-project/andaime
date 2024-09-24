@@ -5,7 +5,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"sort"
@@ -14,6 +13,7 @@ import (
 
 	"strings"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/briandowns/spinner"
 	"gopkg.in/yaml.v2"
 )
@@ -80,6 +80,7 @@ func (ls *lineSpinner) update() {
 
 func main() {
 	var wg sync.WaitGroup
+	l := logger.Get()
 	errorChan := make(chan error, 2)
 	removedZones := make(chan string, 100)
 
@@ -124,7 +125,7 @@ func main() {
 
 	// Print errors
 	for err := range errorChan {
-		log.Println(err)
+		l.Println(err)
 	}
 
 	// Print removed zones

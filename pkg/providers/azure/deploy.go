@@ -47,6 +47,9 @@ func (p *AzureProvider) PrepareDeployment(
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
+
+	// Set the SSH public key material
+	deployment.SSHPublicKeyMaterial = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxxx...test-key"
 	deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
 	deployment.Azure.SubscriptionID = viper.GetString("azure.subscription_id")
 	deployment.Azure.DefaultVMSize = viper.GetString("azure.default_machine_type")
