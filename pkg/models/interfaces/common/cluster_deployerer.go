@@ -15,6 +15,7 @@ type ClusterDeployerer interface {
 
 	ProvisionAllMachinesWithPackages(ctx context.Context) error
 	ProvisionPackagesOnMachine(ctx context.Context, machineName string) error
+	ExecuteCustomScript(ctx context.Context, sshConfig sshutils.SSHConfiger, machine models.Machiner) error
 
 	ProvisionBacalhauCluster(ctx context.Context) error
 	ProvisionOrchestrator(ctx context.Context, machineName string) error
