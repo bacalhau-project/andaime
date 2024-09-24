@@ -86,6 +86,11 @@ func PrepareDeployment(
 		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
 	}
 
+	// Validate the SSH public key format
+	if err := sshutils.ValidateSSHPublicKey(deployment.SSHPublicKeyMaterial); err != nil {
+		return nil, fmt.Errorf("invalid SSH public key: %w", err)
+	}
+
 	deployment.SSHUser = viper.GetString("general.ssh_user")
 	deployment.SSHPort = viper.GetInt("general.ssh_port")
 	if deployment.SSHPort == 0 {
