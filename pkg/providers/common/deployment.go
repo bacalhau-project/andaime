@@ -16,6 +16,20 @@ import (
 	"github.com/spf13/viper"
 )
 
+func isValidScript(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("custom script does not exist: %s", path)
+		}
+		return fmt.Errorf("error checking custom script: %w", err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("custom script is empty: %s", path)
+	}
+	return nil
+}
+
 func SetDefaultConfigurations(provider models.DeploymentType) {
 	viper.SetDefault("general.project_prefix", "andaime")
 	viper.SetDefault("general.log_path", "/var/log/andaime")
@@ -79,6 +93,15 @@ func PrepareDeployment(
 
 	if err := deployment.UpdateViperConfig(); err != nil {
 		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
+	}
+
+	// Check if a custom script is specified and validate it
+	customScriptPath := viper.GetString("general.custom_script")
+	if customScriptPath != "" {
+		if err := isValidScript(customScriptPath); err != nil {
+			return nil, fmt.Errorf("invalid custom script: %w", err)
+		}
+		deployment.CustomScriptPath = customScriptPath
 	}
 
 	// Add this after setting provider-specific configurations
