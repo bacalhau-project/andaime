@@ -20,7 +20,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 )
@@ -149,15 +148,10 @@ func (c *LiveAzureClient) DeployTemplate(
 		wrappedParams[k] = map[string]interface{}{"Value": v}
 	}
 
-	paramsMap, err := utils.StructToMap(wrappedParams)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert struct to map: %w", err)
-	}
-
 	deploymentParams := armresources.Deployment{
 		Properties: &armresources.DeploymentProperties{
 			Template:   template,
-			Parameters: &paramsMap,
+			Parameters: &wrappedParams,
 			Mode:       to.Ptr(armresources.DeploymentModeIncremental),
 		},
 		Tags: tags,
@@ -197,9 +191,8 @@ func (c *LiveAzureClient) ListAllResourceGroups(
 		if err != nil {
 			return nil, err
 		}
-		for _, rg := range page.ResourceGroupListResult.Value {
-			resourceGroups = append(resourceGroups, rg)
-		}
+
+		resourceGroups = append(resourceGroups, page.ResourceGroupListResult.Value...)
 	}
 	return resourceGroups, nil
 }
@@ -441,7 +434,7 @@ func (c *LiveAzureClient) GetVMExternalIP(
 		return "", err
 	}
 
-	if nic.Properties.IPConfigurations == nil || len(nic.Properties.IPConfigurations) == 0 {
+	if len(nic.Properties.IPConfigurations) == 0 {
 		return "", fmt.Errorf("no IP configurations found for NIC %s", parsedNIC.Name)
 	}
 

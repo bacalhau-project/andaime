@@ -404,7 +404,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 				s.Contains(err.Error(), tt.expectedError)
 			} else {
 				s.NoError(err)
-				s.Equal(models.ServiceStateSucceeded, s.deployment.Machines["test"].GetServiceState("Bacalhau"))
+				s.Equal(models.ServiceStateSucceeded, s.deployment.Machines["test"].GetServiceState(models.ServiceTypeBacalhau.Name))
 			}
 		})
 	}
@@ -510,7 +510,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 	s.NoError(err)
 	s.Equal(
 		models.ServiceStateSucceeded,
-		s.deployment.Machines["orch"].GetServiceState("Bacalhau"),
+		s.deployment.Machines["orch"].GetServiceState(models.ServiceTypeBacalhau.Name),
 	)
 	s.NotEmpty(s.deployment.OrchestratorIP)
 
@@ -616,7 +616,9 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorkers() {
 		s.NoError(err)
 		s.Equal(
 			models.ServiceStateSucceeded,
-			s.deployment.Machines[machine.GetName()].GetServiceState("Bacalhau"),
+			s.deployment.Machines[machine.GetName()].GetServiceState(
+				models.ServiceTypeBacalhau.Name,
+			),
 		)
 	}
 

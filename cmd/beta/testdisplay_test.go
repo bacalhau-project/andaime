@@ -153,9 +153,10 @@ func TestDisplayLayout(t *testing.T) {
 			machine.GetOrchestratorIP(),
 			machine.GetPrivateIP(),
 			display.ConvertOrchestratorToEmoji(machine.IsOrchestrator()),
-			display.ConvertStateToEmoji(machine.GetServiceState("SSH")),
-			display.ConvertStateToEmoji(machine.GetServiceState("Docker")),
-			display.ConvertStateToEmoji(machine.GetServiceState("Bacalhau")),
+			display.ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeSSH.Name)),
+			display.ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeDocker.Name)),
+			display.ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeBacalhau.Name)),
+			display.ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeScript.Name)),
 			"",
 		)
 		assert.Equal(

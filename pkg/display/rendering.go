@@ -18,7 +18,8 @@ import (
 
 // Constants for rendering
 const (
-	StatusLength         = 30
+	StatusLength         = 40
+	EmojiColumnWidth     = 2
 	TickerInterval       = 100 * time.Millisecond
 	ProgressBarPadding   = 2
 	secondsPerMinute     = 60
@@ -44,10 +45,11 @@ var DisplayColumns = []DisplayColumn{
 	{Title: "Time", Width: 10},
 	{Title: "Pub IP", Width: 20},
 	{Title: "Priv IP", Width: 20},
-	{Title: models.DisplayTextOrchestrator, Width: 2, EmojiColumn: true},
-	{Title: models.DisplayTextSSH, Width: 2, EmojiColumn: true},
-	{Title: models.DisplayTextDocker, Width: 2, EmojiColumn: true},
-	{Title: models.DisplayTextBacalhau, Width: 2, EmojiColumn: true},
+	{Title: models.DisplayTextOrchestrator, Width: EmojiColumnWidth, EmojiColumn: true},
+	{Title: models.DisplayTextSSH, Width: EmojiColumnWidth, EmojiColumn: true},
+	{Title: models.DisplayTextDocker, Width: EmojiColumnWidth, EmojiColumn: true},
+	{Title: models.DisplayTextBacalhau, Width: EmojiColumnWidth, EmojiColumn: true},
+	{Title: models.DisplayTextCustomScript, Width: EmojiColumnWidth, EmojiColumn: true},
 	{Title: "", Width: 1},
 }
 
@@ -211,9 +213,10 @@ func (m *DisplayModel) getMachineRowData(machine models.Machiner) []string {
 		machine.GetPublicIP(),
 		machine.GetPrivateIP(),
 		ConvertOrchestratorToEmoji(machine.IsOrchestrator()),
-		ConvertStateToEmoji(machine.GetServiceState("SSH")),
-		ConvertStateToEmoji(machine.GetServiceState("Docker")),
-		ConvertStateToEmoji(machine.GetServiceState("Bacalhau")),
+		ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeSSH.Name)),
+		ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeDocker.Name)),
+		ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeBacalhau.Name)),
+		ConvertStateToEmoji(machine.GetServiceState(models.ServiceTypeScript.Name)),
 		"",
 	}
 }

@@ -147,6 +147,7 @@ networkinterfaces
 networkmanagement
 networksecuritygroup
 networksecuritygroups
+nistp
 noctx
 noinit
 nolint

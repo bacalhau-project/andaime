@@ -44,6 +44,7 @@ type Machiner interface {
 	GetSSHPublicKeyMaterial() []byte
 	SetSSHPublicKeyMaterial([]byte)
 	GetSSHPublicKeyPath() string
+	SetSSHPublicKeyPath(path string)
 	GetSSHPrivateKeyMaterial() []byte
 	SetSSHPrivateKeyMaterial([]byte)
 	GetSSHPrivateKeyPath() string
@@ -247,15 +248,19 @@ func (mach *Machine) SetLocation(location string) error {
 }
 
 func (mach *Machine) SSHEnabled() bool {
-	return mach.GetServiceState("SSH") == ServiceStateSucceeded
+	return mach.GetServiceState(ServiceTypeSSH.Name) == ServiceStateSucceeded
 }
 
 func (mach *Machine) DockerEnabled() bool {
-	return mach.GetServiceState("Docker") == ServiceStateSucceeded
+	return mach.GetServiceState(ServiceTypeDocker.Name) == ServiceStateSucceeded
 }
 
 func (mach *Machine) BacalhauEnabled() bool {
-	return mach.GetServiceState("Bacalhau") == ServiceStateSucceeded
+	return mach.GetServiceState(ServiceTypeBacalhau.Name) == ServiceStateSucceeded
+}
+
+func (mach *Machine) CustomScriptEnabled() bool {
+	return mach.GetServiceState(ServiceTypeScript.Name) == ServiceStateSucceeded
 }
 
 func (mach *Machine) Complete() bool {
@@ -513,7 +518,7 @@ func (mach *Machine) InstallDockerAndCorePackages(ctx context.Context) error {
 func (mach *Machine) installDocker(ctx context.Context) error {
 	return mach.installService(
 		ctx,
-		"Docker",
+		ServiceTypeDocker.Name,
 		"install-docker.sh",
 		general.GetInstallDockerScript,
 	)
@@ -549,7 +554,7 @@ func (mach *Machine) verifyDocker(ctx context.Context) error {
 func (mach *Machine) installCorePackages(ctx context.Context) error {
 	return mach.installService(
 		ctx,
-		"CorePackages",
+		ServiceTypeCorePackages.Name,
 		"install-core-packages.sh",
 		general.GetInstallCorePackagesScript,
 	)

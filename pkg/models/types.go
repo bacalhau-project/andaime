@@ -187,6 +187,7 @@ const (
 	DisplayTextSSH          = "S"
 	DisplayTextDocker       = "D"
 	DisplayTextBacalhau     = "B"
+	DisplayTextCustomScript = "X"
 )
 
 func CreateStateMessageWithText(
@@ -324,6 +325,7 @@ var RequiredServices = []ServiceType{
 	ServiceTypeSSH,
 	ServiceTypeDocker,
 	ServiceTypeBacalhau,
+	ServiceTypeScript,
 }
 
 func machineNeedsUpdating(

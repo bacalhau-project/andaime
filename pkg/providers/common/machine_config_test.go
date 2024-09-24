@@ -15,18 +15,20 @@ type PkgProvidersCommonMachineConfigTestSuite struct {
 	suite.Suite
 	ctx                    context.Context
 	testPrivateKeyPath     string
+	testPublicKeyPath      string
 	cleanup                func()
 	originalGetGlobalModel func() *display.DisplayModel
 }
 
 func (s *PkgProvidersCommonMachineConfigTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	testPublicKeyPath, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	s.cleanup = func() {
 		cleanupPublicKey()
 		cleanupPrivateKey()
 	}
 	s.testPrivateKeyPath = testPrivateKeyPath
+	s.testPublicKeyPath = testPublicKeyPath
 	s.originalGetGlobalModel = display.GetGlobalModelFunc
 }
 
@@ -38,6 +40,7 @@ func (s *PkgProvidersCommonMachineConfigTestSuite) TearDownSuite() {
 func (s *PkgProvidersCommonMachineConfigTestSuite) SetupTest() {
 	viper.Reset()
 	viper.Set("general.ssh_private_key_path", s.testPrivateKeyPath)
+	viper.Set("general.ssh_public_key_path", s.testPublicKeyPath)
 	viper.Set("general.ssh_port", 22)
 	viper.Set("general.project_prefix", "test")
 }

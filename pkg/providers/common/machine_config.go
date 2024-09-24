@@ -74,6 +74,16 @@ func ProcessMachinesConfig(
 		return nil, nil, fmt.Errorf(errorMessage)
 	}
 
+	publicKeyPath := viper.GetString("general.ssh_public_key_path")
+	if publicKeyPath == "" {
+		return nil, nil, fmt.Errorf("general.ssh_public_key_path is not set")
+	}
+
+	publicKeyBytes, err := sshutils.ReadPublicKey(publicKeyPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read public key: %v", err)
+	}
+
 	sshPort, err := strconv.Atoi(viper.GetString("general.ssh_port"))
 	if err != nil {
 		l.Warnf("failed to parse ssh_port, using default 22")
@@ -145,6 +155,8 @@ func ProcessMachinesConfig(
 				thisVMType,
 				privateKeyPath,
 				privateKeyBytes,
+				publicKeyPath,
+				publicKeyBytes,
 				sshPort,
 				diskImageFamily,
 				diskImageURL,
@@ -210,6 +222,8 @@ func createNewMachine(
 	vmSize string,
 	privateKeyPath string,
 	privateKeyBytes []byte,
+	publicKeyPath string,
+	publicKeyBytes []byte,
 	sshPort int,
 	diskImageFamily string,
 	diskImageURL string,
@@ -238,6 +252,8 @@ func createNewMachine(
 	newMachine.SetSSHPort(sshPort)
 	newMachine.SetSSHPrivateKeyMaterial(privateKeyBytes)
 	newMachine.SetSSHPrivateKeyPath(privateKeyPath)
+	newMachine.SetSSHPublicKeyMaterial(publicKeyBytes)
+	newMachine.SetSSHPublicKeyPath(publicKeyPath)
 
 	if providerType == models.DeploymentTypeGCP {
 		if diskImageFamily == "" && diskImageURL == "" {

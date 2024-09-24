@@ -17,6 +17,8 @@ func CreateNewMachine(
 	diskImageURL string,
 	privateKeyPath string,
 	privateKeyBytes []byte,
+	publicKeyPath string,
+	publicKeyBytes []byte,
 ) (models.Machiner, error) {
 	newMachine, err := models.NewMachine(deploymentType,
 		location,
@@ -43,7 +45,8 @@ func CreateNewMachine(
 	newMachine.SetSSHUser(sshUser)
 	newMachine.SetSSHPrivateKeyPath(privateKeyPath)
 	newMachine.SetSSHPrivateKeyMaterial(privateKeyBytes)
-
+	newMachine.SetSSHPublicKeyPath(publicKeyPath)
+	newMachine.SetSSHPublicKeyMaterial(publicKeyBytes)
 	newMachine.SetDiskImageFamily(diskImageFamily)
 	newMachine.SetDiskImageURL(diskImageURL)
 

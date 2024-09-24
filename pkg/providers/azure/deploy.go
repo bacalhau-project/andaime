@@ -49,7 +49,7 @@ func (p *AzureProvider) PrepareDeployment(
 	}
 
 	// Set the SSH public key material
-	deployment.SSHPublicKeyMaterial = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxxx...test-key"
+	deployment.SSHPublicKeyPath = viper.GetString("general.ssh_public_key_path")
 	deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
 	deployment.Azure.SubscriptionID = viper.GetString("azure.subscription_id")
 	deployment.Azure.DefaultVMSize = viper.GetString("azure.default_machine_type")
@@ -422,11 +422,13 @@ func (p *AzureProvider) deployMachine(
 		allMachines = make(map[string]viperMachineStruct)
 	}
 	allMachines[machine.GetName()] = viperMachineStruct{
-		PublicIP:            machine.GetPublicIP(),
-		PrivateIP:           machine.GetPrivateIP(),
-		Location:            machine.GetLocation(),
-		Size:                machine.GetVMSize(),
-		BacalhauProvisioned: machine.GetServiceState("Bacalhau") == models.ServiceStateSucceeded,
+		PublicIP:  machine.GetPublicIP(),
+		PrivateIP: machine.GetPrivateIP(),
+		Location:  machine.GetLocation(),
+		Size:      machine.GetVMSize(),
+		BacalhauProvisioned: machine.GetServiceState(
+			models.ServiceTypeBacalhau.Name,
+		) == models.ServiceStateSucceeded,
 	}
 
 	viper.Set(
@@ -460,7 +462,7 @@ func (p *AzureProvider) prepareDeploymentParams(
 		"vmName":             machine.GetName(),
 		"adminUsername":      "azureuser",
 		"authenticationType": "sshPublicKey",
-		"adminPasswordOrKey": m.Deployment.SSHPublicKeyMaterial,
+		"adminPasswordOrKey": machine.GetSSHPublicKeyMaterial(),
 		"dnsLabelPrefix": fmt.Sprintf(
 			"vm-%s-%s",
 			strings.ToLower(machine.GetID()),

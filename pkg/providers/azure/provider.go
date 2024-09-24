@@ -61,20 +61,17 @@ const (
 
 // AzureProvider implements the Providerer interface.
 type AzureProvider struct {
-	SubscriptionID      string
-	ResourceGroupName   string
-	Tags                map[string]*string
-	Client              azure_interface.AzureClienter
-	ClusterDeployer     common_interface.ClusterDeployerer
-	SSHClient           sshutils.SSHClienter
-	SSHUser             string
-	SSHPort             int
-	lastResourceQuery   time.Time
-	cachedResources     []interface{}
-	serviceMutex        sync.Mutex //nolint:unused
-	servicesProvisioned bool
-	UpdateQueue         chan display.UpdateAction
-	UpdateMutex         sync.Mutex
+	SubscriptionID    string
+	ResourceGroupName string
+	Tags              map[string]*string
+	Client            azure_interface.AzureClienter
+	ClusterDeployer   common_interface.ClusterDeployerer
+	SSHClient         sshutils.SSHClienter
+	SSHUser           string
+	SSHPort           int
+	serviceMutex      sync.Mutex //nolint:unused
+	UpdateQueue       chan display.UpdateAction
+	UpdateMutex       sync.Mutex
 }
 
 func (p *AzureProvider) GetAzureClient() azure_interface.AzureClienter {
@@ -406,12 +403,14 @@ func (p *AzureProvider) logDeploymentStatus() {
 			),
 		)
 		writeToDebugLog(
-			fmt.Sprintf("Machine %s - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v",
+			fmt.Sprintf(
+				"Machine %s - Docker: %v, CorePackages: %v, Bacalhau: %v, SSH: %v, Script: %v",
 				machine.GetName(),
-				machine.GetServiceState("Docker"),
-				machine.GetServiceState("CorePackages"),
-				machine.GetServiceState("Bacalhau"),
-				machine.GetServiceState("SSH"),
+				machine.GetServiceState(models.ServiceTypeDocker.Name),
+				machine.GetServiceState(models.ServiceTypeCorePackages.Name),
+				machine.GetServiceState(models.ServiceTypeBacalhau.Name),
+				machine.GetServiceState(models.ServiceTypeSSH.Name),
+				machine.GetServiceState(models.ServiceTypeScript.Name),
 			),
 		)
 
