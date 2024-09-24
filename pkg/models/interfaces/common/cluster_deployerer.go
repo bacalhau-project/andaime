@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
 type ClusterDeployerer interface {
