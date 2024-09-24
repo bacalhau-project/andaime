@@ -26,9 +26,11 @@ type ServiceType struct {
 }
 
 var (
-	ServiceTypeSSH      = ServiceType{Name: "SSH", State: ServiceStateNotStarted}
-	ServiceTypeDocker   = ServiceType{Name: "Docker", State: ServiceStateNotStarted}
-	ServiceTypeBacalhau = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
+	ServiceTypeSSH          = ServiceType{Name: "SSH", State: ServiceStateNotStarted}
+	ServiceTypeDocker       = ServiceType{Name: "Docker", State: ServiceStateNotStarted}
+	ServiceTypeBacalhau     = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
+	ServiceTypeCorePackages = ServiceType{Name: "CorePackages", State: ServiceStateNotStarted}
+	ServiceTypeScript       = ServiceType{Name: "Script", State: ServiceStateNotStarted}
 )
 
 type MachineResource struct {
