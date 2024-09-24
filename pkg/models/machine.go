@@ -133,6 +133,8 @@ type Machine struct {
 	BacalhauEndTime   time.Time
 	DeploymentEndTime time.Time
 
+	CustomScriptExecuted bool
+
 	machineResources map[string]MachineResource
 	machineServices  map[string]ServiceType
 
@@ -275,6 +277,14 @@ func (mach *Machine) IsComplete() bool {
 	resourcesComplete := mach.resourcesComplete()
 	servicesComplete := mach.servicesComplete()
 	return resourcesComplete && servicesComplete
+}
+
+func (mach *Machine) SetCustomScriptExecuted(executed bool) {
+	mach.CustomScriptExecuted = executed
+}
+
+func (mach *Machine) IsCustomScriptExecuted() bool {
+	return mach.CustomScriptExecuted
 }
 
 func (mach *Machine) resourcesComplete() bool {
