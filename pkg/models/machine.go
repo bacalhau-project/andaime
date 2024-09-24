@@ -487,25 +487,25 @@ func (mach *Machine) InstallDockerAndCorePackages(ctx context.Context) error {
 	l := logger.Get()
 	l.Debugf("Installing Docker and core packages on machine %s", mach.Name)
 
-	mach.SetServiceState("Docker", ServiceStateUpdating)
+	mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateUpdating)
 	if err := mach.installDocker(ctx); err != nil {
-		mach.SetServiceState("Docker", ServiceStateFailed)
+		mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateFailed)
 		return err
 	}
 
 	if err := mach.verifyDocker(ctx); err != nil {
-		mach.SetServiceState("Docker", ServiceStateFailed)
+		mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateFailed)
 		return err
 	}
-	mach.SetServiceState("Docker", ServiceStateSucceeded)
+	mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateSucceeded)
 
-	mach.SetServiceState("CorePackages", ServiceStateUpdating)
+	mach.SetServiceState(ServiceTypeCorePackages.Name, ServiceStateUpdating)
 
 	if err := mach.installCorePackages(ctx); err != nil {
-		mach.SetServiceState("CorePackages", ServiceStateFailed)
+		mach.SetServiceState(ServiceTypeCorePackages.Name, ServiceStateFailed)
 		return err
 	}
-	mach.SetServiceState("CorePackages", ServiceStateSucceeded)
+	mach.SetServiceState(ServiceTypeCorePackages.Name, ServiceStateSucceeded)
 
 	return nil
 }

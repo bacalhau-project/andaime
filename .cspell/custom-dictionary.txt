@@ -213,6 +213,7 @@ tcell
 testdata
 testpassword
 TESTRGNAME
+testscript
 testuser
 testutil
 testutils

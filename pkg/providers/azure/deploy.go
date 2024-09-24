@@ -286,7 +286,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 						"Deploying SSH Config",
 					),
 				)
-				machine.SetServiceState("SSH", models.ServiceStateUpdating)
+				machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateUpdating)
 
 				sshConfig, err := sshutils.NewSSHConfigFunc(
 					machine.GetPublicIP(),
@@ -322,7 +322,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 							"Failed to test for SSH liveness.",
 						),
 					)
-					machine.SetServiceState("SSH", models.ServiceStateFailed)
+					machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
 					return fmt.Errorf(
 						"failed to wait for SSH connection to machine %s in location %s: %w",
 						machine.GetName(),
@@ -343,7 +343,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 						"SSH Config Deployed",
 					),
 				)
-				machine.SetServiceState("SSH", models.ServiceStateSucceeded)
+				machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
 			}
 
 			log.Infof("Successfully deployed all machines in location %s", location)
@@ -422,11 +422,11 @@ func (p *AzureProvider) deployMachine(
 		allMachines = make(map[string]viperMachineStruct)
 	}
 	allMachines[machine.GetName()] = viperMachineStruct{
-		PublicIP:             machine.GetPublicIP(),
-		PrivateIP:            machine.GetPrivateIP(),
-		Location:             machine.GetLocation(),
-		Size:                 machine.GetVMSize(),
-		BacalhauProvisioned:  machine.GetServiceState("Bacalhau") == models.ServiceStateSucceeded,
+		PublicIP:            machine.GetPublicIP(),
+		PrivateIP:           machine.GetPrivateIP(),
+		Location:            machine.GetLocation(),
+		Size:                machine.GetVMSize(),
+		BacalhauProvisioned: machine.GetServiceState("Bacalhau") == models.ServiceStateSucceeded,
 	}
 
 	viper.Set(

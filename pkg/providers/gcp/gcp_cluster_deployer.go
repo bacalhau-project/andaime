@@ -76,7 +76,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to create SSH config: %w", err)
 			}
-			machine.SetServiceState("SSH", models.ServiceStateUpdating)
+			machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateUpdating)
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
 				models.GCPResourceTypeInstance,
@@ -86,7 +86,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 
 			if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
 				l.Errorf("Failed to provision SSH: %v", err)
-				machine.SetServiceState("SSH", models.ServiceStateFailed)
+				machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
 				m.UpdateStatus(models.NewDisplayStatusWithText(
 					machine.GetName(),
 					models.GCPResourceTypeInstance,
@@ -97,7 +97,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 				return fmt.Errorf("failed to provision SSH: %w", err)
 			}
 
-			machine.SetServiceState("SSH", models.ServiceStateSucceeded)
+			machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
 				models.GCPResourceTypeInstance,

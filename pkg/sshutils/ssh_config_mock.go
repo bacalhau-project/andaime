@@ -106,6 +106,7 @@ func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) *MockSSHConfig {
 // MockSSHConfig is a mock implementation of SSHConfiger
 type MockSSHConfig struct {
 	mock.Mock
+	lastOutput string
 }
 
 func (m *MockSSHConfig) PushFile(
@@ -136,7 +137,9 @@ func (m *MockSSHConfig) ExecuteCommand(
 ) (string, error) {
 	fmt.Printf("ExecuteCommand called with: %s\n", cmd)
 	args := m.Called(ctx, cmd)
-	return args.String(0), args.Error(1)
+	output := args.String(0)
+	m.lastOutput = output
+	return output, args.Error(1)
 }
 
 func (m *MockSSHConfig) ExecuteCommandWithCallback(
@@ -187,6 +190,10 @@ func (m *MockSSHConfig) StartService(
 	serviceName string,
 ) error {
 	return nil
+}
+
+func (m *MockSSHConfig) GetLastOutput() string {
+	return m.lastOutput
 }
 
 var _ SSHConfiger = &MockSSHConfig{}

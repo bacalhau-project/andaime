@@ -121,9 +121,9 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		s.Require().NoError(err)
 		m.SetName(machine.name)
 		m.SetOrchestrator(machine.orchestrator)
-		m.SetServiceState("SSH", models.ServiceStateNotStarted)
-		m.SetServiceState("Docker", models.ServiceStateNotStarted)
-		m.SetServiceState("Bacalhau", models.ServiceStateNotStarted)
+		m.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateNotStarted)
+		m.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateNotStarted)
+		m.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateNotStarted)
 		deployment.SetMachine(machine.name, m)
 	}
 

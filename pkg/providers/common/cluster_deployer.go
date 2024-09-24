@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"text/template"
 	"time"
@@ -235,7 +235,7 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 		return err
 	}
 
-	machine.SetServiceState("Bacalhau", models.ServiceStateUpdating)
+	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
 	if nodeType == "compute" && m.Deployment.OrchestratorIP == "" {
 		return cd.HandleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
@@ -266,7 +266,7 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 	}
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
-	machine.SetServiceState("Bacalhau", models.ServiceStateSucceeded)
+	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
 
 	if machine.IsOrchestrator() {
 		m.Deployment.OrchestratorIP = machine.GetPublicIP()
@@ -460,7 +460,7 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 		return nil
 	}
 
-	scriptContent, err := ioutil.ReadFile(customScriptPath)
+	scriptContent, err := os.ReadFile(customScriptPath)
 	if err != nil {
 		return fmt.Errorf("failed to read custom script: %w", err)
 	}
@@ -475,7 +475,7 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 	}
 
 	l.Infof("Custom script executed successfully on machine: %s", machine.GetName())
-	machine.SetCustomScriptExecuted(true)
+	machine.SetServiceState(models.ServiceTypeScript.Name, models.ServiceStateSucceeded)
 	return nil
 }
 
@@ -485,7 +485,7 @@ func (cd *ClusterDeployer) HandleDeploymentError(
 	err error,
 ) error {
 	l := logger.Get()
-	machine.SetServiceState("Bacalhau", models.ServiceStateFailed)
+	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateFailed)
 	l.Errorf("Failed to deploy Bacalhau on machine %s: %v", machine.GetName(), err)
 	return err
 }

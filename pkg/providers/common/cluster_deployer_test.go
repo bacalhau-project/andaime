@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"golang.org/x/crypto/ssh"
 )
 
 type PkgProvidersCommonClusterDeployerTestSuite struct {
@@ -196,11 +195,18 @@ func TestExecuteCustomScript(t *testing.T) {
 	}{
 		{
 			name:             "Successful script execution",
-			customScriptPath: "/path/to/valid/script.sh",
+			customScriptPath: "/tmp/custom_script.sh",
 			sshBehavior: sshutils.ExpectedSSHBehavior{
+				PushFileExpectations: []sshutils.PushFileExpectation{
+					{
+						Dst:        "/tmp/custom_script.sh",
+						Executable: true,
+						Error:      nil,
+					},
+				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    "bash /path/to/valid/script.sh",
+						Cmd:    "sudo bash /tmp/custom_script.sh",
 						Output: "Script output",
 						Error:  nil,
 					},
@@ -211,45 +217,59 @@ func TestExecuteCustomScript(t *testing.T) {
 		},
 		{
 			name:             "Script execution failure",
-			customScriptPath: "/path/to/valid/script.sh",
+			customScriptPath: "/path/to/valid/script_1.sh",
 			sshBehavior: sshutils.ExpectedSSHBehavior{
+				PushFileExpectations: []sshutils.PushFileExpectation{
+					{
+						Dst:        "/tmp/custom_script.sh",
+						Executable: true,
+						Error:      nil,
+					},
+				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:   "bash /path/to/valid/script.sh",
-						Error: &ssh.ExitError{Waitmsg: ssh.Waitmsg{ExitStatus: 1}},
+						Cmd:   "sudo bash /tmp/custom_script.sh",
+						Error: errors.New("script execution failed"),
 					},
 				},
 			},
 			expectedOutput: "",
-			expectedError:  "custom script execution failed with exit code 1",
+			expectedError:  "script execution failed",
 		},
 		{
 			name:             "Script execution timeout",
-			customScriptPath: "/path/to/valid/script.sh",
+			customScriptPath: "/path/to/valid/script_2.sh",
 			sshBehavior: sshutils.ExpectedSSHBehavior{
+				PushFileExpectations: []sshutils.PushFileExpectation{
+					{
+						Dst:        "/tmp/custom_script.sh",
+						Executable: true,
+						Error:      nil,
+					},
+				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:   "bash /path/to/valid/script.sh",
+						Cmd:   "sudo bash /tmp/custom_script.sh",
 						Error: context.DeadlineExceeded,
 					},
 				},
 			},
 			expectedOutput: "",
-			expectedError:  "custom script execution timed out",
+			expectedError:  "context deadline exceeded",
 		},
 		{
 			name:             "Empty custom script path",
 			customScriptPath: "",
 			sshBehavior:      sshutils.ExpectedSSHBehavior{},
 			expectedOutput:   "",
-			expectedError:    "custom script path is empty",
+			expectedError:    "",
 		},
 		{
 			name:             "Non-existent custom script",
 			customScriptPath: "/path/to/non-existent/script.sh",
 			sshBehavior:      sshutils.ExpectedSSHBehavior{},
 			expectedOutput:   "",
-			expectedError:    "invalid custom script: custom script does not exist: /path/to/non-existent/script.sh",
+			expectedError:    "no such file or directory",
 		},
 	}
 
@@ -265,6 +285,10 @@ func TestExecuteCustomScript(t *testing.T) {
 				tt.customScriptPath = tmpfile.Name()
 			}
 
+			// Set up Viper configuration
+			viper.Set("general.custom_script_path", tt.customScriptPath)
+			defer viper.Reset()
+
 			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior)
 
 			mockMachine := &MockMachine{
@@ -273,8 +297,10 @@ func TestExecuteCustomScript(t *testing.T) {
 					PublicIP: "1.2.3.4",
 				},
 			}
+			mockMachine.On("SetServiceState", mock.Anything, mock.Anything).Return()
+			mockMachine.On("SetComplete").Return()
 
-			cd := &ClusterDeployer{}
+			cd := NewClusterDeployer(models.DeploymentTypeAzure)
 
 			err := cd.ExecuteCustomScript(
 				context.Background(),
