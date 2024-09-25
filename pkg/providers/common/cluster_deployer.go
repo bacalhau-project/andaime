@@ -261,6 +261,10 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
+	if err := cd.ApplyBacalhauConfigs(ctx, sshConfig); err != nil {
+		return cd.HandleDeploymentError(ctx, machine, err)
+	}
+
 	if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
@@ -478,6 +482,31 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 
 	l.Infof("Custom script executed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeScript.Name, models.ServiceStateSucceeded)
+	return nil
+}
+
+func (cd *ClusterDeployer) ApplyBacalhauConfigs(
+	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
+) error {
+	l := logger.Get()
+	l.Info("Applying Bacalhau configurations")
+
+	bacalhauSettings := viper.GetStringSlice("general.bacalhau-settings")
+	for _, setting := range bacalhauSettings {
+		parts := strings.SplitN(setting, " ", 4)
+		if len(parts) == 4 && parts[0] == "config" && parts[1] == "set" {
+			cmd := fmt.Sprintf("bacalhau %s", setting)
+			output, err := sshConfig.ExecuteCommand(ctx, cmd)
+			if err != nil {
+				l.Errorf("Failed to apply Bacalhau config %s: %v", parts[2], err)
+				return fmt.Errorf("failed to apply Bacalhau config %s: %w", parts[2], err)
+			}
+			l.Infof("Applied Bacalhau config %s: %s", parts[2], output)
+		}
+	}
+
+	l.Info("Bacalhau configurations applied successfully")
 	return nil
 }
 
