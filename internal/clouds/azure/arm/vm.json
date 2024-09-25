@@ -321,27 +321,6 @@
       "dependsOn": [
         "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
       ]
-    },
-    {
-      "type": "Microsoft.Compute/virtualMachines/extensions",
-      "apiVersion": "2023-03-01",
-      "name": "[format('{0}/{1}', parameters('vmName'), variables('customScriptExtensionName'))]",
-      "location": "[parameters('location')]",
-      "dependsOn": [
-        "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
-      ],
-      "properties": {
-        "publisher": "Microsoft.Azure.Extensions",
-        "type": "CustomScript",
-        "typeHandlerVersion": "2.1",
-        "autoUpgradeMinorVersion": true,
-        "settings": {
-          "fileUris": [
-            "https://raw.githubusercontent.com/bacalhau-project/andaime/main/scripts/configure_bacalhau.sh"
-          ],
-          "commandToExecute": "[concat('bash configure_bacalhau.sh ', parameters('bacalhauConfigCommands'))]"
-        }
-      }
     }
   ],
   "outputs": {

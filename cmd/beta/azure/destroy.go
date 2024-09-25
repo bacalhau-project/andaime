@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -123,12 +122,6 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		l.Warn("Azure deployments are not in the expected format")
-	}
-
-	// Apply Bacalhau configuration settings after deployment and VerifyBacalhau
-	if err := applyBacalhauConfigs(bacalhauConfigs); err != nil {
-		l.Errorf("Failed to apply Bacalhau configurations: %v", err)
-		return fmt.Errorf("failed to apply Bacalhau configurations: %w", err)
 	}
 
 	// awsDeployments := viper.Get("deployments.aws")
@@ -329,26 +322,5 @@ func destroyDeployment(dep ConfigDeployment) error {
 
 	fmt.Printf("   -- Done\n")
 
-	return nil
-}
-
-func applyBacalhauConfigs(configs []BacalhauConfig) error {
-	l := logger.Get()
-	l.Info("Applying Bacalhau configurations")
-
-	for _, config := range configs {
-		cmd := exec.Command("bacalhau", "config", "set", config.Key, config.Value)
-		cmd.Stderr = os.Stderr
-		
-		output, err := cmd.Output()
-		if err != nil {
-			l.Errorf("Failed to apply Bacalhau config %s: %v", config.Key, err)
-			return fmt.Errorf("failed to apply Bacalhau config %s: %w", config.Key, err)
-		}
-		
-		l.Infof("Applied Bacalhau config %s: %s", config.Key, string(output))
-	}
-
-	l.Info("Bacalhau configurations applied successfully")
 	return nil
 }

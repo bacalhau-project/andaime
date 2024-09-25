@@ -1,0 +1,531 @@
+[
+    {
+        "Key": "node.network.port",
+        "Value": 4222
+    },
+    {
+        "Key": "node.network.cluster.advertisedaddress",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.defaultpublisher",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.evaluationbroker.evalbrokervisibilitytimeout",
+        "Value": 60000000000
+    },
+    {
+        "Key": "node.compute.jobtimeouts.jobnegotiationtimeout",
+        "Value": 180000000000
+    },
+    {
+        "Key": "node.compute.manifestcache.frequency",
+        "Value": 3600000000000
+    },
+    {
+        "Key": "node.compute.capacity.totalresourcelimits.gpu",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.capacity.defaultjobresourcelimits.gpu",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.logging.logrunningexecutionsinterval",
+        "Value": 10000000000
+    },
+    {
+        "Key": "node.network.cluster.name",
+        "Value": ""
+    },
+    {
+        "Key": "node.ipfs.connect",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.jobdefaults.totaltimeout",
+        "Value": 1800000000000
+    },
+    {
+        "Key": "node.volumesizerequesttimeout",
+        "Value": 120000000000
+    },
+    {
+        "Key": "node.requester.scheduler.nodeoversubscriptionfactor",
+        "Value": 1.5
+    },
+    {
+        "Key": "node.clientapi.tls.autocert",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.jobtimeouts.defaultjobexecutiontimeout",
+        "Value": 600000000000
+    },
+    {
+        "Key": "node.serverapi.tls.servercertificate",
+        "Value": ""
+    },
+    {
+        "Key": "node.type",
+        "Value": [
+            "requester"
+        ]
+    },
+    {
+        "Key": "node.compute.capacity.jobresourcelimits.gpu",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.externalverifierhook",
+        "Value": ""
+    },
+    {
+        "Key": "node.clientapi.clienttls.cacert",
+        "Value": ""
+    },
+    {
+        "Key": "node.clientapi.tls.servercertificate",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.capacity.jobresourcelimits.disk",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.controlplanesettings.heartbeattopic",
+        "Value": "heartbeat"
+    },
+    {
+        "Key": "user.keypath",
+        "Value": "/Users/daaronch/.bacalhau/user_id.pem"
+    },
+    {
+        "Key": "node.requester.noderankrandomnessrange",
+        "Value": 5
+    },
+    {
+        "Key": "node.requester.tagcache.size",
+        "Value": 0
+    },
+    {
+        "Key": "node.compute.jobselection.probehttp",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.manualnodeapproval",
+        "Value": false
+    },
+    {
+        "Key": "node.serverapi.tls.autocertcachepath",
+        "Value": ""
+    },
+    {
+        "Key": "node.webui.enabled",
+        "Value": false
+    },
+    {
+        "Key": "node.serverapi.clienttls.insecure",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.controlplanesettings.infoupdatefrequency",
+        "Value": 60000000000
+    },
+    {
+        "Key": "node.requester.jobdefaults.executiontimeout",
+        "Value": 0
+    },
+    {
+        "Key": "node.requester.translationenabled",
+        "Value": false
+    },
+    {
+        "Key": "node.disabledfeatures.engines",
+        "Value": []
+    },
+    {
+        "Key": "metrics.eventtracerpath",
+        "Value": "/dev/null"
+    },
+    {
+        "Key": "node.serverapi.clienttls.usetls",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.controlplanesettings.resourceupdatefrequency",
+        "Value": 30000000000
+    },
+    {
+        "Key": "node.network.authsecret",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.scheduler.queuebackoff",
+        "Value": 60000000000
+    },
+    {
+        "Key": "node.requester.housekeepingbackgroundtaskinterval",
+        "Value": 30000000000
+    },
+    {
+        "Key": "node.compute.jobtimeouts.jobexecutiontimeoutclientidbypasslist",
+        "Value": []
+    },
+    {
+        "Key": "node.network.orchestrators",
+        "Value": null
+    },
+    {
+        "Key": "update.skipchecks",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.capacity.totalresourcelimits.memory",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.jobtimeouts.maxjobexecutiontimeout",
+        "Value": 9223372036000000000
+    },
+    {
+        "Key": "node.computestoragepath",
+        "Value": "/Users/daaronch/.bacalhau/executor_storages"
+    },
+    {
+        "Key": "node.requester.controlplanesettings.nodedisconnectedafter",
+        "Value": 30000000000
+    },
+    {
+        "Key": "node.clientapi.host",
+        "Value": "bootstrap.production.bacalhau.org"
+    },
+    {
+        "Key": "node.compute.jobtimeouts.minjobexecutiontimeout",
+        "Value": 500000000
+    },
+    {
+        "Key": "node.network.cluster.port",
+        "Value": 0
+    },
+    {
+        "Key": "node.disabledfeatures.publishers",
+        "Value": []
+    },
+    {
+        "Key": "node.serverapi.tls.autocert",
+        "Value": ""
+    },
+    {
+        "Key": "node.serverapi.tls.serverkey",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.localpublisher.directory",
+        "Value": ""
+    },
+    {
+        "Key": "node.network.storedir",
+        "Value": "/Users/daaronch/.bacalhau/orchestrator_store/nats-store"
+    },
+    {
+        "Key": "node.webui.port",
+        "Value": 8483
+    },
+    {
+        "Key": "node.compute.manifestcache.size",
+        "Value": 1000
+    },
+    {
+        "Key": "node.compute.capacity.defaultjobresourcelimits.memory",
+        "Value": "1Gb"
+    },
+    {
+        "Key": "update.checkstatepath",
+        "Value": "/Users/daaronch/.bacalhau/update.json"
+    },
+    {
+        "Key": "node.requester.tagcache.duration",
+        "Value": 0
+    },
+    {
+        "Key": "node.requester.jobselectionpolicy.probeexec",
+        "Value": ""
+    },
+    {
+        "Key": "node.network.advertisedaddress",
+        "Value": ""
+    },
+    {
+        "Key": "auth.tokenspath",
+        "Value": "/Users/daaronch/.bacalhau/tokens.json"
+    },
+    {
+        "Key": "node.requester.storageprovider.s3.presignedurldisabled",
+        "Value": false
+    },
+    {
+        "Key": "node.name",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.executionstore.path",
+        "Value": "/Users/daaronch/.bacalhau/compute_store/executions.db"
+    },
+    {
+        "Key": "node.compute.localpublisher.port",
+        "Value": 6001
+    },
+    {
+        "Key": "node.requester.evaluationbroker.evalbrokersubsequentretrydelay",
+        "Value": 30000000000
+    },
+    {
+        "Key": "node.labels",
+        "Value": {}
+    },
+    {
+        "Key": "node.serverapi.port",
+        "Value": 1234
+    },
+    {
+        "Key": "auth.accesspolicypath",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.jobselectionpolicy.locality",
+        "Value": 1
+    },
+    {
+        "Key": "node.serverapi.tls.selfsigned",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.capacity.totalresourcelimits.disk",
+        "Value": ""
+    },
+    {
+        "Key": "node.executorpluginpath",
+        "Value": "/Users/daaronch/.bacalhau/plugins"
+    },
+    {
+        "Key": "user.installationid",
+        "Value": "7424cbb4-edd6-5e4a-a913-4b12ba45165d"
+    },
+    {
+        "Key": "node.clientapi.clienttls.usetls",
+        "Value": false
+    },
+    {
+        "Key": "node.clientapi.tls.selfsigned",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.jobselection.acceptnetworkedjobs",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.capacity.jobresourcelimits.memory",
+        "Value": ""
+    },
+    {
+        "Key": "auth.methods",
+        "Value": {
+            "ClientKey": {
+                "Type": "challenge",
+                "PolicyPath": ""
+            }
+        }
+    },
+    {
+        "Key": "node.requester.overaskforbidsfactor",
+        "Value": 3
+    },
+    {
+        "Key": "node.allowlistedlocalpaths",
+        "Value": [
+            "/tmp,/data"
+        ]
+    },
+    {
+        "Key": "node.compute.capacity.defaultjobresourcelimits.cpu",
+        "Value": "500m"
+    },
+    {
+        "Key": "node.requester.worker.workercount",
+        "Value": 12
+    },
+    {
+        "Key": "node.requester.nodeinfostorettl",
+        "Value": 600000000000
+    },
+    {
+        "Key": "node.requester.storageprovider.s3.presignedurlexpiration",
+        "Value": 1800000000000
+    },
+    {
+        "Key": "node.requester.jobdefaults.queuetimeout",
+        "Value": 0
+    },
+    {
+        "Key": "node.requester.evaluationbroker.evalbrokerinitialretrydelay",
+        "Value": 1000000000
+    },
+    {
+        "Key": "node.clientapi.clienttls.insecure",
+        "Value": false
+    },
+    {
+        "Key": "node.serverapi.clienttls.cacert",
+        "Value": ""
+    },
+    {
+        "Key": "node.nameprovider",
+        "Value": "puuid"
+    },
+    {
+        "Key": "node.compute.logstreamconfig.channelbuffersize",
+        "Value": 10
+    },
+    {
+        "Key": "node.compute.capacity.defaultjobresourcelimits.disk",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.controlplanesettings.heartbeatcheckfrequency",
+        "Value": 30000000000
+    },
+    {
+        "Key": "node.requester.worker.workerevaldequeuemaxbackoff",
+        "Value": 30000000000
+    },
+    {
+        "Key": "node.clientapi.tls.serverkey",
+        "Value": ""
+    },
+    {
+        "Key": "node.disabledfeatures.storages",
+        "Value": []
+    },
+    {
+        "Key": "node.compute.executionstore.type",
+        "Value": 1
+    },
+    {
+        "Key": "node.compute.jobselection.probeexec",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.jobstore.type",
+        "Value": 1
+    },
+    {
+        "Key": "node.requester.worker.workerevaldequeuebasebackoff",
+        "Value": 1000000000
+    },
+    {
+        "Key": "node.requester.jobselectionpolicy.rejectstatelessjobs",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.capacity.ignorephysicalresourcelimits",
+        "Value": false
+    },
+    {
+        "Key": "update.checkfrequency",
+        "Value": 86400000000000
+    },
+    {
+        "Key": "node.requester.evaluationbroker.evalbrokermaxretrycount",
+        "Value": 10
+    },
+    {
+        "Key": "node.clientapi.tls.autocertcachepath",
+        "Value": "/Users/daaronch/.bacalhau/autocert-cache"
+    },
+    {
+        "Key": "node.serverapi.host",
+        "Value": "0.0.0.0"
+    },
+    {
+        "Key": "node.compute.manifestcache.duration",
+        "Value": 3600000000000
+    },
+    {
+        "Key": "node.requester.jobstore.path",
+        "Value": "/Users/daaronch/.bacalhau/orchestrator_store/jobs.db"
+    },
+    {
+        "Key": "node.requester.tagcache.frequency",
+        "Value": 0
+    },
+    {
+        "Key": "node.downloadurlrequestretries",
+        "Value": 3
+    },
+    {
+        "Key": "node.compute.controlplanesettings.heartbeatfrequency",
+        "Value": 15000000000
+    },
+    {
+        "Key": "node.network.cluster.peers",
+        "Value": null
+    },
+    {
+        "Key": "node.requester.failureinjectionconfig.isbadactor",
+        "Value": false
+    },
+    {
+        "Key": "node.loggingmode",
+        "Value": "default"
+    },
+    {
+        "Key": "node.compute.jobselection.rejectstatelessjobs",
+        "Value": false
+    },
+    {
+        "Key": "node.compute.localpublisher.address",
+        "Value": "public"
+    },
+    {
+        "Key": "node.requester.jobselectionpolicy.probehttp",
+        "Value": ""
+    },
+    {
+        "Key": "node.compute.jobselection.locality",
+        "Value": 1
+    },
+    {
+        "Key": "node.compute.capacity.jobresourcelimits.cpu",
+        "Value": ""
+    },
+    {
+        "Key": "node.requester.controlplanesettings.heartbeattopic",
+        "Value": "heartbeat"
+    },
+    {
+        "Key": "node.requester.worker.workerevaldequeuetimeout",
+        "Value": 5000000000
+    },
+    {
+        "Key": "node.clientapi.port",
+        "Value": 1234
+    },
+    {
+        "Key": "node.compute.capacity.totalresourcelimits.cpu",
+        "Value": ""
+    },
+    {
+        "Key": "node.strictversionmatch",
+        "Value": false
+    },
+    {
+        "Key": "node.requester.jobselectionpolicy.acceptnetworkedjobs",
+        "Value": false
+    },
+    {
+        "Key": "node.downloadurlrequesttimeout",
+        "Value": 300000000000
+    }
+]

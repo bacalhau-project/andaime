@@ -311,3 +311,159 @@ func TestExecuteCustomScript(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyBacalhauConfigs(t *testing.T) {
+	type testCase struct {
+		name             string
+		bacalhauSettings map[string]string
+		sshBehavior      sshutils.ExpectedSSHBehavior
+		expectedError    string
+	}
+
+	tests := []testCase{
+		{
+			name:             "Empty configuration",
+			bacalhauSettings: map[string]string{},
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: "[]",
+						Error:  nil,
+					},
+				},
+			},
+			expectedError: "",
+		},
+		{
+			name: "Single configuration",
+			bacalhauSettings: map[string]string{
+				"node.allowlistedlocalpaths": `"/tmp","/data"`,
+			},
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    `sudo bacalhau config set node.allowlistedlocalpaths '"/tmp","/data"'`,
+						Output: "Configuration set successfully",
+						Error:  nil,
+					},
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: `[{"Key":"node.allowlistedlocalpaths","Value":["/tmp","/data"]}]`,
+						Error:  nil,
+					},
+				},
+			},
+			expectedError: "",
+		},
+		{
+			name: "Multiple configurations",
+			bacalhauSettings: map[string]string{
+				"node.allowlistedlocalpaths":                 `"/tmp","/data"`,
+				"orchestrator.nodemanager.disconnecttimeout": "5s",
+			},
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    `sudo bacalhau config set node.allowlistedlocalpaths '"/tmp","/data"'`,
+						Output: "Configuration set successfully",
+						Error:  nil,
+					},
+					{
+						Cmd:    `sudo bacalhau config set orchestrator.nodemanager.disconnecttimeout '5s'`,
+						Output: "Configuration set successfully",
+						Error:  nil,
+					},
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: `[{"Key":"node.allowlistedlocalpaths","Value":["/tmp","/data"]},{"Key":"orchestrator.nodemanager.disconnecttimeout","Value":"5s"}]`,
+						Error:  nil,
+					},
+				},
+			},
+			expectedError: "",
+		},
+		{
+			name: "Configuration with error",
+			bacalhauSettings: map[string]string{
+				"invalid.config": "value",
+			},
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    "sudo bacalhau config set invalid.config 'value'",
+						Output: "",
+						Error:  errors.New("invalid configuration key"),
+					},
+				},
+			},
+			expectedError: "failed to apply Bacalhau config invalid.config: invalid configuration key",
+		},
+		{
+			name: "Unexpected value in configuration",
+			bacalhauSettings: map[string]string{
+				"node.allowlistedlocalpaths": `"/tmp","/data"`,
+			},
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    `sudo bacalhau config set node.allowlistedlocalpaths '"/tmp","/data"'`,
+						Output: "Configuration set successfully",
+						Error:  nil,
+					},
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: `[{"Key":"node.allowlistedlocalpaths","Value":["/tmp","/data"]}]`,
+						Error:  nil,
+					},
+				},
+			},
+			expectedError: "",
+		},
+		{
+			name: "Missing configuration in final list",
+			bacalhauSettings: map[string]string{
+				"node.allowlistedlocalpaths": `"/tmp","/data"`,
+			},
+			sshBehavior: sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    `sudo bacalhau config set node.allowlistedlocalpaths '"/tmp","/data"'`,
+						Output: "Configuration set successfully",
+						Error:  nil,
+					},
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: `[]`,
+						Error:  nil,
+					},
+				},
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up Viper configuration
+			viper.Set("general.bacalhau_settings", tt.bacalhauSettings)
+			defer viper.Reset()
+
+			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior)
+
+			cd := NewClusterDeployer(models.DeploymentTypeAzure)
+
+			err := cd.ApplyBacalhauConfigs(context.Background(), mockSSHConfig)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			// Verify that all expected commands were executed
+			mockSSHConfig.AssertExpectations(t)
+		})
+	}
+}

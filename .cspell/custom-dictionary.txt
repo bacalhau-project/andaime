@@ -2,6 +2,7 @@ AAAAC
 AAAAIC
 AAAAIFC
 Alloc
+allowlistedlocalpaths
 Andaime
 andaimeconfig
 apitype
@@ -60,6 +61,7 @@ depguard
 Deployerer
 deregisters
 Dialerer
+disconnecttimeout
 diskimage
 diskimagefamily
 dockerclient
@@ -119,6 +121,7 @@ htmltemplate
 igws
 ineffassign
 Infof
+infoupdateinterval
 Interfacer
 invalidlocation
 invalidzone
@@ -149,6 +152,7 @@ networksecuritygroup
 networksecuritygroups
 nistp
 noctx
+nodemanager
 noinit
 nolint
 nolintlint
@@ -179,6 +183,7 @@ resourcegroupname
 resourcemanager
 resourcemanagerpb
 resourcename
+resourceupdateinterval
 Retryable
 rgname
 rivo

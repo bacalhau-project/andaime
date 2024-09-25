@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -269,6 +270,11 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
+	// One final restart to make sure everything is ok
+	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+		return cd.HandleDeploymentError(ctx, machine, err)
+	}
+
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
 
@@ -492,21 +498,55 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	l := logger.Get()
 	l.Info("Applying Bacalhau configurations")
 
-	bacalhauSettings := viper.GetStringSlice("general.bacalhau-settings")
-	for _, setting := range bacalhauSettings {
-		parts := strings.SplitN(setting, " ", 4)
-		if len(parts) == 4 && parts[0] == "config" && parts[1] == "set" {
-			cmd := fmt.Sprintf("bacalhau %s", setting)
-			output, err := sshConfig.ExecuteCommand(ctx, cmd)
-			if err != nil {
-				l.Errorf("Failed to apply Bacalhau config %s: %v", parts[2], err)
-				return fmt.Errorf("failed to apply Bacalhau config %s: %w", parts[2], err)
+	bacalhauSettings := viper.GetStringMapString("general.bacalhau_settings")
+	for key, value := range bacalhauSettings {
+		cmd := fmt.Sprintf("sudo bacalhau config set %s '%s'", key, value)
+		output, err := sshConfig.ExecuteCommand(ctx, cmd)
+		if err != nil {
+			l.Errorf("Failed to apply Bacalhau config %s: %v", key, err)
+			return fmt.Errorf("failed to apply Bacalhau config %s: %w", key, err)
+		}
+		l.Infof("Applied Bacalhau config %s: %s", key, output)
+	}
+
+	// Get the final configuration
+	output, err := sshConfig.ExecuteCommand(ctx, "sudo bacalhau config list --output json")
+	if err != nil {
+		return fmt.Errorf("failed to get Bacalhau config: %w", err)
+	}
+
+	// Parse the JSON output
+	var configList []map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &configList); err != nil {
+		return fmt.Errorf("failed to parse Bacalhau config: %w", err)
+	}
+
+	// Check if all the new settings are present
+	for key, expectedValue := range bacalhauSettings {
+		found := false
+		for _, config := range configList {
+			if config["Key"] == key {
+				found = true
+				actualValue := fmt.Sprintf("%v", config["Value"])
+				if actualValue != expectedValue {
+					l.Warnf(
+						"Bacalhau config %s has unexpected value. Expected: %s, Actual: %s",
+						key,
+						expectedValue,
+						actualValue,
+					)
+				} else {
+					l.Infof("Verified Bacalhau config %s: %s", key, actualValue)
+				}
+				break
 			}
-			l.Infof("Applied Bacalhau config %s: %s", parts[2], output)
+		}
+		if !found {
+			l.Warnf("Bacalhau config %s not found in the final configuration", key)
 		}
 	}
 
-	l.Info("Bacalhau configurations applied successfully")
+	l.Info("Bacalhau configurations applied and verified")
 	return nil
 }
 

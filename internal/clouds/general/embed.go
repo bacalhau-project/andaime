@@ -80,3 +80,14 @@ func GetLocalCustomScript() ([]byte, error) {
 	}
 	return script, nil
 }
+
+//go:embed bacalhau_settings.json
+var BacalhauSettings embed.FS
+
+func GetBacalhauSettings() ([]byte, error) {
+	script, err := BacalhauSettings.ReadFile("bacalhau_settings.json")
+	if err != nil {
+		return nil, err
+	}
+	return script, nil
+}
