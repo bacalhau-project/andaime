@@ -193,13 +193,15 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 					})
 				}
 			}
+		}
 
-			l.Info("Destroying all deployments:")
-			for _, dep := range deployments {
-				if err := destroyDeployment(dep); err != nil {
-					l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
-				}
+		l.Info("Destroying all deployments:")
+		for i, dep := range deployments {
+			fmt.Printf("%d. Destroying resources for %s\n", i+1, dep.Name)
+			if err := destroyDeployment(dep); err != nil {
+				l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
 			}
+			fmt.Println()
 		}
 
 		l.Info("Finished destroying all deployments")
@@ -277,46 +279,29 @@ func destroyDeployment(dep ConfigDeployment) error {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
 			return fmt.Errorf("failed to create Azure provider for %s: %v", dep.Name, err)
 		}
-		fmt.Printf("Destroying Azure resources for %s\n", dep.Name)
+		fmt.Printf("   Destroying Azure resources\n")
 		err = azureProvider.DestroyResources(ctx, dep.ID)
 		if err != nil {
 			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
-				fmt.Printf(" -- Resource group '%s' is already destroyed.\n", dep.ID)
+				fmt.Printf("   -- Resource group is already destroyed.\n")
 			} else {
 				l.Errorf("Failed to destroy Azure deployment %s: %v", dep.Name, err)
 				return fmt.Errorf("failed to destroy Azure deployment %s: %v", dep.Name, err)
 			}
 		} else {
-			fmt.Printf(" -- Started successfully\n")
+			fmt.Printf("   -- Started successfully\n")
 		}
 	} else if dep.Type == models.DeploymentTypeAWS {
-		// awsProvider, err := aws_provider.NewAWSProvider(
-		// 	ctx,
-		// 	viper.GetString("aws.access_key_id"),
-		// 	viper.GetString("aws.secret_access_key"),
-		// 	viper.GetString("aws.region"),
-		// )
-		// dep.FullViperKey = fmt.Sprintf("deployments.aws.%s", dep.Name)
-		// if err != nil {
-		// 	l.Errorf("Failed to create AWS provider for %s: %v", dep.Name, err)
-		// 	return fmt.Errorf("failed to create AWS provider for %s: %v", dep.Name, err)
-		// }
-		// l.Debugf("Destroying AWS resources for %s", dep.Name)
-		// err = awsProvider.DestroyResources(ctx, dep.ID)
-		// if err != nil {
-		// 	l.Errorf("Failed to destroy AWS deployment %s: %v", dep.Name, err)
-		// 	return fmt.Errorf("failed to destroy AWS deployment %s: %v", dep.Name, err)
-		// }
 		l.Warnf("AWS destroy is not implemented yet")
 	}
 
-	fmt.Printf("Removing keys from config for %s\n", dep.Name)
+	fmt.Printf("   Removing keys from config\n")
 	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
-		fmt.Printf(" -- Failed to delete key from config for %s: %v\n", dep.Name, err)
+		fmt.Printf("   -- Failed to delete key from config: %v\n", err)
 		return fmt.Errorf("failed to delete key from config for %s: %v", dep.Name, err)
 	}
 
-	fmt.Printf(" -- Done\n")
+	fmt.Printf("   -- Done\n")
 
 	return nil
 }
