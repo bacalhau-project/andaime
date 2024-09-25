@@ -145,7 +145,13 @@ func (c *LiveAzureClient) DeployTemplate(
 
 	wrappedParams := make(map[string]interface{})
 	for k, v := range params {
-		wrappedParams[k] = map[string]interface{}{"Value": v}
+		if vString, ok := v.(string); ok {
+			// Remove trailing line breaks from the string, if present
+			trimmedValue := strings.TrimRight(vString, " \n\r\t")
+			wrappedParams[k] = map[string]interface{}{"Value": trimmedValue}
+		} else {
+			wrappedParams[k] = map[string]interface{}{"Value": v}
+		}
 	}
 
 	deploymentParams := armresources.Deployment{
@@ -156,6 +162,8 @@ func (c *LiveAzureClient) DeployTemplate(
 		},
 		Tags: tags,
 	}
+
+	writeToDebugLog(fmt.Sprintf("DeployTemplate: Key: %s", wrappedParams["sshPublicKey"]))
 
 	future, err := c.deploymentsClient.BeginCreateOrUpdate(
 		ctx,

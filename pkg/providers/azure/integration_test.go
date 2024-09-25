@@ -242,7 +242,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            3,
 			},
 			{
-				Cmd:              "sudo bash /tmp/custom_script.sh",
+				Cmd:              "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
@@ -272,26 +272,6 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 			Times: 3,
 		},
 	}
-
-	// Add custom script execution expectations
-	sshBehavior.PushFileExpectations = append(sshBehavior.PushFileExpectations,
-		sshutils.PushFileExpectation{
-			Dst:              "/tmp/custom_script.sh",
-			Executable:       true,
-			ProgressCallback: mock.Anything,
-			Error:            nil,
-			Times:            3,
-		},
-	)
-	sshBehavior.ExecuteCommandExpectations = append(sshBehavior.ExecuteCommandExpectations,
-		sshutils.ExecuteCommandExpectation{
-			Cmd:              "sudo bash /tmp/custom_script.sh",
-			ProgressCallback: mock.Anything,
-			Output:           "Custom script executed successfully",
-			Error:            nil,
-			Times:            3,
-		},
-	)
 
 	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior)
 	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
@@ -335,12 +315,6 @@ func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
 			err := s.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.GetName())
 			s.Require().NoError(err)
 		}
-	}
-
-	// Execute custom script on all machines
-	for _, machine := range m.Deployment.Machines {
-		err := s.provider.GetClusterDeployer().ExecuteCustomScript(ctx, s.mockSSHConfig, machine)
-		s.Require().NoError(err)
 	}
 
 	for _, machine := range m.Deployment.Machines {

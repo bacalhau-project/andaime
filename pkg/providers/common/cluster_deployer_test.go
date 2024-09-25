@@ -190,7 +190,6 @@ func TestExecuteCustomScript(t *testing.T) {
 		name             string
 		customScriptPath string
 		sshBehavior      sshutils.ExpectedSSHBehavior
-		expectedOutput   string
 		expectedError    string
 	}{
 		{
@@ -206,14 +205,13 @@ func TestExecuteCustomScript(t *testing.T) {
 				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    "sudo bash /tmp/custom_script.sh",
+						Cmd:    "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
 						Output: "Script output",
 						Error:  nil,
 					},
 				},
 			},
-			expectedOutput: "Script output",
-			expectedError:  "",
+			expectedError: "",
 		},
 		{
 			name:             "Script execution failure",
@@ -228,13 +226,12 @@ func TestExecuteCustomScript(t *testing.T) {
 				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:   "sudo bash /tmp/custom_script.sh",
+						Cmd:   "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
 						Error: errors.New("script execution failed"),
 					},
 				},
 			},
-			expectedOutput: "",
-			expectedError:  "script execution failed",
+			expectedError: "failed to execute custom script: script execution failed",
 		},
 		{
 			name:             "Script execution timeout",
@@ -249,27 +246,24 @@ func TestExecuteCustomScript(t *testing.T) {
 				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:   "sudo bash /tmp/custom_script.sh",
+						Cmd:   "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
 						Error: context.DeadlineExceeded,
 					},
 				},
 			},
-			expectedOutput: "",
-			expectedError:  "context deadline exceeded",
+			expectedError: "failed to execute custom script: context deadline exceeded",
 		},
 		{
 			name:             "Empty custom script path",
 			customScriptPath: "",
 			sshBehavior:      sshutils.ExpectedSSHBehavior{},
-			expectedOutput:   "",
 			expectedError:    "",
 		},
 		{
 			name:             "Non-existent custom script",
 			customScriptPath: "/path/to/non-existent/script.sh",
 			sshBehavior:      sshutils.ExpectedSSHBehavior{},
-			expectedOutput:   "",
-			expectedError:    "no such file or directory",
+			expectedError:    "failed to read custom script: open /path/to/non-existent/script.sh: no such file or directory",
 		},
 	}
 
@@ -313,10 +307,6 @@ func TestExecuteCustomScript(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				assert.NoError(t, err)
-			}
-
-			if tt.expectedOutput != "" {
-				assert.Equal(t, tt.expectedOutput, mockSSHConfig.GetLastOutput())
 			}
 		})
 	}

@@ -470,7 +470,9 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 		return fmt.Errorf("failed to push custom script: %w", err)
 	}
 
-	if _, err := sshConfig.ExecuteCommand(ctx, fmt.Sprintf("sudo bash %s", remotePath)); err != nil {
+	logFile := "/var/log/andaime-custom-script.log"
+	cmd := fmt.Sprintf("sudo bash %s | sudo tee %s", remotePath, logFile)
+	if _, err := sshConfig.ExecuteCommand(ctx, cmd); err != nil {
 		return fmt.Errorf("failed to execute custom script: %w", err)
 	}
 

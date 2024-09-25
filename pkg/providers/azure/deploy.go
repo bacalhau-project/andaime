@@ -459,10 +459,9 @@ func (p *AzureProvider) prepareDeploymentParams(
 ) map[string]interface{} {
 	m := display.GetGlobalModelFunc()
 	return map[string]interface{}{
-		"vmName":             machine.GetName(),
-		"adminUsername":      "azureuser",
-		"authenticationType": "sshPublicKey",
-		"adminPasswordOrKey": machine.GetSSHPublicKeyMaterial(),
+		"vmName":        machine.GetName(),
+		"adminUsername": "azureuser",
+		"sshPublicKey":  strings.TrimSpace(string(machine.GetSSHPublicKeyMaterial())),
 		"dnsLabelPrefix": fmt.Sprintf(
 			"vm-%s-%s",
 			strings.ToLower(machine.GetID()),
