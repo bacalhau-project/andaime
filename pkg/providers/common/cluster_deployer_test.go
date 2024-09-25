@@ -119,16 +119,42 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 			{Dst: mock.Anything, Executable: true, Error: nil, Times: 3},
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
-			{Cmd: mock.Anything, Error: nil, Times: 3},
 			{
-				CmdMatcher: func(cmd string) bool { return true },
-				Output:     `[{"name":"orch","address":"1.1.1.1"}]`,
-				Error:      nil,
-				Times:      1,
+				Cmd:   "sudo /tmp/get-node-config-metadata.sh",
+				Error: nil,
+				Times: 2,
+			},
+			{
+				Cmd:   "sudo /tmp/install-bacalhau.sh",
+				Error: nil,
+				Times: 2,
+			},
+			{
+				Cmd:   "sudo /tmp/install-run-bacalhau.sh",
+				Error: nil,
+				Times: 2,
+			},
+			{
+				Cmd:    "bacalhau node list --output json --api-host 0.0.0.0",
+				Output: `[{"name":"orch","address":"1.1.1.1"}]`,
+				Error:  nil,
+				Times:  1,
+			},
+			{
+				Cmd:    "bacalhau node list --output json --api-host 1.1.1.1",
+				Output: `[{"name":"orch","address":"1.1.1.1"},{"name":"worker","address":"2.2.2.2"}]`,
+				Error:  nil,
+				Times:  1,
+			},
+			{
+				Cmd:    "sudo bacalhau config list --output json",
+				Output: "[]",
+				Error:  nil,
+				Times:  2,
 			},
 		},
-		InstallSystemdServiceExpectation: &sshutils.Expectation{Error: nil, Times: 1},
-		RestartServiceExpectation:        &sshutils.Expectation{Error: nil, Times: 1},
+		InstallSystemdServiceExpectation: &sshutils.Expectation{Error: nil, Times: 2},
+		RestartServiceExpectation:        &sshutils.Expectation{Error: nil, Times: 4},
 	}
 
 	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {

@@ -312,6 +312,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 						Error:  nil,
 						Times:  1,
 					},
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: "[]",
+						Error:  nil,
+						Times:  1,
+					},
 				},
 				InstallSystemdServiceExpectation: &sshutils.Expectation{
 					Error: nil,
@@ -319,7 +325,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 				},
 				RestartServiceExpectation: &sshutils.Expectation{
 					Error: nil,
-					Times: 1,
+					Times: 2,
 				},
 			},
 			machines: map[string]models.Machiner{
@@ -365,6 +371,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 						Error:  nil,
 						Times:  1,
 					},
+					{
+						Cmd:    "sudo bacalhau config list --output json",
+						Output: "[]",
+						Error:  nil,
+						Times:  1,
+					},
 				},
 				InstallSystemdServiceExpectation: &sshutils.Expectation{
 					Error: nil,
@@ -372,7 +384,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 				},
 				RestartServiceExpectation: &sshutils.Expectation{
 					Error: nil,
-					Times: 1,
+					Times: 2,
 				},
 			},
 			machines: map[string]models.Machiner{
@@ -470,6 +482,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 				Error:            nil,
 				Times:            1,
 			},
+			{
+				Cmd:    "sudo bacalhau config list --output json",
+				Output: "[]",
+				Error:  nil,
+				Times:  1,
+			},
 		},
 		InstallSystemdServiceExpectation: &sshutils.Expectation{
 			Error: nil,
@@ -477,7 +495,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 		},
 		RestartServiceExpectation: &sshutils.Expectation{
 			Error: nil,
-			Times: 1,
+			Times: 2,
 		},
 	}
 
@@ -587,6 +605,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorkers() {
 				Times:            1,
 			},
 			{
+				Cmd:    "sudo bacalhau config list --output json",
+				Output: "[]",
+				Error:  nil,
+				Times:  3,
+			},
+			{
 				Cmd:              mock.Anything,
 				ProgressCallback: mock.Anything,
 				Output:           "",
@@ -600,7 +624,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorkers() {
 		},
 		RestartServiceExpectation: &sshutils.Expectation{
 			Error: nil,
-			Times: 3,
+			Times: 6,
 		},
 	}
 	s.deployment.SetMachines(machines)

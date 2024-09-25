@@ -262,6 +262,48 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Error:            nil,
 				Times:            2,
 			},
+			{
+				Cmd:              `sudo bacalhau config set compute.allowlistedlocalpaths '"/tmp","/data"'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set orchestrator.nodemanager.disconnecttimeout '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set compute.heartbeat.infoupdateinterval '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo bacalhau config set compute.heartbeat.interval '5s'",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set compute.heartbeat.resourceupdateinterval '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo bacalhau config list --output json",
+				ProgressCallback: mock.Anything,
+				Output:           "[]",
+				Error:            nil,
+				Times:            3,
+			},
 		},
 		InstallSystemdServiceExpectation: &sshutils.Expectation{
 			Error: nil,
@@ -269,7 +311,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		},
 		RestartServiceExpectation: &sshutils.Expectation{
 			Error: nil,
-			Times: 3,
+			Times: 6,
 		},
 	}
 
