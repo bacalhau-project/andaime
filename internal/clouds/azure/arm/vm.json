@@ -336,7 +336,10 @@
         "typeHandlerVersion": "2.1",
         "autoUpgradeMinorVersion": true,
         "settings": {
-          "commandToExecute": "[concat('sudo -u root /usr/local/bin/bacalhau ', parameters('bacalhauConfigCommands'))]"
+          "fileUris": [
+            "https://raw.githubusercontent.com/bacalhau-project/andaime/main/scripts/configure_bacalhau.sh"
+          ],
+          "commandToExecute": "[concat('bash configure_bacalhau.sh ', parameters('bacalhauConfigCommands'))]"
         }
       }
     }
