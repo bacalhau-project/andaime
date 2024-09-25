@@ -18,6 +18,11 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+type BacalhauConfig struct {
+	Key   string
+	Value string
+}
+
 type ConfigDeployment struct {
 	Name         string
 	Type         models.DeploymentType // "Azure" or "AWS" or "GCP"
@@ -71,6 +76,20 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	}
 
 	l.Debug("Config file read successfully")
+
+	// Read Bacalhau configuration settings
+	var bacalhauConfigs []BacalhauConfig
+	bacalhauSettings := viper.GetStringSlice("general.bacalhau-settings")
+	for _, setting := range bacalhauSettings {
+		parts := strings.SplitN(setting, " ", 4)
+		if len(parts) == 4 && parts[0] == "config" && parts[1] == "set" {
+			bacalhauConfigs = append(bacalhauConfigs, BacalhauConfig{
+				Key:   parts[2],
+				Value: parts[3],
+			})
+		}
+	}
+	l.Debugf("Bacalhau configs: %+v", bacalhauConfigs)
 
 	// Extract deployments from config
 	var deployments []ConfigDeployment

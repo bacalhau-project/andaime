@@ -98,6 +98,13 @@
       "metadata": {
         "description": "List of allowed ports"
       }
+    },
+    "bacalhauConfigCommands": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Bacalhau configuration commands to run after deployment"
+      }
     }
   },
   "variables": {
@@ -142,7 +149,8 @@
     "extensionPublisher": "Microsoft.Azure.Security.LinuxAttestation",
     "extensionVersion": "1.0",
     "maaTenantName": "GuestAttestation",
-    "maaEndpoint": "[substring('emptystring', 0, 0)]"
+    "maaEndpoint": "[substring('emptystring', 0, 0)]",
+    "customScriptExtensionName": "ConfigureBacalhau"
   },
   "resources": [
     {
@@ -313,6 +321,24 @@
       "dependsOn": [
         "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
       ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-03-01",
+      "name": "[format('{0}/{1}', parameters('vmName'), variables('customScriptExtensionName'))]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.Extensions",
+        "type": "CustomScript",
+        "typeHandlerVersion": "2.1",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "commandToExecute": "[concat('sudo -u root /usr/local/bin/bacalhau ', parameters('bacalhauConfigCommands'))]"
+        }
+      }
     }
   ],
   "outputs": {
