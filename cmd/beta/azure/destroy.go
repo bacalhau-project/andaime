@@ -266,7 +266,6 @@ func destroyDeployment(dep ConfigDeployment) error {
 	l.Infof("Starting destruction of %s (%s) - %s", dep.Name, dep.Type, dep.ID)
 
 	ctx := context.Background()
-	started := false
 
 	if dep.Type == models.DeploymentTypeAzure {
 		azureProvider, err := azure_provider.NewAzureProviderFunc(
@@ -278,19 +277,17 @@ func destroyDeployment(dep ConfigDeployment) error {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
 			return fmt.Errorf("failed to create Azure provider for %s: %v", dep.Name, err)
 		}
-		l.Debugf("Destroying Azure resources for %s", dep.Name)
+		fmt.Printf("Destroying Azure resources for %s\n", dep.Name)
 		err = azureProvider.DestroyResources(ctx, dep.ID)
 		if err != nil {
 			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
-				l.Infof("Resource group '%s' is already destroyed.", dep.ID)
+				fmt.Printf(" -- Resource group '%s' is already destroyed.\n", dep.ID)
 			} else {
 				l.Errorf("Failed to destroy Azure deployment %s: %v", dep.Name, err)
 				return fmt.Errorf("failed to destroy Azure deployment %s: %v", dep.Name, err)
 			}
 		} else {
-			started = true
-			l.Infof("Azure deployment %s destruction started successfully", dep.Name)
-			// Stop the display
+			fmt.Printf(" -- Started successfully\n")
 		}
 	} else if dep.Type == models.DeploymentTypeAWS {
 		// awsProvider, err := aws_provider.NewAWSProvider(
@@ -311,27 +308,15 @@ func destroyDeployment(dep ConfigDeployment) error {
 		// 	return fmt.Errorf("failed to destroy AWS deployment %s: %v", dep.Name, err)
 		// }
 		l.Warnf("AWS destroy is not implemented yet")
-		started = true
 	}
 
-	if started {
-		l.Info("Destruction process started.")
-		fmt.Println("To watch the destruction progress, use the following CLI command:")
-		if dep.Type == "Azure" {
-			l.Infof("andaime beta azure destroy-status --resource-group %s", dep.ID)
-		} else if dep.Type == "AWS" {
-			l.Infof("andaime beta aws destroy-status --vpc-id %s", dep.ID)
-		}
-	} else {
-		l.Warn("Destruction process did not start")
-	}
-
-	l.Debug("Removing key from config.")
+	fmt.Printf("Removing keys from config for %s\n", dep.Name)
 	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
-		l.Errorf("Failed to delete key from config for %s: %v", dep.Name, err)
+		fmt.Printf(" -- Failed to delete key from config for %s: %v\n", dep.Name, err)
 		return fmt.Errorf("failed to delete key from config for %s: %v", dep.Name, err)
 	}
 
-	l.Infof("Destruction process for %s (%s) - %s completed", dep.Name, dep.Type, dep.ID)
+	fmt.Printf(" -- Done\n")
+
 	return nil
 }
