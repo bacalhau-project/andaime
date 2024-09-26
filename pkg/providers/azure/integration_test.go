@@ -104,7 +104,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
-	).Return(mockPoller, nil)
+	).Return(mockPoller, nil).Maybe()
 
 	s.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeVirtualMachine(), nil)
