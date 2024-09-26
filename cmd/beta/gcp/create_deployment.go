@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -165,7 +166,16 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 
 func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
 	l := logger.Get()
+	prog := display.GetGlobalProgramFunc()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
+	var configMutex sync.Mutex
 	writeConfig := func() {
+		configMutex.Lock()
+		defer configMutex.Unlock()
 		configFile := viper.ConfigFileUsed()
 		if configFile != "" {
 			if err := viper.WriteConfigAs(configFile); err != nil {
@@ -175,10 +185,15 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 			}
 		}
 	}
-	prog := display.GetGlobalProgramFunc()
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("display model or deployment is nil")
+
+	updateMachineConfig := func(machineName string) {
+		machine := m.Deployment.GetMachine(machineName)
+		if machine != nil {
+			configMutex.Lock()
+			defer configMutex.Unlock()
+			viper.Set(fmt.Sprintf("gcp.machines.%s", machineName), machine)
+			writeConfig()
+		}
 	}
 
 	// Ensure project
@@ -190,6 +205,7 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	}
 	m.Deployment.ProjectID = projectID
 	l.Debug("Project ensured successfully")
+	writeConfig()
 
 	// Enable required APIs
 	l.Debug("Enabling required APIs")
@@ -198,22 +214,44 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 		return fmt.Errorf("failed to enable required APIs: %w", err)
 	}
 	l.Debug("Required APIs enabled successfully")
+	writeConfig()
 
 	// Create resources
 	if err := gcpProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
-	writeConfig()
+	for _, machine := range m.Deployment.Machines {
+		updateMachineConfig(machine.GetName())
+	}
 
 	// Provision machines
-	if err := gcpProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
-		return fmt.Errorf("failed to provision machines: %w", err)
-	}
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(m.Deployment.Machines))
+
 	for _, machine := range m.Deployment.Machines {
-		machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
-		machine.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateSucceeded)
+		wg.Add(1)
+		go func(machineName string) {
+			defer wg.Done()
+			err := gcpProvider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machineName)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to provision machine %s: %w", machineName, err)
+				return
+			}
+			machine := m.Deployment.GetMachine(machineName)
+			machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
+			machine.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateSucceeded)
+			updateMachineConfig(machineName)
+		}(machine.GetName())
 	}
-	writeConfig()
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
 
 	// Provision Bacalhau cluster
 	if err := gcpProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
@@ -221,8 +259,8 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	}
 	for _, machine := range m.Deployment.Machines {
 		machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
+		updateMachineConfig(machine.GetName())
 	}
-	writeConfig()
 
 	// Finalize deployment
 	if err := gcpProvider.FinalizeDeployment(ctx); err != nil {

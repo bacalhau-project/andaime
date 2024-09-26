@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
@@ -166,7 +168,10 @@ func runDeployment(
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
+	var configMutex sync.Mutex
 	writeConfig := func() {
+		configMutex.Lock()
+		defer configMutex.Unlock()
 		configFile := viper.ConfigFileUsed()
 		if configFile != "" {
 			if err := viper.WriteConfigAs(configFile); err != nil {
@@ -174,6 +179,16 @@ func runDeployment(
 			} else {
 				l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
 			}
+		}
+	}
+
+	updateMachineConfig := func(machineName string) {
+		machine := m.Deployment.GetMachine(machineName)
+		if machine != nil {
+			configMutex.Lock()
+			defer configMutex.Unlock()
+			viper.Set(fmt.Sprintf("azure.machines.%s", machineName), machine)
+			writeConfig()
 		}
 	}
 
@@ -195,19 +210,43 @@ func runDeployment(
 	if err := azureProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
-	writeConfig()
+	for _, machine := range m.Deployment.Machines {
+		updateMachineConfig(machine.GetName())
+	}
 
 	// Provision machines
-	if err := azureProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
-		return fmt.Errorf("failed to provision machines: %w", err)
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(m.Deployment.Machines))
+
+	for _, machine := range m.Deployment.Machines {
+		wg.Add(1)
+		go func(machineName string) {
+			defer wg.Done()
+			err := azureProvider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machineName)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to provision machine %s: %w", machineName, err)
+				return
+			}
+			updateMachineConfig(machineName)
+		}(machine.GetName())
 	}
-	writeConfig()
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
 
 	// Provision Bacalhau cluster
 	if err := azureProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
-	writeConfig()
+	for _, machine := range m.Deployment.Machines {
+		updateMachineConfig(machine.GetName())
+	}
 
 	// Finalize deployment
 	if err := azureProvider.FinalizeDeployment(ctx); err != nil {
