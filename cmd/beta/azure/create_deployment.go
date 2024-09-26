@@ -9,7 +9,6 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
