@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
 
@@ -91,6 +92,7 @@ type Deployment struct {
 	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	deploymentMutex        sync.RWMutex
+	BacalhauSettings       []utils.BacalhauSettings
 	CustomScriptPath       string
 }
 
@@ -252,7 +254,6 @@ func (d *Deployment) GetCloudConfig(cloudType DeploymentType) interface{} {
 		return nil
 	}
 }
-
 
 type AzureConfig struct {
 	ResourceGroupName     string

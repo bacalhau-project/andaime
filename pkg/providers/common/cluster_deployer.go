@@ -496,11 +496,44 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	sshConfig sshutils.SSHConfiger,
 ) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	l.Info("Applying Bacalhau configurations")
 
-	bacalhauSettings := viper.GetStringMapString("general.bacalhau_settings")
-	for key, value := range bacalhauSettings {
-		cmd := fmt.Sprintf("sudo bacalhau config set %s '%s'", key, value)
+	combinedSettings := combineSettings(m.Deployment.BacalhauSettings)
+
+	if err := applySettings(ctx, sshConfig, combinedSettings); err != nil {
+		return fmt.Errorf("failed to apply Bacalhau configs: %w", err)
+	}
+
+	if err := verifySettings(ctx, sshConfig, combinedSettings); err != nil {
+		return fmt.Errorf("failed to verify Bacalhau configs: %w", err)
+	}
+
+	l.Info("Bacalhau configurations applied and verified")
+	return nil
+}
+
+func combineSettings(settings []utils.BacalhauSettings) map[string]string {
+	combined := make(map[string]string)
+	for _, setting := range settings {
+		switch v := setting.Value.(type) {
+		case []string:
+			combined[setting.Key] = strings.Join(v, ",")
+		case string:
+			combined[setting.Key] = v
+		}
+	}
+	return combined
+}
+
+func applySettings(
+	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
+	settings map[string]string,
+) error {
+	l := logger.Get()
+	for key, value := range settings {
+		cmd := fmt.Sprintf("sudo bacalhau config set '%s' '%s'", key, value)
 		output, err := sshConfig.ExecuteCommand(ctx, cmd)
 		if err != nil {
 			l.Errorf("Failed to apply Bacalhau config %s: %v", key, err)
@@ -508,21 +541,26 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 		}
 		l.Infof("Applied Bacalhau config %s: %s", key, output)
 	}
+	return nil
+}
 
-	// Get the final configuration
+func verifySettings(
+	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
+	expectedSettings map[string]string,
+) error {
+	l := logger.Get()
 	output, err := sshConfig.ExecuteCommand(ctx, "sudo bacalhau config list --output json")
 	if err != nil {
 		return fmt.Errorf("failed to get Bacalhau config: %w", err)
 	}
 
-	// Parse the JSON output
 	var configList []map[string]interface{}
 	if err := json.Unmarshal([]byte(output), &configList); err != nil {
 		return fmt.Errorf("failed to parse Bacalhau config: %w", err)
 	}
 
-	// Check if all the new settings are present
-	for key, expectedValue := range bacalhauSettings {
+	for key, expectedValue := range expectedSettings {
 		found := false
 		for _, config := range configList {
 			if config["Key"] == key {
@@ -546,7 +584,6 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 		}
 	}
 
-	l.Info("Bacalhau configurations applied and verified")
 	return nil
 }
 
@@ -627,4 +664,26 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 			l.Debugf("Waiting for all machines to reach state: %d", state)
 		}
 	}
+}
+
+// flattenMap converts a nested map structure to a flat map with dot-separated keys
+func flattenMap(m map[string]interface{}, prefix string) map[string]interface{} {
+	flatMap := make(map[string]interface{})
+	for k, v := range m {
+		newKey := k
+		if prefix != "" {
+			newKey = prefix + "." + k
+		}
+		switch v := v.(type) {
+		case map[string]interface{}:
+			for fk, fv := range flattenMap(v, newKey) {
+				flatMap[fk] = fv
+			}
+		case []interface{}:
+			flatMap[newKey] = strings.Join(utils.InterfaceSliceToStringSlice(v), ",")
+		default:
+			flatMap[newKey] = v
+		}
+	}
+	return flatMap
 }

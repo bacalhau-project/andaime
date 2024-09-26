@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-
 func isValidScript(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -109,6 +108,13 @@ func PrepareDeployment(
 		}
 		deployment.CustomScriptPath = customScriptPath
 	}
+
+	// Validate Bacalhau settings
+	bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
+	if err != nil {
+		return nil, fmt.Errorf("invalid Bacalhau settings: %w", err)
+	}
+	deployment.BacalhauSettings = bacalhauSettings
 
 	// Add this after setting provider-specific configurations
 	machineConfigsRaw := viper.Get(fmt.Sprintf("%s.machines", strings.ToLower(string(provider))))

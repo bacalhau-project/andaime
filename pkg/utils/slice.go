@@ -1,5 +1,7 @@
 package utils
 
+import "fmt"
+
 // Difference returns the elements in `a` that aren't in `b`.
 func Difference(a, b []string) []string {
 	mb := make(map[string]struct{}, len(b))
@@ -13,4 +15,13 @@ func Difference(a, b []string) []string {
 		}
 	}
 	return diff
+}
+
+// interfaceSliceToStringSlice converts a slice of interfaces to a slice of strings
+func InterfaceSliceToStringSlice(slice []interface{}) []string {
+	result := make([]string, len(slice))
+	for i, v := range slice {
+		result[i] = fmt.Sprintf("%v", v)
+	}
+	return result
 }
