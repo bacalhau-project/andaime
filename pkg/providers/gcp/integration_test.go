@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"google.golang.org/api/compute/v1"
 )
 
 var localCustomScriptPath string
