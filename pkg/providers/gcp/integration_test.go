@@ -1,9 +1,10 @@
 package gcp_test
 
 
-package gcp
+package gcp_test
 
 import (
+	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"context"
 	"os"
 	"testing"
@@ -28,7 +29,7 @@ var localCustomScriptContent []byte
 
 type PkgProvidersGCPIntegrationTest struct {
 	suite.Suite
-	provider               *GCPProvider
+	provider               *gcp.GCPProvider
 	clusterDeployer        *common.ClusterDeployer
 	origGetGlobalModelFunc func() *display.DisplayModel
 	testDisplayModel       *display.DisplayModel
