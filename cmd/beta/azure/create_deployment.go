@@ -166,6 +166,21 @@ func runDeployment(
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
+	writeConfig := func() {
+		configFile := viper.ConfigFileUsed()
+		if configFile != "" {
+			if err := viper.WriteConfigAs(configFile); err != nil {
+				l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+			} else {
+				l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
+			}
+		}
+	}
+
+	defer func() {
+		fmt.Println(m.RenderFinalTable())
+	}()
+
 	// Prepare resource group
 	l.Debug("Preparing resource group")
 	err := azureProvider.PrepareResourceGroup(ctx)
@@ -174,21 +189,25 @@ func runDeployment(
 		return fmt.Errorf("failed to prepare resource group: %w", err)
 	}
 	l.Debug("Resource group prepared successfully")
+	writeConfig()
 
 	// Create resources
 	if err := azureProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
+	writeConfig()
 
 	// Provision machines
 	if err := azureProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
 		return fmt.Errorf("failed to provision machines: %w", err)
 	}
+	writeConfig()
 
 	// Provision Bacalhau cluster
 	if err := azureProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
+	writeConfig()
 
 	// Finalize deployment
 	if err := azureProvider.FinalizeDeployment(ctx); err != nil {
