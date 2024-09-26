@@ -146,11 +146,8 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
 	}
 
-	if os.Getenv("ANDAIME_TEST_MODE") != "true" {
-		// Clear the screen and print final table
-		fmt.Print("\033[H\033[2J")
-		fmt.Println(m.RenderFinalTable())
-	}
+	// Always print the final table, even if we force quit
+	fmt.Println(m.RenderFinalTable())
 
 	if deploymentErr != nil {
 		fmt.Println("Deployment failed, but configuration was written to file.")
@@ -161,13 +158,22 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 	if err != nil {
 		fmt.Println("General (unknown) error running program:")
 		fmt.Println(err)
-		return nil
 	}
 
 	return nil
 }
 
 func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
+	writeConfig := func() {
+		configFile := viper.ConfigFileUsed()
+		if configFile != "" {
+			if err := viper.WriteConfigAs(configFile); err != nil {
+				l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+			} else {
+				l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
+			}
+		}
+	}
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
 	m := display.GetGlobalModelFunc()
@@ -197,16 +203,26 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	if err := gcpProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
+	writeConfig()
 
 	// Provision machines
 	if err := gcpProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
 		return fmt.Errorf("failed to provision machines: %w", err)
 	}
+	for _, machine := range m.Deployment.Machines {
+		machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
+		machine.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateSucceeded)
+	}
+	writeConfig()
 
 	// Provision Bacalhau cluster
 	if err := gcpProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
+	for _, machine := range m.Deployment.Machines {
+		machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
+	}
+	writeConfig()
 
 	// Finalize deployment
 	if err := gcpProvider.FinalizeDeployment(ctx); err != nil {
