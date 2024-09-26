@@ -88,9 +88,11 @@ func (s *PkgProvidersGCPIntegrationTest) TearDownSuite() {
 
 func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 	s.mockGCPClient.On("EnsureProject", mock.Anything, mock.Anything).Return("test-project-id", nil)
-	s.mockGCPClient.On("GetProject", mock.Anything).Return(testdata.FakeGCPProject(), nil)
-	s.mockGCPClient.On("EnableRequiredAPIs", mock.Anything).Return(nil)
+	s.mockGCPClient.On("EnableAPI", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateResources", mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateFirewallRules", mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateVM", mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPInstance(), nil)
 	s.mockGCPClient.On("GetInstance", mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeGCPInstance(), nil)
 	s.mockGCPClient.On("GetOperation", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -249,7 +251,7 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 				Times:            1,
 			},
 			{
-				Cmd:              "bacalhau node list --output json --api-host 10.0.0.1",
+				Cmd:              "bacalhau node list --output json --api-host 35.200.100.100",
 				ProgressCallback: mock.Anything,
 				Output:           `[{"id": "node1"}]`,
 				Error:            nil,

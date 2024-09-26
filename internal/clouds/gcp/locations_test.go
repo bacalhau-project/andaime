@@ -56,13 +56,13 @@ func (suite *InternalGCPTestSuite) TestIsValidGCPMachineType() {
 	}{
 		{
 			name:          "Valid machine type",
-			location:      "us-central1",
+			location:      "us-central1-a",
 			machineType:   "n1-standard-1",
 			expectedValid: true,
 		},
 		{
 			name:          "Invalid machine type",
-			location:      "us-central1",
+			location:      "us-central1-a",
 			machineType:   "invalid-machine-type",
 			expectedValid: false,
 		},
@@ -91,13 +91,13 @@ func (suite *InternalGCPTestSuite) TestIsValidGCPDiskImageFamily() {
 	}{
 		{
 			name:            "Valid disk image family",
-			location:        "us-central1",
+			location:        "us-central1-a",
 			diskImageFamily: "ubuntu-2004-lts",
 			expectedValid:   true,
 		},
 		{
 			name:            "Invalid disk image family",
-			location:        "us-central1",
+			location:        "us-central1-a",
 			diskImageFamily: "invalid-family",
 			expectedValid:   false,
 		},

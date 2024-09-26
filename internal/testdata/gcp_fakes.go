@@ -5,98 +5,68 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// FakeGCPInstance returns a fake GCP Virtual Machine for testing
+// FakeGCPInstance returns a fake GCP Instance for testing
 func FakeGCPInstance() *computepb.Instance {
 	return &computepb.Instance{
-		Name: proto.String("fake-instance"),
-		MachineType: proto.String(
-			"https://www.googleapis.com/compute/v1/projects/fake-project/zones/fake-zone/machineTypes/n1-standard-2",
-		),
-		Disks: []*computepb.AttachedDisk{
-			{
-				Source: proto.String(
-					"https://www.googleapis.com/compute/v1/projects/fake-project/zones/fake-zone/disks/fake-disk",
-				),
-				Type: proto.String(computepb.AttachedDisk_PERSISTENT.String()),
-			},
-		},
+		Name: proto.String("test-instance"),
 		NetworkInterfaces: []*computepb.NetworkInterface{
 			{
+				NetworkIP: proto.String("10.0.0.2"),
 				AccessConfigs: []*computepb.AccessConfig{
 					{
-						NatIP: proto.String("192.168.1.1"),
-					},
-				},
-				NetworkIP: proto.String("10.0.1.1"),
-			},
-		},
-	}
-}
-package testdata
-
-import (
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
-)
-
-// FakeGCPInstance returns a fake GCP Instance for testing
-func FakeGCPInstance() *gcp.Instance {
-	return &gcp.Instance{
-		Name: "test-instance",
-		NetworkInterfaces: []*gcp.NetworkInterface{
-			{
-				NetworkIP: "10.0.0.2",
-				AccessConfigs: []*gcp.AccessConfig{
-					{
-						NatIP: "35.200.100.100",
+						NatIP: proto.String("35.200.100.100"),
 					},
 				},
 			},
 		},
-		MachineType: "projects/test-project/zones/us-central1-a/machineTypes/n1-standard-1",
-		Zone:        "projects/test-project/zones/us-central1-a",
+		MachineType: proto.String(
+			"projects/test-project/zones/us-central1-a/machineTypes/n1-standard-1",
+		),
+		Zone: proto.String("projects/test-project/zones/us-central1-a"),
 	}
 }
 
 // FakeGCPProject returns a fake GCP Project for testing
-func FakeGCPProject() *gcp.Project {
-	return &gcp.Project{
-		Name:      "test-project",
-		ProjectId: "test-project-id",
+func FakeGCPProject() *computepb.Project {
+	return &computepb.Project{
+		Name: proto.String("test-project"),
+		Id:   proto.Uint64(1234567890), //nolint:mnd
 	}
 }
 
 // FakeGCPOperation returns a fake GCP Operation for testing
-func FakeGCPOperation() *gcp.Operation {
-	return &gcp.Operation{
-		Name:   "test-operation",
-		Status: "DONE",
-		Zone:   "projects/test-project/zones/us-central1-a",
+func FakeGCPOperation() *computepb.Operation {
+	status := computepb.Operation_DONE
+	return &computepb.Operation{
+		Name:   proto.String("test-operation"),
+		Zone:   proto.String("projects/test-project/zones/us-central1-a"),
+		Status: &status,
 	}
 }
 
 // FakeGCPMachineType returns a fake GCP Machine Type for testing
-func FakeGCPMachineType() *gcp.MachineType {
-	return &gcp.MachineType{
-		Name:        "n1-standard-1",
-		Description: "1 vCPU, 3.75 GB RAM",
-		GuestCpus:   1,
-		MemoryMb:    3840,
+func FakeGCPMachineType() *computepb.MachineType {
+	return &computepb.MachineType{
+		Name:        proto.String("n1-standard-1"),
+		Description: proto.String("1 vCPU, 3.75 GB RAM"),
+		GuestCpus:   proto.Int32(1),
+		MemoryMb:    proto.Int32(3840), //nolint:mnd
 	}
 }
 
 // FakeGCPNetwork returns a fake GCP Network for testing
-func FakeGCPNetwork() *gcp.Network {
-	return &gcp.Network{
-		Name:                  "test-network",
-		AutoCreateSubnetworks: true,
+func FakeGCPNetwork() *computepb.Network {
+	return &computepb.Network{
+		Name:                  proto.String("test-network"),
+		AutoCreateSubnetworks: proto.Bool(true),
 	}
 }
 
 // FakeGCPSubnetwork returns a fake GCP Subnetwork for testing
-func FakeGCPSubnetwork() *gcp.Subnetwork {
-	return &gcp.Subnetwork{
-		Name:        "test-subnetwork",
-		IpCidrRange: "10.0.0.0/24",
-		Network:     "projects/test-project/global/networks/test-network",
+func FakeGCPSubnetwork() *computepb.Subnetwork {
+	return &computepb.Subnetwork{
+		Name:        proto.String("test-subnetwork"),
+		IpCidrRange: proto.String("10.0.0.0/24"),
+		Network:     proto.String("projects/test-project/global/networks/test-network"),
 	}
 }
