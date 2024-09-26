@@ -555,3 +555,29 @@ func (p *GCPProvider) CreateVM(
 
 	return publicIP, privateIP, nil
 }
+// ValidateMachineType validates if the given machine type is available in the specified location
+func (p *GCPProvider) ValidateMachineType(ctx context.Context, location, machineType string) (bool, error) {
+	client, err := compute.NewMachineTypesRESTClient(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to create machine types client: %w", err)
+	}
+	defer client.Close()
+
+	zone := location // Assuming location is a zone. If it's a region, you'll need to get a zone from that region.
+
+	req := &computepb.GetMachineTypeRequest{
+		MachineType: machineType,
+		Project:     p.ProjectID,
+		Zone:        zone,
+	}
+
+	_, err = client.Get(ctx, req)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get machine type: %w", err)
+	}
+
+	return true, nil
+}

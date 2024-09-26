@@ -32,110 +32,186 @@ func GetGCPCreateDeploymentCmd() *cobra.Command {
 
 func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
-	l.Info("Starting executeCreateDeployment for GCP")
-
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
+	ctx := cmd.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if cancel != nil && ctx.Err() != nil {
+			cancel()
+		}
+	}()
 
 	common.SetDefaultConfigurations("gcp")
 
-	projectPrefix := viper.GetString("general.project_prefix")
-	if projectPrefix == "" {
-		return fmt.Errorf("project prefix is empty")
+	projectID := viper.GetString("gcp.project_id")
+	if projectID == "" {
+		return fmt.Errorf("gcp.project_id is not set in the configuration")
 	}
 
-	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
-		ctx,
-		viper.GetString("gcp.project_id"),
-		viper.GetString("gcp.organization_id"),
-		viper.GetString("gcp.billing_account_id"),
-	)
+	organizationID := viper.GetString("gcp.organization_id")
+	if organizationID == "" {
+		return fmt.Errorf("gcp.organization_id is not set in the configuration")
+	}
+
+	billingAccountID := viper.GetString("gcp.billing_account_id")
+	if billingAccountID == "" {
+		return fmt.Errorf("gcp.billing_account_id is not set in the configuration")
+	}
+
+	// Initialize the GCP provider
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(ctx, projectID, organizationID, billingAccountID)
 	if err != nil {
-		return fmt.Errorf("failed to get provider: %w", err)
+		l.Error(fmt.Sprintf("Failed to create GCP provider: %v", err))
+		return fmt.Errorf("failed to create GCP provider: %w", err)
 	}
 
+	// Prepare the deployment
 	deployment, err := gcpProvider.PrepareDeployment(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
 	m := display.NewDisplayModel(deployment)
-	machines, locations, err := common.ProcessMachinesConfig(
-		deployment.DeploymentType,
-		func(ctx context.Context, machineName string, machineType string) (bool, error) {
-			return true, nil
-		},
-	)
+	machines, locations, err := gcpProvider.ProcessMachinesConfig(ctx)
 	if err != nil {
-		fmt.Println("failed to process machines config: %w", err)
 		if err.Error() == "no machines configuration found for provider gcp" {
 			fmt.Println(
-				`You can check the skus available for a location with the command: 
+				`You can check the machine types available for a zone with the command: 
 gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 			)
 			return nil
 		}
 		return fmt.Errorf("failed to process machines config: %w", err)
 	}
-	deployment.SetMachines(machines)
-	deployment.SetLocations(locations)
+	m.Deployment.SetMachines(machines)
+	m.Deployment.SetLocations(locations)
 
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
 
-	pollingErrChan := gcpProvider.StartResourcePolling(ctx)
-
-	// Create a goroutine to handle polling errors
+	pollingErrChan := make(chan error, 1)
 	go func() {
-		for err := range pollingErrChan {
-			if err != nil {
-				l.Error(fmt.Sprintf("Resource polling error: %v", err))
-				cancel() // Cancel the context if there's an error
+		defer close(pollingErrChan)
+		err := gcpProvider.StartResourcePolling(ctx)
+		if err != nil {
+			l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
+			pollingErrChan <- err
+		}
+	}()
+
+	var deploymentErr error
+	deploymentDone := make(chan struct{})
+
+	go func() {
+		defer close(deploymentDone)
+		select {
+		case <-ctx.Done():
+			l.Debug("Deployment cancelled")
+			return
+		default:
+			deploymentErr = runDeployment(ctx, gcpProvider)
+			if deploymentErr != nil {
+				l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
+				cancel() // Cancel the context on error
 			}
 		}
 	}()
 
-	deploymentErr := runDeployment(ctx, gcpProvider)
-	if deploymentErr != nil {
-		l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
-		cancel()
-	}
-
 	_, err = prog.Run()
 	if err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
-		return err
+		cancel() // Cancel the context on error
 	}
 
-	if os.Getenv("ANDAIME_TEST_MODE") != "true" { //nolint:goconst
+	// Wait for deployment to finish or context to be cancelled
+	select {
+	case <-deploymentDone:
+	case <-ctx.Done():
+		l.Debug("Context cancelled, waiting for deployment to finish")
+		<-deploymentDone
+	}
+
+	// Write configuration to file
+	configFile := viper.ConfigFileUsed()
+	if configFile == "" {
+		l.Error("No configuration file found, could not write to file.")
+		return nil
+	}
+	if err := viper.WriteConfigAs(configFile); err != nil {
+		l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+	} else {
+		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
+	}
+
+	if os.Getenv("ANDAIME_TEST_MODE") != "true" {
 		// Clear the screen and print final table
 		fmt.Print("\033[H\033[2J")
 		fmt.Println(m.RenderFinalTable())
 	}
 
-	return deploymentErr
+	if deploymentErr != nil {
+		fmt.Println("Deployment failed, but configuration was written to file.")
+		fmt.Println("The deployment error was:")
+		fmt.Println(deploymentErr)
+	}
+
+	if err != nil {
+		fmt.Println("General (unknown) error running program:")
+		fmt.Println(err)
+		return nil
+	}
+
+	return nil
 }
 
-func runDeployment(ctx context.Context, p *gcp_provider.GCPProvider) error {
+func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
+	l := logger.Get()
+	prog := display.GetGlobalProgramFunc()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
+	// Ensure project
+	l.Debug("Ensuring project")
+	projectID, err := gcpProvider.EnsureProject(ctx, m.Deployment.ProjectID)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to ensure project: %v", err))
+		return fmt.Errorf("failed to ensure project: %w", err)
+	}
+	m.Deployment.ProjectID = projectID
+	l.Debug("Project ensured successfully")
+
+	// Enable required APIs
+	l.Debug("Enabling required APIs")
+	if err := gcpProvider.EnableRequiredAPIs(ctx); err != nil {
+		l.Error(fmt.Sprintf("Failed to enable required APIs: %v", err))
+		return fmt.Errorf("failed to enable required APIs: %w", err)
+	}
+	l.Debug("Required APIs enabled successfully")
+
 	// Create resources
-	if err := p.CreateResources(ctx); err != nil {
+	if err := gcpProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
 
 	// Provision machines
-	if err := p.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
+	if err := gcpProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
 		return fmt.Errorf("failed to provision machines: %w", err)
 	}
 
 	// Provision Bacalhau cluster
-	if err := p.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
+	if err := gcpProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 
 	// Finalize deployment
-	if err := p.FinalizeDeployment(ctx); err != nil {
+	if err := gcpProvider.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
+
+	l.Info("Deployment finalized")
+	time.Sleep(RetryTimeout)
+	prog.Quit()
 
 	return nil
 }
