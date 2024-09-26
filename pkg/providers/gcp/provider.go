@@ -209,7 +209,7 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 	return errChan
 }
 
-// StartResourcePolling starts polling resources for updates
+// PollResources polls resources for updates
 func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) {
 	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
 		// Skip display updates in test mode
@@ -218,7 +218,7 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 	l := logger.Get()
 	resources, err := p.Client.ListAllAssetsInProject(ctx, p.ProjectID)
 	if err != nil {
-		l.Errorf("Failed to start resource polling: %v", err)
+		l.Errorf("Failed to poll resources: %v", err)
 		return nil, err
 	}
 
@@ -227,6 +227,28 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 		interfaceResources[i] = r
 	}
 	return interfaceResources, nil
+}
+
+// StartResourcePolling starts polling resources for updates
+func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(errChan)
+		ticker := time.NewTicker(10 * time.Second) // Poll every 10 seconds
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_, err := p.PollResources(ctx)
+				if err != nil {
+					errChan <- fmt.Errorf("failed to poll resources: %w", err)
+				}
+			}
+		}
+	}()
+	return errChan
 }
 
 // FinalizeDeployment finalizes the deployment process
