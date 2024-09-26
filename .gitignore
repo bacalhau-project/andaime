@@ -34,3 +34,5 @@ claude-engineer*
 main.py
 ollama*
 experimental/*
+
+config*.yaml

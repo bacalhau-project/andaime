@@ -59,7 +59,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 			name: "No orchestrator node but orchestrator IP specified",
 			machinesConfig: []map[string]interface{}{
 				{
-					"location":   "eastus",
+					"location":   "eastus2",
 					"parameters": map[string]interface{}{"count": 1},
 				},
 			},
@@ -70,7 +70,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		{
 			name: "One orchestrator node, no other machines",
 			machinesConfig: []map[string]interface{}{
-				{"location": "eastus", "parameters": map[string]interface{}{"orchestrator": true}},
+				{"location": "eastus2", "parameters": map[string]interface{}{"orchestrator": true}},
 			},
 			expectError:   false,
 			expectedNodes: 1,
@@ -78,7 +78,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		{
 			name: "One orchestrator node and many other machines",
 			machinesConfig: []map[string]interface{}{
-				{"location": "eastus", "parameters": map[string]interface{}{"orchestrator": true}},
+				{"location": "eastus2", "parameters": map[string]interface{}{"orchestrator": true}},
 				{"location": "westus", "parameters": map[string]interface{}{"count": 3}},
 			},
 			expectError:   false,
@@ -87,7 +87,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		{
 			name: "Multiple orchestrator nodes (should error)",
 			machinesConfig: []map[string]interface{}{
-				{"location": "eastus", "parameters": map[string]interface{}{"orchestrator": true}},
+				{"location": "eastus2", "parameters": map[string]interface{}{"orchestrator": true}},
 				{"location": "westus", "parameters": map[string]interface{}{"orchestrator": true}},
 			},
 			expectError:   true,
@@ -234,7 +234,7 @@ func TestInitializeDeployment(t *testing.T) {
 		assert.Equal(t, 5, len(locations), "Expected 5 unique locations")
 
 		// Check specific configurations for each location
-		eastusCount := 0
+		eastus2Count := 0
 		westusCount := 0
 		brazilsouthCount := 0
 		ukwestCount := 0
@@ -242,8 +242,8 @@ func TestInitializeDeployment(t *testing.T) {
 
 		for _, machine := range localModel.Deployment.Machines {
 			switch machine.Location {
-			case "eastus":
-				eastusCount++
+			case "eastus2":
+				eastus2Count++
 				assert.Equal(
 					t,
 					"Standard_DS1_v4",
@@ -269,7 +269,7 @@ func TestInitializeDeployment(t *testing.T) {
 		}
 
 		// Verify the count of machines in each location
-		assert.Equal(t, 2, eastusCount, "Expected 2 machines in eastus")
+		assert.Equal(t, 2, eastus2Count, "Expected 2 machines in eastus2")
 		assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
 		assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
 		assert.Equal(t, 1, ukwestCount, "Expected 1 machine in ukwest")
@@ -312,13 +312,14 @@ func TestPrepareDeployment(t *testing.T) {
 	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
 	viper.Set("azure.subscription_id", "test-subscription-id")
 	viper.Set("azure.resource_group_name", "test-rg")
-	viper.Set("azure.resource_group_location", "")
+	viper.Set("azure.resource_group_location", "test-location")
 	viper.Set("azure.default_count_per_zone", 1)
 	viper.Set("azure.default_machine_type", "Standard_DS4_v2")
+	viper.Set("azure.default_resource_group_location", "eastus2")
 	viper.Set("azure.disk_size_gb", int32(30))
 	viper.Set("azure.machines", []map[string]interface{}{
 		{
-			"location": "eastus",
+			"location": "eastus2",
 			"parameters": map[string]interface{}{
 				"orchestrator": true,
 			},
@@ -342,7 +343,7 @@ func TestPrepareDeployment(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "test-project", deployment.ProjectID)
 	assert.Contains(t, deployment.UniqueID, "test-project")
-	assert.Equal(t, "eastus", deployment.ResourceGroupLocation)
+	assert.Equal(t, "test-location", deployment.ResourceGroupLocation)
 	assert.NotEmpty(t, deployment.SSHPublicKeyMaterial)
 	assert.NotEmpty(t, deployment.SSHPrivateKeyMaterial)
 	assert.WithinDuration(t, time.Now(), deployment.StartTime, 5*time.Second)
@@ -353,6 +354,6 @@ func TestPrepareDeployment(t *testing.T) {
 		machine = m
 		break
 	}
-	assert.Equal(t, "eastus", machine.Location)
+	assert.Equal(t, "eastus2", machine.Location)
 	assert.True(t, machine.Orchestrator)
 }
