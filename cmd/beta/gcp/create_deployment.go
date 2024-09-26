@@ -175,7 +175,6 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 			}
 		}
 	}
-	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
