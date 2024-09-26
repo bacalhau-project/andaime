@@ -335,4 +335,32 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	err = s.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	s.Require().NoError(err)
 
-	for _, machine :=
+	for _, machine := range m.Deployment.Machines {
+		if !machine.IsOrchestrator() {
+			err := s.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.GetName())
+			s.Require().NoError(err)
+		}
+	}
+
+	for _, machine := range m.Deployment.Machines {
+		s.Equal(models.ServiceStateSucceeded, machine.GetServiceState(models.ServiceTypeSSH.Name))
+		s.Equal(
+			models.ServiceStateSucceeded,
+			machine.GetServiceState(models.ServiceTypeDocker.Name),
+		)
+		s.Equal(
+			models.ServiceStateSucceeded,
+			machine.GetServiceState(models.ServiceTypeBacalhau.Name),
+		)
+		s.Equal(
+			models.ServiceStateSucceeded,
+			machine.GetServiceState(models.ServiceTypeScript.Name),
+		)
+	}
+
+	s.mockSSHConfig.AssertExpectations(s.T())
+}
+
+func TestGCPIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(PkgProvidersGCPIntegrationTest))
+}
