@@ -58,7 +58,12 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize the GCP provider
-	gcpProvider, err := gcp_provider.NewGCPProviderFunc(ctx, projectID, organizationID, billingAccountID)
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
+		ctx,
+		projectID,
+		organizationID,
+		billingAccountID,
+	)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to create GCP provider: %v", err))
 		return fmt.Errorf("failed to create GCP provider: %w", err)
