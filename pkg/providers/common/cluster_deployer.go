@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -672,28 +671,4 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 			l.Debugf("Waiting for all machines to reach state: %d", state)
 		}
 	}
-}
-
-// flattenMap converts a nested map structure to a flat map with dot-separated keys
-func flattenMap(m map[string]interface{}, prefix string) map[string]interface{} {
-	flatMap := make(map[string]interface{})
-	for k, v := range m {
-		newKey := k
-		if prefix != "" {
-			newKey = prefix + "." + k
-		}
-		switch v := v.(type) {
-		case map[string]interface{}:
-			for fk, fv := range flattenMap(v, newKey) {
-				flatMap[fk] = fv
-			}
-		case []interface{}:
-			flatMap[newKey] = strings.Join(utils.InterfaceSliceToStringSlice(v), ",")
-		case bool:
-			flatMap[newKey] = strconv.FormatBool(v)
-		default:
-			flatMap[newKey] = v
-		}
-	}
-	return flatMap
 }
