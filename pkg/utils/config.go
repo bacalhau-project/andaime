@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -189,8 +190,10 @@ func ReadBacalhauSettingsFromViper() ([]BacalhauSettings, error) {
 				stringSlice = append(stringSlice, strItem)
 			}
 			result[i].Value = stringSlice
+		case bool:
+			result[i].Value = strconv.FormatBool(v)
 		default:
-			return nil, fmt.Errorf("invalid value type for key %s: expected string or []interface{}, got %T", setting.Key, setting.Value)
+			return nil, fmt.Errorf("invalid value type for key %s: expected string, []string, bool or []interface{}, got %T", setting.Key, setting.Value)
 		}
 	}
 

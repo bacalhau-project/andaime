@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -80,6 +81,13 @@ func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context)
 	if err := errGroup.Wait(); err != nil {
 		return fmt.Errorf("failed to provision packages on all machines: %v", err)
 	}
+
+	for _, machine := range m.Deployment.GetMachines() {
+		for _, resource := range machine.GetMachineResources() {
+			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
+		}
+	}
+
 	return nil
 }
 
@@ -681,6 +689,8 @@ func flattenMap(m map[string]interface{}, prefix string) map[string]interface{} 
 			}
 		case []interface{}:
 			flatMap[newKey] = strings.Join(utils.InterfaceSliceToStringSlice(v), ",")
+		case bool:
+			flatMap[newKey] = strconv.FormatBool(v)
 		default:
 			flatMap[newKey] = v
 		}

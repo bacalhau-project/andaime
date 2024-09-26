@@ -15,7 +15,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
 type BacalhauConfig struct {
@@ -27,6 +26,7 @@ type ConfigDeployment struct {
 	Name         string
 	Type         models.DeploymentType // "Azure" or "AWS" or "GCP"
 	ID           string                // Resource Group for Azure, VPC ID for AWS
+	UniqueID     string                // Resource Group for Azure, VPC ID for AWS
 	FullViperKey string                // The full key in the Viper config file
 }
 
@@ -77,25 +77,11 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	l.Debug("Config file read successfully")
 
-	// Read Bacalhau configuration settings
-	var bacalhauConfigs []BacalhauConfig
-	bacalhauSettings := viper.GetStringSlice("general.bacalhau-settings")
-	for _, setting := range bacalhauSettings {
-		parts := strings.SplitN(setting, " ", 4)
-		if len(parts) == 4 && parts[0] == "config" && parts[1] == "set" {
-			bacalhauConfigs = append(bacalhauConfigs, BacalhauConfig{
-				Key:   parts[2],
-				Value: parts[3],
-			})
-		}
-	}
-	l.Debugf("Bacalhau configs: %+v", bacalhauConfigs)
-
 	// Extract deployments from config
 	var deployments []ConfigDeployment
 	allDeployments := viper.Get("deployments")
 	if deploymentMap, ok := allDeployments.(map[string]interface{}); ok {
-		for _, deploymentDetails := range deploymentMap {
+		for uniqueID, deploymentDetails := range deploymentMap {
 			deploymentClouds, ok := deploymentDetails.(map[string]interface{})
 			if !ok {
 				l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
@@ -112,9 +98,11 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 				for rgName := range deploymentCloudsAzure {
 					dep := ConfigDeployment{
-						Name: rgName,
-						Type: models.DeploymentTypeAzure,
-						ID:   rgName,
+						Name:         rgName,
+						Type:         models.DeploymentTypeAzure,
+						ID:           rgName,
+						UniqueID:     uniqueID,
+						FullViperKey: fmt.Sprintf("deployments.%s.azure.%s", uniqueID, rgName),
 					}
 					deployments = append(deployments, dep)
 				}
@@ -293,7 +281,6 @@ func destroyDeployment(dep ConfigDeployment) error {
 			ctx,
 			viper.GetString("azure.subscription_id"),
 		)
-		dep.FullViperKey = fmt.Sprintf("deployments.azure.%s", dep.Name)
 		if err != nil {
 			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
 			return fmt.Errorf("failed to create Azure provider for %s: %v", dep.Name, err)
@@ -310,17 +297,19 @@ func destroyDeployment(dep ConfigDeployment) error {
 		} else {
 			fmt.Printf("   -- Started successfully\n")
 		}
+
+		// Remove the deployment from the config
+		fmt.Printf("   Removing deployment from config\n")
+		viper.Set(dep.FullViperKey, nil)
+		err = viper.WriteConfig()
+		if err != nil {
+			l.Errorf("Failed to update config file: %v", err)
+			return fmt.Errorf("failed to update config file: %v", err)
+		}
+		fmt.Printf("   -- Removed successfully\n")
 	} else if dep.Type == models.DeploymentTypeAWS {
 		l.Warnf("AWS destroy is not implemented yet")
 	}
-
-	fmt.Printf("   Removing keys from config\n")
-	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
-		fmt.Printf("   -- Failed to delete key from config: %v\n", err)
-		return fmt.Errorf("failed to delete key from config for %s: %v", dep.Name, err)
-	}
-
-	fmt.Printf("   -- Done\n")
 
 	return nil
 }

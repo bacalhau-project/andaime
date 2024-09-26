@@ -365,7 +365,6 @@ func (p *AzureProvider) deployMachine(
 	machine models.Machiner,
 	tags map[string]*string,
 ) error {
-	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	goRoutineID := m.RegisterGoroutine(
 		fmt.Sprintf("DeployMachine-%s", machine.GetName()),
@@ -418,7 +417,6 @@ func (p *AzureProvider) deployMachine(
 
 	allMachines, ok := viper.Get(m.Deployment.ViperPath).(map[string]viperMachineStruct)
 	if !ok {
-		l.Errorf("failed to get all machines from viper")
 		allMachines = make(map[string]viperMachineStruct)
 	}
 	allMachines[machine.GetName()] = viperMachineStruct{
