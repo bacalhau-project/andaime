@@ -71,7 +71,7 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	viper.Set("gcp.default_disk_size_gb", 30)
 
 	s.mockGCPClient = new(gcp_mocks.MockGCPClienter)
-	s.provider = &GCPProvider{
+	s.provider = &gcp.GCPProvider{
 		Client: s.mockGCPClient,
 	}
 
