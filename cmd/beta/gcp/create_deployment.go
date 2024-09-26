@@ -93,13 +93,12 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
 
-	pollingErrChan := make(chan error, 1)
+	pollingErrChan := gcpProvider.StartResourcePolling(ctx)
 	go func() {
-		defer close(pollingErrChan)
-		err := gcpProvider.StartResourcePolling(ctx)
-		if err != nil {
-			l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
-			pollingErrChan <- err
+		for err := range pollingErrChan {
+			if err != nil {
+				l.Error(fmt.Sprintf("Resource polling error: %v", err))
+			}
 		}
 	}()
 
