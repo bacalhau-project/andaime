@@ -3,11 +3,11 @@ package gcp
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
@@ -164,6 +164,7 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 }
 
 func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
+	l := logger.Get()
 	writeConfig := func() {
 		configFile := viper.ConfigFileUsed()
 		if configFile != "" {
