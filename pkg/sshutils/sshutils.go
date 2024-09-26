@@ -205,3 +205,18 @@ func ReadPrivateKey(path string) ([]byte, error) {
 
 	return privateKeyBytes, nil
 }
+
+func ReadPublicKey(path string) ([]byte, error) {
+	publicKeyFile, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open public key file: %w", err)
+	}
+	defer publicKeyFile.Close()
+
+	publicKeyBytes, err := io.ReadAll(publicKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read public key file: %w", err)
+	}
+
+	return publicKeyBytes, nil
+}

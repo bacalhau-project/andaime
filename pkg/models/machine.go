@@ -3,36 +3,125 @@ package models
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
+	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+type Machiner interface {
+	// Basic information
+	GetID() string
+	GetName() string
+	SetName(string)
+	GetType() ResourceType
+	GetVMSize() string
+	GetDiskSizeGB() int
+	SetDiskSizeGB(size int)
+	GetDiskImageFamily() string
+	SetDiskImageFamily(family string)
+	GetDiskImageURL() string
+	SetDiskImageURL(url string)
+	GetLocation() string
+	SetLocation(location string) error
+	GetRegion() string
+	GetZone() string
+	GetPublicIP() string
+	SetPublicIP(ip string)
+	GetPrivateIP() string
+	SetPrivateIP(ip string)
+
+	// SSH related
+	GetSSHUser() string
+	SetSSHUser(user string)
+	GetSSHPublicKeyMaterial() []byte
+	SetSSHPublicKeyMaterial([]byte)
+	GetSSHPublicKeyPath() string
+	SetSSHPublicKeyPath(path string)
+	GetSSHPrivateKeyMaterial() []byte
+	SetSSHPrivateKeyMaterial([]byte)
+	GetSSHPrivateKeyPath() string
+	SetSSHPrivateKeyPath(path string)
+	GetSSHPort() int
+	SetSSHPort(port int)
+
+	// Status and state
+	IsOrchestrator() bool
+	SetOrchestrator(orchestrator bool)
+	IsComplete() bool
+	SetComplete()
+	GetOrchestratorIP() string
+	SetOrchestratorIP(ip string)
+	GetStatusMessage() string
+	SetStatusMessage(message string)
+
+	// Resource management
+	GetMachineResource(resourceType string) MachineResource
+	SetMachineResource(resourceType string, resourceState MachineResourceState)
+	GetMachineResources() map[string]MachineResource
+	GetMachineResourceState(resourceName string) MachineResourceState
+	SetMachineResourceState(resourceName string, state MachineResourceState)
+	ResourcesComplete() (int, int)
+
+	// Service management
+	GetServices() map[string]ServiceType
+	GetServiceState(serviceName string) ServiceState
+	SetServiceState(serviceName string, state ServiceState)
+	EnsureMachineServices() error
+	ServicesComplete() (int, int)
+
+	// Installation methods
+	InstallDockerAndCorePackages(ctx context.Context) error
+
+	// Cloud provider
+	CloudType() DeploymentType
+
+	// Timing information
+	GetStartTime() time.Time
+	SetStartTime(startTime time.Time)
+	GetDeploymentEndTime() time.Time
+	SetDeploymentEndTime(endTime time.Time)
+	GetElapsedTime() time.Duration
+	SetElapsedTime(elapsedTime time.Duration)
+
+	// Logging
+	LogTimingInfo(logger logger.Logger)
+}
+
 type Machine struct {
-	ID            string
-	Name          string
-	Type          AzureResourceTypes
-	Location      string
+	ID       string
+	Name     string
+	Type     ResourceType
+	Location string
+	Region   string
+	Zone     string
+
 	StatusMessage string
 	Parameters    Parameters
 	PublicIP      string
 	PrivateIP     string
 	StartTime     time.Time
 
-	VMSize         string
-	DiskSizeGB     int32 `default:"30"`
-	ElapsedTime    time.Duration
-	Orchestrator   bool
-	OrchestratorIP string
+	VMSize          string
+	DiskSizeGB      int
+	DiskImageFamily string
+	DiskImageURL    string
+	ElapsedTime     time.Duration
+	Orchestrator    bool
+	OrchestratorIP  string
 
 	SSHUser               string
 	SSHPrivateKeyMaterial []byte
+	SSHPrivateKeyPath     string
+	SSHPublicKeyMaterial  []byte
+	SSHPublicKeyPath      string
 	SSHPort               int
 
 	CreationStartTime time.Time
@@ -45,39 +134,72 @@ type Machine struct {
 	BacalhauEndTime   time.Time
 	DeploymentEndTime time.Time
 
+	CustomScriptExecuted bool
+
 	machineResources map[string]MachineResource
 	machineServices  map[string]ServiceType
 
 	stateMutex sync.RWMutex
 	done       bool
+
+	DeploymentType DeploymentType
+	CloudProvider  DeploymentType
+	CloudSpecific  CloudSpecificInfo
+}
+
+type CloudSpecificInfo struct {
+	// Azure specific
+	ResourceGroupName string
+
+	// GCP specific
+	Zone   string
+	Region string
 }
 
 func NewMachine(
+	cloudProvider DeploymentType,
 	location string,
 	vmSize string,
-	diskSizeGB int32,
-) (*Machine, error) {
+	diskSizeGB int,
+	cloudSpecificInfo CloudSpecificInfo,
+) (Machiner, error) {
 	newID := utils.CreateShortID()
 
-	if !internal_azure.IsValidAzureLocation(location) {
-		return nil, fmt.Errorf("invalid Azure location: %s", location)
+	if !IsValidLocation(cloudProvider, location) {
+		return nil, fmt.Errorf("invalid location for %s: %s", cloudProvider, location)
 	}
 
+	machineName := fmt.Sprintf("%s-vm", newID)
 	returnMachine := &Machine{
-		ID:         newID,
-		Name:       fmt.Sprintf("%s-vm", newID),
-		StartTime:  time.Now(),
-		Location:   location,
-		VMSize:     vmSize,
-		DiskSizeGB: diskSizeGB,
+		ID:            machineName,
+		Name:          machineName,
+		StartTime:     time.Now(),
+		Location:      location,
+		VMSize:        vmSize,
+		DiskSizeGB:    diskSizeGB,
+		CloudProvider: cloudProvider,
+		CloudSpecific: cloudSpecificInfo,
 	}
 
 	for _, service := range RequiredServices {
 		returnMachine.SetServiceState(service.Name, ServiceStateNotStarted)
 	}
 
-	for _, resource := range RequiredAzureResources {
-		returnMachine.SetResource(resource.GetResourceLowerString(), AzureResourceStateNotStarted)
+	if cloudProvider == DeploymentTypeAzure {
+		for _, resource := range RequiredAzureResources {
+			returnMachine.SetMachineResource(
+				resource.GetResourceLowerString(),
+				ResourceStateNotStarted,
+			)
+		}
+	} else if cloudProvider == DeploymentTypeGCP {
+		for _, resource := range RequiredGCPResources {
+			returnMachine.SetMachineResource(
+				resource.GetResourceLowerString(),
+				ResourceStateNotStarted,
+			)
+		}
+		returnMachine.Type = GCPResourceTypeInstance
 	}
 
 	return returnMachine, nil
@@ -85,108 +207,136 @@ func NewMachine(
 
 // Logging methods
 
-func (m *Machine) LogTimingInfo(logger *logger.Logger) {
-	logger.Info(fmt.Sprintf("Machine %s timing information:", m.Name))
-	logTimingDetail(logger, "Creation time", m.CreationStartTime, m.CreationEndTime)
-	logTimingDetail(logger, "SSH setup time", m.SSHStartTime, m.SSHEndTime)
-	logTimingDetail(logger, "Docker installation time", m.DockerStartTime, m.DockerEndTime)
-	logTimingDetail(logger, "Bacalhau setup time", m.BacalhauStartTime, m.BacalhauEndTime)
-	logger.Info(fmt.Sprintf("  Total time: %v", m.BacalhauEndTime.Sub(m.CreationStartTime)))
+func (mach *Machine) LogTimingInfo(logger logger.Logger) {
+	logger.Info(fmt.Sprintf("Machine %s timing information:", mach.Name))
+	logTimingDetail(logger, "Creation time", mach.CreationStartTime, mach.CreationEndTime)
+	logTimingDetail(logger, "SSH setup time", mach.SSHStartTime, mach.SSHEndTime)
+	logTimingDetail(logger, "Docker installation time", mach.DockerStartTime, mach.DockerEndTime)
+	logTimingDetail(logger, "Bacalhau setup time", mach.BacalhauStartTime, mach.BacalhauEndTime)
+	logger.Info(fmt.Sprintf("  Total time: %v", mach.BacalhauEndTime.Sub(mach.CreationStartTime)))
 }
 
-func logTimingDetail(logger *logger.Logger, label string, start, end time.Time) {
+func logTimingDetail(logger logger.Logger, label string, start, end time.Time) {
 	logger.Info(fmt.Sprintf("  %s: %v", label, end.Sub(start)))
 }
 
 // Status check methods
 
-func (m *Machine) IsOrchestrator() bool {
-	return m.Orchestrator
+func (mach *Machine) IsOrchestrator() bool {
+	return mach.Orchestrator
 }
 
-func (m *Machine) SetLocation(location string) error {
-	if !internal_azure.IsValidAzureLocation(location) {
-		return fmt.Errorf("invalid Azure location: %s", location)
+func (mach *Machine) SetOrchestrator(orchestrator bool) {
+	mach.Orchestrator = orchestrator
+}
+
+func (mach *Machine) SetLocation(location string) error {
+	switch mach.DeploymentType {
+	case DeploymentTypeAzure:
+		if !internal_azure.IsValidAzureLocation(location) {
+			return fmt.Errorf("invalid Azure location: %s", location)
+		}
+	case DeploymentTypeGCP:
+		if !internal_gcp.IsValidGCPLocation(location) {
+			return fmt.Errorf("invalid GCP location: %s", location)
+		}
+	default:
+		return fmt.Errorf("unknown deployment type: %s", mach.DeploymentType)
 	}
-	m.Location = location
+	mach.Location = location
 	return nil
 }
 
-func (m *Machine) SSHEnabled() bool {
-	return m.GetServiceState("SSH") == ServiceStateSucceeded
+func (mach *Machine) SSHEnabled() bool {
+	return mach.GetServiceState(ServiceTypeSSH.Name) == ServiceStateSucceeded
 }
 
-func (m *Machine) DockerEnabled() bool {
-	return m.GetServiceState("Docker") == ServiceStateSucceeded
+func (mach *Machine) DockerEnabled() bool {
+	return mach.GetServiceState(ServiceTypeDocker.Name) == ServiceStateSucceeded
 }
 
-func (m *Machine) BacalhauEnabled() bool {
-	return m.GetServiceState("Bacalhau") == ServiceStateSucceeded
+func (mach *Machine) BacalhauEnabled() bool {
+	return mach.GetServiceState(ServiceTypeBacalhau.Name) == ServiceStateSucceeded
 }
 
-func (m *Machine) Complete() bool {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.done
+func (mach *Machine) CustomScriptEnabled() bool {
+	return mach.GetServiceState(ServiceTypeScript.Name) == ServiceStateSucceeded
 }
 
-func (m *Machine) SetComplete() {
-	m.stateMutex.Lock()
-	defer m.stateMutex.Unlock()
-	if !m.done {
-		m.done = true
-		m.DeploymentEndTime = time.Now()
+func (mach *Machine) Complete() bool {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.done
+}
+
+func (mach *Machine) SetComplete() {
+	mach.stateMutex.Lock()
+	defer mach.stateMutex.Unlock()
+	if !mach.done {
+		mach.done = true
+		mach.DeploymentEndTime = time.Now()
 	}
 }
 
-func (m *Machine) IsComplete() bool {
-	resourcesComplete := m.resourcesComplete()
-	servicesComplete := m.servicesComplete()
+func (mach *Machine) IsComplete() bool {
+	resourcesComplete := mach.resourcesComplete()
+	servicesComplete := mach.servicesComplete()
 	return resourcesComplete && servicesComplete
 }
 
-func (m *Machine) resourcesComplete() bool {
-	completed, total := m.ResourcesComplete()
+func (mach *Machine) SetCustomScriptExecuted(executed bool) {
+	mach.CustomScriptExecuted = executed
+}
+
+func (mach *Machine) IsCustomScriptExecuted() bool {
+	return mach.CustomScriptExecuted
+}
+
+func (mach *Machine) resourcesComplete() bool {
+	completed, total := mach.ResourcesComplete()
 	return (completed == total) && (total > 0)
 }
 
-func (m *Machine) servicesComplete() bool {
-	completed, total := m.ServicesComplete()
+func (mach *Machine) servicesComplete() bool {
+	completed, total := mach.ServicesComplete()
 	return (completed == total) && (total > 0)
 }
 
 // Resource management methods
 
-func (m *Machine) GetResource(resourceType string) MachineResource {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.getResourceUnsafe(resourceType)
+func (mach *Machine) GetMachineResource(resourceType string) MachineResource {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.getMachineResourceUnsafe(resourceType)
 }
 
-func (m *Machine) getResourceUnsafe(resourceType string) MachineResource {
-	if m.machineResources == nil {
-		m.machineResources = make(map[string]MachineResource)
+func (mach *Machine) getMachineResourceUnsafe(resourceType string) MachineResource {
+	if mach.machineResources == nil {
+		mach.machineResources = make(map[string]MachineResource)
 	}
 
 	resourceTypeLower := strings.ToLower(resourceType)
-	if resource, ok := m.machineResources[resourceTypeLower]; ok {
+	if resource, ok := mach.machineResources[resourceTypeLower]; ok {
 		return resource
 	}
 	return MachineResource{}
 }
 
-func (m *Machine) SetResource(resourceType string, resourceState AzureResourceState) {
-	m.stateMutex.Lock()
-	defer m.stateMutex.Unlock()
-	m.setResourceUnsafe(resourceType, resourceState)
+func (mach *Machine) SetMachineResource(resourceType string, resourceState MachineResourceState) {
+	mach.stateMutex.Lock()
+	defer mach.stateMutex.Unlock()
+	mach.setMachineResourceUnsafe(resourceType, resourceState)
 }
 
-func (m *Machine) setResourceUnsafe(resourceType string, resourceState AzureResourceState) {
-	if m.machineResources == nil {
-		m.machineResources = make(map[string]MachineResource)
+func (mach *Machine) setMachineResourceUnsafe(
+	resourceType string,
+	resourceState MachineResourceState,
+) {
+	if mach.machineResources == nil {
+		mach.machineResources = make(map[string]MachineResource)
 	}
 	resourceTypeLower := strings.ToLower(resourceType)
-	m.machineResources[resourceTypeLower] = MachineResource{
+	mach.machineResources[resourceTypeLower] = MachineResource{
 		ResourceName:  resourceType,
 		ResourceType:  GetAzureResourceType(resourceType),
 		ResourceState: resourceState,
@@ -194,100 +344,122 @@ func (m *Machine) setResourceUnsafe(resourceType string, resourceState AzureReso
 	}
 }
 
-func (m *Machine) GetResourceState(resourceName string) AzureResourceState {
-	return m.GetResource(resourceName).ResourceState
+func (mach *Machine) GetMachineResourceState(resourceName string) MachineResourceState {
+	return mach.GetMachineResource(resourceName).ResourceState
 }
 
-func (m *Machine) SetResourceState(resourceName string, state AzureResourceState) {
-	m.stateMutex.Lock()
-	defer m.stateMutex.Unlock()
-	if m.machineResources == nil {
-		m.machineResources = make(map[string]MachineResource)
+func (mach *Machine) SetMachineResourceState(resourceName string, state MachineResourceState) {
+	mach.stateMutex.Lock()
+	defer mach.stateMutex.Unlock()
+	if mach.machineResources == nil {
+		mach.machineResources = make(map[string]MachineResource)
 	}
 
 	resourceNameLower := strings.ToLower(resourceName)
-	if resource, ok := m.machineResources[resourceNameLower]; ok {
+	if resource, ok := mach.machineResources[resourceNameLower]; ok {
 		resource.ResourceState = state
-		m.machineResources[resourceNameLower] = resource
+		mach.machineResources[resourceNameLower] = resource
 	} else {
-		m.machineResources[resourceNameLower] = MachineResource{
+		mach.machineResources[resourceNameLower] = MachineResource{
 			ResourceName:  resourceName,
 			ResourceState: state,
 		}
 	}
 }
 
-func (m *Machine) ResourcesComplete() (int, int) {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.countCompletedResources(RequiredAzureResources)
+func (mach *Machine) ResourcesComplete() (int, int) {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.countCompletedResources()
 }
 
-func (m *Machine) countCompletedResources(requiredResources []AzureResourceTypes) (int, int) {
+func (mach *Machine) countCompletedResources() (int, int) {
+	l := logger.Get()
 	completedResources := 0
-	totalResources := len(requiredResources)
+
+	requiredResources := []ResourceType{}
+	if mach.CloudProvider == DeploymentTypeAzure {
+		requiredResources = RequiredAzureResources
+	} else if mach.CloudProvider == DeploymentTypeGCP {
+		requiredResources = RequiredGCPResources
+	}
 
 	for _, requiredResource := range requiredResources {
-		resource := m.getResourceUnsafe(requiredResource.GetResourceLowerString())
-		if resource.ResourceState == AzureResourceStateSucceeded {
+		resource := mach.getMachineResourceUnsafe(requiredResource.GetResourceLowerString())
+		if resource.ResourceState == ResourceStateSucceeded ||
+			resource.ResourceState == ResourceStateRunning {
+			// l.Debugf("Machine %s: Resource %s is completed", m.Name, resource.ResourceName)
 			completedResources++
+		} else {
+			// The below is a no-op, but it's a good way to get some details
+			// when debugging.
+			// Print out roughly every 1000 calls
+			//nolint:gosec,mnd
+			if rand.Intn(1000) < -1 {
+				l.Debugf("Machine %s: Resource %s is not completed", mach.Name, resource.ResourceName)
+			}
 		}
 	}
 
-	return completedResources, totalResources
+	return completedResources, len(requiredResources)
 }
 
 // Service management methods
-
-func (m *Machine) GetServiceState(serviceName string) ServiceState {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.getServiceStateUnsafe(serviceName)
+func (mach *Machine) GetServices() map[string]ServiceType {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.machineServices
 }
 
-func (m *Machine) getServiceStateUnsafe(serviceName string) ServiceState {
-	if m.machineServices == nil {
-		m.machineServices = make(map[string]ServiceType)
+func (mach *Machine) GetServiceState(serviceName string) ServiceState {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.getServiceStateUnsafe(serviceName)
+}
+
+func (mach *Machine) getServiceStateUnsafe(serviceName string) ServiceState {
+	if mach.machineServices == nil {
+		mach.machineServices = make(map[string]ServiceType)
 		return ServiceStateUnknown
 	}
 
-	if service, ok := m.machineServices[serviceName]; ok {
+	if service, ok := mach.machineServices[serviceName]; ok {
 		return service.State
 	}
 	return ServiceStateUnknown
 }
 
-func (m *Machine) SetServiceState(serviceName string, state ServiceState) {
-	m.stateMutex.Lock()
-	defer m.stateMutex.Unlock()
-	m.setServiceStateUnsafe(serviceName, state)
+func (mach *Machine) SetServiceState(serviceName string, state ServiceState) {
+	mach.stateMutex.Lock()
+	defer mach.stateMutex.Unlock()
+	mach.setServiceStateUnsafe(serviceName, state)
 }
 
-func (m *Machine) setServiceStateUnsafe(serviceName string, state ServiceState) {
-	if m.machineServices == nil {
-		m.machineServices = make(map[string]ServiceType)
+func (mach *Machine) setServiceStateUnsafe(serviceName string, state ServiceState) {
+	if mach.machineServices == nil {
+		mach.machineServices = make(map[string]ServiceType)
 	}
 
-	if service, ok := m.machineServices[serviceName]; ok {
+	if service, ok := mach.machineServices[serviceName]; ok {
 		service.State = state
-		m.machineServices[serviceName] = service
+		mach.machineServices[serviceName] = service
 	} else {
-		m.machineServices[serviceName] = ServiceType{Name: serviceName, State: state}
+		mach.machineServices[serviceName] = ServiceType{Name: serviceName, State: state}
 	}
 }
 
-func (m *Machine) ServicesComplete() (int, int) {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.countCompletedServices(RequiredServices)
+func (mach *Machine) ServicesComplete() (int, int) {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.countCompletedServices(RequiredServices)
 }
 
-func (m *Machine) countCompletedServices(requiredServices []ServiceType) (int, int) {
+func (mach *Machine) countCompletedServices(requiredServices []ServiceType) (int, int) {
 	completedServices := 0
 	totalServices := len(requiredServices)
 
 	for _, requiredService := range requiredServices {
-		if m.getServiceStateUnsafe(requiredService.Name) == ServiceStateSucceeded {
+		if mach.getServiceStateUnsafe(requiredService.Name) == ServiceStateSucceeded {
 			completedServices++
 		}
 	}
@@ -296,69 +468,111 @@ func (m *Machine) countCompletedServices(requiredServices []ServiceType) (int, i
 }
 
 // Machine Services
-func (m *Machine) GetMachineServices() map[string]ServiceType {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.machineServices
+func (mach *Machine) GetMachineServices() map[string]ServiceType {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.machineServices
 }
 
-func (m *Machine) GetMachineResources() map[string]MachineResource {
-	m.stateMutex.RLock()
-	defer m.stateMutex.RUnlock()
-	return m.machineResources
+func (mach *Machine) GetMachineResources() map[string]MachineResource {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.machineResources
 }
 
-func (m *Machine) SetMachineServices(services map[string]ServiceType) {
-	m.stateMutex.Lock()
-	defer m.stateMutex.Unlock()
-	m.machineServices = services
+func (mach *Machine) SetMachineServices(services map[string]ServiceType) {
+	mach.stateMutex.Lock()
+	defer mach.stateMutex.Unlock()
+	mach.machineServices = services
 }
 
 // Installation methods
 
-func (m *Machine) InstallDockerAndCorePackages(ctx context.Context) error {
-	if err := m.installDocker(ctx); err != nil {
+func (mach *Machine) InstallDockerAndCorePackages(ctx context.Context) error {
+	l := logger.Get()
+	l.Debugf("Installing Docker and core packages on machine %s", mach.Name)
+
+	mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateUpdating)
+	if err := mach.installDocker(ctx); err != nil {
+		mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateFailed)
 		return err
 	}
 
-	if err := m.installCorePackages(ctx); err != nil {
+	if err := mach.verifyDocker(ctx); err != nil {
+		mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateFailed)
 		return err
 	}
+	mach.SetServiceState(ServiceTypeDocker.Name, ServiceStateSucceeded)
+
+	mach.SetServiceState(ServiceTypeCorePackages.Name, ServiceStateUpdating)
+
+	if err := mach.installCorePackages(ctx); err != nil {
+		mach.SetServiceState(ServiceTypeCorePackages.Name, ServiceStateFailed)
+		return err
+	}
+	mach.SetServiceState(ServiceTypeCorePackages.Name, ServiceStateSucceeded)
 
 	return nil
 }
 
-func (m *Machine) installDocker(ctx context.Context) error {
-	return m.installService(
+func (mach *Machine) installDocker(ctx context.Context) error {
+	return mach.installService(
 		ctx,
-		"Docker",
+		ServiceTypeDocker.Name,
 		"install-docker.sh",
 		general.GetInstallDockerScript,
 	)
 }
 
-func (m *Machine) installCorePackages(ctx context.Context) error {
-	return m.installService(
+func (mach *Machine) verifyDocker(ctx context.Context) error {
+	l := logger.Get()
+
+	sshConfig, err := sshutils.NewSSHConfigFunc(
+		mach.PublicIP,
+		mach.SSHPort,
+		mach.SSHUser,
+		mach.SSHPrivateKeyPath,
+	)
+	if err != nil {
+		l.Errorf("Error creating SSH config: %v", err)
+		return err
+	}
+
+	output, err := sshConfig.ExecuteCommand(ctx, "sudo docker run hello-world")
+	if err != nil {
+		l.Errorf("Failed to verify Docker on machine %s: %v", mach.Name, err)
+		return err
+	}
+
+	if !strings.Contains(output, "Hello from Docker!") {
+		return fmt.Errorf("failed to verify Docker on machine %s: output: %s", mach.Name, output)
+	}
+
+	return nil
+}
+
+func (mach *Machine) installCorePackages(ctx context.Context) error {
+	return mach.installService(
 		ctx,
-		"CorePackages",
+		ServiceTypeCorePackages.Name,
 		"install-core-packages.sh",
 		general.GetInstallCorePackagesScript,
 	)
 }
 
-func (m *Machine) installService(
+func (mach *Machine) installService(
 	ctx context.Context,
 	serviceName, scriptName string,
 	scriptGetter func() ([]byte, error),
 ) error {
 	l := logger.Get()
-	m.SetServiceState(serviceName, ServiceStateUpdating)
+	mach.SetServiceState(serviceName, ServiceStateUpdating)
 
 	sshConfig, err := sshutils.NewSSHConfigFunc(
-		m.PublicIP,
-		m.SSHPort,
-		m.SSHUser,
-		m.SSHPrivateKeyMaterial,
+		mach.PublicIP,
+		mach.SSHPort,
+		mach.SSHUser,
+		mach.SSHPrivateKeyPath,
 	)
 	if err != nil {
 		l.Errorf("Error creating SSH config: %v", err)
@@ -376,20 +590,206 @@ func (m *Machine) installService(
 	}
 
 	if _, err := sshConfig.ExecuteCommand(ctx, fmt.Sprintf("sudo %s", scriptPath)); err != nil {
-		m.SetServiceState(serviceName, ServiceStateFailed)
+		mach.SetServiceState(serviceName, ServiceStateFailed)
 		return err
 	}
 
-	m.SetServiceState(serviceName, ServiceStateSucceeded)
+	mach.SetServiceState(serviceName, ServiceStateSucceeded)
 	return nil
 }
 
-func (m *Machine) EnsureMachineServices() error {
-	if m.machineServices == nil {
-		m.machineServices = make(map[string]ServiceType)
+func (mach *Machine) EnsureMachineServices() error {
+	if mach.machineServices == nil {
+		mach.machineServices = make(map[string]ServiceType)
 	}
 	for _, service := range RequiredServices {
-		m.SetServiceState(service.Name, ServiceStateNotStarted)
+		mach.SetServiceState(service.Name, ServiceStateNotStarted)
 	}
 	return nil
 }
+
+// Add this new function
+func IsValidLocation(deploymentType DeploymentType, location string) bool {
+	switch deploymentType {
+	case DeploymentTypeAzure:
+		return internal_azure.IsValidAzureLocation(location)
+	case DeploymentTypeGCP:
+		return internal_gcp.IsValidGCPLocation(location)
+	default:
+		return false
+	}
+}
+
+// CloudType returns the cloud provider type for this machine
+func (mach *Machine) CloudType() DeploymentType {
+	return mach.CloudProvider
+}
+
+// Add these methods to the Machine struct
+
+func (mach *Machine) GetID() string {
+	return mach.ID
+}
+
+func (mach *Machine) GetName() string {
+	return mach.Name
+}
+
+func (mach *Machine) SetName(name string) {
+	mach.Name = name
+}
+
+func (mach *Machine) GetType() ResourceType {
+	return mach.Type
+}
+
+func (mach *Machine) GetRegion() string {
+	return mach.CloudSpecific.Region
+}
+
+func (mach *Machine) GetZone() string {
+	return mach.CloudSpecific.Zone
+}
+
+func (mach *Machine) GetLocation() string {
+	return mach.Location
+}
+
+func (mach *Machine) GetPublicIP() string {
+	return mach.PublicIP
+}
+
+func (mach *Machine) SetPublicIP(ip string) {
+	mach.PublicIP = ip
+}
+
+func (mach *Machine) GetPrivateIP() string {
+	return mach.PrivateIP
+}
+
+func (mach *Machine) SetPrivateIP(ip string) {
+	mach.PrivateIP = ip
+}
+
+func (mach *Machine) GetSSHUser() string {
+	return mach.SSHUser
+}
+
+func (mach *Machine) SetSSHUser(user string) {
+	mach.SSHUser = user
+}
+
+func (mach *Machine) GetSSHPrivateKeyMaterial() []byte {
+	return mach.SSHPrivateKeyMaterial
+}
+
+func (mach *Machine) SetSSHPrivateKeyMaterial(key []byte) {
+	mach.SSHPrivateKeyMaterial = key
+}
+
+func (mach *Machine) GetSSHPrivateKeyPath() string {
+	return mach.SSHPrivateKeyPath
+}
+
+func (mach *Machine) SetSSHPrivateKeyPath(path string) {
+	mach.SSHPrivateKeyPath = path
+}
+
+func (mach *Machine) GetSSHPublicKeyMaterial() []byte {
+	return mach.SSHPublicKeyMaterial
+}
+
+func (mach *Machine) SetSSHPublicKeyMaterial(key []byte) {
+	mach.SSHPublicKeyMaterial = key
+}
+
+func (mach *Machine) GetSSHPublicKeyPath() string {
+	return mach.SSHPublicKeyPath
+}
+
+func (mach *Machine) SetSSHPublicKeyPath(path string) {
+	mach.SSHPublicKeyPath = path
+}
+
+func (mach *Machine) GetSSHPort() int {
+	return mach.SSHPort
+}
+
+func (mach *Machine) SetSSHPort(port int) {
+	mach.SSHPort = port
+}
+
+func (mach *Machine) GetOrchestratorIP() string {
+	return mach.OrchestratorIP
+}
+
+func (mach *Machine) SetOrchestratorIP(ip string) {
+	mach.OrchestratorIP = ip
+}
+
+func (mach *Machine) GetStatusMessage() string {
+	return mach.StatusMessage
+}
+
+func (mach *Machine) SetStatusMessage(message string) {
+	mach.StatusMessage = message
+}
+
+func (mach *Machine) GetStartTime() time.Time {
+	return mach.StartTime
+}
+
+func (mach *Machine) GetDeploymentEndTime() time.Time {
+	return mach.DeploymentEndTime
+}
+
+func (mach *Machine) GetDiskImageFamily() string {
+	return mach.DiskImageFamily
+}
+
+func (mach *Machine) SetDiskImageFamily(family string) {
+	mach.DiskImageFamily = family
+}
+
+func (mach *Machine) GetDiskSizeGB() int {
+	return mach.DiskSizeGB
+}
+
+func (mach *Machine) SetDiskSizeGB(size int) {
+	mach.DiskSizeGB = size
+}
+
+func (mach *Machine) GetDiskImageURL() string {
+	return mach.DiskImageURL
+}
+
+func (mach *Machine) SetDiskImageURL(url string) {
+	mach.DiskImageURL = url
+}
+
+func (mach *Machine) GetElapsedTime() time.Duration {
+	return mach.ElapsedTime
+}
+
+func (mach *Machine) SetElapsedTime(elapsedTime time.Duration) {
+	mach.ElapsedTime = elapsedTime
+}
+
+func (mach *Machine) GetVMSize() string {
+	return mach.VMSize
+}
+
+func (mach *Machine) GetVMCount() int {
+	return 1
+}
+
+func (mach *Machine) SetStartTime(startTime time.Time) {
+	mach.StartTime = startTime
+}
+
+func (mach *Machine) SetDeploymentEndTime(endTime time.Time) {
+	mach.DeploymentEndTime = endTime
+}
+
+// Ensure that Machine implements Machiner
+var _ Machiner = (*Machine)(nil)

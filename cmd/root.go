@@ -14,10 +14,12 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	azurepackage "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	gcppackage "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+
+	// Register providers
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,9 +47,9 @@ var shouldInitAzureFlag bool
 var shouldInitGCPFlag bool
 
 type cloudProvider struct {
-	awsProvider   awsprovider.AWSProviderer
-	azureProvider azurepackage.AzureProviderer
-	gcpProvider   gcppackage.GCPProviderer
+	awsProvider   *aws_provider.AWSProvider
+	azureProvider *azure_provider.AzureProvider
+	gcpProvider   *gcp_provider.GCPProvider
 }
 
 func Execute() error {
@@ -61,7 +63,7 @@ func Execute() error {
 
 	setupPanicHandling()
 
-	rootCmd := setupRootCommand()
+	rootCmd := SetupRootCommand()
 	rootCmd.SetContext(ctx)
 	if err := rootCmd.Execute(); err != nil {
 		l.Errorf("Command execution failed: %v", err)
@@ -125,7 +127,7 @@ func logPanic(l *logger.Logger, r interface{}) {
 	}
 }
 
-func setupRootCommand() *cobra.Command {
+func SetupRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "andaime",
 		Short: "Andaime is a tool for managing cloud resources",
@@ -239,12 +241,12 @@ func validateOutputFormat() {
 func initializeCloudProviders() (*cloudProvider, error) {
 	cp := &cloudProvider{}
 
-	if shouldInitAWS() {
-		if err := initAWSProvider(cp); err != nil {
-			logger.Get().Errorf("Failed to initialize AWS provider: %v", err)
-			return nil, err
-		}
-	}
+	// if shouldInitAWS() {
+	// 	if err := initAWSProvider(cp); err != nil {
+	// 		logger.Get().Errorf("Failed to initialize AWS provider: %v", err)
+	// 		return nil, err
+	// 	}
+	// }
 
 	if shouldInitAzure() {
 		if err := initAzureProvider(cp); err != nil {
@@ -263,17 +265,21 @@ func initializeCloudProviders() (*cloudProvider, error) {
 	return cp, nil
 }
 
-func initAWSProvider(c *cloudProvider) error {
-	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
-	if err != nil {
-		return fmt.Errorf("failed to initialize AWS provider: %w", err)
-	}
-	c.awsProvider = awsProvider
-	return nil
-}
+// func initAWSProvider(c *cloudProvider) error {
+// 	awsProvider, err := aws_provider.NewAWSProvider(viper.GetViper())
+// 	if err != nil {
+// 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
+// 	}
+// 	c.awsProvider = awsProvider
+// 	return nil
+// }
 
 func initAzureProvider(c *cloudProvider) error {
-	azureProvider, err := azurepackage.NewAzureProviderFunc()
+	ctx := context.Background()
+	azureProvider, err := azure_provider.NewAzureProviderFunc(
+		ctx,
+		viper.GetString("azure.subscription_id"),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Azure provider: %w", err)
 	}
@@ -282,7 +288,13 @@ func initAzureProvider(c *cloudProvider) error {
 }
 
 func initGCPProvider(c *cloudProvider) error {
-	gcpProvider, err := gcppackage.NewGCPProviderFunc()
+	ctx := context.Background()
+	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
+		ctx,
+		viper.GetString("gcp.project_id"),
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}

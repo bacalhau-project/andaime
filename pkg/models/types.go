@@ -21,7 +21,7 @@ const (
 
 type DisplayStatus struct {
 	ID              string
-	Type            AzureResourceTypes
+	Type            ResourceType
 	Location        string
 	StatusMessage   string
 	DetailedStatus  string
@@ -40,10 +40,44 @@ type DisplayStatus struct {
 	Bacalhau        ServiceState
 }
 
+type ResourceType struct {
+	ResourceString    string
+	ShortResourceName string
+}
+
+func (a *ResourceType) GetResourceString() string {
+	return a.ResourceString
+}
+
+func (a *ResourceType) GetShortResourceName() string {
+	return a.ShortResourceName
+}
+
+type MachineResourceState int
+
+const (
+	ResourceStateUnknown MachineResourceState = iota
+	ResourceStateNotStarted
+	ResourceStatePending
+	ResourceStateRunning
+	ResourceStateSucceeded
+	ResourceStateStopping
+	ResourceStateFailed
+	ResourceStateTerminated
+)
+
+var SkippedResourceTypes = []string{
+	// Azure Skips
+	"microsoft.compute/virtualmachines/extensions",
+
+	// GCP Skips
+	"compute.v1.instanceGroupManager",
+}
+
 func NewDisplayStatusWithText(
 	resourceID string,
-	resourceType AzureResourceTypes,
-	state AzureResourceState,
+	resourceType ResourceType,
+	state MachineResourceState,
 	text string,
 ) *DisplayStatus {
 	return &DisplayStatus{
@@ -68,7 +102,7 @@ func NewDisplayStatusWithText(
 // - state is the state of the resource (e.g. AzureResourceStateSucceeded)
 func NewDisplayVMStatus(
 	machineName string,
-	state AzureResourceState,
+	state MachineResourceState,
 ) *DisplayStatus {
 	return NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
 }
@@ -83,9 +117,17 @@ func NewDisplayVMStatus(
 func NewDisplayStatus(
 	machineName string,
 	resourceID string,
-	resourceType AzureResourceTypes,
-	state AzureResourceState,
+	resourceType ResourceType,
+	state MachineResourceState,
 ) *DisplayStatus {
+	l := logger.Get()
+	l.Debugf(
+		"NewDisplayStatus: %s, %s, %s, %d",
+		machineName,
+		resourceID,
+		resourceType.ResourceString,
+		state,
+	)
 	return &DisplayStatus{
 		ID:   machineName,
 		Name: machineName,
@@ -145,11 +187,12 @@ const (
 	DisplayTextSSH          = "S"
 	DisplayTextDocker       = "D"
 	DisplayTextBacalhau     = "B"
+	DisplayTextCustomScript = "X"
 )
 
 func CreateStateMessageWithText(
-	resource AzureResourceTypes,
-	resourceState AzureResourceState,
+	resource ResourceType,
+	resourceState MachineResourceState,
 	resourceName string,
 	text string,
 ) string {
@@ -157,41 +200,68 @@ func CreateStateMessageWithText(
 }
 
 func CreateStateMessage(
-	resource AzureResourceTypes,
-	resourceState AzureResourceState,
+	resource ResourceType,
+	resourceState MachineResourceState,
 	resourceName string,
 ) string {
 	l := logger.Get()
 	stateEmoji := ""
+	resourceStageString := ""
 	switch resourceState {
-	case AzureResourceStateNotStarted:
+	case ResourceStateNotStarted:
 		stateEmoji = DisplayEmojiNotStarted
-	case AzureResourceStatePending:
+		resourceStageString = "Not Started"
+	case ResourceStatePending:
 		stateEmoji = DisplayEmojiWaiting
-	case AzureResourceStateRunning:
+		resourceStageString = "Pending"
+	case ResourceStateRunning:
 		stateEmoji = DisplayEmojiSuccess
-	case AzureResourceStateFailed:
+		resourceStageString = "Running"
+	case ResourceStateFailed:
 		stateEmoji = DisplayEmojiFailed
-	case AzureResourceStateSucceeded:
+		resourceStageString = "Failed"
+	case ResourceStateSucceeded:
 		stateEmoji = DisplayEmojiSuccess
-	case AzureResourceStateUnknown:
-		l.Debugf("Resource: %s", resource)
-		l.Debugf("Resource Name: %s", resourceName)
-		l.Debugf("Resource State: %d", resourceState)
+		resourceStageString = "Succeeded"
+	case ResourceStateUnknown:
+		l.Debugf("State Unknown for Resource: %s", resource)
+		l.Debugf("State Resource Name: %s", resourceName)
+		l.Debugf("State Resource State: %d", resourceState)
 		stateEmoji = DisplayEmojiQuestion
+		resourceStageString = "Unknown"
 	}
-	return fmt.Sprintf(
-		"%s %s - %s",
+
+	// var statusString string
+	// if strings.Contains(resource.ShortResourceName, "VM") {
+	// 	statusString = fmt.Sprintf(
+	// 		"%s %s",
+	// 		stateEmoji,
+	// 		resourceName,
+	// 	)
+	// } else {
+	// 	statusString = fmt.Sprintf(
+	// 		"%s %s - %s",
+	// 		resource.ShortResourceName,
+	// 		stateEmoji,
+	// 		resourceName,
+	// 	)
+	// }
+
+	statusString := fmt.Sprintf(
+		"%s %s - %s %s",
 		resource.ShortResourceName,
 		stateEmoji,
 		resourceName,
+		resourceStageString,
 	)
+	return statusString
 }
 
 func ConvertFromRawResourceToStatus(
 	resourceMap map[string]interface{},
 	deployment *Deployment,
 ) ([]DisplayStatus, error) {
+	l := logger.Get()
 	resourceName := resourceMap["name"].(string)
 	resourceType := resourceMap["type"].(string)
 	resourceState := resourceMap["provisioningState"].(string)
@@ -199,7 +269,7 @@ func ConvertFromRawResourceToStatus(
 	var statuses []DisplayStatus
 
 	if location := GetLocationFromResourceName(resourceName); location != "" {
-		machinesNames, err := GetMachinesInLocation(location, deployment.Machines)
+		machinesNames, err := GetMachinesInLocation(location, deployment.GetMachines())
 		if err != nil {
 			return nil, err
 		}
@@ -226,6 +296,9 @@ func ConvertFromRawResourceToStatus(
 		}
 	} else {
 		if !utils.CaseInsensitiveContains(SkippedResourceTypes, resourceType) {
+			l.Debugf("unknown resource ID format: %s", resourceName)
+			l.Debugf("resource type: %s", resourceType)
+			l.Debugf("resource state: %s", resourceState)
 			return nil, fmt.Errorf("unknown resource ID format: %s", resourceName)
 		}
 	}
@@ -248,6 +321,13 @@ func GetMachineNameFromResourceName(id string) string {
 	return ""
 }
 
+var RequiredServices = []ServiceType{
+	ServiceTypeSSH,
+	ServiceTypeDocker,
+	ServiceTypeBacalhau,
+	ServiceTypeScript,
+}
+
 func machineNeedsUpdating(
 	deployment *Deployment,
 	machineName string,
@@ -261,18 +341,18 @@ func machineNeedsUpdating(
 	// 	resourceType,
 	// 	resourceState,
 	// )
-	currentState := ConvertFromStringToAzureResourceState(resourceState)
+	currentState := ConvertFromAzureStringToResourceState(resourceState)
 
 	needsUpdate := 0
-	if (deployment.Machines[machineName].GetResource(resourceType) == MachineResource{}) ||
-		(deployment.Machines[machineName].GetResource(resourceType).ResourceState < currentState) {
-		deployment.Machines[machineName].SetResource(resourceType, currentState)
+	if (deployment.Machines[machineName].GetMachineResource(resourceType) == MachineResource{}) ||
+		(deployment.Machines[machineName].GetMachineResource(resourceType).ResourceState < currentState) {
+		deployment.Machines[machineName].SetMachineResource(resourceType, currentState)
 		needsUpdate++
 	}
 	return needsUpdate > 0
 }
 
-func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([]string, error) {
+func GetMachinesInLocation(resourceName string, machines map[string]Machiner) ([]string, error) {
 	location := strings.Split(resourceName, "-")[0]
 
 	if location == "" {
@@ -282,8 +362,8 @@ func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([
 	var machinesInLocation []string
 
 	for _, machine := range machines {
-		if machine.Location == location {
-			machinesInLocation = append(machinesInLocation, machine.Name)
+		if machine.GetLocation() == location {
+			machinesInLocation = append(machinesInLocation, machine.GetName())
 		}
 	}
 
@@ -299,7 +379,7 @@ func GetMachinesInLocation(resourceName string, machines map[string]*Machine) ([
 //nolint:lll
 func createStatus(machineName, resourceID, resourceType, state string) DisplayStatus {
 	azureResourceType := GetAzureResourceType(resourceType)
-	stateType := ConvertFromStringToAzureResourceState(state)
+	stateType := ConvertFromAzureStringToResourceState(state)
 
 	return *NewDisplayStatus(machineName, resourceID, azureResourceType, stateType)
 }

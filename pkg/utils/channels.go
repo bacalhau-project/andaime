@@ -76,7 +76,7 @@ func CreateAndRegisterChannel(channelType reflect.Type, name string, capacity in
 	ch := reflect.MakeChan(channelType, capacity).Interface()
 	safeChannel := NewSafeChannel(ch, name)
 	RegisterChannel(safeChannel)
-	return ch
+	return safeChannel.GetChannel()
 }
 
 func RegisterChannel(ch interface{}) {

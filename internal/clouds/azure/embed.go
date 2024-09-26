@@ -1,40 +1,14 @@
-package internal
+package internal_azure
 
 import (
 	"embed"
-	"strings"
 )
 
-//go:embed machine_types.yaml
-var machineTypes embed.FS
-
-//go:embed locations.yaml
-var validAzureLocations embed.FS
+//go:embed azure_data.yaml
+var azureData embed.FS
 
 //go:embed arm/vm.json
 var vmARM embed.FS
-
-func GetMachineTypes() ([]string, error) {
-	data, err := machineTypes.ReadFile("machine_types.yaml")
-	if err != nil {
-		return nil, err
-	}
-	// Convert to string slice
-	dataString := strings.Split(string(data), "\n")
-
-	return dataString, nil
-}
-
-func GetLocations() ([]string, error) {
-	data, err := validAzureLocations.ReadFile("locations.yaml")
-	if err != nil {
-		return nil, err
-	}
-	// Convert to string slice
-	dataString := strings.Split(string(data), "\n")
-
-	return dataString, nil
-}
 
 func GetARMTemplate() ([]byte, error) {
 	data, err := vmARM.ReadFile("arm/vm.json")
@@ -44,36 +18,10 @@ func GetARMTemplate() ([]byte, error) {
 	return data, nil
 }
 
-func IsValidAzureLocation(location string) bool {
-	validLocations, err := GetLocations()
+func GetAzureData() ([]byte, error) {
+	data, err := azureData.ReadFile("azure_data.yaml")
 	if err != nil {
-		return false
+		return nil, err
 	}
-	if location == "" {
-		return false
-	}
-
-	for _, validLocation := range validLocations {
-		if strings.EqualFold(location, validLocation) {
-			return true
-		}
-	}
-	return false
-}
-
-func IsValidMachineType(machineType string) bool {
-	// This is a placeholder. In a real scenario, you would check against a list of valid Azure machine types.
-	validTypes, err := GetMachineTypes()
-	if err != nil {
-		return false
-	}
-	if machineType == "" {
-		return false
-	}
-	for _, validType := range validTypes {
-		if machineType == validType {
-			return true
-		}
-	}
-	return false
+	return data, nil
 }

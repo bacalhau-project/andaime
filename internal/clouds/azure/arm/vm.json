@@ -16,20 +16,10 @@
         "description": "Username for the Virtual Machine."
       }
     },
-    "authenticationType": {
-      "type": "string",
-      "defaultValue": "sshPublicKey",
-      "allowedValues": [
-        "sshPublicKey"
-      ],
-      "metadata": {
-        "description": "Type of authentication to use on the Virtual Machine. SSH key is recommended."
-      }
-    },
-    "adminPasswordOrKey": {
+    "sshPublicKey": {
       "type": "string",
       "metadata": {
-        "description": "SSH Key or password for the Virtual Machine. SSH key is recommended."
+        "description": "SSH public key for the Virtual Machine."
       }
     },
     "dnsLabelPrefix": {
@@ -108,6 +98,13 @@
       "metadata": {
         "description": "List of allowed ports"
       }
+    },
+    "bacalhauConfigCommands": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Bacalhau configuration commands to run after deployment"
+      }
     }
   },
   "variables": {
@@ -136,7 +133,7 @@
         "publicKeys": [
           {
             "path": "[format('/home/{0}/.ssh/authorized_keys', parameters('adminUsername'))]",
-            "keyData": "[parameters('adminPasswordOrKey')]"
+            "keyData": "[parameters('sshPublicKey')]"
           }
         ]
       }
@@ -152,7 +149,8 @@
     "extensionPublisher": "Microsoft.Azure.Security.LinuxAttestation",
     "extensionVersion": "1.0",
     "maaTenantName": "GuestAttestation",
-    "maaEndpoint": "[substring('emptystring', 0, 0)]"
+    "maaEndpoint": "[substring('emptystring', 0, 0)]",
+    "customScriptExtensionName": "ConfigureBacalhau"
   },
   "resources": [
     {
@@ -316,38 +314,12 @@
         "osProfile": {
           "computerName": "[parameters('vmName')]",
           "adminUsername": "[parameters('adminUsername')]",
-          "adminPassword": "[parameters('adminPasswordOrKey')]",
-          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), null(), variables('linuxConfiguration'))]"
+          "linuxConfiguration": "[variables('linuxConfiguration')]"
         },
         "securityProfile": "[if(equals(parameters('securityType'), 'TrustedLaunch'), variables('securityProfileJson'), null())]"
       },
       "dependsOn": [
         "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
-      ]
-    },
-    {
-      "condition": "[and(and(equals(parameters('securityType'), 'TrustedLaunch'), variables('securityProfileJson').uefiSettings.secureBootEnabled), variables('securityProfileJson').uefiSettings.vTpmEnabled)]",
-      "type": "Microsoft.Compute/virtualMachines/extensions",
-      "apiVersion": "2023-03-01",
-      "name": "[format('{0}/{1}', parameters('vmName'), variables('extensionName'))]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "publisher": "[variables('extensionPublisher')]",
-        "type": "[variables('extensionName')]",
-        "typeHandlerVersion": "[variables('extensionVersion')]",
-        "autoUpgradeMinorVersion": true,
-        "enableAutomaticUpgrade": true,
-        "settings": {
-          "AttestationConfig": {
-            "MaaSettings": {
-              "maaEndpoint": "[variables('maaEndpoint')]",
-              "maaTenantName": "[variables('maaTenantName')]"
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
       ]
     }
   ],

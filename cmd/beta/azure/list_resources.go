@@ -7,7 +7,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,15 +21,18 @@ var AzureListResourcesCmd = &cobra.Command{
 		log := logger.Get()
 		log.SetVerbose(verbose)
 
-		projectID := viper.GetString("general.project_id")
+		projectPrefix := viper.GetString("general.project_prefix")
 		uniqueID := viper.GetString("general.unique_id")
-		tags := azure.GenerateTags(projectID, uniqueID)
+		tags := azure_provider.GenerateTags(projectPrefix, uniqueID)
 
 		log.Info("Listing Azure resources...")
 
-		azureProvider, err := azure.NewAzureProviderFunc()
+		azureProvider, err := azure_provider.NewAzureProviderFunc(
+			cmd.Context(),
+			viper.GetString("azure.subscription_id"),
+		)
 		if err != nil {
-			log.Fatalf("Failed to create Azure provider: %v", err)
+			log.Fatal("failed to assert provider to common.AzureProviderer")
 		}
 
 		allFlag, _ := cmd.Flags().GetBool("all")
@@ -47,18 +50,15 @@ var AzureListResourcesCmd = &cobra.Command{
 		startTime := time.Now()
 
 		var resources []interface{}
-		subscriptionID, err := getSubscriptionID()
 		if err != nil {
 			log.Fatalf("Failed to get subscription ID: %v", err)
 		}
 		if allFlag {
-			resources, err = azureProvider.GetAzureClient().
+			resources, err = azureProvider.
 				ListAllResourcesInSubscription(cmd.Context(),
-					subscriptionID,
 					tags)
 		} else {
-			resources, err = azureProvider.GetAzureClient().GetResources(cmd.Context(),
-				subscriptionID,
+			resources, err = azureProvider.GetResources(cmd.Context(),
 				resourceGroup,
 				tags)
 		}

@@ -23,5 +23,12 @@ func ReadTestAzureConfig() (string, error) {
 	return TestAzureConfig, nil
 }
 
+//go:embed configs/gcp.yaml
+var TestGCPConfig string
+
+func ReadTestGCPConfig() (string, error) {
+	return TestGCPConfig, nil
+}
+
 //go:embed configs/config.yaml
 var TestGenericConfig string

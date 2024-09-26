@@ -22,7 +22,7 @@ release/
 code_execution_env/**
 process_*
 coverage.log
-config.yaml
+config*.yaml
 
 **__pycache__**
 omni*
@@ -34,3 +34,6 @@ claude-engineer*
 main.py
 ollama*
 experimental/*
+
+repopack-andaime.txt
+local_custom_script.sh

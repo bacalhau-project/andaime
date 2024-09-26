@@ -8,7 +8,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/testutils"
+	"github.com/bacalhau-project/andaime/pkg/testutil"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
@@ -57,9 +57,9 @@ func runTestDisplay() error {
 		for i := 0; i < totalTasks; i++ {
 			newDisplayStatus := models.NewDisplayVMStatus(
 				fmt.Sprintf("testVM%d", i+1),
-				models.AzureResourceStateNotStarted,
+				models.ConvertFromAzureStringToResourceState("Not Started"),
 			)
-			newDisplayStatus.Location = testutils.RandomRegion()
+			newDisplayStatus.Location = testutil.RandomRegion()
 			newDisplayStatus.StatusMessage = "Initializing"
 			newDisplayStatus.DetailedStatus = "Starting"
 			newDisplayStatus.ElapsedTime = 0
@@ -76,8 +76,8 @@ func runTestDisplay() error {
 				newDisplayStatus.Docker = models.ServiceStateSucceeded
 				newDisplayStatus.Bacalhau = models.ServiceStateFailed
 			}
-			newDisplayStatus.PublicIP = testutils.RandomIP()
-			newDisplayStatus.PrivateIP = testutils.RandomIP()
+			newDisplayStatus.PublicIP = testutil.RandomIP()
+			newDisplayStatus.PrivateIP = testutil.RandomIP()
 			statuses[i] = newDisplayStatus
 		}
 
@@ -97,7 +97,7 @@ func runTestDisplay() error {
 					} else {
 						statusMessage = fmt.Sprintf("%-*s", statusLength, rawStatus)
 					}
-					m.Deployment.Machines[machine.Name].StatusMessage = statusMessage
+					m.Deployment.Machines[machine.GetName()].SetStatusMessage(statusMessage)
 				}
 			case <-timeTicker.C:
 				p.Send(models.TimeUpdateMsg{})

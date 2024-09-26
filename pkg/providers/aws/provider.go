@@ -61,16 +61,6 @@ func (cw *ConfigWrapper) GetString(key string) string {
 	return ""
 }
 
-// GetConfig returns the current configuration
-func (p *AWSProvider) GetConfig() *aws.Config {
-	return p.Config
-}
-
-// SetConfig sets a new configuration
-func (p *AWSProvider) SetConfig(config *aws.Config) {
-	p.Config = config
-}
-
 // GetEC2Client returns the current EC2 client
 func (p *AWSProvider) GetEC2Client() (EC2Clienter, error) {
 	return p.EC2Client, nil

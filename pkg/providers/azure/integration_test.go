@@ -2,7 +2,6 @@ package azure
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -10,271 +9,382 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 )
 
-type testSetup struct {
-	provider        *AzureProvider
-	mockAzureClient *MockAzureClient
-	mockSSHConfig   *MockSSHConfig
-	mockSSHClient   *sshutils.MockSSHClient
-	cleanup         func()
+var localCustomScriptPath string
+var localCustomScriptContent []byte
+
+type PkgProvidersAzureIntegrationTest struct {
+	suite.Suite
+	provider               *AzureProvider
+	clusterDeployer        *common.ClusterDeployer
+	origGetGlobalModelFunc func() *display.DisplayModel
+	testDisplayModel       *display.DisplayModel
+	mockAzureClient        *azure_mocks.MockAzureClienter
+	mockSSHConfig          *sshutils.MockSSHConfig
+	cleanup                func()
 }
 
-func setupTest(t *testing.T) *testSetup {
+func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	tempConfigFile, err := os.CreateTemp("", "config*.yaml")
-	assert.NoError(t, err)
+	s.Require().NoError(err)
 
 	testConfig, err := testdata.ReadTestAzureConfig()
-	assert.NoError(t, err)
+	s.Require().NoError(err)
+
+	f, err := os.CreateTemp("", "local_custom_script*.sh")
+	s.Require().NoError(err)
+
+	localCustomScriptContent, err = general.GetLocalCustomScript()
+	s.Require().NoError(err)
+
+	_, err = f.Write(localCustomScriptContent)
+	s.Require().NoError(err)
 
 	_, err = tempConfigFile.Write([]byte(testConfig))
-	assert.NoError(t, err)
+	s.Require().NoError(err)
+
+	localCustomScriptPath = f.Name()
 
 	viper.SetConfigFile(tempConfigFile.Name())
 	err = viper.ReadInConfig()
-	assert.NoError(t, err)
+	s.Require().NoError(err)
 
-	mockAzureClient := new(MockAzureClient)
-	mockSSHConfig := new(MockSSHConfig)
+	viper.Set("azure.subscription_id", "test-subscription-id")
+	viper.Set("azure.resource_group_location", "eastus")
+	viper.Set("general.ssh_user", "testuser")
+	viper.Set("general.ssh_port", 22)
+	viper.Set("general.custom_script_path", localCustomScriptPath)
+	viper.Set("azure.default_disk_size_gb", 30)
 
-	provider := &AzureProvider{
-		Client: mockAzureClient,
+	s.mockAzureClient = new(azure_mocks.MockAzureClienter)
+	s.provider = &AzureProvider{
+		Client: s.mockAzureClient,
 	}
 
-	deployment, err := models.NewDeployment()
-	assert.NoError(t, err)
+	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeAzure)
 
-	display.SetGlobalModel(display.InitialModel(deployment))
-	m := display.GetGlobalModelFunc()
-	m.Deployment.Machines = map[string]*models.Machine{
-		"orchestrator": {
-			Name:         "orchestrator",
-			Orchestrator: true,
-			PublicIP:     "1.2.3.4",
-			Location:     "eastus",
-		},
-		"worker1": {Name: "worker1", PublicIP: "1.2.3.5", Location: "eastus2"},
-		"worker2": {Name: "worker2", PublicIP: "1.2.3.6", Location: "westus"},
-	}
-	m.Deployment.ResourceGroupLocation = "eastus"
-	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
-
-	sshutils.NewSSHConfigFunc = func(host string,
-		port int,
-		user string,
-		privateKeyMaterial []byte) (sshutils.SSHConfiger, error) {
-		return mockSSHConfig, nil
-	}
-
-	cleanup := func() {
-		os.Remove(tempConfigFile.Name())
+	s.cleanup = func() {
+		_ = os.Remove(tempConfigFile.Name())
+		_ = os.Remove(localCustomScriptPath)
 		viper.Reset()
 	}
-
-	return &testSetup{
-		provider:        provider,
-		mockAzureClient: mockAzureClient,
-		mockSSHConfig:   mockSSHConfig,
-		cleanup:         cleanup,
-	}
 }
 
-func setupMockDeployment(mockAzureClient *MockAzureClient) *MockPoller {
-	props := armresources.DeploymentsClientCreateOrUpdateResponse{}
-	successState := armresources.ProvisioningStateSucceeded
-	props.Properties = &armresources.DeploymentPropertiesExtended{
-		ProvisioningState: &successState,
-	}
-	mockArmDeploymentPoller := &MockPoller{}
-	mockArmDeploymentPoller.On("PollUntilDone", mock.Anything, mock.Anything).Return(props, nil)
-	mockAzureClient.On("DeployTemplate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockArmDeploymentPoller, nil)
-	return mockArmDeploymentPoller
+func (s *PkgProvidersAzureIntegrationTest) TearDownSuite() {
+	s.cleanup()
 }
 
-func setupMockVMAndNetwork(mockAzureClient *MockAzureClient) {
-	nicID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"
-	mockVM := &armcompute.VirtualMachine{
-		Properties: &armcompute.VirtualMachineProperties{
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{{ID: &nicID}},
+func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
+	mockPoller := new(MockPoller)
+	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
+		Return(armresources.DeploymentsClientCreateOrUpdateResponse{
+			DeploymentExtended: testdata.FakeDeployment(),
+		}, nil)
+
+	s.mockAzureClient.On("DeployTemplate",
+		mock.Anything,
+		mock.Anything,
+		mock.MatchedBy(func(s string) bool {
+			return strings.HasPrefix(s, "deployment-")
+		}),
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(mockPoller, nil)
+
+	s.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeVirtualMachine(), nil)
+
+	s.mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeNetworkInterface(), nil)
+	s.mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
+
+	deployment, err := models.NewDeployment()
+	s.Require().NoError(err)
+	m := display.NewDisplayModel(deployment)
+
+	machines := []struct {
+		name         string
+		location     string
+		orchestrator bool
+	}{
+		{"orchestrator", "eastus", true},
+		{"worker1", "eastus2", false},
+		{"worker2", "westus", false},
+	}
+
+	for _, machine := range machines {
+		m, err := models.NewMachine(
+			models.DeploymentTypeAzure,
+			machine.location,
+			"Standard_D2s_v3",
+			30,
+			models.CloudSpecificInfo{},
+		)
+		s.Require().NoError(err)
+		m.SetName(machine.name)
+		m.SetOrchestrator(machine.orchestrator)
+		m.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateNotStarted)
+		m.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateNotStarted)
+		m.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateNotStarted)
+		deployment.SetMachine(machine.name, m)
+	}
+
+	m.Deployment.Azure.ResourceGroupLocation = "eastus"
+	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
+	m.Deployment.SSHPublicKeyMaterial = "PUBLIC KEY MATERIAL"
+
+	bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
+	s.Require().NoError(err)
+	m.Deployment.BacalhauSettings = bacalhauSettings
+
+	s.testDisplayModel = m
+
+	display.SetGlobalModel(m)
+
+	sshBehavior := sshutils.ExpectedSSHBehavior{
+		PushFileExpectations: []sshutils.PushFileExpectation{
+			{
+				Dst:              "/tmp/get-node-config-metadata.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Dst:              "/tmp/install-docker.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Dst:              "/tmp/install-core-packages.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Dst:              "/tmp/install-bacalhau.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Dst:              "/tmp/install-run-bacalhau.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Dst:              "/tmp/custom_script.sh",
+				Executable:       true,
+				ProgressCallback: mock.Anything,
+				Error:            nil,
+				FileContents:     localCustomScriptContent,
+				Times:            3,
 			},
 		},
-	}
-	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockVM, nil)
-
-	privateIPAddress := "10.0.0.4"
-	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
-	mockNIC := &armnetwork.Interface{
-		Properties: &armnetwork.InterfacePropertiesFormat{
-			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{{
-				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-					PrivateIPAddress: &privateIPAddress,
-					PublicIPAddress:  &armnetwork.PublicIPAddress{ID: &publicIPAddressID},
-				},
-			}},
+		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+			{
+				Cmd:              "sudo /tmp/get-node-config-metadata.sh",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo /tmp/install-docker.sh",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo docker run hello-world",
+				ProgressCallback: mock.Anything,
+				Output:           "Hello from Docker!",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo /tmp/install-core-packages.sh",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo /tmp/install-bacalhau.sh",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo /tmp/install-run-bacalhau.sh",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "bacalhau node list --output json --api-host 0.0.0.0",
+				ProgressCallback: mock.Anything,
+				Output:           `[{"id": "node1"}]`,
+				Error:            nil,
+				Times:            1,
+			},
+			{
+				Cmd:              "bacalhau node list --output json --api-host 20.30.40.50",
+				ProgressCallback: mock.Anything,
+				Output:           `[{"id": "node1"}]`,
+				Error:            nil,
+				Times:            2,
+			},
+			{
+				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths' '/tmp,/data'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout' '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set 'compute.heartbeat.infoupdateinterval' '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set 'compute.heartbeat.interval' '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set 'compute.heartbeat.resourceupdateinterval' '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              "sudo bacalhau config list --output json",
+				ProgressCallback: mock.Anything,
+				Output:           "[]",
+				Error:            nil,
+				Times:            3,
+			},
+		},
+		InstallSystemdServiceExpectation: &sshutils.Expectation{
+			Error: nil,
+			Times: 3,
+		},
+		RestartServiceExpectation: &sshutils.Expectation{
+			Error: nil,
+			Times: 6,
 		},
 	}
-	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(mockNIC, nil)
 
-	publicIPAddress := "20.30.40.50"
-	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(publicIPAddress, nil)
+	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior)
+	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+		return s.mockSSHConfig, nil
+	}
+
 }
 
-func TestProvisionResourcesSuccess(t *testing.T) {
-	setup := setupTest(t)
-	defer setup.cleanup()
+func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
+	l := logger.Get()
+	l.Info("Starting TestProvisionResourcesSuccess")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	stringMatcher := func(command string) bool {
-		return strings.Contains(command,
-			"bacalhau node list --output json --api-host")
+	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	s.origGetGlobalModelFunc = display.GetGlobalModelFunc
+	display.GetGlobalModelFunc = func() *display.DisplayModel {
+		return s.testDisplayModel
 	}
+	defer func() {
+		display.GetGlobalModelFunc = s.origGetGlobalModelFunc
+	}()
 
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
-		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(stringMatcher)).
-		Return(`[{"id": "node1"}]`, nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-	setup.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
+	err := s.provider.CreateResources(ctx)
+	s.Require().NoError(err)
 
+	s.provider.SetClusterDeployer(s.clusterDeployer)
 	m := display.GetGlobalModelFunc()
 	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
-			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
+		err := s.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.GetName())
+		s.Require().NoError(err)
+	}
+
+	err = s.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
+	s.Require().NoError(err)
+
+	for _, machine := range m.Deployment.Machines {
+		if !machine.IsOrchestrator() {
+			err := s.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.GetName())
+			s.Require().NoError(err)
+		}
+	}
+
+	for _, machine := range m.Deployment.Machines {
+		s.Equal(models.ServiceStateSucceeded, machine.GetServiceState(models.ServiceTypeSSH.Name))
+		s.Equal(
+			models.ServiceStateSucceeded,
+			machine.GetServiceState(models.ServiceTypeDocker.Name),
+		)
+		s.Equal(
+			models.ServiceStateSucceeded,
+			machine.GetServiceState(models.ServiceTypeBacalhau.Name),
+		)
+		s.Equal(
+			models.ServiceStateSucceeded,
+			machine.GetServiceState(models.ServiceTypeScript.Name),
 		)
 	}
 
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
-	assert.NoError(t, err)
-
-	err = setup.provider.ProvisionBacalhau(ctx)
-	assert.NoError(t, err)
-
-	for _, machine := range m.Deployment.Machines {
-		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("SSH"))
-		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Docker"))
-		assert.Equal(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-	}
-
-	setup.mockSSHConfig.AssertExpectations(t)
+	s.mockSSHConfig.AssertExpectations(s.T())
 }
 
-func TestSSHProvisioningFailure(t *testing.T) {
-	setup := setupTest(t)
-	defer setup.cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
-		Return(fmt.Errorf("SSH provisioning failed"))
-
-	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
-			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
-		)
-	}
-
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "SSH provisioning failed")
-
-	setup.mockSSHConfig.AssertExpectations(t)
-}
-
-func TestDockerProvisioningFailure(t *testing.T) {
-	setup := setupTest(t)
-	defer setup.cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh").
-		Return("", fmt.Errorf("failed to install Docker"))
-
-	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
-			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
-		)
-	}
-
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to marshal Docker server version")
-
-	setup.mockSSHConfig.AssertExpectations(t)
-}
-
-func TestOrchestratorProvisioningFailure(t *testing.T) {
-	setup := setupTest(t)
-	defer setup.cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
-		machine.SetResourceState(
-			models.AzureResourceTypeVM.ResourceString,
-			models.AzureResourceStateSucceeded,
-		)
-	}
-
-	setup.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	setup.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker version -f json").
-		Return(`{"Client":{"Version":"1.2.3"},"Server":{"Version":"1.2.3"}}`, nil)
-	setup.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	setup.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0").
-		Return(`[]`, nil)
-	setup.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil)
-
-	err := setup.provider.ProvisionPackagesOnMachines(ctx)
-	if err != nil {
-		assert.Fail(t, "error provisioning packages on machines", err)
-	}
-
-	err = setup.provider.ProvisionBacalhau(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no Bacalhau nodes found")
-
-	for _, machine := range m.Deployment.Machines {
-		assert.NotEqual(t, models.ServiceStateSucceeded, machine.GetServiceState("Bacalhau"))
-	}
-	setup.mockSSHConfig.AssertExpectations(t)
+func TestAzureIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(PkgProvidersAzureIntegrationTest))
 }
 
 type MockPoller struct {
@@ -291,7 +401,7 @@ func (m *MockPoller) PollUntilDone(
 
 func (m *MockPoller) ResumeToken() (string, error) {
 	args := m.Called()
-	return args.Get(0).(string), args.Error(1)
+	return args.String(0), args.Error(1)
 }
 
 func (m *MockPoller) Result(
@@ -303,7 +413,7 @@ func (m *MockPoller) Result(
 
 func (m *MockPoller) Done() bool {
 	args := m.Called()
-	return args.Get(0).(bool)
+	return args.Bool(0)
 }
 
 func (m *MockPoller) Poll(ctx context.Context) (*http.Response, error) {

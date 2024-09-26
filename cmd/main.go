@@ -35,47 +35,67 @@ func loadConfig(filename string) (Config, error) {
 }
 
 func main() {
-	// Constants
-	const (
-		MinimumArgCount        = 2
-		MinimumArgCountForTest = 3
-		MinArgsForDelete       = 3
-	)
+	l := logger.Get()
+	logger.RecoverAndLog(func() {
 
-	if len(os.Args) < MinimumArgCount {
-		fmt.Println("Usage:")
-		fmt.Println("  andaime deploy")
-		fmt.Println("  andaime delete <deployment-tag>")
-		return
-	}
+		// Constants
+		const (
+			MinimumArgCount        = 2
+			MinimumArgCountForTest = 3
+			MinArgsForDelete       = 3
+		)
 
-	if len(os.Args) < MinimumArgCountForTest {
-		fmt.Println("Usage:")
-		fmt.Println("  andaime deploy")
-		fmt.Println("  andaime delete <deployment-tag>")
-		return
-	}
-
-	cfg, err := loadConfig("config.yaml")
-	if err != nil {
-		log.Fatalf("Error loading configuration: %v", err)
-	}
-
-	switch os.Args[1] {
-	case "deploy":
-		if err := deploy(cfg); err != nil {
-			log.Fatalf("Error deploying: %v", err)
+		if len(os.Args) < MinimumArgCount {
+			fmt.Println("Usage:")
+			fmt.Println("  andaime deploy")
+			fmt.Println("  andaime delete <deployment-tag>")
+			return
 		}
-	case "delete":
-		if len(os.Args) < MinArgsForDelete {
-			log.Fatal("Please provide the deployment tag to delete")
+
+		if len(os.Args) < MinimumArgCountForTest {
+			fmt.Println("Usage:")
+			fmt.Println("  andaime deploy")
+			fmt.Println("  andaime delete <deployment-tag>")
+			return
 		}
-		if err := deleteDeployment(cfg, os.Args[2]); err != nil {
-			log.Fatalf("Error deleting deployment: %v", err)
+
+		cfg, err := loadConfig("config.yaml")
+		if err != nil {
+			l.Fatalf("Error loading configuration: %v", err)
 		}
-	default:
-		log.Fatalf("Unknown command: %s", os.Args[1])
-	}
+
+		// Check for GCP credentials
+		if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+			fmt.Println(
+				"GOOGLE_APPLICATION_CREDENTIALS is not set. Please set up your credentials using the following steps:",
+			)
+			fmt.Println(
+				"1. Install the gcloud CLI if you haven't already: https://cloud.google.com/sdk/docs/install",
+			)
+			fmt.Println("2. Run the following commands in your terminal:")
+			fmt.Println("   gcloud auth login")
+			fmt.Println("   gcloud auth application-default login")
+			fmt.Println("3. The above command will set up your user credentials.")
+			fmt.Println("After completing these steps, run your application again.")
+			return
+		}
+
+		switch os.Args[1] {
+		case "deploy":
+			if err := deploy(cfg); err != nil {
+				log.Fatalf("Error deploying: %v", err)
+			}
+		case "delete":
+			if len(os.Args) < MinArgsForDelete {
+				log.Fatal("Please provide the deployment tag to delete")
+			}
+			if err := deleteDeployment(cfg, os.Args[2]); err != nil {
+				log.Fatalf("Error deleting deployment: %v", err)
+			}
+		default:
+			log.Fatalf("Unknown command: %s", os.Args[1])
+		}
+	})
 }
 
 func deploy(cfg Config) error {

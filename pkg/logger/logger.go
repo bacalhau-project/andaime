@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
+
+	"runtime/debug"
 
 	"github.com/spf13/viper"
 )
@@ -30,6 +31,7 @@ var (
 
 var (
 	globalLogger *zap.Logger
+	loggerMutex  sync.RWMutex
 	once         sync.Once
 	DEBUG        zapcore.Level = zapcore.DebugLevel
 	INFO         zapcore.Level = zapcore.InfoLevel
@@ -46,7 +48,6 @@ var (
 	GlobalLoggedBufferSize    int = 8192
 	GlobalLogFile             *os.File
 
-	logFilePermissions     = fs.FileMode(LogFilePermissions)
 	debugFilePermissions   = fs.FileMode(DebugFilePermissions)
 	profileFilePermissions = fs.FileMode(ProfileFilePermissions)
 
@@ -66,7 +67,7 @@ func (l *Logger) SetVerbose(verbose bool) {
 func InitLoggerOutputs() {
 	GlobalEnableConsoleLogger = false
 	GlobalEnableFileLogger = true
-	GlobalEnableBufferLogger = false
+	GlobalEnableBufferLogger = true
 	GlobalLogPath = "/tmp/andaime.log"
 	GlobalLogLevel = InfoLogLevel
 	GlobalInstantSync = false
@@ -105,6 +106,11 @@ func getLogLevel(logLevel string) zapcore.Level {
 }
 func InitProduction() {
 	once.Do(func() {
+		// Enable console logging by default
+		GlobalEnableConsoleLogger = false
+		GlobalEnableFileLogger = true
+		GlobalEnableBufferLogger = true
+
 		fmt.Printf(
 			"Initializing logger with: Console=%v, File=%v, Buffer=%v, LogPath=%s, LogLevel=%s\n",
 			GlobalEnableConsoleLogger,
@@ -114,82 +120,101 @@ func InitProduction() {
 			GlobalLogLevel,
 		)
 
-		logPath := viper.GetString("general.log_path")
-		if logPath != "" {
-			GlobalLogPath = logPath
-		}
-
-		// Prioritize LOG_LEVEL environment variable
-		envLogLevel := os.Getenv("LOG_LEVEL")
-		if envLogLevel != "" {
-			GlobalLogLevel = envLogLevel
-		} else {
-			logLevelString := viper.GetString("general.log_level")
-			if logLevelString != "" {
-				GlobalLogLevel = logLevelString
-			}
-		}
-
 		if GlobalLogLevel == "" {
 			GlobalLogLevel = InfoLogLevel
 		}
 		logLevel := getZapLevel(GlobalLogLevel)
-		atom := zap.NewAtomicLevelAt(logLevel)
 
-		encoderConfig := zapcore.EncoderConfig{
-			TimeKey:  "time",
-			LevelKey: "level",
-			// NameKey:    "logger",
-			// CallerKey:  "caller",
-			MessageKey: "message",
-			// StacktraceKey: "stacktrace",
-			LineEnding:     zapcore.DefaultLineEnding,
-			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.SecondsDurationEncoder,
-			// EncodeCaller:   zapcore.ShortCallerEncoder,
-		}
+		config := zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(logLevel)
 
 		var cores []zapcore.Core
 
+		if GlobalEnableConsoleLogger {
+			// Console logging with a more readable format
+			consoleEncoderConfig := zap.NewDevelopmentEncoderConfig()
+			consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+			consoleEncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02-15:04:05")
+			consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
+			cores = append(cores, zapcore.NewCore(
+				consoleEncoder,
+				zapcore.AddSync(os.Stdout),
+				config.Level,
+			))
+		}
+
+		// File logging with JSON format (if enabled)
 		if GlobalEnableFileLogger {
-			var err error
-			GlobalLogFile, err = os.OpenFile(
-				GlobalLogPath,
-				os.O_CREATE|os.O_WRONLY|os.O_APPEND,
-				logFilePermissions,
-			)
-			if err == nil {
-				fileWriter := zapcore.AddSync(GlobalLogFile)
-				cores = append(cores, zapcore.NewCore(
-					zapcore.NewConsoleEncoder(encoderConfig),
-					fileWriter,
-					atom,
-				))
+			fileEncoderConfig := zapcore.EncoderConfig{
+				TimeKey:        "time",
+				LevelKey:       "level",
+				NameKey:        "logger",
+				CallerKey:      "caller",
+				MessageKey:     "msg",
+				StacktraceKey:  "stacktrace",
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeLevel:    zapcore.LowercaseLevelEncoder,
+				EncodeTime:     customTimeEncoder,
+				EncodeDuration: zapcore.SecondsDurationEncoder,
+				EncodeCaller:   zapcore.ShortCallerEncoder,
+			}
+			fileEncoder := zapcore.NewJSONEncoder(fileEncoderConfig)
+			logFile, err := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				fmt.Printf("Failed to open log file: %v\n", err)
 			} else {
-				fmt.Printf("Error opening log file: %v\n", err)
+				fmt.Printf("Successfully opened log file: %s\n", GlobalLogPath)
+				cores = append(cores, zapcore.NewCore(
+					fileEncoder,
+					zapcore.AddSync(logFile),
+					config.Level,
+				))
 			}
 		}
 
-		// if GlobalEnableBufferLogger {
-		// 	cores = append(cores, zapcore.NewCore(
-		// 		zapcore.NewConsoleEncoder(encoderConfig),
-		// 		zapcore.AddSync(&GlobalLoggedBuffer),
-		// 		atom,
-		// 	))
-		// }
-
-		// if GlobalEnableConsoleLogger {
-		// 	// If console logging is enabled, add a console core
-		// 	consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
-		// 	cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), atom))
-		// }
+		// Buffer logging with JSON format (if enabled)
+		if GlobalEnableBufferLogger {
+			bufferEncoderConfig := zapcore.EncoderConfig{
+				TimeKey:        "time",
+				LevelKey:       "level",
+				MessageKey:     "msg",
+				StacktraceKey:  "stacktrace",
+				EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeTime:     customTimeEncoder,
+				EncodeDuration: zapcore.SecondsDurationEncoder,
+				EncodeCaller:   zapcore.ShortCallerEncoder,
+			}
+			bufferEncoder := zapcore.NewConsoleEncoder(bufferEncoderConfig)
+			cores = append(cores, zapcore.NewCore(
+				bufferEncoder,
+				zapcore.AddSync(&GlobalLoggedBuffer),
+				config.Level,
+			))
+		}
 
 		core := zapcore.NewTee(cores...)
-		// globalLogger = zap.New(core, zap.AddCaller())
+		logger := zap.New(core, zap.AddCaller())
 
-		globalLogger = zap.New(core)
+		globalLogger = logger.Named("andaime")
+
+		fmt.Println("Logger initialized successfully")
 	})
+}
+
+// NewTestLogger creates a new Logger instance for testing
+func NewTestLogger(tb zaptest.TestingT) *Logger {
+	core := zapcore.NewCore(
+		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
+		zapcore.AddSync(&testingWriter{tb: tb}),
+		zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+			return lvl >= zapcore.DebugLevel
+		}),
+	)
+	return &Logger{
+		Logger:  zap.New(core),
+		verbose: true,
+	}
 }
 
 type testingWriter struct {
@@ -197,7 +222,6 @@ type testingWriter struct {
 }
 
 func (tw *testingWriter) Write(p []byte) (n int, err error) {
-	// Attempt to assert tb to *testing.T to access the Log method directly.
 	if t, ok := tw.tb.(*testing.T); ok {
 		t.Log(string(p))
 	} else {
@@ -223,16 +247,22 @@ func InitTest(tb zaptest.TestingT) {
 	})
 }
 
+// SetGlobalLogger sets the global logger instance
+func SetGlobalLogger(logger *Logger) {
+	loggerMutex.Lock()
+	defer loggerMutex.Unlock()
+	globalLogger = logger.Logger
+}
+
 // Get returns the global logger instance
 func Get() *Logger {
+	loggerMutex.Lock()
+	defer loggerMutex.Unlock()
+
 	if globalLogger == nil {
 		InitProduction()
 	}
-	l := &Logger{Logger: globalLogger, verbose: false}
-	if l.Logger == nil {
-		l = NewNopLogger()
-	}
-	return l
+	return &Logger{Logger: globalLogger, verbose: false}
 }
 
 func (l *Logger) syncIfNeeded() {
@@ -246,53 +276,62 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 	return &Logger{l.Logger.With(fields...), l.verbose}
 }
 
-func (l *Logger) Debug(msg string) {
-	l.Logger.Debug(msg)
+func (l *Logger) Debug(msg string, fields ...zap.Field) {
+	l.Logger.Debug(formatMessage(msg), fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Info(msg string) {
-	l.Logger.Info(msg)
+func (l *Logger) Info(msg string, fields ...zap.Field) {
+	l.Logger.Info(formatMessage(msg), fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Warn(msg string) {
-	l.Logger.Warn(msg)
+func (l *Logger) Warn(msg string, fields ...zap.Field) {
+	l.Logger.Warn(formatMessage(msg), fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Error(msg string) {
-	l.Logger.Error(msg)
+func (l *Logger) Error(msg string, fields ...zap.Field) {
+	l.Logger.Error(formatMessage(msg), fields...)
+	l.syncIfNeeded()
 }
 
-func (l *Logger) Fatal(msg string) {
-	l.Logger.Fatal(msg)
+func (l *Logger) Fatal(msg string, fields ...zap.Field) {
+	l.Logger.Fatal(formatMessage(msg), fields...)
+	// No need to sync here as Fatal will exit the program
+}
+
+func formatMessage(msg string) string {
+	return strings.TrimPrefix(msg, "andaime\t")
 }
 
 func (l *Logger) Debugf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Debug(msg)
+	l.Logger.Debug(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Infof(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Info(msg)
+	l.Logger.Info(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Warnf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Warn(msg)
+	l.Logger.Warn(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Errorf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Error(msg)
+	l.Logger.Error(formatMessage(msg))
 	l.syncIfNeeded()
 }
 
 func (l *Logger) Fatalf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	l.Logger.Fatal(msg)
+	l.Logger.Fatal(formatMessage(msg))
 	// No need to sync here as Fatalf will exit the program
 }
 
@@ -385,49 +424,13 @@ var (
 )
 
 func GetLastLines(n int) []string {
+	if GlobalEnableBufferLogger {
+		return getLastLinesFromBuffer(n)
+	}
+
 	l := Get()
-	if GlobalLogFile == nil {
-		l.Errorf("Error: GlobalLogFile is nil")
-		writeToDebugLog("Error: GlobalLogFile is nil in GetLastLines")
-		return make([]string, n) // Return an empty slice with length n
-	}
-
-	// Open the file for reading
-	file, err := os.Open(GlobalLogPath)
-	if err != nil {
-		l.Errorf("Failed to open GlobalLogFile: %v", err)
-		writeToDebugLog(fmt.Sprintf("Failed to open GlobalLogFile: %v", err))
-		return make([]string, n)
-	}
-	defer file.Close()
-
-	// Read the entire file content
-	content, err := io.ReadAll(file)
-	if err != nil {
-		l.Errorf("Error reading GlobalLogFile: %v", err)
-		writeToDebugLog(fmt.Sprintf("Error reading GlobalLogFile: %v", err))
-		return make([]string, n)
-	}
-
-	// Split the content into lines
-	lines := strings.Split(string(content), "\n")
-
-	// Get the last n lines
-	start := len(lines) - n
-	if start < 0 {
-		start = 0
-	}
-	lastLines := lines[start:]
-
-	// Remove empty lines
-	var result []string
-	for _, line := range lastLines {
-		if line != "" {
-			result = append(result, line)
-		}
-	}
-
-	return result
+	l.Warnf("In-memory buffer logging is not enabled. Unable to retrieve last lines.")
+	return []string{}
 }
 
 func writeToDebugLog(message string) {
@@ -448,6 +451,28 @@ func writeToDebugLog(message string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing to debug log file: %v\n", err)
 	}
+}
+
+func getLastLinesFromBuffer(n int) []string {
+	buffer := GlobalLoggedBuffer.String()
+	lines := strings.Split(buffer, "\n")
+
+	// Get the last n lines
+	start := len(lines) - n
+	if start < 0 {
+		start = 0
+	}
+	lastLines := lines[start:]
+
+	// Remove empty lines
+	var result []string
+	for _, line := range lastLines {
+		if line != "" {
+			result = append(result, line)
+		}
+	}
+
+	return result
 }
 
 func WriteToDebugLog(message string) {
@@ -504,4 +529,28 @@ func getZapLevel(level string) zapcore.Level {
 		fmt.Printf("Unrecognized log level '%s', defaulting to INFO\n", level)
 		return zapcore.InfoLevel
 	}
+}
+
+func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(fmt.Sprintf("[%s]", t.Format("2006-01-02 15:04:05")))
+}
+
+// LogPanic logs the panic message and stack trace
+func LogPanic(rec interface{}) {
+	stack := debug.Stack()
+	Get().Error("PANIC",
+		zap.Any("recover", rec),
+		zap.String("stack", string(stack)),
+	)
+}
+
+// RecoverAndLog wraps a function with panic recovery and logging
+func RecoverAndLog(f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogPanic(r)
+			panic(r) // re-panic after logging
+		}
+	}()
+	f()
 }

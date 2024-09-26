@@ -6,19 +6,69 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	loggerOnce sync.Once
+	log        *logger.Logger
+)
+
+func init() {
+	loggerOnce.Do(func() {
+		log = logger.Get()
+	})
+}
+
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
+
+func (p *AzureProvider) PrepareDeployment(
+	ctx context.Context,
+) (*models.Deployment, error) {
+	m := display.GetGlobalModelFunc()
+
+	if m.Deployment == nil {
+		return nil, fmt.Errorf("deployment object is not initialized")
+	}
+
+	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeAzure)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
+	}
+
+	// Set the SSH public key material
+	deployment.SSHPublicKeyPath = viper.GetString("general.ssh_public_key_path")
+	deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
+	deployment.Azure.SubscriptionID = viper.GetString("azure.subscription_id")
+	deployment.Azure.DefaultVMSize = viper.GetString("azure.default_machine_type")
+	deployment.Azure.DefaultDiskSizeGB = utils.GetSafeDiskSize(
+		viper.GetInt("azure.default_disk_size_gb"),
+	)
+	deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
+
+	tags := utils.EnsureAzureTags(
+		deployment.Tags,
+		deployment.ProjectID,
+		deployment.UniqueID,
+	)
+
+	deployment.Tags = tags
+	deployment.Azure.Tags = tags
+
+	return deployment, nil
+}
 
 // PrepareResourceGroup prepares or creates a resource group for the Azure deployment.
 // It ensures that a valid resource group name and location are set, creating them if necessary.
@@ -45,20 +95,15 @@ func (p *AzureProvider) PrepareResourceGroup(
 		return fmt.Errorf("deployment object is not initialized")
 	}
 
-	// Check if the resource group name already contains a timestamp
-	if m.Deployment.ResourceGroupName == "" {
-		m.Deployment.ResourceGroupName = "andaime-rg"
-	}
-	newRGName := m.Deployment.ResourceGroupName + "-" + time.Now().Format("20060102150405")
-	m.Deployment.ResourceGroupName = newRGName
+	m.Deployment.Azure.ResourceGroupName = p.ResourceGroupName
 
-	resourceGroupLocation := m.Deployment.ResourceGroupLocation
+	resourceGroupLocation := m.Deployment.Azure.ResourceGroupLocation
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
 		if len(m.Deployment.Machines) > 0 {
 			for _, machine := range m.Deployment.Machines {
 				// Break over the first machine
-				resourceGroupLocation = machine.Location
+				resourceGroupLocation = machine.GetLocation()
 				break
 			}
 		}
@@ -68,19 +113,19 @@ func (p *AzureProvider) PrepareResourceGroup(
 			)
 		}
 	}
-	m.Deployment.ResourceGroupLocation = resourceGroupLocation
+	m.Deployment.Azure.ResourceGroupLocation = resourceGroupLocation
 
 	l.Debugf(
 		"Creating Resource Group - %s in location %s",
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Azure.ResourceGroupName,
+		m.Deployment.Azure.ResourceGroupLocation,
 	)
 
 	for _, machine := range m.Deployment.Machines {
 		m.UpdateStatus(
 			models.NewDisplayVMStatus(
-				machine.Name,
-				models.AzureResourceStatePending,
+				machine.GetName(),
+				models.ResourceStatePending,
 			),
 		)
 	}
@@ -88,204 +133,74 @@ func (p *AzureProvider) PrepareResourceGroup(
 	client := p.GetAzureClient()
 	_, err := client.GetOrCreateResourceGroup(
 		ctx,
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
-		m.Deployment.Tags,
+		m.Deployment.Azure.ResourceGroupName,
+		m.Deployment.Azure.ResourceGroupLocation,
+		m.Deployment.Azure.Tags,
 	)
 	if err != nil {
-		l.Errorf("Failed to create Resource Group - %s: %v", m.Deployment.ResourceGroupName, err)
+		l.Errorf(
+			"Failed to create Resource Group - %s: %v",
+			m.Deployment.Azure.ResourceGroupName,
+			err,
+		)
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
 
+	m.Deployment.ViperPath = fmt.Sprintf(
+		"deployments.%s.azure.%s",
+		m.Deployment.UniqueID,
+		m.Deployment.Azure.ResourceGroupName,
+	)
+
+	viper.Set(
+		m.Deployment.ViperPath,
+		make(map[string]models.Machiner),
+	)
+
 	for _, machine := range m.Deployment.Machines {
 		m.UpdateStatus(
-			models.NewDisplayVMStatus(
-				machine.Name,
-				models.AzureResourceStateNotStarted,
+			models.NewDisplayStatus(
+				machine.GetName(),
+				models.AzureResourceTypeVM.ShortResourceName,
+				models.AzureResourceTypeVM,
+				models.ResourceStateNotStarted,
 			),
 		)
 	}
 
 	l.Debugf(
 		"Created Resource Group - %s in location %s",
-		m.Deployment.ResourceGroupName,
-		m.Deployment.ResourceGroupLocation,
+		m.Deployment.Azure.ResourceGroupName,
+		m.Deployment.Azure.ResourceGroupLocation,
 	)
 
 	return nil
 }
 
-func (p *AzureProvider) ProvisionPackagesOnMachines(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	errGroup, ctx := errgroup.WithContext(ctx)
-	errGroup.SetLimit(models.NumberOfSimultaneousProvisionings)
-
-	for _, machine := range m.Deployment.Machines {
-		internalMachine := machine
-		errGroup.Go(func() error {
-			goRoutineID := m.RegisterGoroutine(
-				fmt.Sprintf("WaitForAllMachinesToReachState-%s", internalMachine.Name),
-			)
-			defer m.DeregisterGoroutine(goRoutineID)
-
-			if err := p.WaitForAllMachinesToReachState(ctx, models.AzureResourceStateSucceeded); err != nil {
-				return fmt.Errorf(
-					"failed waiting for all machines to reach succeeded state: %v",
-					err,
-				)
-			}
-
-			if err := internalMachine.InstallDockerAndCorePackages(ctx); err != nil {
-				l.Errorf("Failed to provision Docker for machine %s: %v", machine.Name, err)
-				return err
-			}
-
-			if err := verifyDocker(ctx, machine); err != nil {
-				return err
-			}
-			return nil
-		})
-	}
-
-	if err := errGroup.Wait(); err != nil {
-		return fmt.Errorf("failed to provision packages on machines: %v", err)
-	}
-
-	return nil
-}
-
-func (p *AzureProvider) ProvisionBacalhau(ctx context.Context) error {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	bd := BacalhauDeployer{}
-
-	// Provision Bacalhau orchestrator
-	if err := bd.DeployOrchestrator(ctx); err != nil {
-		l.Errorf("Failed to provision Bacalhau orchestrator: %v", err)
-		return err
-	}
-
-	orchestrator, err := bd.findOrchestratorMachine()
-	if err != nil {
-		l.Errorf("Failed to find orchestrator machine: %v", err)
-		return err
-	}
-
-	if orchestrator.PublicIP == "" {
-		l.Errorf("Orchestrator machine has no public IP: %v", err)
-		return err
-	}
-	m.Deployment.OrchestratorIP = orchestrator.PublicIP
-
-	errGroup, ctx := errgroup.WithContext(ctx)
-	errGroup.SetLimit(models.NumberOfSimultaneousProvisionings)
-	for _, machine := range m.Deployment.Machines {
-		if machine.Orchestrator {
-			continue
-		}
-		internalMachine := machine
-		errGroup.Go(func() error {
-			goRoutineID := m.RegisterGoroutine(
-				fmt.Sprintf("DeployBacalhauWorker-%s", internalMachine.Name),
-			)
-			defer m.DeregisterGoroutine(goRoutineID)
-
-			if err := bd.DeployWorker(ctx, internalMachine.Name); err != nil {
-				return fmt.Errorf(
-					"failed to provision Bacalhau worker %s: %v",
-					internalMachine.Name,
-					err,
-				)
-			}
-			return nil
-		})
-	}
-
-	if err := errGroup.Wait(); err != nil {
-		return fmt.Errorf("failed to provision Bacalhau: %v", err)
-	}
-
-	return nil
-}
-
-func (p *AzureProvider) testSSHLiveness(ctx context.Context, machineName string) error {
-	m := display.GetGlobalModelFunc()
-	// Test SSH connectivity
-	sshConfig, err := sshutils.NewSSHConfigFunc(
-		m.Deployment.Machines[machineName].PublicIP,
-		m.Deployment.Machines[machineName].SSHPort,
-		m.Deployment.Machines[machineName].SSHUser,
-		[]byte(m.Deployment.SSHPrivateKeyMaterial),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH config: %w", err)
-	}
-
-	m.UpdateStatus(
-		models.NewDisplayStatusWithText(
-			machineName,
-			models.AzureResourceTypeVM,
-			models.AzureResourceStatePending,
-			"Testing SSH",
-		),
-	)
-
-	m.Deployment.Machines[machineName].SetServiceState("SSH", models.ServiceStateUpdating)
-
-	//nolint:mnd
-	sshErr := sshConfig.WaitForSSH(ctx, 3, time.Second*10)
-	if sshErr != nil {
-		err := m.Deployment.UpdateMachine(machineName, func(machine *models.Machine) {
-			machine.SetServiceState("SSH", models.ServiceStateFailed)
-			machine.StatusMessage = "Permanently failed deploying SSH"
-		})
-		if err != nil {
-			return err
-		}
-		m.UpdateStatus(
-			models.NewDisplayStatusWithText(
-				machineName,
-				models.AzureResourceTypeVM,
-				models.AzureResourceStateFailed,
-				m.Deployment.Machines[machineName].StatusMessage,
-			),
-		)
-		return sshErr
-	} else {
-		m.Deployment.Machines[machineName].StatusMessage = "Successfully Deployed"
-		m.Deployment.Machines[machineName].SetServiceState("SSH", models.ServiceStateSucceeded)
-		m.UpdateStatus(
-			models.NewDisplayStatusWithText(
-				machineName,
-				models.AzureResourceTypeVM,
-				models.AzureResourceStateSucceeded,
-				"SSH Successfully Deployed",
-			),
-		)
-	}
-
-	return nil
-}
-func (p *AzureProvider) DeployResources(ctx context.Context) error {
+func (p *AzureProvider) CreateResources(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
-	if len(m.Deployment.Locations) >= 0 {
-		m.Deployment.Locations = utils.RemoveDuplicates(m.Deployment.Locations)
+	if len(m.Deployment.Machines) == 0 {
+		return fmt.Errorf("no machines provided")
 	}
 
 	if len(m.Deployment.Locations) == 0 {
 		return fmt.Errorf("no locations provided")
 	}
 
+	if len(m.Deployment.Locations) >= 0 {
+		m.Deployment.Locations = utils.RemoveDuplicates(m.Deployment.Locations)
+	}
+
 	// Group machines by location
-	machinesByLocation := make(map[string][]*models.Machine)
+	machinesByLocation := make(map[string][]models.Machiner)
 	for _, machine := range m.Deployment.Machines {
-		machinesByLocation[machine.Location] = append(machinesByLocation[machine.Location], machine)
+		machinesByLocation[machine.GetLocation()] = append(
+			machinesByLocation[machine.GetLocation()],
+			machine,
+		)
 	}
 
 	errgroup, ctx := errgroup.WithContext(ctx)
@@ -293,6 +208,7 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 
 	for location, machines := range machinesByLocation {
 		location, machines := location, machines // https://golang.org/doc/faq#closures_and_goroutines
+
 		l.Infof(
 			"Preparing to deploy machines in location %s with %d machines",
 			location,
@@ -300,75 +216,174 @@ func (p *AzureProvider) DeployResources(ctx context.Context) error {
 		)
 
 		errgroup.Go(func() error {
-			goRoutineID := m.RegisterGoroutine(
-				fmt.Sprintf("DeployMachinesInLocation-%s", location),
-			)
-			defer m.DeregisterGoroutine(goRoutineID)
+			var goRoutineID int64
+			if m != nil {
+				goRoutineID = m.RegisterGoroutine(
+					fmt.Sprintf("DeployMachinesInLocation-%s", location),
+				)
+				defer m.DeregisterGoroutine(goRoutineID)
+			}
 
 			l.Infof("Starting deployment for location %s", location)
 
 			if len(machines) == 0 {
-				l.Errorf("No machines to deploy in location %s", location)
+				log.Errorf("No machines to deploy in location %s", location)
 				return fmt.Errorf("no machines to deploy in location %s", location)
 			}
 
-			for _, machine := range machines {
-				l.Infof("Deploying machine %s in location %s", machine.Name, location)
+			if m.Deployment.SSHPublicKeyMaterial == "" {
+				return fmt.Errorf("ssh public key material is not set on the deployment")
+			}
 
+			for _, machine := range machines {
+				log.Infof("Deploying machine %s in location %s", machine.GetName(), location)
+
+				m.UpdateStatus(
+					models.NewDisplayVMStatus(
+						machine.GetName(),
+						models.ResourceStatePending,
+					),
+				)
 				err := p.deployMachine(ctx, machine, map[string]*string{})
 				if err != nil {
+					// If error contains "code": "QuotaExceeded"
+					if strings.Contains(err.Error(), "QuotaExceeded") {
+						m.UpdateStatus(
+							models.NewDisplayStatusWithText(
+								machine.GetName(),
+								models.AzureResourceTypeVM,
+								models.ResourceStateFailed,
+								fmt.Sprintf("Quota exceeded for location: %s", location),
+							),
+						)
+						return fmt.Errorf(
+							"quota exceeded for location %s",
+							location,
+						)
+					} else {
+						m.UpdateStatus(
+							models.NewDisplayStatusWithText(
+								machine.GetName(),
+								models.AzureResourceTypeVM,
+								models.ResourceStateFailed,
+								"Failed to deploy machine.",
+							),
+						)
+						return fmt.Errorf(
+							"failed to deploy machine %s in location %s: %w",
+							machine.GetName(),
+							location,
+							err,
+						)
+					}
+				}
+
+				m.UpdateStatus(
+					models.NewDisplayStatusWithText(
+						machine.GetName(),
+						models.AzureResourceTypeVM,
+						models.ResourceStatePending,
+						"Deploying SSH Config",
+					),
+				)
+				machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateUpdating)
+
+				sshConfig, err := sshutils.NewSSHConfigFunc(
+					machine.GetPublicIP(),
+					machine.GetSSHPort(),
+					machine.GetSSHUser(),
+					machine.GetSSHPrivateKeyPath(),
+				)
+				if err != nil {
+					m.UpdateStatus(
+						models.NewDisplayStatusWithText(
+							machine.GetName(),
+							models.AzureResourceTypeVM,
+							models.ResourceStateFailed,
+							"Failed to start SSH Testing.",
+						),
+					)
 					return fmt.Errorf(
-						"failed to deploy machine %s in location %s: %w",
-						machine.Name,
+						"failed to create SSH config for machine %s in location %s: %w",
+						machine.GetName(),
 						location,
 						err,
 					)
 				}
-
-				l.Infof(
+				err = sshConfig.WaitForSSH(ctx,
+					sshutils.SSHRetryAttempts,
+					sshutils.GetAggregateSSHTimeout())
+				if err != nil {
+					m.UpdateStatus(
+						models.NewDisplayStatusWithText(
+							machine.GetName(),
+							models.AzureResourceTypeVM,
+							models.ResourceStateFailed,
+							"Failed to test for SSH liveness.",
+						),
+					)
+					machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
+					return fmt.Errorf(
+						"failed to wait for SSH connection to machine %s in location %s: %w",
+						machine.GetName(),
+						location,
+						err,
+					)
+				}
+				log.Infof(
 					"Successfully deployed machine %s in location %s",
-					machine.Name,
+					machine.GetName(),
 					location,
 				)
+				m.UpdateStatus(
+					models.NewDisplayStatusWithText(
+						machine.GetName(),
+						models.AzureResourceTypeVM,
+						models.ResourceStateSucceeded,
+						"SSH Config Deployed",
+					),
+				)
+				machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
 			}
 
-			l.Infof("Successfully deployed all machines in location %s", location)
+			log.Infof("Successfully deployed all machines in location %s", location)
 			return nil
 		})
 	}
 
 	if err := errgroup.Wait(); err != nil {
-		l.Errorf("Deployment failed: %v", err)
+		log.Errorf("Deployment failed: %v", err)
 		return fmt.Errorf("deployment failed: %w", err)
 	}
 
-	l.Info("ARM template deployment completed successfully")
+	log.Info("ARM template deployment completed successfully")
 	return nil
 }
 
 func (p *AzureProvider) deployMachine(
 	ctx context.Context,
-	machine *models.Machine,
+	machine models.Machiner,
 	tags map[string]*string,
 ) error {
 	m := display.GetGlobalModelFunc()
 	goRoutineID := m.RegisterGoroutine(
-		fmt.Sprintf("DeployMachine-%s", machine.Name),
+		fmt.Sprintf("DeployMachine-%s", machine.GetName()),
 	)
 
-	defer func() {
-		m := display.GetGlobalModelFunc()
-		m.DeregisterGoroutine(goRoutineID)
-	}()
+	defer m.DeregisterGoroutine(goRoutineID)
 
 	m.UpdateStatus(
 		models.NewDisplayStatus(
-			machine.Name,
-			machine.Name,
+			machine.GetName(),
+			machine.GetName(),
 			models.AzureResourceTypeVM,
-			models.AzureResourceStateNotStarted,
+			models.ResourceStateNotStarted,
 		),
 	)
+
+	if m.Deployment.SSHPublicKeyMaterial == "" {
+		return fmt.Errorf("ssh public key material is not set")
+	}
 
 	params := p.prepareDeploymentParams(machine)
 	vmTemplate, err := p.getAndPrepareTemplate()
@@ -387,9 +402,36 @@ func (p *AzureProvider) deployMachine(
 		return err
 	}
 
-	m.Deployment.Machines[machine.Name].SetResourceState(
+	m.Deployment.Machines[machine.GetName()].SetMachineResourceState(
 		models.AzureResourceTypeVM.ResourceString,
-		models.AzureResourceStateSucceeded,
+		models.ResourceStateSucceeded,
+	)
+
+	type viperMachineStruct struct {
+		Location            string `json:"location"`
+		Size                string `json:"size"`
+		PublicIP            string `json:"public_ip"`
+		PrivateIP           string `json:"private_ip"`
+		BacalhauProvisioned bool   `json:"bacalhau_provisioned"`
+	}
+
+	allMachines, ok := viper.Get(m.Deployment.ViperPath).(map[string]viperMachineStruct)
+	if !ok {
+		allMachines = make(map[string]viperMachineStruct)
+	}
+	allMachines[machine.GetName()] = viperMachineStruct{
+		PublicIP:  machine.GetPublicIP(),
+		PrivateIP: machine.GetPrivateIP(),
+		Location:  machine.GetLocation(),
+		Size:      machine.GetVMSize(),
+		BacalhauProvisioned: machine.GetServiceState(
+			models.ServiceTypeBacalhau.Name,
+		) == models.ServiceStateSucceeded,
+	}
+
+	viper.Set(
+		m.Deployment.ViperPath,
+		allMachines,
 	)
 
 	return nil
@@ -411,25 +453,24 @@ func (p *AzureProvider) getAndPrepareTemplate() (map[string]interface{}, error) 
 }
 
 func (p *AzureProvider) prepareDeploymentParams(
-	machine *models.Machine,
+	machine models.Machiner,
 ) map[string]interface{} {
 	m := display.GetGlobalModelFunc()
 	return map[string]interface{}{
-		"vmName":             fmt.Sprintf("%s-vm", machine.ID),
-		"adminUsername":      "azureuser",
-		"authenticationType": "sshPublicKey",
-		"adminPasswordOrKey": m.Deployment.SSHPublicKeyMaterial,
+		"vmName":        machine.GetName(),
+		"adminUsername": "azureuser",
+		"sshPublicKey":  strings.TrimSpace(string(machine.GetSSHPublicKeyMaterial())),
 		"dnsLabelPrefix": fmt.Sprintf(
 			"vm-%s-%s",
-			strings.ToLower(machine.ID),
+			strings.ToLower(machine.GetID()),
 			utils.GenerateUniqueID()[:6],
 		),
 		"ubuntuOSVersion":          "Ubuntu-2004",
-		"vmSize":                   machine.VMSize,
-		"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.Location),
-		"subnetName":               fmt.Sprintf("%s-subnet", machine.Location),
-		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.Location),
-		"location":                 machine.Location,
+		"vmSize":                   machine.GetVMSize(),
+		"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.GetLocation()),
+		"subnetName":               fmt.Sprintf("%s-subnet", machine.GetLocation()),
+		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.GetLocation()),
+		"location":                 machine.GetLocation(),
 		"securityType":             "TrustedLaunch",
 		"allowedPorts":             m.Deployment.AllowedPorts,
 	}
@@ -438,26 +479,26 @@ func (p *AzureProvider) prepareDeploymentParams(
 //nolint:funlen
 func (p *AzureProvider) deployTemplateWithRetry(
 	ctx context.Context,
-	machine *models.Machine,
+	machine models.Machiner,
 	vmTemplate map[string]interface{},
 	params map[string]interface{},
 	tags map[string]*string,
 ) error {
 	m := display.GetGlobalModelFunc()
-	goRoutineID := m.RegisterGoroutine(fmt.Sprintf("deployTemplateWithRetry-%s", machine.Name))
+	goRoutineID := m.RegisterGoroutine(fmt.Sprintf("deployTemplateWithRetry-%s", machine.GetName()))
 	defer m.DeregisterGoroutine(goRoutineID)
 
 	l := logger.Get()
 	maxRetries := 3
 
-	if mach, ok := m.Deployment.Machines[machine.Name]; !ok || mach == nil {
-		return fmt.Errorf("machine %s not found in deployment", machine.Name)
+	if mach, ok := m.Deployment.Machines[machine.GetName()]; !ok || mach == nil {
+		return fmt.Errorf("machine %s not found in deployment", machine.GetName())
 	}
 
 	m.UpdateStatus(
 		models.NewDisplayVMStatus(
-			machine.Name,
-			models.AzureResourceStatePending,
+			machine.GetName(),
+			models.ResourceStatePending,
 		),
 	)
 
@@ -466,8 +507,8 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		client := p.GetAzureClient()
 		poller, err := client.DeployTemplate(
 			ctx,
-			m.Deployment.ResourceGroupName,
-			fmt.Sprintf("deployment-%s", machine.Name),
+			m.Deployment.Azure.ResourceGroupName,
+			fmt.Sprintf("deployment-%s", machine.GetName()),
 			vmTemplate,
 			params,
 			tags,
@@ -486,7 +527,10 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				return fmt.Errorf("deployment failed with unknown error")
 			}
 		} else {
-			return fmt.Errorf("deployment response or provisioning state is nil")
+			if err != nil {
+				return fmt.Errorf("deployment response or provisioning state is nil: %v", err)
+			}
+			return fmt.Errorf("deployment response or provisioning state is nil: %v", resp)
 		}
 
 		if err != nil && strings.Contains(err.Error(), "DnsRecordCreateConflict") {
@@ -498,13 +542,13 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			params["dnsLabelPrefix"] = map[string]interface{}{
 				"Value": fmt.Sprintf(
 					"vm-%s-%s",
-					strings.ToLower(machine.ID),
+					strings.ToLower(machine.GetID()),
 					utils.GenerateUniqueID()[:6],
 				),
 			}
 			dispStatus := models.NewDisplayVMStatus(
-				machine.Name,
-				models.AzureResourceStatePending,
+				machine.GetName(),
+				models.ResourceStatePending,
 			)
 			dispStatus.StatusMessage = fmt.Sprintf(
 				"DNS Conflict - Retrying... %d/%d",
@@ -517,9 +561,9 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		} else if err != nil {
 			m.UpdateStatus(
 				models.NewDisplayStatusWithText(
-					machine.Name,
+					machine.GetName(),
 					models.AzureResourceTypeVM,
-					models.AzureResourceStateFailed,
+					models.ResourceStateFailed,
 					err.Error(),
 				),
 			)
@@ -534,27 +578,38 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	if dnsFailed {
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
-				machine.Name,
+				machine.GetName(),
 				models.AzureResourceTypeVM,
-				models.AzureResourceStateFailed,
+				models.ResourceStateFailed,
 				"Failed to deploy due to DNS conflict.",
 			),
 		)
-		m.Deployment.Machines[machine.Name].StatusMessage = "Failed to deploy due to DNS conflict"
+		m.Deployment.Machines[machine.GetName()].SetStatusMessage(
+			"Failed to deploy due to DNS conflict",
+		)
 	} else {
 		for i := 0; i < ipRetries; i++ {
-			publicIP, privateIP, err := p.GetVMIPAddresses(ctx, m.Deployment.ResourceGroupName, machine.Name)
+			publicIP, privateIP, err := p.GetVMIPAddresses(
+				ctx,
+				m.Deployment.Azure.ResourceGroupName,
+				machine.GetName(),
+			)
 			if err != nil {
 				if i == ipRetries-1 {
-					l.Errorf("Failed to get IP addresses for VM %s after %d retries: %v", machine.Name, ipRetries, err)
-					m.Deployment.Machines[machine.Name].StatusMessage = "Failed to get IP addresses"
-					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.Name, err)
+					l.Errorf(
+						"Failed to get IP addresses for VM %s after %d retries: %v",
+						machine.GetName(),
+						ipRetries,
+						err,
+					)
+					m.Deployment.Machines[machine.GetName()].SetStatusMessage("Failed to get IP addresses")
+					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.GetName(), err)
 				}
 				time.Sleep(timeBetweenIPRetries)
 				displayStatus := models.NewDisplayStatusWithText(
-					machine.Name,
+					machine.GetName(),
 					models.AzureResourceTypeVM,
-					models.AzureResourceStatePending,
+					models.ResourceStatePending,
 					"Waiting for IP addresses",
 				)
 				displayStatus.PublicIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
@@ -565,27 +620,27 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				continue
 			}
 
-			m.Deployment.Machines[machine.Name].PublicIP = publicIP
-			m.Deployment.Machines[machine.Name].PrivateIP = privateIP
+			m.Deployment.Machines[machine.GetName()].SetPublicIP(publicIP)
+			m.Deployment.Machines[machine.GetName()].SetPrivateIP(privateIP)
 
-			if m.Deployment.Machines[machine.Name].ElapsedTime == 0 {
-				m.Deployment.Machines[machine.Name].ElapsedTime = time.Since(machine.StartTime)
+			if m.Deployment.Machines[machine.GetName()].GetElapsedTime() == 0 {
+				m.Deployment.Machines[machine.GetName()].SetElapsedTime(time.Since(machine.GetStartTime()))
 			}
 			displayStatus := models.NewDisplayStatusWithText(
-				machine.Name,
+				machine.GetName(),
 				models.AzureResourceTypeVM,
-				models.AzureResourceStateSucceeded,
+				models.ResourceStateSucceeded,
 				"IPs Provisioned",
 			)
 			displayStatus.PublicIP = publicIP
 			displayStatus.PrivateIP = privateIP
-			displayStatus.ElapsedTime = m.Deployment.Machines[machine.Name].ElapsedTime
+			displayStatus.ElapsedTime = m.Deployment.Machines[machine.GetName()].GetElapsedTime()
 			m.UpdateStatus(
 				displayStatus,
 			)
-			m.Deployment.Machines[machine.Name].SetResourceState(
+			m.Deployment.Machines[machine.GetName()].SetMachineResourceState(
 				models.AzureResourceTypeVM.ResourceString,
-				models.AzureResourceStateSucceeded,
+				models.ResourceStateSucceeded,
 			)
 			break
 		}
@@ -594,19 +649,25 @@ func (p *AzureProvider) deployTemplateWithRetry(
 	return nil
 }
 
-func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface{}, error) {
+func (p *AzureProvider) PollResources(ctx context.Context) ([]interface{}, error) {
 	l := logger.Get()
 	start := time.Now()
 	defer func() {
-		l.Debugf("PollAndUpdateResources took %v", time.Since(start))
+		l.Debugf("PollResources took %v", time.Since(start))
 	}()
 	m := display.GetGlobalModelFunc()
 	client := p.GetAzureClient()
+
+	azureTags := make(map[string]*string)
+	for k, v := range m.Deployment.Tags {
+		azureTags[k] = &v
+	}
+
 	resources, err := client.GetResources(
 		ctx,
-		m.Deployment.SubscriptionID,
-		m.Deployment.ResourceGroupName,
-		m.Deployment.Tags,
+		m.Deployment.Azure.SubscriptionID,
+		m.Deployment.Azure.ResourceGroupName,
+		azureTags,
 	)
 	if err != nil {
 		return nil, err
@@ -651,47 +712,17 @@ func (p *AzureProvider) PollAndUpdateResources(ctx context.Context) ([]interface
 	}
 
 	defer func() {
-		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+		l.Debugf("PollResources execution took %v", time.Since(start))
 	}()
 
 	select {
 	case <-ctx.Done():
-		l.Debug("Cancel command received in PollAndUpdateResources")
+		l.Debug("Cancel command received in PollResources")
 		return nil, ctx.Err()
 	default:
-		l.Debugf("PollAndUpdateResources execution took %v", time.Since(start))
+		l.Debugf("PollResources execution took %v", time.Since(start))
 		return resources, nil
 	}
-}
-
-// finalizeDeployment performs any necessary cleanup and final steps
-func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
-	goRoutineID := m.RegisterGoroutine(
-		fmt.Sprintf("FinalizeDeployment-%s", m.Deployment.ResourceGroupName),
-	)
-	defer m.DeregisterGoroutine(goRoutineID)
-
-	l := logger.Get()
-
-	// Check for context cancellation
-	if err := ctx.Err(); err != nil {
-		l.Info("Deployment cancelled during finalization")
-		return fmt.Errorf("deployment cancelled: %w", err)
-	}
-
-	// Log successful completion
-	l.Info("Azure deployment completed successfully")
-
-	// Ensure all configurations are saved
-	if err := m.Deployment.UpdateViperConfig(); err != nil {
-		l.Errorf("Failed to save final configuration: %v", err)
-		return fmt.Errorf("failed to save final configuration: %w", err)
-	}
-
-	l.Info("Deployment finalized successfully")
-
-	return nil
 }
 
 func (p *AzureProvider) GetVMIPAddresses(
@@ -733,7 +764,7 @@ func (p *AzureProvider) GetVMIPAddresses(
 	}
 
 	// Check if the network interface has IP configurations
-	if nic.Properties.IPConfigurations == nil || len(nic.Properties.IPConfigurations) == 0 {
+	if nic.Properties.IPConfigurations == nil {
 		return "", "", fmt.Errorf("network interface has no IP configurations")
 	}
 
@@ -776,9 +807,9 @@ func parseResourceID(resourceID string) (string, error) {
 func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 	l := logger.Get()
-	var workerMachines []*models.Machine
+	var workerMachines []models.Machiner
 	for _, machine := range m.Deployment.Machines {
-		if !machine.Orchestrator {
+		if !machine.IsOrchestrator() {
 			workerMachines = append(workerMachines, machine)
 		}
 	}

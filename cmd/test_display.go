@@ -9,7 +9,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/testutils"
+	"github.com/bacalhau-project/andaime/pkg/testutil"
 )
 
 var totalTasks = 20
@@ -28,7 +28,7 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 	defer ticker.Stop()
 
 	for i := 0; i < totalTasks; i++ {
-		newStatus := testutils.CreateRandomStatus()
+		newStatus := testutil.CreateRandomStatus()
 		statuses[newStatus.ID] = newStatus
 	}
 
@@ -38,11 +38,11 @@ func generateEvents(ctx context.Context, logChan chan<- string) {
 	for {
 		select {
 		case <-ticker.C:
-			if status := testutils.GetRandomStatus(statuses); status != nil {
+			if status := testutil.GetRandomStatus(statuses); status != nil {
 				updateRandomStatus(status)
 			}
 		case <-logTicker.C:
-			logEntry := testutils.GenerateRandomLogEntry()
+			logEntry := testutil.GenerateRandomLogEntry()
 			l.Infof(logEntry)
 			select {
 			case logChan <- logEntry:
@@ -60,7 +60,7 @@ func updateRandomStatus(status *models.DisplayStatus) bool {
 	max := big.NewInt(MaxRandomDuration)
 	n, _ := rand.Int(rand.Reader, max)
 	status.ElapsedTime += time.Duration(n.Int64()) * time.Second
-	status.StatusMessage = testutils.RandomStatus()
-	status.DetailedStatus = testutils.GetRandomDetailedStatus(status.StatusMessage)
+	status.StatusMessage = testutil.RandomStatus()
+	status.DetailedStatus = testutil.GetRandomDetailedStatus(status.StatusMessage)
 	return oldStatus != *status // Return true if there's a change
 }

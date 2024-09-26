@@ -1,0 +1,40 @@
+gcp:
+  allowed_ports:
+    - 22
+    - 1234
+    - 1235
+    - 4222
+  billing_account_id: "01E270-EAC9A7-65EC2C"
+  organization_id: "383691631389"
+  default_count_per_zone: 1
+  default_disk_size_gb: 30
+  default_location: us-west2-c
+  default_disk_image_family: ubuntu-2004-lts
+  default_machine_type: n2-standard-2
+  machines:
+    - location: europe-west3-c
+    - location: europe-west2-b
+      parameters:
+        count: 2
+    - location: europe-west1-b
+      parameters:
+        disk_image_family: ubuntu-2204-lts
+    - location: australia-southeast2-a
+      parameters:
+        type: n2-standard-4
+    - location: me-central1-a
+      parameters:
+        count: 2
+        type: n2-standard-4
+        disk_image_family: ubuntu-2204-lts
+    - location: asia-east1-a
+      parameters:
+        orchestrator: true
+general:
+  log_level: info
+  log_path: /tmp/andaime.log
+  project_prefix: andaime
+  ssh_port: 22
+  ssh_private_key_path: /Users/daaronch/.ssh/id_rsa
+  ssh_public_key_path: /Users/daaronch/.ssh/id_rsa.pub
+  ssh_user: andaimeuser

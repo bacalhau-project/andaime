@@ -3,27 +3,27 @@ package azure
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	internal "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 )
 
 // CreateResourceGroup creates a new resource group or returns an existing one
 func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 	rgName string,
 	rgLocation string,
-	tags map[string]*string) (*armresources.ResourceGroup, error) {
-	log := logger.Get()
+	tags map[string]string) (*armresources.ResourceGroup, error) {
+	l := logger.Get()
 
 	// Get the base resource group name from the config
 	if rgName == "" {
-		return nil, fmt.Errorf("azure.resource_group_name is not set in the configuration")
+		return nil, fmt.Errorf("rgName is not set")
 	}
 
-	if !IsValidResourceGroupName(rgName) {
+	if !common.IsValidResourceGroupName(rgName) {
 		return nil, fmt.Errorf("invalid resource group name: %s", rgName)
 	}
 
@@ -37,14 +37,17 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 		return existing, nil
 	}
 
+	dereferencedTags := make(map[string]*string)
+	for k, v := range tags {
+		v := v
+		dereferencedTags[k] = &v
+	}
+
 	// Create the resource group
 	parameters := armresources.ResourceGroup{
 		Name:     to.Ptr(rgName),
 		Location: to.Ptr(rgLocation),
-		Tags: map[string]*string{
-			"CreatedBy": to.Ptr("Andaime"),
-			"CreatedOn": to.Ptr(time.Now().Format(time.RFC3339)),
-		},
+		Tags:     dereferencedTags,
 	}
 
 	result, err := c.resourceGroupsClient.CreateOrUpdate(ctx, rgName, parameters, nil)
@@ -52,7 +55,7 @@ func (c *LiveAzureClient) GetOrCreateResourceGroup(ctx context.Context,
 		return nil, fmt.Errorf("failed to create resource group: %v", err)
 	}
 
-	log.Infof("Created resource group: %s", rgName)
+	l.Infof("Created resource group: %s", rgName)
 	return &result.ResourceGroup, nil
 }
 

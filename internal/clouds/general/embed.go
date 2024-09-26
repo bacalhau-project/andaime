@@ -69,3 +69,25 @@ func GetBacalhauServiceScript() ([]byte, error) {
 	}
 	return script, nil
 }
+
+//go:embed local_custom_script.sh
+var LocalCustomScript embed.FS
+
+func GetLocalCustomScript() ([]byte, error) {
+	script, err := LocalCustomScript.ReadFile("local_custom_script.sh")
+	if err != nil {
+		return nil, err
+	}
+	return script, nil
+}
+
+//go:embed bacalhau_settings.json
+var BacalhauSettings embed.FS
+
+func GetBacalhauSettings() ([]byte, error) {
+	script, err := BacalhauSettings.ReadFile("bacalhau_settings.json")
+	if err != nil {
+		return nil, err
+	}
+	return script, nil
+}

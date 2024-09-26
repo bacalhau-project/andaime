@@ -3,7 +3,6 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
-	"log"
 	"math/big"
 	"os/user"
 	"path/filepath"
@@ -15,13 +14,13 @@ import (
 
 // safeDeref safely dereferences a string pointer. If the pointer is nil, it returns a placeholder.
 func SafeDeref(s *string) string {
-	log := logger.Get()
+	l := logger.Get()
 
 	// If s is a string pointer, dereference it
 	if s != nil {
 		return *s
 	} else {
-		log.Debug("State is nil")
+		l.Debug("State is nil")
 		return ""
 	}
 }
@@ -50,14 +49,16 @@ func CreateShortID() string {
 }
 
 func generateID(length int) string {
-	var lettersAndDigits = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+	l := logger.Get()
+
+	var letters = []rune("bcdfghjklmnpqrstvwxz")
 	b := make([]rune, length)
 	for i := range b {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(lettersAndDigits))))
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
 		if err != nil {
-			log.Fatalf("Failed to generate unique ID: %v", err)
+			l.Fatalf("Failed to generate unique ID: %v", err)
 		}
-		b[i] = lettersAndDigits[n.Int64()]
+		b[i] = letters[n.Int64()]
 	}
 	return string(b)
 }
@@ -113,4 +114,12 @@ func ConvertStringMapToStringPtrMap(m map[string]string) map[string]*string {
 		result[k] = &value
 	}
 	return result
+}
+
+func TruncateString(s string, maxLength int) string {
+	ellipsis := "..."
+	if len(s) > maxLength {
+		return s[:maxLength-len(ellipsis)] + ellipsis
+	}
+	return s
 }

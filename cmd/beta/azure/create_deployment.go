@@ -4,16 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/utils"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -27,113 +23,175 @@ var createAzureDeploymentCmd = &cobra.Command{
 	Use:   "create-deployment",
 	Short: "Create a deployment in Azure",
 	Long:  `Create a deployment in Azure using the configuration specified in the config file.`,
-	RunE:  executeCreateDeployment,
+	RunE:  ExecuteCreateDeployment,
 }
 
 func GetAzureCreateDeploymentCmd() *cobra.Command {
 	return createAzureDeploymentCmd
 }
 
-func executeCreateDeployment(cmd *cobra.Command, args []string) error {
+func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	l := logger.Get()
-	l.Info("Starting executeCreateDeployment")
+	ctx := cmd.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if cancel != nil && ctx.Err() != nil {
+			cancel()
+		}
+	}()
 
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
-
-	setDefaultConfigurations()
-
-	projectID := viper.GetString("general.project_id")
-	if projectID == "" {
-		return fmt.Errorf("project ID is empty")
+	subscriptionID := viper.GetString("azure.subscription_id")
+	if subscriptionID == "" {
+		return fmt.Errorf("subscription_id is not set in the configuration")
 	}
-
-	uniqueID := time.Now().Format("060102150405")
-	ctx = context.WithValue(ctx, globals.UniqueDeploymentIDKey, uniqueID)
-
-	p, err := azure.NewAzureProviderFunc()
+	// Initialize the Azure provider
+	azureProvider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Azure provider: %w", err)
+		l.Error(fmt.Sprintf("Failed to create Azure provider: %v", err))
+		return fmt.Errorf("failed to create Azure provider: %w", err)
 	}
 
-	viper.Set("general.unique_id", uniqueID)
-	deployment, err := PrepareDeployment(ctx)
-	m := display.InitialModel(deployment)
+	client, err := azure.NewAzureClientFunc(subscriptionID)
 	if err != nil {
-		return fmt.Errorf("failed to initialize deployment: %w", err)
+		l.Error(fmt.Sprintf("Failed to create Azure client: %v", err))
+		return fmt.Errorf("failed to create Azure client: %w", err)
 	}
-	m.Deployment = deployment
+	azureProvider.SetAzureClient(client)
 
-	prog := display.GetGlobalProgram()
+	// Prepare the deployment
+	deployment, err := azureProvider.PrepareDeployment(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to prepare deployment: %w", err)
+	}
+	deployment.Azure.ResourceGroupName = azureProvider.ResourceGroupName
+
+	m := display.NewDisplayModel(deployment)
+	machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)
+	if err != nil {
+		if err.Error() == "no machines configuration found for provider azure" {
+			fmt.Println(
+				"You can check the skus available for a location with the command: az vm list-skus -o json -l <ZONE> | jq -r '.[].name'",
+			)
+			return nil
+		}
+		return fmt.Errorf("failed to process machines config: %w", err)
+	}
+	m.Deployment.SetMachines(machines)
+	m.Deployment.SetLocations(locations)
+
+	prog := display.GetGlobalProgramFunc()
 	prog.InitProgram(m)
 
-	go p.StartResourcePolling(ctx)
+	go func() {
+		defer cancel()
+		err = azureProvider.StartResourcePolling(ctx)
+		if err != nil {
+			l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
+		}
+	}()
 
 	var deploymentErr error
+	deploymentDone := make(chan struct{})
+
 	go func() {
+		defer close(deploymentDone)
 		select {
 		case <-ctx.Done():
 			l.Debug("Deployment cancelled")
 			return
 		default:
-			deploymentErr = runDeployment(ctx, p)
+			deploymentErr = runDeployment(ctx, azureProvider)
+			if deploymentErr != nil {
+				l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
+				cancel() // Cancel the context on error
+			}
 		}
 	}()
 
 	_, err = prog.Run()
 	if err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
-		return err
+		cancel() // Cancel the context on error
 	}
 
-	// Clear the screen and print final table
-	fmt.Print("\033[H\033[2J")
-	fmt.Println(m.RenderFinalTable())
+	// Wait for deployment to finish or context to be cancelled
+	select {
+	case <-deploymentDone:
+	case <-ctx.Done():
+		l.Debug("Context cancelled, waiting for deployment to finish")
+		<-deploymentDone
+	}
 
-	return deploymentErr
+	// Write configuration to file
+	configFile := viper.ConfigFileUsed()
+	if configFile == "" {
+		l.Error("No configuration file found, could not write to file.")
+		return nil
+	}
+	if err := viper.WriteConfigAs(configFile); err != nil {
+		l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+	} else {
+		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
+	}
+
+	if os.Getenv("ANDAIME_TEST_MODE") != "true" { //nolint:goconst
+		// Clear the screen and print final table
+		fmt.Print("\033[H\033[2J")
+		fmt.Println(m.RenderFinalTable())
+	}
+
+	if deploymentErr != nil {
+		fmt.Println("Deployment failed, but configuration was written to file.")
+		fmt.Println("The deployment error was:")
+		fmt.Println(deploymentErr)
+	}
+
+	if err != nil {
+		fmt.Println("General (unknown) error running program:")
+		fmt.Println(err)
+		return nil
+	}
+
+	return nil
 }
 
 func runDeployment(
 	ctx context.Context,
-	p azure.AzureProviderer,
+	azureProvider *azure_provider.AzureProvider,
 ) error {
 	l := logger.Get()
+	prog := display.GetGlobalProgramFunc()
 	m := display.GetGlobalModelFunc()
-	prog := display.GetGlobalProgram()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
 
 	// Prepare resource group
 	l.Debug("Preparing resource group")
-	err := p.PrepareResourceGroup(ctx)
+	err := azureProvider.PrepareResourceGroup(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to prepare resource group: %v", err))
 		return fmt.Errorf("failed to prepare resource group: %w", err)
 	}
 	l.Debug("Resource group prepared successfully")
 
-	if err = p.DeployResources(ctx); err != nil {
-		return fmt.Errorf("failed to deploy resources: %w", err)
+	// Create resources
+	if err := azureProvider.CreateResources(ctx); err != nil {
+		return fmt.Errorf("failed to create resources: %w", err)
 	}
 
-	// Go through each machine and set the resource state to succeeded - since it's
-	// already been deployed (this is basically a UI bug fix)
-	for i := range m.Deployment.Machines {
-		for k := range m.Deployment.Machines[i].GetMachineResources() {
-			m.Deployment.Machines[i].SetResourceState(
-				k,
-				models.AzureResourceStateSucceeded,
-			)
-		}
-	}
-
-	if err = p.ProvisionPackagesOnMachines(ctx); err != nil {
+	// Provision machines
+	if err := azureProvider.GetClusterDeployer().ProvisionAllMachinesWithPackages(ctx); err != nil {
 		return fmt.Errorf("failed to provision machines: %w", err)
 	}
 
-	if err := p.ProvisionBacalhau(ctx); err != nil {
-		return fmt.Errorf("failed to provision Bacalhau: %w", err)
+	// Provision Bacalhau cluster
+	if err := azureProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 
-	if err := p.FinalizeDeployment(ctx); err != nil {
+	// Finalize deployment
+	if err := azureProvider.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
 
@@ -142,315 +200,4 @@ func runDeployment(
 	prog.Quit()
 
 	return nil
-}
-
-func setDeploymentBasicInfo(d *models.Deployment) error {
-	d.SSHUser = viper.GetString("general.ssh_user")
-	d.SSHPort = viper.GetInt("general.ssh_port")
-	d.OrchestratorIP = viper.GetString("general.orchestrator_ip")
-	d.ResourceGroupName = viper.GetString("azure.resource_group_name")
-	d.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
-	d.AllowedPorts = viper.GetIntSlice("azure.allowed_ports")
-	d.DefaultVMSize = viper.GetString("azure.default_vm_size")
-
-	defaultDiskSize := viper.GetInt("azure.default_disk_size_gb")
-	d.DefaultDiskSizeGB = utils.GetSafeDiskSize(defaultDiskSize)
-	d.DefaultLocation = viper.GetString("azure.default_location")
-	subscriptionID, err := getSubscriptionID()
-	if err != nil {
-		return fmt.Errorf("failed to get subscription ID: %w", err)
-	}
-	d.SubscriptionID = subscriptionID
-	return nil
-}
-
-// We're going to use a temporary machine struct to unmarshal from the config file
-// and then convert it to the actual machine struct
-type rawMachine struct {
-	Location   string `yaml:"location"`
-	Parameters *struct {
-		Count        int    `yaml:"count,omitempty"`
-		Type         string `yaml:"type,omitempty"`
-		Orchestrator bool   `yaml:"orchestrator,omitempty"`
-	} `yaml:"parameters"`
-}
-
-//nolint:funlen,gocyclo,unused
-func ProcessMachinesConfig(deployment *models.Deployment) error {
-	l := logger.Get()
-	locations := make(map[string]bool)
-
-	rawMachines := []rawMachine{}
-
-	if err := viper.UnmarshalKey("azure.machines", &rawMachines); err != nil {
-		return fmt.Errorf("error unmarshaling machines: %w", err)
-	}
-
-	defaultCount := viper.GetInt("azure.default_count_per_zone")
-	if defaultCount == 0 {
-		l.Error("azure.default_count_per_zone is empty")
-		return fmt.Errorf("azure.default_count_per_zone is empty")
-	}
-	defaultType := viper.GetString("azure.default_machine_type")
-	if defaultType == "" {
-		l.Error("azure.default_machine_type is empty")
-		return fmt.Errorf("azure.default_machine_type is empty")
-	}
-
-	defaultDiskSize := viper.GetInt("azure.disk_size_gb")
-	if defaultDiskSize == 0 {
-		l.Error("azure.disk_size_gb is empty")
-		return fmt.Errorf("azure.disk_size_gb is empty")
-	}
-
-	privateKeyBytes, err := sshutils.ReadPrivateKey(deployment.SSHPrivateKeyPath)
-	if err != nil {
-		return err
-	}
-
-	orchestratorIP := deployment.OrchestratorIP
-	var orchestratorLocations []string
-	for _, rawMachine := range rawMachines {
-		if rawMachine.Parameters != nil && rawMachine.Parameters.Orchestrator {
-			// We're doing some checking here to make sure that the orchestrator node not
-			// specified in a way that would result in multiple orchestrator nodes
-			if rawMachine.Parameters.Count == 0 {
-				rawMachine.Parameters.Count = defaultCount
-			}
-
-			for i := 0; i < rawMachine.Parameters.Count; i++ {
-				orchestratorLocations = append(orchestratorLocations, rawMachine.Location)
-			}
-		}
-	}
-
-	if len(orchestratorLocations) > 1 {
-		return fmt.Errorf("multiple orchestrator nodes found")
-	}
-
-	type badMachineLocationCombo struct {
-		location string
-		vmSize   string
-	}
-	var allBadMachineLocationCombos []badMachineLocationCombo
-	newMachines := make(map[string]*models.Machine)
-	for _, rawMachine := range rawMachines {
-		count := 1
-		if rawMachine.Parameters != nil {
-			if rawMachine.Parameters.Count > 0 {
-				count = rawMachine.Parameters.Count
-			}
-		}
-
-		var thisVMType string
-		if rawMachine.Parameters != nil {
-			thisVMType = rawMachine.Parameters.Type
-			if thisVMType == "" {
-				thisVMType = defaultType
-			}
-		}
-		azureClient, err := azure.NewAzureClientFunc(deployment.SubscriptionID)
-		if err != nil {
-			return fmt.Errorf("failed to create Azure client: %w", err)
-		}
-
-		fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
-		valid, err := azureClient.ValidateMachineType(
-			context.Background(),
-			rawMachine.Location,
-			thisVMType,
-		)
-		if !valid || err != nil {
-			allBadMachineLocationCombos = append(
-				allBadMachineLocationCombos,
-				badMachineLocationCombo{
-					location: rawMachine.Location,
-					vmSize:   thisVMType,
-				},
-			)
-			fmt.Println("❌")
-			continue
-		}
-		fmt.Println("✅")
-
-		countOfMachines := utils.GetCountOfMachines(count, defaultCount)
-		for i := 0; i < countOfMachines; i++ {
-			newMachine, err := createNewMachine(
-				rawMachine.Location,
-				utils.GetSafeDiskSize(defaultDiskSize),
-				thisVMType,
-				privateKeyBytes,
-				deployment.SSHPort,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to create new machine: %w", err)
-			}
-
-			if rawMachine.Parameters != nil {
-				if rawMachine.Parameters.Type != "" {
-					newMachine.VMSize = rawMachine.Parameters.Type
-				}
-				if rawMachine.Parameters.Orchestrator {
-					newMachine.Orchestrator = true
-				}
-			} else {
-				// Log a warning or handle the case where Parameters is nil
-				logger.Get().Warnf("Parameters for machine in location %s is nil", rawMachine.Location)
-			}
-
-			newMachines[newMachine.Name] = newMachine
-			newMachines[newMachine.Name].SetResourceState(
-				models.AzureResourceTypeVM.ResourceString,
-				models.AzureResourceStateNotStarted,
-			)
-		}
-
-		locations[rawMachine.Location] = true
-	}
-
-	if len(allBadMachineLocationCombos) > 0 {
-		return fmt.Errorf(
-			"invalid machine type and location combinations: %v",
-			allBadMachineLocationCombos,
-		)
-	}
-
-	// Loop for setting the orchestrator node
-	orchestratorFound := false
-	for name, machine := range newMachines {
-		if orchestratorIP != "" {
-			newMachines[name].OrchestratorIP = orchestratorIP
-			orchestratorFound = true
-		} else if machine.Orchestrator {
-			orchestratorFound = true
-		}
-	}
-	if !orchestratorFound {
-		return fmt.Errorf("no orchestrator node and orchestratorIP is not set")
-	}
-
-	deployment.Machines = newMachines
-	for k := range locations {
-		deployment.Locations = append(deployment.Locations, k)
-	}
-
-	return nil
-}
-
-func createNewMachine(
-	location string,
-	diskSizeGB int32,
-	vmSize string,
-	privateKeyBytes []byte,
-	sshPort int,
-) (*models.Machine, error) {
-	newMachine, err := models.NewMachine(location, vmSize, diskSizeGB)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new machine: %w", err)
-	}
-
-	if err := newMachine.EnsureMachineServices(); err != nil {
-		logger.Get().Errorf("Failed to ensure machine services: %v", err)
-	}
-
-	for _, service := range models.RequiredServices {
-		newMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
-	}
-
-	newMachine.SSHUser = "azureuser"
-	newMachine.SSHPort = sshPort
-	newMachine.SSHPrivateKeyMaterial = privateKeyBytes
-
-	return newMachine, nil
-}
-
-// PrepareDeployment prepares the deployment by setting up the resource group and initial configuration.
-func PrepareDeployment(
-	ctx context.Context,
-) (*models.Deployment, error) {
-	l := logger.Get()
-	l.Debug("Starting PrepareDeployment")
-
-	projectID := viper.GetString("general.project_id")
-	if projectID == "" {
-		return nil, fmt.Errorf("general.project_id is not set")
-	}
-	uniqueID := viper.GetString("general.unique_id")
-	if uniqueID == "" {
-		return nil, fmt.Errorf("general.unique_id is not set")
-	}
-	deployment, err := models.NewDeployment()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new deployment: %w", err)
-	}
-	if err := setDeploymentBasicInfo(deployment); err != nil {
-		return nil, fmt.Errorf("failed to set deployment basic info: %w", err)
-	}
-
-	// Set the start time for the deployment
-	deployment.StartTime = time.Now()
-	l.Debugf("Deployment start time: %v", deployment.StartTime)
-
-	deployment.SSHPublicKeyPath,
-		deployment.SSHPrivateKeyPath,
-		deployment.SSHPublicKeyMaterial,
-		deployment.SSHPrivateKeyMaterial,
-		err = sshutils.ExtractSSHKeyPaths()
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract SSH keys: %w", err)
-	}
-
-	if err := sshutils.ValidateSSHKeysFromPath(deployment.SSHPublicKeyPath, deployment.SSHPrivateKeyPath); err != nil {
-		return nil, fmt.Errorf("failed to validate SSH keys: %w", err)
-	}
-
-	// Ensure we have a location set
-	if deployment.ResourceGroupLocation == "" {
-		deployment.ResourceGroupLocation = "eastus" // Default Azure region
-		l.Warn("No resource group location specified, using default: eastus")
-	}
-
-	if err := deployment.UpdateViperConfig(); err != nil {
-		return nil, fmt.Errorf("failed to update Viper configuration: %w", err)
-	}
-
-	if err := ProcessMachinesConfig(deployment); err != nil {
-		return nil, fmt.Errorf("failed to process machine configurations: %w", err)
-	}
-
-	return deployment, nil
-}
-
-func setDefaultConfigurations() {
-	viper.SetDefault("general.project_id", "default-project")
-	viper.SetDefault("general.log_path", "/var/log/andaime")
-	viper.SetDefault("general.log_level", getDefaultLogLevel())
-	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
-	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
-	viper.SetDefault("general.ssh_user", "azureuser")
-	viper.SetDefault("general.ssh_port", DefaultSSHPort)
-	viper.SetDefault("azure.resource_group_name", "andaime-rg")
-	viper.SetDefault("azure.resource_group_location", "eastus")
-	viper.SetDefault("azure.allowed_ports", globals.DefaultAllowedPorts)
-	viper.SetDefault("azure.default_vm_size", "Standard_B2s")
-	viper.SetDefault("azure.default_disk_size_gb", globals.DefaultDiskSizeGB)
-	viper.SetDefault("azure.default_location", "eastus")
-	viper.SetDefault("azure.machines", []models.Machine{
-		{
-			Name:     "default-vm",
-			VMSize:   viper.GetString("azure.default_vm_size"),
-			Location: viper.GetString("azure.default_location"),
-			Parameters: models.Parameters{
-				Orchestrator: true,
-			},
-		},
-	})
-}
-
-func getDefaultLogLevel() string {
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		return "info"
-	}
-	return strings.ToLower(logLevel)
 }

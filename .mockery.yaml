@@ -1,0 +1,19 @@
+with-expecter: true
+inpackage: false
+dir: "./mocks/{{.PackagePath}}"
+packages:
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/azure:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/azure"
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/gcp"
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/common:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/common"

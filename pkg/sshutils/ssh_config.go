@@ -3,16 +3,21 @@ package sshutils
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"golang.org/x/crypto/ssh"
 )
 
+var NullCallback = func(int64, int64) {}
+
 type SSHConfig struct {
 	Host               string
 	Port               int
 	User               string
+	SSHPrivateKeyPath  string
 	PrivateKeyMaterial []byte
 	Timeout            time.Duration
 	Logger             *logger.Logger
@@ -31,7 +36,15 @@ type SSHConfiger interface {
 	Connect() (SSHClienter, error)
 	WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error
 	ExecuteCommand(ctx context.Context, command string) (string, error)
+	ExecuteCommandWithCallback(ctx context.Context,
+		command string,
+		callback func(string)) (string, error)
 	PushFile(ctx context.Context, remotePath string, content []byte, executable bool) error
+	PushFileWithCallback(ctx context.Context,
+		remotePath string,
+		content []byte,
+		executable bool,
+		callback func(int64, int64)) error
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
 	StartService(ctx context.Context, serviceName string) error
 	RestartService(ctx context.Context, serviceName string) error
@@ -43,30 +56,32 @@ func NewSSHConfig(
 	host string,
 	port int,
 	user string,
-	sshPrivateKeyMaterial []byte,
+	sshPrivateKeyPath string,
 ) (SSHConfiger, error) {
-	if len(sshPrivateKeyMaterial) == 0 {
-		return nil, fmt.Errorf("private key material is empty")
+	if len(sshPrivateKeyPath) == 0 {
+		return nil, fmt.Errorf("private key path is empty")
 	}
 
-	hostKeyCallback, err := GetHostKeyCallback(host)
+	if len(host) == 0 {
+		return nil, fmt.Errorf("host is empty")
+	}
+
+	if len(user) == 0 {
+		return nil, fmt.Errorf("user is empty")
+	}
+
+	if port == 0 {
+		return nil, fmt.Errorf("port is empty")
+	}
+
+	sshClientConfig, err := getSSHClientConfig(user, host, sshPrivateKeyPath)
 	if err != nil {
-		//nolint: gosec
-		hostKeyCallback = ssh.InsecureIgnoreHostKey()
+		return nil, fmt.Errorf("failed to get SSH client config: %w", err)
 	}
 
-	signer, err := ssh.ParsePrivateKey(sshPrivateKeyMaterial)
+	sshPrivateKeyMaterial, err := os.ReadFile(sshPrivateKeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	sshClientConfig := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         SSHTimeOut,
+		return nil, fmt.Errorf("failed to read private key material: %w", err)
 	}
 
 	dialer := NewSSHDial(host, port, sshClientConfig)
@@ -75,6 +90,7 @@ func NewSSHConfig(
 		Host:                  host,
 		Port:                  port,
 		User:                  user,
+		SSHPrivateKeyPath:     sshPrivateKeyPath,
 		PrivateKeyMaterial:    sshPrivateKeyMaterial,
 		Timeout:               SSHTimeOut,
 		Logger:                logger.Get(),
@@ -84,6 +100,45 @@ func NewSSHConfig(
 	}, nil
 }
 
+func getSSHClientConfig(user, host, privateKeyPath string) (*ssh.ClientConfig, error) {
+	l := logger.Get()
+	l.Debugf("Getting SSH client config for %s", host)
+
+	privateKeyBytes, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key: %v", err)
+	}
+
+	key, err := getPrivateKey(string(privateKeyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get private key: %v", err)
+	}
+
+	// Use a custom host key callback that ignores mismatches and insecure connections
+	hostKeyCallback := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		// This callback accepts all host keys
+		return nil
+	}
+
+	return &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(key),
+		},
+		HostKeyCallback: hostKeyCallback,
+		Timeout:         10 * time.Second,
+	}, nil
+}
+
+func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
+	privateKey, err := ssh.ParsePrivateKey([]byte(privateKeyMaterial))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %v", err)
+	}
+
+	return privateKey, nil
+}
+
 func (c *SSHConfig) SetSSHClient(client SSHClienter) {
 	c.SSHClient = client
 }
@@ -91,6 +146,14 @@ func (c *SSHConfig) SetSSHClient(client SSHClienter) {
 func (c *SSHConfig) Connect() (SSHClienter, error) {
 	l := logger.Get()
 	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
+
+	if c.Host == "" {
+		return nil, fmt.Errorf("host is empty")
+	}
+
+	if c.Port == 0 {
+		return nil, fmt.Errorf("port is empty")
+	}
 
 	client, err := c.SSHDial.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
 	if err != nil {
@@ -159,16 +222,22 @@ func (c *SSHConfig) NewSession() (SSHSessioner, error) {
 	return c.SSHClient.NewSession()
 }
 
-// ExecuteCommand runs a command on the remote server over SSH.
+func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
+	return c.ExecuteCommandWithCallback(ctx, command, nil)
+}
+
+// ExecuteCommandWithCallback runs a command on the remote server over SSH.
 // It takes the command as a string argument.
 // It retries the execution a configurable number of times if it fails.
 // It returns the output of the command as a string and any error encountered.
-func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
+func (c *SSHConfig) ExecuteCommandWithCallback(ctx context.Context,
+	command string,
+	callback func(string)) (string, error) {
 	l := logger.Get()
 	l.Infof("Executing command: %s", command)
 
 	var output string
-	err := retry(NumberOfSSHRetries, TimeInBetweenSSHRetries, func() error {
+	err := retry(SSHRetryAttempts, SSHRetryDelay, func() error {
 		session, err := c.NewSession()
 		if err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
@@ -186,15 +255,30 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 	return output, err
 }
 
-// PushFile copies a local file to the remote server.
-// It takes the local file path and the remote file path as arguments.
-// The file is copied over an SSH session using the stdin pipe.
-// It returns an error if any step of the process fails.
 func (c *SSHConfig) PushFile(
 	ctx context.Context,
 	remotePath string,
 	content []byte,
 	executable bool,
+) error {
+	return c.PushFileWithCallback(ctx,
+		remotePath,
+		content,
+		executable,
+		NullCallback,
+	)
+}
+
+// PushFile copies a local file to the remote server.
+// It takes the local file path and the remote file path as arguments.
+// The file is copied over an SSH session using the stdin pipe.
+// It returns an error if any step of the process fails.
+func (c *SSHConfig) PushFileWithCallback(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+	_ func(int64, int64),
 ) error {
 	l := logger.Get()
 	l.Infof("Pushing file to: %s", remotePath)

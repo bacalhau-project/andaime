@@ -3,6 +3,8 @@ package azure
 import (
 	"reflect"
 	"testing"
+
+	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
 func TestStripAndParseJSON(t *testing.T) {
@@ -42,7 +44,7 @@ func TestStripAndParseJSON(t *testing.T) {
 		},
 	}
 
-	result, err := stripAndParseJSON(input)
+	result, err := utils.StripAndParseJSON(input)
 	if err != nil {
 		t.Fatalf("Error parsing JSON: %v", err)
 	}

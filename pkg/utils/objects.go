@@ -3,31 +3,29 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 )
 
-func EnsureAzureTags(tags map[string]*string, projectID, uniqueID string) map[string]*string {
+func EnsureAzureTags(tags map[string]string, projectID, uniqueID string) map[string]string {
 	if tags == nil {
-		tags = map[string]*string{}
+		tags = map[string]string{}
 	}
-	if tags["andaime"] == nil {
-		tags["andaime"] = to.Ptr("true")
+	if _, ok := tags["andaime"]; !ok {
+		tags["andaime"] = "true" //nolint:goconst
 	}
-	if tags["deployed-by"] == nil {
-		tags["deployed-by"] = to.Ptr("andaime")
+	if _, ok := tags["deployed-by"]; !ok {
+		tags["deployed-by"] = "andaime"
 	}
-	if tags["andaime-resource-tracking"] == nil {
-		tags["andaime-resource-tracking"] = to.Ptr("true")
+	if _, ok := tags["andaime-resource-tracking"]; !ok {
+		tags["andaime-resource-tracking"] = "true" //nolint:goconst
 	}
-	if tags["unique-id"] == nil {
-		tags["unique-id"] = to.Ptr(uniqueID)
+	if _, ok := tags["unique-id"]; !ok {
+		tags["unique-id"] = uniqueID
 	}
-	if tags["project-id"] == nil {
-		tags["project-id"] = to.Ptr(projectID)
+	if _, ok := tags["project-id"]; !ok {
+		tags["project-id"] = projectID
 	}
-	if tags["andaime-project"] == nil {
-		tags["andaime-project"] = to.Ptr(fmt.Sprintf("%s-%s", uniqueID, projectID))
+	if _, ok := tags["andaime-project"]; !ok {
+		tags["andaime-project"] = fmt.Sprintf("%s-%s", uniqueID, projectID)
 	}
 	return tags
 }
@@ -70,14 +68,4 @@ func StructToMap(obj interface{}) (map[string]interface{}, error) {
 	}
 
 	return result, nil
-}
-
-func GetCountOfMachines(paramCount, defaultCount int) int {
-	if paramCount == 0 {
-		if defaultCount == 0 {
-			return 1
-		}
-		return defaultCount
-	}
-	return paramCount
 }

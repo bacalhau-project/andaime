@@ -1,27 +1,66 @@
-package internal
+package internal_azure
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestIsValidAzureZone(t *testing.T) {
-	tests := []struct {
-		name     string
-		zone     string
-		expected bool
+type InternalAzureTestSuite struct {
+	suite.Suite
+}
+
+func (suite *InternalAzureTestSuite) TestIsValidAzureLocation() {
+	testCases := []struct {
+		name           string
+		location       string
+		expectedValid  bool
+		expectedReason string
 	}{
-		{"Valid zone", "westus", true},
-		{"Valid zone with different case", "EastUS", true},
-		{"Invalid zone", "invalidzone", false},
-		{"Empty zone", "", false},
+		{
+			name:           "Valid location",
+			location:       "polandcentral",
+			expectedValid:  true,
+			expectedReason: "",
+		},
+		{
+			name:           "Valid location with different case",
+			location:       "polandCentral",
+			expectedValid:  true,
+			expectedReason: "",
+		},
+		{
+			name:           "Invalid location",
+			location:       "invalidlocation",
+			expectedValid:  false,
+			expectedReason: "invalidlocation is not a valid Azure location",
+		},
+		{
+			name:           "Empty location",
+			location:       "",
+			expectedValid:  false,
+			expectedReason: "location cannot be empty",
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsValidAzureLocation(tt.zone)
-			assert.Equal(t, tt.expected, result)
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			isValid := IsValidAzureLocation(tc.location)
+			suite.Equal(
+				tc.expectedValid,
+				isValid,
+				fmt.Sprintf(
+					"Expected validity of location '%s' to be %v, but got %v",
+					tc.location,
+					tc.expectedValid,
+					isValid,
+				),
+			)
 		})
 	}
+}
+
+func TestInternalAzureTestSuite(t *testing.T) {
+	suite.Run(t, new(InternalAzureTestSuite))
 }

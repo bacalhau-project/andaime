@@ -1,18 +1,17 @@
 package azure
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/spf13/viper"
 )
 
 var azureListSKUsCmd = &cobra.Command{
@@ -48,12 +47,15 @@ func runListAzureSKUs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("location is required")
 	}
 
-	p, err := azure.NewAzureProviderFunc()
+	azureProvider, err := azure_provider.NewAzureProviderFunc(
+		cmd.Context(),
+		viper.GetString("azure.subscription_id"),
+	)
 	if err != nil {
 		return err
 	}
 
-	skus, err := p.GetAzureClient().GetSKUsByLocation(context.Background(), location)
+	skus, err := azureProvider.GetSKUsByLocation(cmd.Context(), location)
 	if err != nil {
 		return err
 	}

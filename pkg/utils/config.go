@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -16,6 +19,9 @@ type Config struct {
 	AWS struct {
 		Regions []string `yaml:"regions"`
 	} `yaml:"aws"`
+	GCP struct {
+		ProjectID string `yaml:"project_id"`
+	} `yaml:"gcp"`
 }
 
 const (
@@ -85,4 +91,111 @@ func DeleteKeyFromConfig(key string) error {
 	}
 
 	return nil
+}
+
+func StripAndParseJSON(input string) ([]map[string]interface{}, error) {
+	// Find the start of the JSON array
+	start := strings.Index(input, "[")
+	if start == -1 {
+		return nil, fmt.Errorf("no JSON array found in input")
+	}
+
+	// Extract the JSON part
+	jsonStr := input[start:]
+
+	// Parse the JSON
+	var result []map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
+	}
+
+	return result, nil
+}
+
+func IsValidGUID(guid string) bool {
+	r := regexp.MustCompile(
+		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
+	)
+	return r.MatchString(guid)
+}
+
+type BacalhauSettings struct {
+	Key   string      `json:"key"`
+	Value interface{} `json:"value"`
+}
+
+func ReadBacalhauSettingsFromViper() ([]BacalhauSettings, error) {
+	bacalhauSettings := viper.Get("general.bacalhau_settings")
+
+	if bacalhauSettings == nil {
+		return nil, nil
+	}
+
+	var result []BacalhauSettings
+
+	switch settings := bacalhauSettings.(type) {
+	case []interface{}:
+		// Handle the slice of maps structure (as in the YAML example)
+		for _, setting := range settings {
+			settingMap, ok := setting.(map[string]interface{})
+			if !ok {
+				return nil, fmt.Errorf("invalid setting type: expected map[string]interface{}, got %T", setting)
+			}
+
+			key, ok := settingMap["key"].(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid key type: expected string, got %T", settingMap["Key"])
+			}
+
+			value, ok := settingMap["value"]
+			if !ok {
+				return nil, fmt.Errorf("missing Value for key: %s", key)
+			}
+
+			result = append(result, BacalhauSettings{Key: key, Value: value})
+		}
+
+	case map[string]interface{}:
+		// Handle the map structure (as it appears in your tests)
+		for key, value := range settings {
+			result = append(result, BacalhauSettings{Key: key, Value: value})
+		}
+
+	case map[string]string:
+		// Handle the map[string]string structure (another possible format)
+		for key, value := range settings {
+			result = append(result, BacalhauSettings{Key: key, Value: value})
+		}
+
+	default:
+		return nil, fmt.Errorf(
+			"invalid bacalhau_settings type: expected []interface{} or map[string]interface{}, got %T",
+			bacalhauSettings,
+		)
+	}
+
+	// Process the values to ensure consistent types
+	for i, setting := range result {
+		switch v := setting.Value.(type) {
+		case string:
+			// Keep as is
+		case []interface{}:
+			stringSlice := make([]string, 0, len(v))
+			for _, item := range v {
+				strItem, ok := item.(string)
+				if !ok {
+					return nil, fmt.Errorf("invalid value type in slice for key %s: expected string, got %T", setting.Key, item)
+				}
+				stringSlice = append(stringSlice, strItem)
+			}
+			result[i].Value = stringSlice
+		case bool:
+			result[i].Value = strconv.FormatBool(v)
+		default:
+			return nil, fmt.Errorf("invalid value type for key %s: expected string, []string, bool or []interface{}, got %T", setting.Key, setting.Value)
+		}
+	}
+
+	return result, nil
 }

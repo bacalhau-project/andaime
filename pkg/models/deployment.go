@@ -2,12 +2,11 @@ package models
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
 
@@ -28,145 +27,17 @@ type ServiceType struct {
 }
 
 var (
-	ServiceTypeSSH      = ServiceType{Name: "SSH", State: ServiceStateNotStarted}
-	ServiceTypeDocker   = ServiceType{Name: "Docker", State: ServiceStateNotStarted}
-	ServiceTypeBacalhau = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
+	ServiceTypeSSH          = ServiceType{Name: "SSH", State: ServiceStateNotStarted}
+	ServiceTypeDocker       = ServiceType{Name: "Docker", State: ServiceStateNotStarted}
+	ServiceTypeBacalhau     = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
+	ServiceTypeCorePackages = ServiceType{Name: "CorePackages", State: ServiceStateNotStarted}
+	ServiceTypeScript       = ServiceType{Name: "Script", State: ServiceStateNotStarted}
 )
-
-var RequiredAzureResources = []AzureResourceTypes{
-	AzureResourceTypeVNET,
-	AzureResourceTypeNIC,
-	AzureResourceTypeNSG,
-	AzureResourceTypeIP,
-	AzureResourceTypeDISK,
-	AzureResourceTypeVM,
-}
-
-var RequiredServices = []ServiceType{
-	ServiceTypeSSH,
-	ServiceTypeDocker,
-	ServiceTypeBacalhau,
-}
-
-var SkippedResourceTypes = []string{
-	"Microsoft.Compute/virtualMachines/extensions",
-}
-
-type AzureResourceTypes struct {
-	ResourceString    string
-	ShortResourceName string
-}
-
-func (a *AzureResourceTypes) GetResourceLowerString() string {
-	return strings.ToLower(a.ResourceString)
-}
-
-var AzureResourceTypeNIC = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/networkInterfaces",
-	ShortResourceName: "NIC ",
-}
-
-var AzureResourceTypeVNET = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/virtualNetworks",
-	ShortResourceName: "VNET",
-}
-
-var AzureResourceTypeSNET = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/subnets",
-	ShortResourceName: "SNET",
-}
-
-var AzureResourceTypeNSG = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/networkSecurityGroups",
-	ShortResourceName: "NSG ",
-}
-
-var AzureResourceTypeVM = AzureResourceTypes{
-	ResourceString:    "Microsoft.Compute/virtualMachines",
-	ShortResourceName: "VM  ",
-}
-
-var AzureResourceTypeDISK = AzureResourceTypes{
-	ResourceString:    "Microsoft.Compute/disks",
-	ShortResourceName: "DISK",
-}
-
-var AzureResourceTypeIP = AzureResourceTypes{
-	ResourceString:    "Microsoft.Network/publicIPAddresses",
-	ShortResourceName: "IP  ",
-}
-
-func (a *AzureResourceTypes) GetResourceString() string {
-	return a.ResourceString
-}
-
-func (a *AzureResourceTypes) GetShortResourceName() string {
-	return a.ShortResourceName
-}
-
-func GetAzureResourceType(resource string) AzureResourceTypes {
-	for _, r := range GetAllAzureResources() {
-		if strings.EqualFold(r.ResourceString, resource) {
-			return r
-		}
-	}
-	return AzureResourceTypes{}
-}
-
-func GetAllAzureResources() []AzureResourceTypes {
-	return []AzureResourceTypes{
-		AzureResourceTypeNIC,
-		AzureResourceTypeVNET,
-		AzureResourceTypeSNET,
-		AzureResourceTypeNSG,
-		AzureResourceTypeVM,
-		AzureResourceTypeDISK,
-		AzureResourceTypeIP,
-	}
-}
-
-func IsValidResource(resource string) bool {
-	return GetAzureResourceType(resource).ResourceString != ""
-}
-
-type AzureResourceState int
-
-const (
-	AzureResourceStateUnknown AzureResourceState = iota
-	AzureResourceStateNotStarted
-	AzureResourceStatePending
-	AzureResourceStateRunning
-	AzureResourceStateFailed
-	AzureResourceStateSucceeded
-)
-
-func ConvertFromStringToAzureResourceState(s string) AzureResourceState {
-	l := logger.Get()
-	switch s {
-	case "Not Started":
-		return AzureResourceStateNotStarted
-	case "Pending":
-		return AzureResourceStatePending
-	case "Creating":
-		return AzureResourceStatePending
-	case "Failed":
-		return AzureResourceStateFailed
-	case "Succeeded":
-		return AzureResourceStateSucceeded
-	case "Updating":
-		return AzureResourceStateSucceeded
-	case "Running":
-		return AzureResourceStateSucceeded
-	default:
-		l.Debugf("Unknown Azure Resource State: %s", s)
-		return AzureResourceStateUnknown
-	}
-}
 
 type MachineResource struct {
 	ResourceName  string
-	ResourceType  AzureResourceTypes
-	ResourceState AzureResourceState
+	ResourceType  ResourceType
+	ResourceState MachineResourceState
 	ResourceValue string
 }
 
@@ -176,42 +47,9 @@ type Parameters struct {
 	Orchestrator bool
 }
 
-type Deployment struct {
-	mu   sync.RWMutex
-	Name string
-
-	// Azure specific
-	ResourceGroupName     string
-	ResourceGroupLocation string
-
-	// GCP specific
-	OrganizationID string
-
-	// ProjectID is the project ID for the deployment - works on multiple clouds
-	ProjectID string
-
-	Locations      []string
-	OrchestratorIP string
-	Machines       map[string]*Machine
-	UniqueID       string
-
-	Tags   map[string]*string
-	Labels map[string]string
-
-	AllowedPorts          []int
-	SSHUser               string
-	SSHPort               int
-	SSHPublicKeyPath      string
-	SSHPrivateKeyPath     string
-	SSHPublicKeyMaterial  string
-	SSHPrivateKeyMaterial string
-	DefaultVMSize         string `default:"Standard_B2s"`
-	DefaultDiskSizeGB     int32  `default:"30"`
-	DefaultLocation       string `default:"eastus"`
-	StartTime             time.Time
-	EndTime               time.Time
-	SubscriptionID        string
-	deploymentMutex       sync.RWMutex
+type ServiceAccountInfo struct {
+	Email string
+	Key   string
 }
 
 type Disk struct {
@@ -221,56 +59,116 @@ type Disk struct {
 	State  armcompute.DiskState
 }
 
+type DeploymentType string
+
+const (
+	DeploymentTypeUnknown DeploymentType = "Unknown"
+	DeploymentTypeAzure   DeploymentType = "Azure"
+	DeploymentTypeAWS     DeploymentType = "AWS"
+	DeploymentTypeGCP     DeploymentType = "GCP"
+)
+
+type Deployment struct {
+	mu                     sync.RWMutex
+	Name                   string
+	ViperPath              string
+	DeploymentType         DeploymentType
+	Azure                  *AzureConfig
+	GCP                    *GCPConfig
+	Machines               map[string]Machiner
+	UniqueID               string
+	StartTime              time.Time
+	EndTime                time.Time
+	ProjectID              string
+	Locations              []string
+	AllowedPorts           []int
+	SSHUser                string
+	SSHPort                int
+	SSHPublicKeyPath       string
+	SSHPublicKeyMaterial   string
+	SSHPrivateKeyPath      string
+	SSHPrivateKeyMaterial  string
+	OrchestratorIP         string
+	Tags                   map[string]string
+	ProjectServiceAccounts map[string]ServiceAccountInfo
+	deploymentMutex        sync.RWMutex
+	BacalhauSettings       []utils.BacalhauSettings
+	CustomScriptPath       string
+}
+
+type DeploymentStatus string
+
+const (
+	DeploymentStatusUnknown    DeploymentStatus = "Unknown"
+	DeploymentStatusNotStarted DeploymentStatus = "NotStarted"
+	DeploymentStatusInProgress DeploymentStatus = "InProgress"
+	DeploymentStatusSucceeded  DeploymentStatus = "Succeeded"
+	DeploymentStatusFailed     DeploymentStatus = "Failed"
+)
+
 func NewDeployment() (*Deployment, error) {
-	projectID := viper.GetString("general.project_id")
-	if projectID == "" {
-		return nil, fmt.Errorf("project ID is empty")
+	projectPrefix := viper.GetString("general.project_prefix")
+	if projectPrefix == "" {
+		return nil, fmt.Errorf("general.project_prefix is not set")
 	}
-
-	uniqueID := time.Now().Format("060102150405")
-
-	return &Deployment{
-		StartTime: time.Now(),
-		Machines:  make(map[string]*Machine),
-		Tags:      make(map[string]*string),
-		ProjectID: projectID,
-		UniqueID:  fmt.Sprintf("%s-%s", projectID, uniqueID),
-	}, nil
+	uniqueID := time.Now().Format("0601021504")
+	projectID := projectPrefix + "-" + uniqueID
+	deployment := &Deployment{
+		StartTime:              time.Now(),
+		Machines:               make(map[string]Machiner), // Change *Machine to Machiner
+		UniqueID:               uniqueID,
+		Azure:                  &AzureConfig{},
+		GCP:                    &GCPConfig{},
+		ProjectID:              projectID,
+		Tags:                   make(map[string]string),
+		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
+	}
+	return deployment, nil
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return map[string]interface{}{
-		"ResourceGroupName":     d.ResourceGroupName,
-		"ResourceGroupLocation": d.ResourceGroupLocation,
+		"ResourceGroupName":     d.Azure.ResourceGroupName,
+		"ResourceGroupLocation": d.Azure.ResourceGroupLocation,
 		"Machines":              d.Machines,
 		"ProjectID":             d.ProjectID,
 		"UniqueID":              d.UniqueID,
-		"Tags":                  d.Tags,
 	}
 }
 
 func (d *Deployment) UpdateViperConfig() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	v := viper.GetViper()
-	deploymentPath := fmt.Sprintf("deployments.azure.%s", d.ResourceGroupName)
+	var deploymentPath string
+	if d.DeploymentType == DeploymentTypeAzure {
+		deploymentPath = fmt.Sprintf(
+			"deployments.%s.azure.%s",
+			d.UniqueID,
+			d.Azure.ResourceGroupName,
+		)
+	} else if d.DeploymentType == DeploymentTypeGCP {
+		deploymentPath = fmt.Sprintf(
+			"deployments.%s.gcp.%s",
+			d.UniqueID,
+			d.GCP.ProjectID,
+		)
+	}
 	viperMachines := make(map[string]map[string]interface{})
 	for _, machine := range d.Machines {
-		viperMachines[machine.Name] = map[string]interface{}{
-			"Name":         machine.Name,
-			"PublicIP":     machine.PublicIP,
-			"PrivateIP":    machine.PrivateIP,
-			"Orchestrator": machine.Parameters.Orchestrator,
+		viperMachines[machine.GetName()] = map[string]interface{}{
+			"Name":         machine.GetName(),
+			"PublicIP":     machine.GetPublicIP(),
+			"PrivateIP":    machine.GetPrivateIP(),
+			"Orchestrator": machine.IsOrchestrator(),
 		}
 	}
-
-	v.Set(deploymentPath, viperMachines)
-	return v.WriteConfig()
+	viper.Set(deploymentPath, viperMachines)
+	return viper.WriteConfig()
 }
 
-func (d *Deployment) GetMachine(name string) *Machine {
+func (d *Deployment) GetMachine(name string) Machiner {
 	d.deploymentMutex.RLock()
 	defer d.deploymentMutex.RUnlock()
 	if machine, ok := d.Machines[name]; ok {
@@ -278,13 +176,14 @@ func (d *Deployment) GetMachine(name string) *Machine {
 	}
 	return nil
 }
-func (d *Deployment) CreateMachine(name string) {
+
+func (d *Deployment) CreateMachine(name string, machine Machiner) {
 	d.deploymentMutex.Lock()
 	defer d.deploymentMutex.Unlock()
-	d.Machines[name] = &Machine{}
+	d.Machines[name] = machine
 }
 
-func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
+func (d *Deployment) UpdateMachine(name string, updater func(Machiner)) error {
 	d.deploymentMutex.Lock()
 	defer d.deploymentMutex.Unlock()
 	if machine, ok := d.Machines[name]; ok {
@@ -294,6 +193,89 @@ func (d *Deployment) UpdateMachine(name string, updater func(*Machine)) error {
 	return fmt.Errorf("machine %s not found", name)
 }
 
+func (d *Deployment) SetMachine(name string, machine Machiner) {
+	d.deploymentMutex.Lock()
+	defer d.deploymentMutex.Unlock()
+	d.Machines[name] = machine
+}
+
+func (d *Deployment) SetMachines(machines map[string]Machiner) {
+	d.Machines = make(map[string]Machiner)
+	for name, machine := range machines {
+		d.SetMachine(name, machine)
+	}
+}
+
+func (d *Deployment) GetMachines() map[string]Machiner {
+	d.deploymentMutex.RLock()
+	defer d.deploymentMutex.RUnlock()
+	machines := make(map[string]Machiner)
+	for name, machine := range d.Machines {
+		machines[name] = machine
+	}
+	return machines
+}
+
+func (d *Deployment) SetLocations(locations map[string]bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.Locations == nil {
+		d.Locations = []string{}
+	}
+
+	// Should be of the form map[location]bool
+	for location := range locations {
+		d.Locations = append(d.Locations, location)
+	}
+}
+
 type StatusUpdateMsg struct {
 	Status *DisplayStatus
+}
+
+func (d *Deployment) GetCloudResources(cloudType DeploymentType) interface{} {
+	switch cloudType {
+	case DeploymentTypeAzure:
+		return d.Azure
+	case DeploymentTypeGCP:
+		return d.GCP
+	default:
+		return nil
+	}
+}
+
+func (d *Deployment) GetCloudConfig(cloudType DeploymentType) interface{} {
+	switch cloudType {
+	case DeploymentTypeAzure:
+		return d.Azure
+	case DeploymentTypeGCP:
+		return d.GCP
+	default:
+		return nil
+	}
+}
+
+type AzureConfig struct {
+	ResourceGroupName     string
+	ResourceGroupLocation string
+	SubscriptionID        string
+	DefaultVMSize         string
+	DefaultDiskSizeGB     int32
+	DefaultLocation       string
+	Tags                  map[string]string
+	DefaultCountPerZone   int
+}
+
+type GCPConfig struct {
+	ProjectID              string
+	OrganizationID         string
+	DefaultRegion          string
+	DefaultZone            string
+	DefaultMachineType     string
+	DefaultDiskSizeGB      int32
+	BillingAccountID       string
+	ServiceAccountEmail    string
+	ProjectServiceAccounts map[string]ServiceAccountInfo
+	Tags                   map[string]string
+	DefaultCountPerZone    int
 }

@@ -1,11 +1,10 @@
 package sshutils
 
 import (
-	"os"
-
-	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
+
+	internal_testutil "github.com/bacalhau-project/andaime/internal/testutil"
 )
 
 var SSHDialerFunc = NewSSHDial
@@ -56,28 +55,21 @@ func NewMockSSHDialer() *MockSSHDialer {
 }
 
 func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
-	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := internal_testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
-	// Load the private key material
-	testSSHPrivateKeyMaterial, err := os.ReadFile(testSSHPrivateKeyPath)
-	if err != nil {
-		panic(err)
-	}
-
-	mockDialer := &MockSSHDialer{}
 	configInterface, err := NewSSHConfigFunc(
 		"example.com",
 		22, //nolint:mnd
 		"testuser",
-		testSSHPrivateKeyMaterial,
+		testSSHPrivateKeyPath,
 	) //nolint:mnd
 	if err != nil {
 		panic(err)
 	}
-	config := configInterface.(*SSHConfig)
-	config.SSHDial = mockDialer
+	config := configInterface.(SSHConfiger)
+	config.SetSSHClient(&MockSSHClient{})
 
 	mockClient := &MockSSHClient{}
 	return mockClient, config

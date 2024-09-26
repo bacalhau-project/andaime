@@ -2,20 +2,23 @@ package utils
 
 import "sync"
 
-type CircularBuffer struct {
-	lines []string
+type CircularBuffer[T any] struct {
+	lines []T
 	cur   int
 	full  bool
 	mu    sync.Mutex
 }
 
-func NewCircularBuffer(size int) *CircularBuffer {
-	return &CircularBuffer{
-		lines: make([]string, size),
+func NewCircularBuffer[T any](size int) *CircularBuffer[T] {
+	return &CircularBuffer[T]{
+		lines: make([]T, size),
 	}
 }
 
-func (cb *CircularBuffer) Add(line string) {
+func (cb *CircularBuffer[T]) Add(line T) {
+	if cb == nil || cb.lines == nil {
+		return // Safely handle nil receiver or uninitialized buffer
+	}
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
@@ -26,7 +29,7 @@ func (cb *CircularBuffer) Add(line string) {
 	}
 }
 
-func (cb *CircularBuffer) GetLines() []string {
+func (cb *CircularBuffer[T]) GetLines() []T {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
@@ -34,7 +37,7 @@ func (cb *CircularBuffer) GetLines() []string {
 		return cb.lines[:cb.cur]
 	}
 
-	result := make([]string, len(cb.lines))
+	result := make([]T, len(cb.lines))
 	copy(result, cb.lines[cb.cur:])
 	copy(result[len(cb.lines)-cb.cur:], cb.lines[:cb.cur])
 	return result

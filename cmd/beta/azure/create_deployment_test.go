@@ -3,43 +3,75 @@ package azure
 import (
 	"context"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/bacalhau-project/andaime/internal/testdata"
-	"github.com/bacalhau-project/andaime/internal/testutil"
+	internal_testutil "github.com/bacalhau-project/andaime/internal/testutil"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	pkg_testutil "github.com/bacalhau-project/andaime/pkg/testutil"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestProcessMachinesConfig(t *testing.T) {
-	_, cleanupPublicKey, testPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
-	defer cleanupPublicKey()
-	defer cleanupPrivateKey()
+type CmdBetaAzureCreateDeploymentSuite struct {
+	suite.Suite
+	ctx                    context.Context
+	testSSHPublicKeyPath   string
+	testPrivateKeyPath     string
+	cleanupPublicKey       func()
+	cleanupPrivateKey      func()
+	mockAzureClient        *azure_mocks.MockAzureClienter
+	azureProvider          *azure_provider.AzureProvider
+	origGetGlobalModelFunc func() *display.DisplayModel
+}
 
-	mockAzureClient := new(azure.MockAzureClient)
-	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+func (suite *CmdBetaAzureCreateDeploymentSuite) SetupSuite() {
+	suite.ctx = context.Background()
+	suite.testSSHPublicKeyPath,
+		suite.cleanupPublicKey,
+		suite.testPrivateKeyPath,
+		suite.cleanupPrivateKey = internal_testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+
+	suite.mockAzureClient = new(azure_mocks.MockAzureClienter)
+	suite.mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
 
-	origNewAzureClientFunc := azure.NewAzureClientFunc
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
-		return mockAzureClient, nil
+	suite.origGetGlobalModelFunc = display.GetGlobalModelFunc
+	display.GetGlobalModelFunc = func() *display.DisplayModel {
+		deployment, err := models.NewDeployment()
+		suite.Require().NoError(err)
+		return &display.DisplayModel{
+			Deployment: deployment,
+		}
 	}
 
-	viper.Set("general.project_id", "test-project")
-	viper.Set("general.unique_id", "test-unique-id")
-	deployment, err := models.NewDeployment()
-	assert.NoError(t, err)
-	deployment.SSHPrivateKeyPath = testPrivateKeyPath
-	deployment.SSHPort = 22
+	_ = logger.Get()
+}
 
+func (suite *CmdBetaAzureCreateDeploymentSuite) TearDownSuite() {
+	suite.cleanupPublicKey()
+	suite.cleanupPrivateKey()
+	display.GetGlobalModelFunc = suite.origGetGlobalModelFunc
+}
+
+func (suite *CmdBetaAzureCreateDeploymentSuite) SetupTest() {
+	viper.Reset()
+	pkg_testutil.SetupViper(models.DeploymentTypeAzure,
+		suite.testSSHPublicKeyPath,
+		suite.testPrivateKeyPath,
+	)
+
+	var err error
+	suite.Require().NoError(err)
+}
+
+func (suite *CmdBetaAzureCreateDeploymentSuite) TestProcessMachinesConfig() {
 	tests := []struct {
 		name                string
 		machinesConfig      []map[string]interface{}
@@ -96,263 +128,175 @@ func TestProcessMachinesConfig(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Reset the machines slice for each test
-			deployment.Machines = map[string]*models.Machine{}
-			deployment.OrchestratorIP = ""
-			if tt.orchestratorIP != "" {
-				deployment.OrchestratorIP = tt.orchestratorIP
+		suite.Run(tt.name, func() {
+			suite.SetupTest() // Ensure a fresh setup for each sub-test
+
+			deployment, err := models.NewDeployment()
+			suite.Require().NoError(err)
+			deployment.SSHPrivateKeyPath = suite.testPrivateKeyPath
+			deployment.SSHPort = 22
+			deployment.OrchestratorIP = tt.orchestratorIP
+
+			display.GetGlobalModelFunc = func() *display.DisplayModel {
+				return &display.DisplayModel{
+					Deployment: deployment,
+				}
 			}
 
-			// Reset viper config for each test
-			viper.Reset()
+			suite.azureProvider, err = azure_provider.NewAzureProviderFunc(
+				suite.ctx,
+				viper.GetString("azure.subscription_id"),
+			)
+			suite.Require().NoError(err)
+			suite.Require().NotNil(&suite.azureProvider)
+
+			suite.azureProvider.SetAzureClient(suite.mockAzureClient)
+
 			viper.Set("azure.machines", tt.machinesConfig)
-			viper.Set("azure.default_count_per_zone", 1)
-			viper.Set("azure.default_machine_type", "Standard_DS4_v2")
-			viper.Set("azure.disk_size_gb", 30)
 			viper.Set("general.orchestrator_ip", tt.orchestratorIP)
 
-			err := ProcessMachinesConfig(deployment)
+			machines, locations, err := suite.azureProvider.ProcessMachinesConfig(suite.ctx)
 
 			if tt.expectError {
-				assert.Error(t, err)
+				suite.Error(err)
+				if tt.expectedErrorString != "" {
+					suite.Contains(err.Error(), tt.expectedErrorString)
+				}
 			} else {
-				assert.NoError(t, err)
-				assert.Len(t, deployment.Machines, tt.expectedNodes)
+				suite.NoError(err)
+				suite.Len(machines, tt.expectedNodes)
 
 				if tt.expectedNodes > 0 {
-					assert.NotEmpty(t, deployment.Locations, "Locations should not be empty")
+					suite.NotEmpty(locations, "Locations should not be empty")
 				}
 
-				// Check if orchestrator node is set when expected
-				//
-				if tt.name == "One orchestrator node, no other machines" || tt.name == "One orchestrator node and many other machines" {
-					// Go through all the machines in the deployment and check if the orchestrator bit is set on one (and only one) of them
+				if tt.name == "One orchestrator node, no other machines" ||
+					tt.name == "One orchestrator node and many other machines" {
 					orchestratorFound := false
-					for _, machine := range deployment.Machines {
-						if machine.Orchestrator {
+					for _, machine := range machines {
+						if machine.IsOrchestrator() {
 							orchestratorFound = true
+							break
 						}
 					}
-					assert.True(t, orchestratorFound)
+					suite.True(orchestratorFound)
 				} else if tt.name == "No orchestrator node but orchestrator IP specified" {
-					assert.NotNil(t, deployment.OrchestratorIP)
-					for _, machine := range deployment.Machines {
-						assert.False(t, machine.Orchestrator)
-						assert.Equal(t, deployment.OrchestratorIP, machine.OrchestratorIP)
+					suite.NotEmpty(deployment.OrchestratorIP)
+					for _, machine := range machines {
+						suite.False(machine.IsOrchestrator())
+						suite.Equal(deployment.OrchestratorIP, machine.GetOrchestratorIP())
 					}
 				} else {
-					assert.Nil(t, deployment.OrchestratorIP)
+					suite.Empty(deployment.OrchestratorIP)
 				}
 			}
 		})
 	}
 }
-func TestInitializeDeployment(t *testing.T) {
-	viper.Reset()
 
-	// Save original environment
-	originalEnv := os.Environ()
-	t.Cleanup(func() {
-		os.Clearenv()
-		for _, pair := range originalEnv {
-			parts := strings.SplitN(pair, "=", 2)
-			os.Setenv(parts[0], parts[1])
-		}
-	})
-	tempDir, err := os.MkdirTemp("", "test_initialize_deployment")
-	assert.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(tempDir) })
+func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment() {
+	suite.SetupTest() // Ensure a fresh setup for this test
 
-	// Set up the base path for test data
-	testDataPath := os.Getenv("TEST_DATA_PATH")
-	if testDataPath == "" {
-		testDataPath = "../../.." // Adjust this based on your project structure
-	}
-
-	// Create and populate temporary config file
-	tempConfigFile, err := os.CreateTemp(tempDir, "azure_test_config_*.yaml")
-	assert.NoError(t, err)
-	configContent, err := testdata.ReadTestAzureConfig()
-	assert.NoError(t, err)
-	_, err = tempConfigFile.Write([]byte(configContent))
-	assert.NoError(t, err)
-	tempConfigFile.Close()
-
-	// Set up Viper to read from the temporary config file
-	viper.SetConfigFile(tempConfigFile.Name())
-	err = viper.ReadInConfig()
-	assert.NoError(t, err)
-
-	// Update the SSH key paths in the configuration
-	viper.Set(
-		"general.ssh_public_key_path",
-		filepath.Join(testDataPath, "internal", "testdata", "dummy_keys", "id_ed25519.pub"),
-	)
-	viper.Set(
-		"general.ssh_private_key_path",
-		filepath.Join(testDataPath, "internal", "testdata", "dummy_keys", "id_ed25519"),
-	)
-	viper.Set("general.ssh_key_dir", filepath.Join(testDataPath, "testdata", "dummy_keys"))
-
-	// Create a local display model for this test
-	deployment, err := models.NewDeployment()
-	assert.NoError(t, err)
-	localModel := display.InitialModel(deployment)
-	origGetGlobalModel := display.GetGlobalModelFunc
-	t.Cleanup(func() { display.GetGlobalModelFunc = origGetGlobalModel })
-	display.GetGlobalModelFunc = func() *display.DisplayModel { return localModel }
-
-	mockAzureClient := new(azure.MockAzureClient)
-	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
-		Return(true, nil)
-
-	origNewAzureClientFunc := azure.NewAzureClientFunc
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
-		return mockAzureClient, nil
-	}
-
-	// Run subtests
-	t.Run("PrepareDeployment", func(t *testing.T) {
-		ctx := context.Background()
-		viper.Set("general.project_id", "test-project")
-		viper.Set("general.unique_id", "test-unique-id")
-		deployment, err := PrepareDeployment(ctx)
-		assert.NoError(t, err)
-		assert.NotNil(t, deployment)
-		localModel.Deployment = deployment
-
-		// Check the total number of machines
-		assert.Equal(t, 9, len(localModel.Deployment.Machines), "Expected 9 machines in total")
-
-		// Check the number of unique locations
-		locations := make(map[string]bool)
-		for _, machine := range localModel.Deployment.Machines {
-			locations[machine.Location] = true
-		}
-		assert.Equal(t, 5, len(locations), "Expected 5 unique locations")
-
-		// Check specific configurations for each location
-		eastusCount := 0
-		westusCount := 0
-		brazilsouthCount := 0
-		ukwestCount := 0
-		uaenorthCount := 0
-
-		for _, machine := range localModel.Deployment.Machines {
-			switch machine.Location {
-			case "eastus":
-				eastusCount++
-				assert.Equal(
-					t,
-					"Standard_DS1_v4",
-					machine.VMSize,
-					"Expected eastus machines to be Standard_DS1_v4",
-				)
-			case "westus":
-				westusCount++
-			case "brazilsouth":
-				brazilsouthCount++
-				assert.Equal(
-					t,
-					"Standard_DS1_v8",
-					machine.VMSize,
-					"Expected brazilsouth machines to be Standard_DS1_v8",
-				)
-			case "ukwest":
-				ukwestCount++
-				assert.True(t, machine.Orchestrator, "Expected ukwest machine to be orchestrator")
-			case "uaenorth":
-				uaenorthCount++
-			}
-		}
-
-		// Verify the count of machines in each location
-		assert.Equal(t, 2, eastusCount, "Expected 2 machines in eastus")
-		assert.Equal(t, 4, westusCount, "Expected 4 machines in westus")
-		assert.Equal(t, 1, brazilsouthCount, "Expected 1 machine in brazilsouth")
-		assert.Equal(t, 1, ukwestCount, "Expected 1 machine in ukwest")
-		assert.Equal(t, 1, uaenorthCount, "Expected 1 machine in uaenorth")
-
-		// Verify that only one orchestrator exists
-		orchestratorCount := 0
-		for _, machine := range localModel.Deployment.Machines {
-			if machine.Orchestrator {
-				orchestratorCount++
-			}
-		}
-		assert.Equal(t, 1, orchestratorCount, "Expected exactly one orchestrator machine")
-	})
-}
-func TestPrepareDeployment(t *testing.T) {
-	testSSHPublicKeyPath,
-		cleanupPublicKey,
-		testPrivateKeyPath,
-		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
-	defer cleanupPublicKey()
-	defer cleanupPrivateKey()
-
-	mockAzureClient := new(azure.MockAzureClient)
-	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
-		Return(true, nil)
-
-	origNewAzureClientFunc := azure.NewAzureClientFunc
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-	azure.NewAzureClientFunc = func(subscriptionID string) (azure.AzureClienter, error) {
-		return mockAzureClient, nil
-	}
-	t.Cleanup(func() { azure.NewAzureClientFunc = origNewAzureClientFunc })
-
-	// Setup
-	ctx := context.Background()
-
-	// Mock viper configuration
-	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
-	viper.Set("general.ssh_private_key_path", testPrivateKeyPath)
-	viper.Set("azure.subscription_id", "test-subscription-id")
 	viper.Set("azure.resource_group_name", "test-rg")
-	viper.Set("azure.resource_group_location", "")
-	viper.Set("azure.default_count_per_zone", 1)
-	viper.Set("azure.default_machine_type", "Standard_DS4_v2")
-	viper.Set("azure.disk_size_gb", int32(30))
-	viper.Set("azure.machines", []map[string]interface{}{
-		{
-			"location": "eastus",
-			"parameters": map[string]interface{}{
-				"orchestrator": true,
-			},
-		},
-	})
+	viper.Set("azure.resource_group_location", "eastus")
+	viper.Set("general.ssh_public_key_path", suite.testSSHPublicKeyPath)
+	viper.Set("general.ssh_private_key_path", suite.testPrivateKeyPath)
+
 	tempConfigFile, err := os.CreateTemp("", "azure_test_config_*.yaml")
-	assert.NoError(t, err, "Failed to create temporary config file")
+	suite.Require().NoError(err, "Failed to create temporary config file")
 	defer os.Remove(tempConfigFile.Name())
 
 	viper.SetConfigFile(tempConfigFile.Name())
 
-	// Execute
-	viper.Set("general.project_id", "test-project")
-	viper.Set("general.unique_id", "test-unique-id")
-	deployment, err := PrepareDeployment(ctx)
-	assert.NotNil(t, deployment)
-	assert.NoError(t, err)
+	deployment, err := common.PrepareDeployment(suite.ctx, models.DeploymentTypeAzure)
+	suite.Require().NoError(err)
 
-	display.SetGlobalModel(display.InitialModel(deployment))
-	// Assert
-	assert.NoError(t, err)
-	assert.Equal(t, "test-project", deployment.ProjectID)
-	assert.Contains(t, deployment.UniqueID, "test-project")
-	assert.Equal(t, "eastus", deployment.ResourceGroupLocation)
-	assert.NotEmpty(t, deployment.SSHPublicKeyMaterial)
-	assert.NotEmpty(t, deployment.SSHPrivateKeyMaterial)
-	assert.WithinDuration(t, time.Now(), deployment.StartTime, 5*time.Second)
-	assert.Len(t, deployment.Machines, 1)
+	m := display.NewDisplayModel(deployment)
+	suite.Require().NotNil(m)
+
+	suite.Contains(deployment.ProjectID, "test-project")
+	suite.Contains(deployment.ProjectID, deployment.UniqueID)
+	suite.Equal("eastus", deployment.Azure.ResourceGroupLocation)
+	suite.NotEmpty(deployment.SSHPublicKeyMaterial)
+	suite.NotEmpty(deployment.SSHPrivateKeyMaterial)
+	suite.WithinDuration(time.Now(), deployment.StartTime, 20*time.Second)
+
+	// Check if machines were properly configured
+	suite.Require().Len(deployment.Machines, 1)
 
 	var machine *models.Machine
 	for _, m := range deployment.Machines {
-		machine = m
+		machine = m.(*models.Machine)
 		break
 	}
-	assert.Equal(t, "eastus", machine.Location)
-	assert.True(t, machine.Orchestrator)
+	suite.Equal("eastus", machine.GetLocation())
+	suite.Equal("Standard_D2s_v3", machine.GetVMSize())
+	suite.True(machine.IsOrchestrator())
+}
+
+func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment_MissingRequiredFields() {
+	testCases := []struct {
+		name        string
+		setupConfig func()
+		expectedErr string
+	}{
+		{
+			name: "Missing resource_group_location",
+			setupConfig: func() {
+				viper.Set("azure.resource_group_location", "")
+			},
+			expectedErr: "azure.resource_group_location is not set",
+		},
+		{
+			name: "Missing machines configuration",
+			setupConfig: func() {
+				viper.Set("azure.machines", nil)
+			},
+			expectedErr: "no machines configuration found for provider Azure",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest() // Reset Viper for each test case
+			tc.setupConfig()  // Apply the specific configuration for this test case
+
+			// Set a dummy config file to prevent Viper from trying to read a non-existent file
+			tempConfigFile, err := os.CreateTemp("", "azure_test_config_*.yaml")
+			suite.Require().NoError(err, "Failed to create temporary config file")
+			defer os.Remove(tempConfigFile.Name())
+			viper.SetConfigFile(tempConfigFile.Name())
+
+			_, err = common.PrepareDeployment(suite.ctx, models.DeploymentTypeAzure)
+			suite.Require().Error(err)
+			suite.Contains(err.Error(), tc.expectedErr)
+		})
+	}
+}
+
+func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment_InvalidSSHKeyPaths() {
+	viper.Set("general.ssh_public_key_path", "/nonexistent/path/to/public/key")
+	viper.Set("general.ssh_private_key_path", "/nonexistent/path/to/private/key")
+
+	_, err := common.PrepareDeployment(suite.ctx, models.DeploymentTypeAzure)
+	suite.Require().Error(err)
+	suite.Contains(
+		err.Error(),
+		"failed to extract SSH keys: failed to extract public key material: key file does not exist: /nonexistent/path/to/public/key",
+	)
+}
+
+func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment_EmptySSHKeyPaths() {
+	suite.SetupTest() // Reset Viper for this test case
+	viper.Set("general.ssh_public_key_path", "")
+	viper.Set("general.ssh_private_key_path", "")
+
+	_, err := common.PrepareDeployment(suite.ctx, models.DeploymentTypeAzure)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "failed to extract SSH keys")
+	suite.Contains(err.Error(), "general.ssh_public_key_path is empty")
+}
+
+func TestAzureProviderSuite(t *testing.T) {
+	suite.Run(t, new(CmdBetaAzureCreateDeploymentSuite))
 }

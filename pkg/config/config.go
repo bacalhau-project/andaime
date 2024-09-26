@@ -11,7 +11,7 @@ import (
 )
 
 var requiredFields = []string{
-	"general.project_id",
+	"general.project_prefix",
 }
 
 var LoadConfigFunc = LoadConfig

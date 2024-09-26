@@ -2,6 +2,7 @@ package sshutils
 
 import (
 	"fmt"
+	"io"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -12,6 +13,7 @@ type SSHClienter interface {
 	Close() error
 }
 
+// SSHClient struct definition
 type SSHClient struct {
 	SSHClientConfig *ssh.ClientConfig
 	Client          SSHClienter
@@ -41,9 +43,45 @@ func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SSHSessionWrapper{session}, nil
+	return &SSHSessionWrapper{Session: session}, nil
 }
 
 func (w *SSHClientWrapper) Close() error {
 	return w.Client.Close()
+}
+
+type SSHSessionWrapper struct {
+	Session *ssh.Session
+}
+
+func (s *SSHSessionWrapper) Run(cmd string) error {
+	return s.Session.Run(cmd)
+}
+
+func (s *SSHSessionWrapper) Start(cmd string) error {
+	return s.Session.Start(cmd)
+}
+
+func (s *SSHSessionWrapper) Wait() error {
+	return s.Session.Wait()
+}
+
+func (s *SSHSessionWrapper) Close() error {
+	return s.Session.Close()
+}
+
+func (s *SSHSessionWrapper) StdinPipe() (io.WriteCloser, error) {
+	return s.Session.StdinPipe()
+}
+
+func (s *SSHSessionWrapper) StdoutPipe() (io.Reader, error) {
+	return s.Session.StdoutPipe()
+}
+
+func (s *SSHSessionWrapper) StderrPipe() (io.Reader, error) {
+	return s.Session.StderrPipe()
+}
+
+func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
+	return s.Session.CombinedOutput(cmd)
 }
