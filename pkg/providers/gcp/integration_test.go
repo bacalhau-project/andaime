@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/api/compute/v1"
 )
 
 var localCustomScriptPath string
@@ -93,6 +94,14 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 	s.mockGCPClient.On("CreateResources", mock.Anything).Return(nil)
 	s.mockGCPClient.On("GetInstance", mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeGCPInstance(), nil)
+	s.mockGCPClient.On("GetOperation", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPOperation(), nil)
+	s.mockGCPClient.On("GetMachineType", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPMachineType(), nil)
+	s.mockGCPClient.On("GetNetwork", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPNetwork(), nil)
+	s.mockGCPClient.On("GetSubnetwork", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPSubnetwork(), nil)
 
 	deployment, err := models.NewDeployment()
 	s.Require().NoError(err)
