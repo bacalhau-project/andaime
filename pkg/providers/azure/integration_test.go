@@ -98,12 +98,10 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 	s.mockAzureClient.On("DeployTemplate",
 		mock.Anything,
 		mock.Anything,
-		mock.MatchedBy(func(s string) bool {
-			return strings.HasPrefix(s, "deployment-")
-		}),
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
+		mock.AnythingOfType("string"),
+		mock.AnythingOfType("map[string]interface {}"),
+		mock.AnythingOfType("map[string]interface {}"),
+		mock.AnythingOfType("map[string]*string"),
 	).Return(mockPoller, nil).Maybe()
 
 	s.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
