@@ -1,14 +1,12 @@
 package gcp_test
 
-
-package gcp_test
-
 import (
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"context"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
@@ -90,9 +88,11 @@ func (s *PkgProvidersGCPIntegrationTest) TearDownSuite() {
 
 func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 	s.mockGCPClient.On("EnsureProject", mock.Anything, mock.Anything).Return("test-project-id", nil)
+	s.mockGCPClient.On("GetProject", mock.Anything).Return(testdata.FakeGCPProject(), nil)
 	s.mockGCPClient.On("EnableRequiredAPIs", mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateResources", mock.Anything).Return(nil)
-	s.mockGCPClient.On("GetInstance", mock.Anything, mock.Anything, mock.Anything).Return(testdata.FakeGCPInstance(), nil)
+	s.mockGCPClient.On("GetInstance", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPInstance(), nil)
 
 	deployment, err := models.NewDeployment()
 	s.Require().NoError(err)
@@ -125,7 +125,7 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 		deployment.SetMachine(machine.name, m)
 	}
 
-	m.Deployment.GCP.Region = "us-central1"
+	m.Deployment.GCP.DefaultRegion = "us-central1"
 	m.Deployment.Locations = []string{"us-central1-a", "us-central1-b", "us-central1-c"}
 	m.Deployment.SSHPublicKeyMaterial = "PUBLIC KEY MATERIAL"
 
