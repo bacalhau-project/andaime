@@ -75,14 +75,14 @@ func listAllProjects() error {
 	andaimeProjects := []*resourcemanagerpb.Project{}
 	for _, project := range projects {
 		fmt.Printf("- %s (ID: %s)\n", project.DisplayName, project.ProjectId)
-		if project.Labels["created-by-andaime"] == "true" {
+		if project.Labels["deployed-by"] == "andaime" {
 			andaimeProjects = append(andaimeProjects, project)
 		}
 	}
 
-	fmt.Println("\nProjects that would be deleted (labeled with 'created-by-andaime'):")
+	fmt.Println("\nProjects that would be deleted (labeled with 'deployed-by: andaime'):")
 	if len(andaimeProjects) == 0 {
-		fmt.Println("No projects found with 'created-by-andaime' label.")
+		fmt.Println("No projects found with 'deployed-by: andaime' label.")
 	} else {
 		for _, project := range andaimeProjects {
 			fmt.Printf("- %s (ID: %s)\n", project.DisplayName, project.ProjectId)
@@ -118,14 +118,14 @@ func runDestroyAllProjects() error {
 	andaimeProjects := []*resourcemanagerpb.Project{}
 	for _, project := range projects {
 		fmt.Printf("- %s (ID: %s)\n", project.DisplayName, project.ProjectId)
-		if project.Labels["created-by-andaime"] == "true" {
+		if project.Labels["deployed-by"] == "andaime" {
 			andaimeProjects = append(andaimeProjects, project)
 		}
 	}
 
-	fmt.Println("\nProjects to be deleted (labeled with 'created-by-andaime'):")
+	fmt.Println("\nProjects to be deleted (labeled with 'deployed-by: andaime'):")
 	if len(andaimeProjects) == 0 {
-		fmt.Println("No projects found with 'created-by-andaime' label.")
+		fmt.Println("No projects found with 'deployed-by: andaime' label.")
 		return nil
 	}
 

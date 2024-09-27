@@ -101,7 +101,7 @@ func PrepareDeployment(
 	}
 
 	// Check if a custom script is specified and validate it
-	customScriptPath := viper.GetString("general.custom_script")
+	customScriptPath := viper.GetString("general.custom_script_path")
 	if customScriptPath != "" {
 		if err := isValidScript(customScriptPath); err != nil {
 			return nil, fmt.Errorf("invalid custom script: %w", err)
@@ -110,7 +110,7 @@ func PrepareDeployment(
 	}
 
 	// Validate Bacalhau settings
-	bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
+	bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
 	if err != nil {
 		return nil, fmt.Errorf("invalid Bacalhau settings: %w", err)
 	}

@@ -1,14 +1,11 @@
 package utils
 
 import (
-	"os"
 	"reflect"
 	"runtime/debug"
 	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/pulumi/pulumi-azure-native-sdk/compute"
-	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 )
 
 var GlobalChannels []interface {
@@ -110,41 +107,41 @@ func CloseAllChannels() {
 	l.Debugf("All channels closed")
 }
 
-// Helper functions for common channel types
-func CreateSignalChannel(name string, capacity int) chan os.Signal {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan os.Signal)(nil)).Elem(),
-		name, capacity).(chan os.Signal)
-}
+// // Helper functions for common channel types
+// func CreateSignalChannel(name string, capacity int) chan os.Signal {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan os.Signal)(nil)).Elem(),
+// 		name, capacity).(chan os.Signal)
+// }
 
-func CreateStructChannel(name string, capacity int) chan struct{} {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan struct{})(nil)).Elem(),
-		name, capacity).(chan struct{})
-}
+// func CreateStructChannel(name string, capacity int) chan struct{} {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan struct{})(nil)).Elem(),
+// 		name, capacity).(chan struct{})
+// }
 
-func CreateErrorChannel(name string, capacity int) chan error {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan error)(nil)).Elem(),
-		name, capacity).(chan error)
-}
+// func CreateErrorChannel(name string, capacity int) chan error {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan error)(nil)).Elem(),
+// 		name, capacity).(chan error)
+// }
 
-func CreateStringChannel(name string, capacity int) chan string {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan string)(nil)).Elem(),
-		name, capacity).(chan string)
-}
+// func CreateStringChannel(name string, capacity int) chan string {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan string)(nil)).Elem(),
+// 		name, capacity).(chan string)
+// }
 
-func CreateEventChannel(name string, capacity int) chan events.EngineEvent {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan events.EngineEvent)(nil)).Elem(),
-		name, capacity).(chan events.EngineEvent)
-}
+// func CreateEventChannel(name string, capacity int) chan events.EngineEvent {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan events.EngineEvent)(nil)).Elem(),
+// 		name, capacity).(chan events.EngineEvent)
+// }
 
-func CreateBoolChannel(name string, capacity int) chan bool {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan bool)(nil)).Elem(),
-		name, capacity).(chan bool)
-}
+// func CreateBoolChannel(name string, capacity int) chan bool {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan bool)(nil)).Elem(),
+// 		name, capacity).(chan bool)
+// }
 
-func CreateVMChannel(name string, capacity int) chan *compute.VirtualMachine {
-	return CreateAndRegisterChannel(reflect.TypeOf((*chan *compute.VirtualMachine)(nil)).Elem(),
-		name, capacity).(chan *compute.VirtualMachine)
-}
+// func CreateVMChannel(name string, capacity int) chan *compute.VirtualMachine {
+// 	return CreateAndRegisterChannel(reflect.TypeOf((*chan *compute.VirtualMachine)(nil)).Elem(),
+// 		name, capacity).(chan *compute.VirtualMachine)
+// }
 
 // CloseChannel closes a specific channel
 func CloseChannel(ch interface{}) {

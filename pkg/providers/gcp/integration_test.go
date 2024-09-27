@@ -16,7 +16,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -65,7 +64,6 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	viper.Set("gcp.region", "us-central1")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
-	viper.Set("general.custom_script_path", localCustomScriptPath)
 	viper.Set("gcp.default_disk_size_gb", 30)
 
 	s.mockGCPClient = new(gcp_mocks.MockGCPClienter)
@@ -138,8 +136,8 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 	m.Deployment.GCP.DefaultRegion = "us-central1"
 	m.Deployment.Locations = []string{"us-central1-a", "us-central1-b", "us-central1-c"}
 	m.Deployment.SSHPublicKeyMaterial = "PUBLIC KEY MATERIAL"
-
-	bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
+	m.Deployment.CustomScriptPath = localCustomScriptPath
+	bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
 	s.Require().NoError(err)
 	m.Deployment.BacalhauSettings = bacalhauSettings
 
@@ -258,35 +256,35 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 				Times:            2,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths' '/tmp,/data'`,
+				Cmd:              `sudo bacalhau config set 'node.allowlistedlocalpaths' '/tmp,/data'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.resourceupdatefrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.heartbeat.infoupdateinterval' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.requester.controlplanesettings.nodedisconnectedafter' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.heartbeat.interval' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.heartbeatfrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.heartbeat.resourceupdateinterval' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.infoupdatefrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,

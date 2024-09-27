@@ -9,32 +9,33 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
-type BacalhauConfig struct {
-	Key   string
-	Value string
-}
+var (
+	configFileName = "config.yaml"
+)
 
 type ConfigDeployment struct {
 	Name         string
-	Type         models.DeploymentType // "Azure" or "AWS" or "GCP"
-	ID           string                // Resource Group for Azure, VPC ID for AWS
-	UniqueID     string                // Resource Group for Azure, VPC ID for AWS
-	FullViperKey string                // The full key in the Viper config file
+	Type         models.DeploymentType
+	ID           string
+	UniqueID     string
+	FullViperKey string
 }
 
 var DestroyCmd = &cobra.Command{
 	Use:   "destroy",
 	Short: "List and destroy deployments",
-	Long: `List all active deployments by Resource Group in config.yaml, and allow the user to select one for destruction. 
-			Deployments that are already being destroyed will not be listed.`,
+	Long: `List all active deployments by Resource Group in config-azure.yaml, 
+and allow the user to select one for destruction. Deployments that are already being destroyed will not be listed.`,
 	RunE: runDestroy,
 }
 
@@ -42,273 +43,308 @@ func GetAzureDestroyCmd() *cobra.Command {
 	DestroyCmd.Flags().StringP("name", "n", "", "The name of the deployment to destroy")
 	DestroyCmd.Flags().IntP("index", "i", 0, "The index of the deployment to destroy")
 	DestroyCmd.Flags().Bool("all", false, "Destroy all deployments")
-	// Can only set either name or index
+	DestroyCmd.Flags().String("config", "", "Path to the config file")
 	DestroyCmd.MarkFlagsMutuallyExclusive("name", "index", "all")
 	return DestroyCmd
 }
 
-//nolint:funlen,gocyclo,unused
 func runDestroy(cmd *cobra.Command, args []string) error {
-	l := logger.Get()
-	l.Debug("Starting runDestroy function")
+	logger := logger.Get()
+	logger.Debug("Starting runDestroy function")
 
-	// Get flags
+	flags, err := parseFlags(cmd)
+	if err != nil {
+		return err
+	}
+
+	if err := initializeConfig(cmd); err != nil {
+		return err
+	}
+
+	deployments, err := getDeployments()
+	if err != nil {
+		return err
+	}
+
+	if flags.destroyAll {
+		return destroyAllDeployments(cmd.Context(), deployments)
+	}
+
+	selected, err := selectDeployment(deployments, flags)
+	if err != nil {
+		return err
+	}
+
+	return destroyDeployment(selected)
+}
+
+func parseFlags(cmd *cobra.Command) (struct {
+	name       string
+	index      int
+	destroyAll bool
+}, error) {
 	name := cmd.Flag("name").Value.String()
 	index, err := strconv.Atoi(cmd.Flag("index").Value.String())
 	if err != nil {
-		l.Errorf("Failed to convert index to int: %v", err)
-		return fmt.Errorf("failed to convert index to int: %v", err)
+		return struct {
+			name       string
+			index      int
+			destroyAll bool
+		}{}, fmt.Errorf("failed to convert index to int: %w", err)
 	}
 	destroyAll, err := cmd.Flags().GetBool("all")
 	if err != nil {
-		l.Errorf("Failed to get 'all' flag: %v", err)
-		return fmt.Errorf("failed to get 'all' flag: %v", err)
+		return struct {
+			name       string
+			index      int
+			destroyAll bool
+		}{}, fmt.Errorf("failed to get 'all' flag: %w", err)
 	}
 
-	l.Debugf("Flags: name=%s, index=%d, destroyAll=%v", name, index, destroyAll)
-
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	err = viper.ReadInConfig()
-	if err != nil {
-		l.Errorf("Error reading config file: %s", err)
-		return fmt.Errorf("error reading config file: %s", err)
+	config, err := cmd.Flags().GetString("config")
+	if err == nil && config != "" {
+		configFileName = config
 	}
 
-	l.Debug("Config file read successfully")
+	return struct {
+		name       string
+		index      int
+		destroyAll bool
+	}{name, index, destroyAll}, nil
+}
 
-	// Extract deployments from config
+func initializeConfig(cmd *cobra.Command) error {
+	// Check if a config file was specified on the command line
+	configFile, _ := cmd.Flags().GetString("config")
+	if configFile != "" {
+		// Use the specified config file
+		viper.SetConfigFile(configFile)
+	} else {
+		// Use the default config file
+		viper.SetConfigName(configFileName)
+		viper.SetConfigType("yaml")
+		viper.AddConfigPath(".")
+	}
+
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("error reading config file: %w", err)
+	}
+	return nil
+}
+
+func getDeployments() ([]ConfigDeployment, error) {
 	var deployments []ConfigDeployment
 	allDeployments := viper.Get("deployments")
-	if deploymentMap, ok := allDeployments.(map[string]interface{}); ok {
-		for uniqueID, deploymentDetails := range deploymentMap {
-			deploymentClouds, ok := deploymentDetails.(map[string]interface{})
-			if !ok {
-				l.Warnf("Invalid deployment details for Azure deployment %s, skipping", name)
-				l.Debugf("Details: %v", deploymentDetails)
-				continue
-			}
-			if deploymentClouds["azure"] != nil {
-				deploymentCloudsAzure, ok := deploymentClouds["azure"].(map[string]interface{})
-				if !ok {
-					l.Warnf("Does not appear to have a resource group name %s, skipping", name)
-					l.Debugf("Details: %v", deploymentCloudsAzure)
-					continue
-				}
-
-				for rgName := range deploymentCloudsAzure {
-					dep := ConfigDeployment{
-						Name:         rgName,
-						Type:         models.DeploymentTypeAzure,
-						ID:           rgName,
-						UniqueID:     uniqueID,
-						FullViperKey: fmt.Sprintf("deployments.%s.azure.%s", uniqueID, rgName),
-					}
-					deployments = append(deployments, dep)
-				}
-			}
-		}
-	} else {
-		l.Warn("Azure deployments are not in the expected format")
+	deploymentMap, ok := allDeployments.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid deployments format in config")
 	}
 
-	// awsDeployments := viper.Get("deployments.aws")
-	// if awsMap, ok := awsDeployments.(map[string]interface{}); ok {
-	// 	for name, details := range awsMap {
-	// 		deploymentDetails, ok := details.(map[string]interface{})
-	// 		if !ok {
-	// 			l.Warnf("Invalid deployment details for AWS deployment %s, skipping", name)
-	// 			continue
-	// 		}
-	// 		vpcID, ok := deploymentDetails["vpc_id"].(string)
-	// 		if !ok {
-	// 			l.Warnf("VPC ID not found for AWS deployment %s, skipping", name)
-	// 			continue
-	// 		}
-	// 		dep := ConfigDeployment{
-	// 			Name: name,
-	// 			Type: "AWS",
-	// 			ID:   vpcID,
-	// 		}
-	// 		deployments = append(deployments, dep)
-	// 	}
-	// } else {
-	// 	l.Warn("AWS deployments are not in the expected format")
-	// }
+	for uniqueID, details := range deploymentMap {
+		azureDeployments, err := extractAzureDeployments(uniqueID, details)
+		if err != nil {
+			fmt.Printf("Error processing deployment %s: %v\n", uniqueID, err)
+			continue
+		}
+		deployments = append(deployments, azureDeployments...)
+	}
 
-	l.Debugf("Found %d deployments", len(deployments))
-
-	// Sort deployments alphabetically by name
 	sort.Slice(deployments, func(i, j int) bool {
 		return deployments[i].Name < deployments[j].Name
 	})
 
-	if destroyAll {
-		subscriptionID := viper.GetString("azure.subscription_id")
-		azureProvider, err := azure_provider.NewAzureProviderFunc(cmd.Context(), subscriptionID)
-		if err != nil {
-			l.Errorf("Failed to create Azure provider: %v", err)
-			return fmt.Errorf("failed to create Azure provider: %w", err)
-		}
+	return deployments, nil
+}
 
-		if azureProvider == nil {
-			l.Error("Azure provider is nil after creation")
-			return fmt.Errorf("azure provider is nil after creation")
-		}
+func extractAzureDeployments(uniqueID string, details interface{}) ([]ConfigDeployment, error) {
+	var deployments []ConfigDeployment
+	deploymentClouds, ok := details.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid deployment details for %s", uniqueID)
+	}
 
-		resourceGroups, err := azureProvider.ListAllResourceGroups(cmd.Context())
-		if err != nil {
-			l.Errorf("Failed to get resource groups: %v", err)
-			return fmt.Errorf("failed to get resource groups: %v", err)
-		}
+	azureDetails, ok := deploymentClouds["azure"].(map[string]interface{})
+	if !ok {
+		return nil, nil // Not an Azure deployment, skip
+	}
 
-		for _, rg := range resourceGroups {
-			rg, err := azureProvider.
-				GetOrCreateResourceGroup(
-					cmd.Context(),
-					*rg.Name,
-					*rg.Location,
-					map[string]string{},
-				)
-			if err != nil {
-				l.Errorf("Failed to get resource group %s: %v", *rg.Name, err)
-				continue
-			}
-			if createdBy, ok := rg.Tags["CreatedBy"]; ok && createdBy != nil &&
-				strings.EqualFold(*createdBy, "andaime") {
-				l.Infof("Found resource group %s with CreatedBy tag", *rg.Name)
-				// Only add the resource group if it is not already in the list
-				found := false
-				for _, dep := range deployments {
-					if dep.Name == *rg.Name {
-						found = true
-						break
-					}
-				}
+	for rgName := range azureDetails {
+		deployments = append(deployments, ConfigDeployment{
+			Name:         rgName,
+			Type:         models.DeploymentTypeAzure,
+			ID:           rgName,
+			UniqueID:     uniqueID,
+			FullViperKey: fmt.Sprintf("deployments.%s.azure.%s", uniqueID, rgName),
+		})
+	}
 
-				// Test to see if the resource group is already being destroyed
-				if *rg.Properties.ProvisioningState == "Deleting" {
-					l.Infof("Resource group %s is already being destroyed", *rg.Name)
-					continue
-				}
+	return deployments, nil
+}
 
-				if !found {
-					deployments = append(deployments, ConfigDeployment{
-						Name: *rg.Name,
-						Type: "Azure",
-						ID:   *rg.Name,
-					})
-				}
-			}
-		}
+func destroyAllDeployments(ctx context.Context, deployments []ConfigDeployment) error {
+	azureProvider, err := createAzureProvider(ctx)
+	if err != nil {
+		return err
+	}
 
-		l.Info("Destroying all deployments:")
-		for i, dep := range deployments {
-			fmt.Printf("%d. Destroying resources for %s\n", i+1, dep.Name)
-			if err := destroyDeployment(dep); err != nil {
-				l.Errorf("Failed to destroy deployment %s: %v", dep.Name, err)
-			}
-			fmt.Println()
-		}
+	resourceGroups, err := azureProvider.ListAllResourceGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get resource groups: %w", err)
+	}
 
-		l.Info("Finished destroying all deployments")
+	deployments = appendAndaimeDeployments(deployments, resourceGroups)
+
+	if len(deployments) == 0 {
+		fmt.Println("No deployments to destroy")
 		return nil
 	}
 
-	if index != 0 {
-		if index < 1 || index > len(deployments) {
-			l.Errorf("Invalid index. Please enter a number between 1 and %d", len(deployments))
-			return fmt.Errorf(
-				"invalid index. Please enter a number between 1 and %d",
-				len(deployments),
-			)
-		}
-		l.Debugf("Destroying deployment at index: %d", index)
-		return destroyDeployment(deployments[index-1])
-	}
-
-	// Present list to user
-	l.Debug("Available deployments:")
 	for i, dep := range deployments {
-		l.Infof("%d. %s (%s) - %s", i+1, dep.Name, dep.Type, dep.ID)
-	}
-
-	var selected ConfigDeployment
-
-	// If the user has set a rgname to destroy, use that
-	if name != "" {
-		for _, dep := range deployments {
-			if dep.Name == name {
-				selected = dep
-				break
-			}
+		fmt.Printf("%d. Destroying resources for %s\n", i+1, dep.Name)
+		if err := destroyDeployment(dep); err != nil {
+			fmt.Printf("Failed to destroy deployment %s: %v\n", dep.Name, err)
 		}
-	} else if index != 0 {
-		selected = deployments[index-1]
+		fmt.Println()
 	}
 
-	if selected.Name == "" {
-		// Get user selection
-		reader := bufio.NewReader(os.Stdin)
-		l.Debug("Enter the number of the deployment to destroy: ")
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-		index := 0
-		_, err = fmt.Sscanf(input, "%d", &index)
-		if err != nil || index < 1 || index > len(deployments) {
-			l.Errorf("Invalid selection. Please enter a number between 1 and %d", len(deployments))
-			return fmt.Errorf(
-				"invalid selection. Please enter a number between 1 and %d",
-				len(deployments),
-			)
+	fmt.Printf("Finished destroying %d deployment(s)\n", len(deployments))
+	return nil
+}
+
+func createAzureProvider(ctx context.Context) (*azure.AzureProvider, error) {
+	subscriptionID := viper.GetString("azure.subscription_id")
+	provider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure provider: %w", err)
+	}
+	if provider == nil {
+		return nil, fmt.Errorf("azure provider is nil after creation")
+	}
+	return provider, nil
+}
+
+func appendAndaimeDeployments(
+	deployments []ConfigDeployment,
+	resourceGroups []*armresources.ResourceGroup,
+) []ConfigDeployment {
+	for _, rg := range resourceGroups {
+		if isAndaimeDeployment(rg) && !isBeingDestroyed(rg) &&
+			!isAlreadyListed(deployments, *rg.Name) {
+			deployments = append(deployments, ConfigDeployment{
+				Name: *rg.Name,
+				Type: models.DeploymentTypeAzure,
+				ID:   *rg.Name,
+			})
 		}
+	}
+	return deployments
+}
 
-		selected = deployments[index-1]
+func isAndaimeDeployment(rg *armresources.ResourceGroup) bool {
+	createdBy, ok := rg.Tags["deployed-by"]
+	return ok && createdBy != nil && strings.EqualFold(*createdBy, "andaime")
+}
+
+func isBeingDestroyed(rg *armresources.ResourceGroup) bool {
+	return *rg.Properties.ProvisioningState == "Deleting"
+}
+
+func isAlreadyListed(deployments []ConfigDeployment, name string) bool {
+	for _, dep := range deployments {
+		if dep.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func selectDeployment(deployments []ConfigDeployment, flags struct {
+	name       string
+	index      int
+	destroyAll bool
+}) (ConfigDeployment, error) {
+	if flags.name != "" {
+		return findDeploymentByName(deployments, flags.name)
+	}
+	if flags.index != 0 {
+		return selectDeploymentByIndex(deployments, flags.index)
+	}
+	return selectDeploymentInteractively(deployments)
+}
+
+func findDeploymentByName(deployments []ConfigDeployment, name string) (ConfigDeployment, error) {
+	for _, dep := range deployments {
+		if dep.Name == name {
+			return dep, nil
+		}
+	}
+	return ConfigDeployment{}, fmt.Errorf("deployment with name %s not found", name)
+}
+
+func selectDeploymentByIndex(deployments []ConfigDeployment, index int) (ConfigDeployment, error) {
+	if index < 1 || index > len(deployments) {
+		return ConfigDeployment{}, fmt.Errorf(
+			"invalid index. Please enter a number between 1 and %d",
+			len(deployments),
+		)
+	}
+	return deployments[index-1], nil
+}
+
+func selectDeploymentInteractively(deployments []ConfigDeployment) (ConfigDeployment, error) {
+	fmt.Println("Available deployments:")
+	for i, dep := range deployments {
+		fmt.Printf("%d. %s (%s) - %s\n", i+1, dep.Name, dep.Type, dep.ID)
 	}
 
-	l.Debugf("Selected deployment: %s (%s) - %s", selected.Name, selected.Type, selected.ID)
-	return destroyDeployment(selected)
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enter the number of the deployment to destroy: ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	index := 0
+	_, err := fmt.Sscanf(input, "%d", &index)
+	if err != nil || index < 1 || index > len(deployments) {
+		return ConfigDeployment{}, fmt.Errorf(
+			"invalid selection. Please enter a number between 1 and %d",
+			len(deployments),
+		)
+	}
+
+	selected := deployments[index-1]
+	fmt.Printf("Selected deployment: %s (%s) - %s\n", selected.Name, selected.Type, selected.ID)
+	return selected, nil
 }
 
 func destroyDeployment(dep ConfigDeployment) error {
-	l := logger.Get()
-	l.Infof("Starting destruction of %s (%s) - %s", dep.Name, dep.Type, dep.ID)
+	logger := logger.Get()
+	logger.Infof("Starting destruction of %s (%s) - %s", dep.Name, dep.Type, dep.ID)
 
 	ctx := context.Background()
 
-	if dep.Type == models.DeploymentTypeAzure {
-		azureProvider, err := azure_provider.NewAzureProviderFunc(
-			ctx,
-			viper.GetString("azure.subscription_id"),
-		)
-		if err != nil {
-			l.Errorf("Failed to create Azure provider for %s: %v", dep.Name, err)
-			return fmt.Errorf("failed to create Azure provider for %s: %v", dep.Name, err)
-		}
-		fmt.Printf("   Destroying Azure resources\n")
-		err = azureProvider.DestroyResources(ctx, dep.ID)
-		if err != nil {
-			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
-				fmt.Printf("   -- Resource group is already destroyed.\n")
-			} else {
-				l.Errorf("Failed to destroy Azure deployment %s: %v", dep.Name, err)
-				return fmt.Errorf("failed to destroy Azure deployment %s: %v", dep.Name, err)
-			}
-		} else {
-			fmt.Printf("   -- Started successfully\n")
-		}
+	return destroyAzureDeployment(ctx, dep)
+}
 
-		// Remove the deployment from the config
-		fmt.Printf("   Removing deployment from config\n")
-		viper.Set(dep.FullViperKey, nil)
-		err = viper.WriteConfig()
-		if err != nil {
-			l.Errorf("Failed to update config file: %v", err)
-			return fmt.Errorf("failed to update config file: %v", err)
+func destroyAzureDeployment(ctx context.Context, dep ConfigDeployment) error {
+	azureProvider, err := createAzureProvider(ctx)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("   Destroying Azure resources\n")
+	err = azureProvider.DestroyResources(ctx, dep.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "ResourceGroupNotFound") {
+			fmt.Printf("   -- Resource group is already destroyed.\n")
+		} else {
+			return fmt.Errorf("failed to destroy Azure deployment %s: %w", dep.Name, err)
 		}
-		fmt.Printf("   -- Removed successfully\n")
-	} else if dep.Type == models.DeploymentTypeAWS {
-		l.Warnf("AWS destroy is not implemented yet")
+	} else {
+		fmt.Printf("   -- Started successfully\n")
+	}
+
+	fmt.Printf("   Removing deployment from config\n")
+	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
+		return err
 	}
 
 	return nil

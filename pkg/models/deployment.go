@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 )
 
@@ -92,7 +91,7 @@ type Deployment struct {
 	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	deploymentMutex        sync.RWMutex
-	BacalhauSettings       []utils.BacalhauSettings
+	BacalhauSettings       []BacalhauSettings
 	CustomScriptPath       string
 }
 
@@ -111,7 +110,7 @@ func NewDeployment() (*Deployment, error) {
 	if projectPrefix == "" {
 		return nil, fmt.Errorf("general.project_prefix is not set")
 	}
-	uniqueID := time.Now().Format("0601021504")
+	uniqueID := fmt.Sprintf("u%s", time.Now().Format("0601021504"))
 	projectID := projectPrefix + "-" + uniqueID
 	deployment := &Deployment{
 		StartTime:              time.Now(),

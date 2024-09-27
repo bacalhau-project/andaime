@@ -350,7 +350,7 @@ func (c *LiveGCPClient) EnsureProject(
 			ProjectId:   uniqueProjectID,
 			DisplayName: uniqueProjectID, // Set the display name to be the same as the project ID
 			Labels: map[string]string{
-				"created-by-andaime": "true",
+				"deployed-by": "andaime",
 			},
 		},
 	}

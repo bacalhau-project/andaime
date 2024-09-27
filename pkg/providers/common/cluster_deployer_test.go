@@ -11,7 +11,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -306,9 +305,15 @@ func TestExecuteCustomScript(t *testing.T) {
 				tt.customScriptPath = tmpfile.Name()
 			}
 
-			// Set up Viper configuration
-			viper.Set("general.custom_script_path", tt.customScriptPath)
-			defer viper.Reset()
+			origGetGlobalModelFunc := display.GetGlobalModelFunc
+			display.GetGlobalModelFunc = func() *display.DisplayModel {
+				return &display.DisplayModel{
+					Deployment: &models.Deployment{
+						CustomScriptPath: tt.customScriptPath,
+					},
+				}
+			}
+			defer func() { display.GetGlobalModelFunc = origGetGlobalModelFunc }()
 
 			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior)
 
@@ -386,8 +391,8 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Multiple configurations",
 			bacalhauSettings: map[string]string{
-				"node.allowlistedlocalpaths":                 `"/tmp","/data"`,
-				"orchestrator.nodemanager.disconnecttimeout": "5s",
+				"node.allowlistedlocalpaths":                            `"/tmp","/data"`,
+				"node.compute.controlplanesettings.infoupdatefrequency": "5s",
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
@@ -397,7 +402,7 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 						Error:  nil,
 					},
 					{
-						Cmd:    `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout' '5s'`,
+						Cmd:    `sudo bacalhau config set 'node.compute.controlplanesettings.infoupdatefrequency' '5s'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
@@ -420,11 +425,11 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 					{
 						Cmd:    `sudo bacalhau config set 'invalid.config' 'value'`,
 						Output: "",
-						Error:  errors.New("invalid configuration key"),
+						Error:  errors.New("invalid bacalhau_settings keys: invalid.config"),
 					},
 				},
 			},
-			expectedError: "invalid configuration key",
+			expectedError: "invalid bacalhau_settings keys: invalid.config",
 		},
 		{
 			name: "Unexpected value in configuration",
@@ -476,8 +481,13 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 			viper.Set("general.bacalhau_settings", tt.bacalhauSettings)
 			defer viper.Reset()
 
-			bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
-			assert.NoError(t, err)
+			bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
+			if err != nil && tt.expectedError != "" {
+				assert.Contains(t, err.Error(), tt.expectedError)
+				return
+			} else {
+				assert.NoError(t, err)
+			}
 
 			deployment := &models.Deployment{
 				BacalhauSettings: bacalhauSettings,

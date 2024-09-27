@@ -17,7 +17,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -471,13 +470,14 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 	machine models.Machiner,
 ) error {
 	l := logger.Get()
-	customScriptPath := viper.GetString("general.custom_script_path")
-	if customScriptPath == "" {
+	m := display.GetGlobalModelFunc()
+
+	if m.Deployment.CustomScriptPath == "" {
 		l.Info("No custom script path provided, skipping execution")
 		return nil
 	}
 
-	scriptContent, err := os.ReadFile(customScriptPath)
+	scriptContent, err := os.ReadFile(m.Deployment.CustomScriptPath)
 	if err != nil {
 		return fmt.Errorf("failed to read custom script: %w", err)
 	}
@@ -520,7 +520,7 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	return nil
 }
 
-func combineSettings(settings []utils.BacalhauSettings) map[string]string {
+func combineSettings(settings []models.BacalhauSettings) map[string]string {
 	combined := make(map[string]string)
 	for _, setting := range settings {
 		switch v := setting.Value.(type) {
@@ -543,6 +543,13 @@ func applySettings(
 		cmd := fmt.Sprintf("sudo bacalhau config set '%s' '%s'", key, value)
 		output, err := sshConfig.ExecuteCommand(ctx, cmd)
 		if err != nil {
+			if strings.Contains(
+				output,
+				fmt.Sprintf("invalid configuration key \"%s\": not found", key),
+			) {
+				l.Errorf("Bad setting detected: %s", key)
+				return fmt.Errorf("bad setting detected: %s", key)
+			}
 			l.Errorf("Failed to apply Bacalhau config %s: %v", key, err)
 			return fmt.Errorf("failed to apply Bacalhau config %s: %w", key, err)
 		}

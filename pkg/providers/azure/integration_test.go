@@ -17,7 +17,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/utils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -146,9 +145,11 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
 	m.Deployment.SSHPublicKeyMaterial = "PUBLIC KEY MATERIAL"
 
-	bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
+	bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
 	s.Require().NoError(err)
 	m.Deployment.BacalhauSettings = bacalhauSettings
+
+	m.Deployment.CustomScriptPath = localCustomScriptPath
 
 	s.testDisplayModel = m
 
@@ -265,35 +266,35 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            2,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths' '/tmp,/data'`,
+				Cmd:              `sudo bacalhau config set 'node.allowlistedlocalpaths' '/tmp,/data'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.requester.controlplanesettings.nodedisconnectedafter' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.heartbeat.infoupdateinterval' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.resourceupdatefrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.heartbeat.interval' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.infoupdatefrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.heartbeat.resourceupdateinterval' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.heartbeatfrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,

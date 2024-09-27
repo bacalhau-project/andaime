@@ -9,6 +9,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/spf13/cobra"
@@ -167,10 +168,7 @@ func runDeployment(
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
-	var configMutex sync.Mutex
 	writeConfig := func() {
-		configMutex.Lock()
-		defer configMutex.Unlock()
 		configFile := viper.ConfigFileUsed()
 		if configFile != "" {
 			if err := viper.WriteConfigAs(configFile); err != nil {
@@ -184,9 +182,15 @@ func runDeployment(
 	updateMachineConfig := func(machineName string) {
 		machine := m.Deployment.GetMachine(machineName)
 		if machine != nil {
-			configMutex.Lock()
-			defer configMutex.Unlock()
-			viper.Set(fmt.Sprintf("azure.machines.%s", machineName), machine)
+			viper.Set(
+				fmt.Sprintf(
+					"deployments.%s.azure.%s.%s",
+					m.Deployment.UniqueID,
+					m.Deployment.Azure.ResourceGroupName,
+					machineName,
+				),
+				models.MachineConfigToWrite(machine),
+			)
 			writeConfig()
 		}
 	}

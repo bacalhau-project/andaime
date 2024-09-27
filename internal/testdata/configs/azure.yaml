@@ -25,15 +25,15 @@ general:
   ssh_public_key_path: ./testdata/dummy_keys/id_ed25519.pub
   ssh_private_key_path: ./testdata/dummy_keys/id_ed25519
   bacalhau_settings:
-    - Key: "compute.allowlistedlocalpaths"
+    - Key: "node.allowlistedlocalpaths"
       Value:
         - /tmp
         - /data
-    - Key: "compute.heartbeat.infoupdateinterval"
+    - Key: "node.compute.controlplanesettings.infoupdatefrequency"
       Value: 5s
-    - Key: "compute.heartbeat.interval"
+    - Key: "node.compute.controlplanesettings.heartbeatfrequency"
       Value: 5s
-    - Key: "compute.heartbeat.resourceupdateinterval"
+    - Key: "node.compute.controlplanesettings.resourceupdatefrequency"
       Value: 5s
-    - Key: "orchestrator.nodemanager.disconnecttimeout"
+    - Key: "node.requester.controlplanesettings.nodedisconnectedafter"
       Value: 5s

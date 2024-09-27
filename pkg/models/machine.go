@@ -791,5 +791,32 @@ func (mach *Machine) SetDeploymentEndTime(endTime time.Time) {
 	mach.DeploymentEndTime = endTime
 }
 
+func MachineConfigToWrite(machine Machiner) map[string]interface{} {
+	sshEnabled := machine.GetServiceState(
+		ServiceTypeSSH.Name,
+	) == ServiceStateSucceeded
+	dockerInstalled := machine.GetServiceState(
+		ServiceTypeDocker.Name,
+	) == ServiceStateSucceeded
+	bacalhauInstalled := machine.GetServiceState(
+		ServiceTypeBacalhau.Name,
+	) == ServiceStateSucceeded
+	scriptInstalled := machine.GetServiceState(
+		ServiceTypeScript.Name,
+	) == ServiceStateSucceeded
+	orchestrator := machine.IsOrchestrator()
+
+	return map[string]interface{}{
+		"name":              machine.GetName(),
+		"publicip":          machine.GetPublicIP(),
+		"privateip":         machine.GetPrivateIP(),
+		"SSHEnabled":        sshEnabled,
+		"DockerInstalled":   dockerInstalled,
+		"BacalhauInstalled": bacalhauInstalled,
+		"ScriptInstalled":   scriptInstalled,
+		"Orchestrator":      orchestrator,
+	}
+}
+
 // Ensure that Machine implements Machiner
 var _ Machiner = (*Machine)(nil)

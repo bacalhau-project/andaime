@@ -172,10 +172,7 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
-	var configMutex sync.Mutex
 	writeConfig := func() {
-		configMutex.Lock()
-		defer configMutex.Unlock()
 		configFile := viper.ConfigFileUsed()
 		if configFile != "" {
 			if err := viper.WriteConfigAs(configFile); err != nil {
@@ -189,9 +186,15 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	updateMachineConfig := func(machineName string) {
 		machine := m.Deployment.GetMachine(machineName)
 		if machine != nil {
-			configMutex.Lock()
-			defer configMutex.Unlock()
-			viper.Set(fmt.Sprintf("gcp.machines.%s", machineName), machine)
+			viper.Set(
+				fmt.Sprintf(
+					"deployments.%s.gcp.%s.%s",
+					m.Deployment.UniqueID,
+					m.Deployment.GCP.ProjectID,
+					machineName,
+				),
+				models.MachineConfigToWrite(machine),
+			)
 			writeConfig()
 		}
 	}
