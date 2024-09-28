@@ -2,6 +2,7 @@ package sshutils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -137,9 +138,23 @@ func (m *MockSSHConfig) ExecuteCommand(
 ) (string, error) {
 	fmt.Printf("ExecuteCommand called with: %s\n", cmd)
 	args := m.Called(ctx, cmd)
-	output := args.String(0)
-	m.lastOutput = output
-	return output, args.Error(1)
+	if args.Get(0) == nil {
+		return "", args.Error(1)
+	}
+	// Try to convert the result to a string
+	switch v := args.Get(0).(type) {
+	case string:
+		return v, args.Error(1)
+	case []byte:
+		return string(v), args.Error(1)
+	default:
+		// If it's not a string or []byte, convert it to a JSON string
+		jsonBytes, err := json.Marshal(v)
+		if err != nil {
+			return "", fmt.Errorf("failed to convert mock result to string: %v", err)
+		}
+		return string(jsonBytes), args.Error(1)
+	}
 }
 
 func (m *MockSSHConfig) ExecuteCommandWithCallback(
@@ -148,7 +163,7 @@ func (m *MockSSHConfig) ExecuteCommandWithCallback(
 	progressCallback func(string),
 ) (string, error) {
 	args := m.Called(ctx, cmd, progressCallback)
-	return args.String(0), args.Error(1)
+	return args.Get(0).(string), args.Error(1)
 }
 
 func (m *MockSSHConfig) InstallSystemdService(

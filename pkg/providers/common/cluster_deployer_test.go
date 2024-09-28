@@ -23,7 +23,7 @@ type PkgProvidersCommonClusterDeployerTestSuite struct {
 	ctx                context.Context
 	clusterDeployer    *ClusterDeployer
 	testPrivateKeyPath string
-	validConfigOutput  []map[string]interface{}
+	validConfigOutput  string
 	cleanup            func()
 }
 
@@ -42,8 +42,13 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) SetupSuite() {
 	if err != nil {
 		assert.NoError(s.T(), err)
 	}
-	s.validConfigOutput = configList
 
+	// Convert configList to a JSON string
+	configJSON, err := json.Marshal(configList)
+	if err != nil {
+		s.T().Fatalf("Failed to marshal configList: %v", err)
+	}
+	s.validConfigOutput = string(configJSON)
 }
 
 func (s *PkgProvidersCommonClusterDeployerTestSuite) TearDownSuite() {
@@ -130,19 +135,22 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
-				Cmd:   "sudo /tmp/get-node-config-metadata.sh",
-				Error: nil,
-				Times: 2,
+				Cmd:    "sudo /tmp/get-node-config-metadata.sh",
+				Output: "",
+				Error:  nil,
+				Times:  2,
 			},
 			{
-				Cmd:   "sudo /tmp/install-bacalhau.sh",
-				Error: nil,
-				Times: 2,
+				Cmd:    "sudo /tmp/install-bacalhau.sh",
+				Output: "",
+				Error:  nil,
+				Times:  2,
 			},
 			{
-				Cmd:   "sudo /tmp/install-run-bacalhau.sh",
-				Error: nil,
-				Times: 2,
+				Cmd:    "sudo /tmp/install-run-bacalhau.sh",
+				Output: "",
+				Error:  nil,
+				Times:  2,
 			},
 			{
 				Cmd:    "bacalhau node list --output json --api-host 0.0.0.0",
@@ -262,8 +270,9 @@ func TestExecuteCustomScript(t *testing.T) {
 				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:   "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
-						Error: errors.New("script execution failed"),
+						Cmd:    "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
+						Output: "",
+						Error:  errors.New("script execution failed"),
 					},
 				},
 			},
@@ -282,8 +291,9 @@ func TestExecuteCustomScript(t *testing.T) {
 				},
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:   "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
-						Error: context.DeadlineExceeded,
+						Cmd:    "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
+						Output: "",
+						Error:  context.DeadlineExceeded,
 					},
 				},
 			},
