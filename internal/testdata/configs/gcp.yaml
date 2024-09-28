@@ -47,3 +47,5 @@ general:
       Value: 5s
     - Key: "node.requester.controlplanesettings.nodedisconnectedafter"
       Value: 5s
+    - Key: "node.compute.jobselection.acceptnetworkedjobs"
+      Value: true

@@ -39,6 +39,7 @@ func TestReadBacalhauSettings(t *testing.T) {
 			"node.compute.controlplanesettings.heartbeatfrequency",
 			"node.compute.controlplanesettings.resourceupdatefrequency",
 			"node.requester.controlplanesettings.nodedisconnectedafter",
+			"node.compute.jobselection.acceptnetworkedjobs",
 		}
 
 		for _, key := range listOfKeys {

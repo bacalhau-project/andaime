@@ -29,7 +29,7 @@ type ExecuteCommandExpectation struct {
 	Cmd              string
 	CmdMatcher       func(string) bool
 	ProgressCallback interface{}
-	Output           string
+	Output           interface{}
 	Error            error
 	Times            int
 }

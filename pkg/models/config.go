@@ -90,6 +90,19 @@ func ReadBacalhauSettingsFromViper() ([]BacalhauSettings, error) {
 	// Process the values to ensure consistent types
 	for i, setting := range result {
 		switch v := setting.Value.(type) {
+		case string, bool, int, float64:
+			// Convert single fields to string
+			result[i].Value = fmt.Sprintf("%v", v)
+		case []interface{}, map[string]interface{}:
+			// Leave complex fields (slices or maps) as they are
+		default:
+			return nil, fmt.Errorf("invalid value type for key %s: expected string, bool, int, float64, []interface{}, or map[string]interface{}, got %T", setting.Key, setting.Value)
+		}
+	}
+
+	// Process the values to ensure consistent types
+	for i, setting := range result {
+		switch v := setting.Value.(type) {
 		case string:
 			// Keep as is
 		case []interface{}:
@@ -104,8 +117,14 @@ func ReadBacalhauSettingsFromViper() ([]BacalhauSettings, error) {
 			result[i].Value = stringSlice
 		case bool:
 			result[i].Value = strconv.FormatBool(v)
+		case int:
+			result[i].Value = strconv.Itoa(v)
+		case float64:
+			result[i].Value = strconv.FormatFloat(v, 'f', -1, 64)
 		default:
-			return nil, fmt.Errorf("invalid value type for key %s: expected string, []string, bool or []interface{}, got %T", setting.Key, setting.Value)
+			return nil,
+				fmt.Errorf(`invalid value type for key %s: expected string, int, 
+							[]string, bool or []interface{}, got %T`, setting.Key, setting.Value)
 		}
 	}
 

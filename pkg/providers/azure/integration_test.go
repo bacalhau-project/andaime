@@ -301,6 +301,13 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            3,
 			},
 			{
+				Cmd:              `sudo bacalhau config set 'node.compute.jobselection.acceptnetworkedjobs' 'true'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
 				Cmd:              "sudo bacalhau config list --output json",
 				ProgressCallback: mock.Anything,
 				Output:           "[]",

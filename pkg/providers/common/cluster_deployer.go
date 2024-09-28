@@ -578,9 +578,19 @@ func verifySettings(
 		found := false
 		for _, config := range configList {
 			if config["Key"] == key {
-				found = true
 				actualValue := fmt.Sprintf("%v", config["Value"])
-				if actualValue != expectedValue {
+				if strings.HasPrefix(actualValue, "[") && strings.HasSuffix(actualValue, "]") {
+					actualValue = strings.TrimPrefix(actualValue, "[")
+					actualValue = strings.TrimSuffix(actualValue, "]")
+				}
+				if values, ok := config["Value"].([]string); ok {
+					for _, value := range values {
+						if value == expectedValue {
+							found = true
+							break
+						}
+					}
+				} else if actualValue != expectedValue {
 					l.Warnf(
 						"Bacalhau config %s has unexpected value. Expected: %s, Actual: %s",
 						key,
@@ -588,7 +598,7 @@ func verifySettings(
 						actualValue,
 					)
 				} else {
-					l.Infof("Verified Bacalhau config %s: %s", key, actualValue)
+					l.Debugf("Verified Bacalhau config %s: %s", key, actualValue)
 				}
 				break
 			}
