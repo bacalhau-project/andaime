@@ -145,6 +145,8 @@ func SetupRootCommand() *cobra.Command {
 		},
 	}
 
+	cobra.OnInitialize(initConfig)
+
 	setupFlags(rootCmd)
 	betaCmd := getBetaCmd(rootCmd)
 	betaCmd.AddCommand(aws.AwsCmd)
@@ -291,7 +293,6 @@ func initGCPProvider(c *cloudProvider) error {
 	ctx := context.Background()
 	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
-		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),
 		viper.GetString("gcp.billing_account_id"),
 	)
@@ -312,4 +313,12 @@ func shouldInitAzure() bool {
 
 func shouldInitGCP() bool {
 	return viper.IsSet("gcp")
+}
+
+// GetRootCommandForTest returns the root command without executing it
+func GetRootCommandForTest() *cobra.Command {
+	rootCmd := SetupRootCommand()
+	// Disable the PersistentPreRunE function for testing
+	rootCmd.PersistentPreRunE = nil
+	return rootCmd
 }

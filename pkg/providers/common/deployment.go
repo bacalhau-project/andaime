@@ -238,6 +238,7 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 	}
 
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
+	deployment.SetProjectID(deployment.Name)
 
 	if provider == models.DeploymentTypeAzure {
 		deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
@@ -259,7 +260,7 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 			deployment.Azure.DefaultCountPerZone = 1
 		}
 	} else if provider == models.DeploymentTypeGCP {
-		deployment.GCP.ProjectID = fmt.Sprintf("%s-%s", deployment.Name, uniqueID)
+		deployment.SetProjectID(deployment.Name)
 		deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
 		if deployment.GCP.OrganizationID == "" {
 			return fmt.Errorf("gcp.organization_id is not set")

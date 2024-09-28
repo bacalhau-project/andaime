@@ -44,9 +44,6 @@ import (
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
-const maximumProjectIDLength = 18
-const maximumUniqueProjectIDLength = 26
-
 type LiveGCPClient struct {
 	parentString           string
 	projectClient          *resourcemanager.ProjectsClient
@@ -303,67 +300,30 @@ func (c *LiveGCPClient) EnsureProject(
 	projectID string,
 ) (string, error) {
 	l := logger.Get()
-
-	var uniqueProjectID string
-	if projectID != "" {
-		uniqueProjectID = projectID
-	} else {
-		// Check if the project ID is too long
-		if len(projectID) > maximumProjectIDLength {
-			l.Warnf(
-				"project ID is too long, it should be less than %d characters -- %s...",
-				maximumProjectIDLength,
-				projectID[:maximumProjectIDLength],
-			)
-			return "", fmt.Errorf(
-				"project ID is too long, it should be less than %d characters",
-				maximumProjectIDLength,
-			)
-		}
-
-		projectPrefix := viper.GetString("general.project_prefix")
-		if projectPrefix == "" {
-			return "", fmt.Errorf("project prefix is not set")
-		}
-
-		timestamp := time.Now().Format("01021504") // mmddhhmm
-		uniqueProjectID = fmt.Sprintf("%s-%s", projectPrefix, timestamp)
-
-		// Check if the unique project ID is too long
-		if len(uniqueProjectID) > maximumUniqueProjectIDLength {
-			l.Warnf(
-				"unique project ID is too long, it should be less than %d characters -- %s...",
-				maximumUniqueProjectIDLength,
-				uniqueProjectID[:maximumUniqueProjectIDLength],
-			)
-			return "", fmt.Errorf(
-				"unique project ID is too long, it should be less than %d characters",
-				maximumUniqueProjectIDLength,
-			)
-		}
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return "", fmt.Errorf("global model or deployment is nil")
 	}
-
-	l.Debugf("Ensuring project: %s", uniqueProjectID)
 
 	req := &resourcemanagerpb.CreateProjectRequest{
 		Project: &resourcemanagerpb.Project{
-			ProjectId:   uniqueProjectID,
-			DisplayName: uniqueProjectID, // Set the display name to be the same as the project ID
+			ProjectId:   projectID,
+			DisplayName: projectID, // Set the display name to be the same as the project ID
 			Labels: map[string]string{
 				"deployed-by": "andaime",
 			},
 		},
 	}
 
-	l.Infof("Creating project: %s ...", uniqueProjectID)
+	l.Infof("Creating project: %s ...", projectID)
 	createCallResponse, err := c.projectClient.CreateProject(ctx, req)
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
-			l.Debugf("Project %s already exists, checking permissions", uniqueProjectID)
+			l.Debugf("Project %s already exists, checking permissions", projectID)
 
 			// Check if we have permissions on the existing project
 			getReq := &resourcemanagerpb.GetProjectRequest{
-				Name: fmt.Sprintf("projects/%s", uniqueProjectID),
+				Name: fmt.Sprintf("projects/%s", projectID),
 			}
 			existingProject, err := c.projectClient.GetProject(ctx, getReq)
 			if err != nil {
@@ -371,7 +331,7 @@ func (c *LiveGCPClient) EnsureProject(
 				return "", fmt.Errorf("project exists but user doesn't have permissions: %v", err)
 			}
 
-			l.Debugf("User has permissions on existing project %s", uniqueProjectID)
+			l.Debugf("User has permissions on existing project %s", projectID)
 			return existingProject.ProjectId, nil
 		}
 		l.Errorf("Failed to create project: %v", err)
@@ -681,7 +641,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 
 	l.Infof("Enabling Compute Engine API for project: %s", projectID)
 	err := c.EnableAPI(ctx, projectID, "compute.googleapis.com")
@@ -734,7 +694,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Creating firewall rules in project: %s", projectID)
 
 	// Enable the Compute Engine API
@@ -839,7 +799,7 @@ func (c *LiveGCPClient) CreateStorageBucket(ctx context.Context, bucketName stri
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Creating storage bucket %s in project: %s", bucketName, projectID)
 
 	storageClient, err := storage.NewClient(ctx)
@@ -882,7 +842,7 @@ func (c *LiveGCPClient) CreateVM(
 
 	machine := m.Deployment.Machines[instanceName]
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Creating VM in project: %s", projectID)
 
 	// Ensure the necessary APIs are enabled
@@ -1135,7 +1095,7 @@ func (c *LiveGCPClient) SetBillingAccount(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	l.Infof("Setting billing account %s for project %s", billingAccountID, projectID)
 
 	billingAccountName := getBillingAccountName(billingAccountID)
@@ -1449,7 +1409,7 @@ func (c *LiveGCPClient) ValidateMachineType(
 	if m == nil || m.Deployment == nil {
 		return false, fmt.Errorf("global model or deployment is nil")
 	}
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Validating machine type %s in location %s", machineType, location)
 
 	req := &computepb.GetMachineTypeRequest{
@@ -1480,7 +1440,7 @@ func (c *LiveGCPClient) EnsureFirewallRules(
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
@@ -1536,7 +1496,7 @@ func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	if projectID == "" {
 		return fmt.Errorf("project ID is empty")
 	}

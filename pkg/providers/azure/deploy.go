@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -60,7 +59,7 @@ func (p *AzureProvider) PrepareDeployment(
 
 	tags := utils.EnsureAzureTags(
 		deployment.Tags,
-		deployment.ProjectID,
+		deployment.GetProjectID(),
 		deployment.UniqueID,
 	)
 
@@ -675,24 +674,8 @@ func (p *AzureProvider) PollResources(ctx context.Context) ([]interface{}, error
 
 	// All resources
 	// Write status for pending or complete to a file
-	//nolint:mnd
-	resourceBytes, err := json.Marshal(resources)
-	if err != nil {
-		l.Errorf("Failed to marshal resources: %v", err)
-	}
-
-	err = os.WriteFile(
-		"status.txt",
-		resourceBytes,
-		0600, //nolint:mnd
-	)
-
 	var statusUpdates []*models.DisplayStatus
 	for _, resource := range resources {
-		if err != nil {
-			l.Errorf("Failed to write status to file: %v", err)
-		}
-
 		statuses, err := models.ConvertFromRawResourceToStatus(
 			resource.(map[string]interface{}),
 			m.Deployment,

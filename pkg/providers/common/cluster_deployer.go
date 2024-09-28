@@ -340,6 +340,13 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		return fmt.Errorf("no orchestrator IP found")
 	}
 
+	var projectID string
+	if m.Deployment.DeploymentType == models.DeploymentTypeAzure {
+		projectID = m.Deployment.Azure.ResourceGroupName
+	} else if m.Deployment.DeploymentType == models.DeploymentTypeGCP {
+		projectID = m.Deployment.GetProjectID()
+	}
+
 	var scriptBuffer bytes.Buffer
 	err = tmpl.ExecuteTemplate(&scriptBuffer, "getNodeMetadataScript", map[string]interface{}{
 		"MachineType":   machine.GetVMSize(),
@@ -349,7 +356,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		"IP":            machine.GetPublicIP(),
 		"Token":         "",
 		"NodeType":      nodeType,
-		"Project":       m.Deployment.ProjectID,
+		"ProjectID":     projectID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute node metadata script template: %w", err)

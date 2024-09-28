@@ -30,11 +30,8 @@ var NewGCPProviderFunc = NewGCPProviderFactory
 // NewGCPProviderFactory is the factory function for GCPProvider.
 func NewGCPProviderFactory(
 	ctx context.Context,
-	projectID, organizationID, billingAccountID string,
+	organizationID, billingAccountID string,
 ) (*GCPProvider, error) {
-	if projectID == "" {
-		return nil, fmt.Errorf("gcp.project_id is not set in configuration")
-	}
 	if organizationID == "" {
 		return nil, fmt.Errorf("gcp.organization_id is not set in configuration")
 	}
@@ -47,7 +44,7 @@ func NewGCPProviderFactory(
 		return nil, fmt.Errorf("failed to create GCP client: %w", err)
 	}
 
-	provider, err := NewGCPProvider(ctx, projectID, organizationID, billingAccountID)
+	provider, err := NewGCPProvider(ctx, organizationID, billingAccountID)
 	if err != nil {
 		cleanup()
 		return nil, fmt.Errorf("failed to create GCP provider: %w", err)
@@ -94,10 +91,9 @@ type GCPProvider struct {
 // NewGCPProvider creates a new GCP provider
 func NewGCPProvider(
 	ctx context.Context,
-	projectID, organizationID, billingAccountID string,
+	organizationID, billingAccountID string,
 ) (*GCPProvider, error) {
 	gcpProvider := &GCPProvider{
-		ProjectID:        projectID,
 		OrganizationID:   organizationID,
 		BillingAccountID: billingAccountID,
 		ClusterDeployer:  common.NewClusterDeployer(models.DeploymentTypeGCP),
@@ -130,11 +126,10 @@ func (p *GCPProvider) SetGCPClient(client gcp_interface.GCPClienter) {
 // EnsureProject ensures that a GCP project exists, creating it if necessary
 func (p *GCPProvider) EnsureProject(
 	ctx context.Context,
-	projectID string,
-) (string, error) {
+) error {
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
-		return "", fmt.Errorf("global model or deployment is nil")
+		return fmt.Errorf("global model or deployment is nil")
 	}
 
 	for _, machine := range m.Deployment.Machines {
@@ -145,7 +140,7 @@ func (p *GCPProvider) EnsureProject(
 	}
 
 	// Create the project
-	createdProjectID, err := p.Client.EnsureProject(ctx, projectID)
+	createdProjectID, err := p.Client.EnsureProject(ctx, m.Deployment.GetProjectID())
 	if err != nil {
 		for _, machine := range m.Deployment.Machines {
 			machine.SetMachineResourceState(
@@ -153,7 +148,7 @@ func (p *GCPProvider) EnsureProject(
 				models.ResourceStateFailed,
 			)
 		}
-		return "", err
+		return err
 	}
 
 	for _, machine := range m.Deployment.Machines {
@@ -163,7 +158,8 @@ func (p *GCPProvider) EnsureProject(
 		)
 	}
 
-	return createdProjectID, nil
+	m.Deployment.SetProjectID(createdProjectID)
+	return nil
 }
 
 func (p *GCPProvider) DestroyResources(
@@ -194,6 +190,7 @@ func (p *GCPProvider) PrepareDeployment(ctx context.Context) (*models.Deployment
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
+
 	return deployment, nil
 }
 
@@ -267,7 +264,7 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	if projectID == "" {
 		return fmt.Errorf("project ID is not set in the deployment")
 	}
@@ -308,7 +305,7 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.ProjectID
+	projectID := m.Deployment.GetProjectID()
 	if projectID == "" {
 		return fmt.Errorf("project ID is not set in the deployment")
 	}
@@ -352,12 +349,12 @@ func (p *GCPProvider) CreateVPCNetwork(
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
-	l.Infof("Creating VPC network %s in project %s", networkName, m.Deployment.ProjectID)
+	l.Infof("Creating VPC network %s in project %s", networkName, m.Deployment.GetProjectID())
 
 	// First, ensure that the Compute Engine API is enabled
 	err := p.EnableAPI(ctx, "compute.googleapis.com")
 	if err != nil {
-		return fmt.Errorf("failed to enable Compute Engine API: %v", err)
+		return fmt.Errorf("failed to enable Compute Engine API: %w", err)
 	}
 
 	// Define the exponential backoff strategy
@@ -435,7 +432,7 @@ func (p *GCPProvider) SetBillingAccount(
 	l.Infof(
 		"Setting billing account to %s for project %s",
 		m.Deployment.GCP.BillingAccountID,
-		m.Deployment.ProjectID,
+		m.Deployment.GetProjectID(),
 	)
 
 	return p.Client.SetBillingAccount(

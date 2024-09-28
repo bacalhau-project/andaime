@@ -17,13 +17,10 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 
 	// Create the project if it doesn't exist
-	createdProjectID, err := p.EnsureProject(ctx, m.Deployment.GCP.ProjectID)
+	err := p.EnsureProject(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to ensure project exists: %w", err)
 	}
-
-	m.Deployment.ProjectID = createdProjectID
-	m.Deployment.GCP.ProjectID = createdProjectID
 
 	// Enable required APIs
 	if err := p.EnableRequiredAPIs(ctx); err != nil {

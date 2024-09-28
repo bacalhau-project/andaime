@@ -135,6 +135,11 @@ func initializeConfig(cmd *cobra.Command) error {
 func getDeployments() ([]ConfigDeployment, error) {
 	var deployments []ConfigDeployment
 	allDeployments := viper.Get("deployments")
+	if allDeployments == nil {
+		fmt.Println("No deployments found in config.")
+		return nil, nil
+	}
+
 	deploymentMap, ok := allDeployments.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid deployments format in config")

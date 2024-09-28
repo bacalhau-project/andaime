@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bacalhau-project/andaime/cmd"
-	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testutil"
@@ -26,14 +25,9 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 
-	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
-	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
-
-	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
-	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
 var (
@@ -85,7 +79,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 func (s *IntegrationTestSuite) TearDownSuite() {
 	s.cleanup()
-	_ = os.Remove(s.viperConfigFile)
 }
 
 func (s *IntegrationTestSuite) SetupTest() {
@@ -93,12 +86,29 @@ func (s *IntegrationTestSuite) SetupTest() {
 	f, err := os.CreateTemp("", "test-config-*.yaml")
 	s.Require().NoError(err)
 
+	var configContent string
+	if viper.GetString("general.deployment_type") == "gcp" {
+		configContent, err = testdata.ReadTestGCPConfig()
+		s.Require().NoError(err)
+	} else {
+		configContent, err = testdata.ReadTestAzureConfig()
+		s.Require().NoError(err)
+	}
+	os.WriteFile(f.Name(), []byte(configContent), 0o644)
+
 	s.viperConfigFile = f.Name()
 	viper.SetConfigFile(s.viperConfigFile)
 
 	s.setupCommonConfig()
 	s.setupMockClusterDeployer()
 	s.setupMockSSHConfig()
+}
+
+func (s *IntegrationTestSuite) TearDownTest() {
+	if s.viperConfigFile != "" {
+		_ = os.Remove(s.viperConfigFile)
+		s.viperConfigFile = ""
+	}
 }
 
 func (s *IntegrationTestSuite) setupCommonConfig() {
@@ -211,125 +221,17 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 			m.Deployment.DeploymentType = tt.provider
 			m.Deployment.Name = deploymentName
 
-			cmd := cmd.SetupRootCommand()
-			cmd.SetContext(context.Background())
+			rootCmd := cmd.GetRootCommandForTest()
+			gcpCmd := gcp.GetGCPCmd()
+			rootCmd.AddCommand(gcpCmd)
 
-			if tt.provider == models.DeploymentTypeAzure {
-				machine, err := models.NewMachine(
-					tt.provider,
-					"eastus",
-					"Standard_D2s_v3",
-					30,
-					models.CloudSpecificInfo{},
-				)
-				s.Require().NoError(err)
-				machine.SetOrchestrator(true)
-				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
+			createDeploymentCmd := gcp.GetGCPCreateDeploymentCmd()
+			gcpCmd.AddCommand(createDeploymentCmd)
 
-				s.azureProvider, err = azure_provider.NewAzureProviderFunc(
-					cmd.Context(),
-					viper.GetString("azure.subscription_id"),
-				)
-				s.Require().NoError(err)
+			rootCmd.SetArgs([]string{"gcp", "create-deployment", "--config", s.viperConfigFile})
 
-				mockPoller := new(MockPoller)
-				mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-					Return(armresources.DeploymentsClientCreateOrUpdateResponse{
-						DeploymentExtended: testdata.FakeDeployment(),
-					}, nil)
-
-				mockAzureClient := new(azure_mock.MockAzureClienter)
-				mockAzureClient.On("ValidateMachineType",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(true, nil)
-				mockAzureClient.On("GetOrCreateResourceGroup",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(testdata.FakeResourceGroup(), nil)
-				mockAzureClient.On("DeployTemplate",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(mockPoller, nil)
-				mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-					Return(testdata.FakeVirtualMachine(), nil)
-				mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-					Return(testdata.FakeNetworkInterface(), nil)
-				mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
-
-				azure_provider.NewAzureProviderFunc = func(ctx context.Context,
-					subscriptionID string) (*azure_provider.AzureProvider, error) {
-					return s.azureProvider, nil
-				}
-				azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interface.AzureClienter, error) {
-					return mockAzureClient, nil
-				}
-				err = azure.ExecuteCreateDeployment(cmd, []string{})
-				s.Require().NoError(err)
-			} else if tt.provider == models.DeploymentTypeGCP {
-				mockGCPClient := new(gcp_mock.MockGCPClienter)
-				mockGCPClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
-				mockGCPClient.On("EnsureProject",
-					mock.Anything,
-					mock.Anything,
-				).Return("test-1292-gcp", nil)
-				mockGCPClient.On("EnableAPI",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(nil)
-				mockGCPClient.On("CreateFirewallRules",
-					mock.Anything,
-					mock.Anything,
-				).Return(nil)
-				mockGCPClient.On("CreateVM",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(testdata.FakeGCPInstance(), nil)
-
-				gcp_provider.NewGCPClientFunc = func(ctx context.Context,
-					organizationID string,
-				) (gcp_interface.GCPClienter, func(), error) {
-					return mockGCPClient, func() {}, nil
-				}
-
-				machine, err := models.NewMachine(
-					tt.provider,
-					"us-central1-a",
-					"n2-standard-2",
-					30,
-					models.CloudSpecificInfo{},
-				)
-				s.Require().NoError(err)
-				machine.SetOrchestrator(true)
-				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
-
-				s.gcpProvider, err = gcp_provider.NewGCPProviderFunc(
-					cmd.Context(),
-					viper.GetString("gcp.project_id"),
-					viper.GetString("gcp.organization_id"),
-					viper.GetString("gcp.billing_account_id"),
-				)
-				s.Require().NoError(err)
-
-				gcp_provider.NewGCPProviderFunc = func(ctx context.Context,
-					projectID, organizationID, billingAccountID string,
-				) (*gcp_provider.GCPProvider, error) {
-					return s.gcpProvider, nil
-				}
-
-				err = gcp.ExecuteCreateDeployment(cmd, []string{})
-				s.Require().NoError(err)
-			}
+			err := rootCmd.Execute()
+			s.Require().NoError(err)
 
 			// Have to pull it again because it's out of sync
 			m = display.GetGlobalModelFunc()

@@ -103,6 +103,7 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 		Return(testdata.FakeGCPSubnetwork(), nil)
 
 	deployment, err := models.NewDeployment()
+	deployment.SetProjectID("test-project-id")
 	s.Require().NoError(err)
 	m := display.NewDisplayModel(deployment)
 

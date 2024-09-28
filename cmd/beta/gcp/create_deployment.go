@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -31,7 +32,7 @@ func GetGCPCreateDeploymentCmd() *cobra.Command {
 	return createGCPDeploymentCmd
 }
 
-func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
+func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	l := logger.Get()
 	ctx := cmd.Context()
 	ctx, cancel := context.WithCancel(ctx)
@@ -41,13 +42,21 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	common.SetDefaultConfigurations("gcp")
-
-	projectID := viper.GetString("gcp.project_id")
-	if projectID == "" {
-		return fmt.Errorf("gcp.project_id is not set in the configuration")
+	configFile := viper.GetString("config")
+	if configFile == "" {
+		configFile = "./config.yaml"
 	}
 
+	configFile, err := filepath.Abs(configFile)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for config file: %w", err)
+	}
+	fmt.Println("Using config file:", configFile)
+	viper.SetConfigFile(configFile)
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("failed to read configuration file: %w", err)
+	}
+	common.SetDefaultConfigurations("gcp")
 	organizationID := viper.GetString("gcp.organization_id")
 	if organizationID == "" {
 		return fmt.Errorf("gcp.organization_id is not set in the configuration")
@@ -61,7 +70,6 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	// Initialize the GCP provider
 	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
-		projectID,
 		organizationID,
 		billingAccountID,
 	)
@@ -136,7 +144,7 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 	}
 
 	// Write configuration to file
-	configFile := viper.ConfigFileUsed()
+	configFile = viper.ConfigFileUsed()
 	if configFile == "" {
 		l.Error("No configuration file found, could not write to file.")
 		return nil
@@ -201,13 +209,11 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 
 	// Ensure project
 	l.Debug("Ensuring project")
-	projectID, err := gcpProvider.EnsureProject(ctx, m.Deployment.ProjectID)
+	err := gcpProvider.EnsureProject(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to ensure project: %v", err))
 		return fmt.Errorf("failed to ensure project: %w", err)
 	}
-	m.Deployment.ProjectID = projectID
-	l.Debug("Project ensured successfully")
 	writeConfig()
 
 	// Enable required APIs
@@ -275,4 +281,9 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	prog.Quit()
 
 	return nil
+}
+
+func init() {
+	createGCPDeploymentCmd.Flags().String("config", "", "config file path")
+	viper.BindPFlag("config", createGCPDeploymentCmd.Flags().Lookup("config"))
 }

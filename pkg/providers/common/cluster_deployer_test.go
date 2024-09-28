@@ -34,7 +34,6 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) SetupSuite() {
 		cleanupPublicKey()
 		cleanupPrivateKey()
 	}
-	viper.Set("general.project_prefix", "test-project")
 	s.testPrivateKeyPath = testPrivateKeyPath
 
 	var configList []map[string]interface{}
@@ -107,16 +106,18 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionAllMachinesWit
 				return sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior), nil
 			}
 
-			deployment := &models.Deployment{
-				Machines: map[string]models.Machiner{
-					"machine1": NewMockMachine("machine1", s.testPrivateKeyPath),
-				},
-			}
+			viper.Set("general.project_prefix", "test-project-prefix")
+			deployment, err := models.NewDeployment()
+			s.Require().NoError(err)
+			deployment.SetProjectID("test-project-id")
+			deployment.SetMachines(map[string]models.Machiner{
+				"machine1": NewMockMachine("machine1", s.testPrivateKeyPath),
+			})
 
 			m := display.GetGlobalModelFunc()
 			m.Deployment = deployment
 
-			err := s.clusterDeployer.ProvisionAllMachinesWithPackages(s.ctx)
+			err = s.clusterDeployer.ProvisionAllMachinesWithPackages(s.ctx)
 
 			if tt.expectedError != "" {
 				s.Error(err)
@@ -325,12 +326,17 @@ func TestExecuteCustomScript(t *testing.T) {
 				tt.customScriptPath = tmpfile.Name()
 			}
 
+			viper.Set("general.project_prefix", "test-project-prefix")
+			deployment, err := models.NewDeployment()
+			if err != nil {
+				t.Fatal(err)
+			}
+			deployment.CustomScriptPath = tt.customScriptPath
+			deployment.SetProjectID("test-project")
 			origGetGlobalModelFunc := display.GetGlobalModelFunc
 			display.GetGlobalModelFunc = func() *display.DisplayModel {
 				return &display.DisplayModel{
-					Deployment: &models.Deployment{
-						CustomScriptPath: tt.customScriptPath,
-					},
+					Deployment: deployment,
 				}
 			}
 			defer func() { display.GetGlobalModelFunc = origGetGlobalModelFunc }()
@@ -348,7 +354,7 @@ func TestExecuteCustomScript(t *testing.T) {
 
 			cd := NewClusterDeployer(models.DeploymentTypeAzure)
 
-			err := cd.ExecuteCustomScript(
+			err = cd.ExecuteCustomScript(
 				context.Background(),
 				mockSSHConfig,
 				mockMachine,
@@ -506,8 +512,9 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set up Viper configuration
-			viper.Set("general.bacalhau_settings", tt.bacalhauSettings)
 			defer viper.Reset()
+			viper.Set("general.project_prefix", "test-project")
+			viper.Set("general.bacalhau_settings", tt.bacalhauSettings)
 
 			bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
 			if err != nil && tt.expectedError != "" {

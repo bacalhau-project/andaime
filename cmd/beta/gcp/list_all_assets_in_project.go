@@ -35,7 +35,6 @@ func listAllAssetsInProject(projectID string) error {
 	ctx := context.Background()
 	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
-		projectID,
 		viper.GetString("gcp.organization_id"),
 		viper.GetString("gcp.billing_account_id"),
 	)
