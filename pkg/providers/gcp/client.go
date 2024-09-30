@@ -1782,6 +1782,41 @@ func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	l.Debug("All required permissions are granted")
 	return nil
 }
+
+func (c *LiveGCPClient) CheckSpecificPermission(ctx context.Context, permission string) error {
+	l := logger.Get()
+	l.Debugf("Checking specific permission: %s", permission)
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	projectID := m.Deployment.GetProjectID()
+	if projectID == "" {
+		return fmt.Errorf("project ID is empty")
+	}
+
+	request := &cloudresourcemanager.TestIamPermissionsRequest{
+		Permissions: []string{permission},
+	}
+	response, err := c.resourceManagerService.Projects.TestIamPermissions(
+		"projects/"+projectID,
+		request,
+	).Context(ctx).Do()
+
+	if err != nil {
+		l.Errorf("Failed to test specific IAM permission: %v", err)
+		return fmt.Errorf("failed to test specific IAM permission: %w", err)
+	}
+
+	if len(response.Permissions) == 0 {
+		l.Errorf("Missing required permission: %s", permission)
+		return fmt.Errorf("missing required permission: %s", permission)
+	}
+
+	l.Debugf("Permission %s is granted", permission)
+	return nil
+}
 func (c *LiveGCPClient) CheckProjectAccess(ctx context.Context, projectID string) error {
 	l := logger.Get()
 	l.Debugf("Checking access to project: %s", projectID)
@@ -1813,6 +1848,10 @@ func (c *LiveGCPClient) ProjectExists(ctx context.Context, projectID string) (bo
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return false, nil
+		}
+		if status.Code(err) == codes.PermissionDenied {
+			l.Errorf("Permission denied when checking project existence. Error: %v", err)
+			return false, fmt.Errorf("permission denied when checking project existence: %w", err)
 		}
 		return false, fmt.Errorf("failed to check if project exists: %w", err)
 	}
