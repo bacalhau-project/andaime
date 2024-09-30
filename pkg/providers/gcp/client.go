@@ -12,6 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	asset "cloud.google.com/go/asset/apiv1"
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	billing "cloud.google.com/go/billing/apiv1"
@@ -814,11 +818,31 @@ func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string
 	l.Infof("Enabling API %s for project %s", apiName, projectID)
 
 	serviceName := fmt.Sprintf("projects/%s/services/%s", projectID, apiName)
-	_, err := c.serviceUsageClient.EnableService(ctx, &serviceusagepb.EnableServiceRequest{
-		Name: serviceName,
-	})
+
+	retryBackoff := backoff.NewExponentialBackOff()
+	retryBackoff.MaxElapsedTime = 2 * time.Minute
+
+	var lastErr error
+	err := backoff.Retry(func() error {
+		_, err := c.serviceUsageClient.EnableService(ctx, &serviceusagepb.EnableServiceRequest{
+			Name: serviceName,
+		})
+		if err != nil {
+			if status.Code(err) == codes.Canceled {
+				l.Warnf("Context canceled while enabling API %s, retrying: %v", apiName, err)
+				return err // Retry on context canceled
+			}
+			lastErr = fmt.Errorf("failed to enable API %s: %v", apiName, err)
+			return backoff.Permanent(lastErr) // Don't retry on other errors
+		}
+		return nil
+	}, retryBackoff)
+
 	if err != nil {
-		return fmt.Errorf("failed to enable API %s: %v", apiName, err)
+		if lastErr != nil {
+			return lastErr
+		}
+		return fmt.Errorf("failed to enable API %s after retries: %v", apiName, err)
 	}
 
 	l.Infof("Successfully enabled API: %s", apiName)
