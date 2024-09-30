@@ -34,7 +34,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudresourcemanager/v1"
@@ -42,8 +41,6 @@ import (
 	"google.golang.org/api/iam/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
