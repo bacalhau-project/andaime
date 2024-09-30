@@ -324,14 +324,14 @@ func (c *LiveGCPClient) EnsureProject(
 			return c.checkExistingProjectPermissions(ctx, projectID)
 		}
 		l.Errorf("Failed to create project: %v", err)
-		return "", fmt.Errorf("create project: %v", err)
+		return "", fmt.Errorf("create project: %v (Code: %s, Details: %+v)", err, status.Code(err), err)
 	}
 
 	l.Debugf("Waiting for project creation to complete")
 	project, err := createCallResponse.Wait(ctx)
 	if err != nil {
 		l.Errorf("Failed to wait for project creation: %v", err)
-		return "", fmt.Errorf("wait for project creation: %v", err)
+		return "", fmt.Errorf("wait for project creation: %v (Code: %s, Details: %+v)", err, status.Code(err), err)
 	}
 
 	l.Infof(
@@ -1749,6 +1749,11 @@ func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	requiredPermissions := []string{
 		"cloudasset.assets.searchAllResources",
 		"compute.instances.list",
+		"resourcemanager.projects.get",
+		"resourcemanager.projects.create",
+		"resourcemanager.projects.delete",
+		"billing.accounts.list",
+		"serviceusage.services.enable",
 	}
 
 	request := &cloudresourcemanager.TestIamPermissionsRequest{

@@ -588,6 +588,11 @@ func (p *GCPProvider) SetClusterDeployer(deployer common_interface.ClusterDeploy
 	p.ClusterDeployer = deployer
 }
 
+// CheckPermissions checks the current user's permissions
+func (p *GCPProvider) CheckPermissions(ctx context.Context) error {
+	return p.GetGCPClient().CheckPermissions(ctx)
+}
+
 // Creates the VM and returns the public and private IP addresses
 func (p *GCPProvider) CreateVM(
 	ctx context.Context,
