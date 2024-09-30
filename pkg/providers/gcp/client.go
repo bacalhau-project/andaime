@@ -840,7 +840,11 @@ func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string
 		if err != nil {
 			if status.Code(err) == codes.Canceled {
 				l.Warnf("Context canceled while enabling API %s, retrying: %v", apiName, err)
-				l.Debugf("Retry attempt %d for API %s due to context cancellation", attempt, apiName)
+				l.Debugf(
+					"Retry attempt %d for API %s due to context cancellation",
+					attempt,
+					apiName,
+				)
 				return err // Retry on context canceled
 			}
 			if status.Code(err) == codes.PermissionDenied {
@@ -1790,4 +1794,23 @@ func (c *LiveGCPClient) CheckProjectAccess(ctx context.Context, projectID string
 
 	l.Infof("Successfully accessed project: %s", projectID)
 	return nil
+}
+
+func (c *LiveGCPClient) ProjectExists(ctx context.Context, projectID string) (bool, error) {
+	l := logger.Get()
+	l.Debugf("Checking if project %s exists", projectID)
+
+	req := &resourcemanagerpb.GetProjectRequest{
+		Name: fmt.Sprintf("projects/%s", projectID),
+	}
+
+	_, err := c.projectClient.GetProject(ctx, req)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check if project exists: %w", err)
+	}
+
+	return true, nil
 }
