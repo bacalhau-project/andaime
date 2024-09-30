@@ -11,7 +11,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,7 +33,6 @@ func GetAzureCreateDeploymentCmd() *cobra.Command {
 }
 
 func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
-	l := logger.Get()
 	ctx := cmd.Context()
 	ctx, cancel := context.WithCancel(ctx)
 	defer func() {
@@ -42,58 +41,106 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
+	if err := initializeConfig(cmd); err != nil {
+		return err
+	}
+
+	azureProvider, err := initializeAzureProvider(ctx)
+	if err != nil {
+		return err
+	}
+
+	deployment, err := prepareDeployment(ctx, azureProvider)
+	if err != nil {
+		return err
+	}
+
+	m := display.NewDisplayModel(deployment)
+	prog := display.GetGlobalProgramFunc()
+	prog.InitProgram(m)
+
+	go startResourcePolling(ctx, azureProvider)
+
+	deploymentErr := runDeploymentAsync(ctx, azureProvider, cancel)
+
+	handleDeploymentCompletion(ctx, m, deploymentErr)
+
+	return nil
+}
+
+func initializeConfig(_ *cobra.Command) error {
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("failed to read configuration file: %w", err)
+	}
+	common.SetDefaultConfigurations("azure")
+	return nil
+}
+
+func initializeAzureProvider(ctx context.Context) (*azure.AzureProvider, error) {
 	subscriptionID := viper.GetString("azure.subscription_id")
 	if subscriptionID == "" {
-		return fmt.Errorf("subscription_id is not set in the configuration")
+		return nil, fmt.Errorf("subscription_id is not set in the configuration")
 	}
-	// Initialize the Azure provider
 	azureProvider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
 	if err != nil {
-		l.Error(fmt.Sprintf("Failed to create Azure provider: %v", err))
-		return fmt.Errorf("failed to create Azure provider: %w", err)
+		return nil, fmt.Errorf("failed to create Azure provider: %w", err)
 	}
 
 	client, err := azure.NewAzureClientFunc(subscriptionID)
 	if err != nil {
-		l.Error(fmt.Sprintf("Failed to create Azure client: %v", err))
-		return fmt.Errorf("failed to create Azure client: %w", err)
+		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
 	azureProvider.SetAzureClient(client)
 
-	// Prepare the deployment
+	return azureProvider, nil
+}
+
+func prepareDeployment(
+	ctx context.Context,
+	azureProvider *azure.AzureProvider,
+) (*models.Deployment, error) {
 	deployment, err := azureProvider.PrepareDeployment(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to prepare deployment: %w", err)
+		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 	deployment.Azure.ResourceGroupName = azureProvider.ResourceGroupName
 
-	m := display.NewDisplayModel(deployment)
 	machines, locations, err := azureProvider.ProcessMachinesConfig(ctx)
 	if err != nil {
 		if err.Error() == "no machines configuration found for provider azure" {
 			fmt.Println(
 				"You can check the skus available for a location with the command: az vm list-skus -o json -l <ZONE> | jq -r '.[].name'",
 			)
-			return nil
+			return nil, nil
 		}
-		return fmt.Errorf("failed to process machines config: %w", err)
+		return nil, fmt.Errorf("failed to process machines config: %w", err)
 	}
-	m.Deployment.SetMachines(machines)
-	m.Deployment.SetLocations(locations)
+	deployment.SetMachines(machines)
+	deployment.SetLocations(locations)
 
+	return deployment, nil
+}
+
+func startResourcePolling(
+	ctx context.Context,
+	azureProvider *azure.AzureProvider,
+) {
+	l := logger.Get()
+	err := azureProvider.StartResourcePolling(ctx)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
+	}
+}
+
+func runDeploymentAsync(
+	ctx context.Context,
+	azureProvider *azure.AzureProvider,
+	cancel context.CancelFunc,
+) error {
+	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
-	prog.InitProgram(m)
-
-	go func() {
-		defer cancel()
-		err = azureProvider.StartResourcePolling(ctx)
-		if err != nil {
-			l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
-		}
-	}()
-
-	var deploymentErr error
 	deploymentDone := make(chan struct{})
+	var deploymentErr error
 
 	go func() {
 		defer close(deploymentDone)
@@ -105,18 +152,17 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 			deploymentErr = runDeployment(ctx, azureProvider)
 			if deploymentErr != nil {
 				l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
-				cancel() // Cancel the context on error
+				cancel()
 			}
 		}
 	}()
 
-	_, err = prog.Run()
+	_, err := prog.Run()
 	if err != nil {
 		l.Error(fmt.Sprintf("Error running program: %v", err))
-		cancel() // Cancel the context on error
+		cancel()
 	}
 
-	// Wait for deployment to finish or context to be cancelled
 	select {
 	case <-deploymentDone:
 	case <-ctx.Done():
@@ -124,43 +170,10 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		<-deploymentDone
 	}
 
-	// Write configuration to file
-	configFile := viper.ConfigFileUsed()
-	if configFile == "" {
-		l.Error("No configuration file found, could not write to file.")
-		return nil
-	}
-	if err := viper.WriteConfigAs(configFile); err != nil {
-		l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
-	} else {
-		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
-	}
-
-	if os.Getenv("ANDAIME_TEST_MODE") != "true" { //nolint:goconst
-		// Clear the screen and print final table
-		fmt.Print("\033[H\033[2J")
-		fmt.Println(m.RenderFinalTable())
-	}
-
-	if deploymentErr != nil {
-		fmt.Println("Deployment failed, but configuration was written to file.")
-		fmt.Println("The deployment error was:")
-		fmt.Println(deploymentErr)
-	}
-
-	if err != nil {
-		fmt.Println("General (unknown) error running program:")
-		fmt.Println(err)
-		return nil
-	}
-
-	return nil
+	return deploymentErr
 }
 
-func runDeployment(
-	ctx context.Context,
-	azureProvider *azure_provider.AzureProvider,
-) error {
+func runDeployment(ctx context.Context, azureProvider *azure.AzureProvider) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
 	m := display.GetGlobalModelFunc()
@@ -168,38 +181,39 @@ func runDeployment(
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
-	writeConfig := func() {
-		configFile := viper.ConfigFileUsed()
-		if configFile != "" {
-			if err := viper.WriteConfigAs(configFile); err != nil {
-				l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
-			} else {
-				l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
-			}
-		}
-	}
-
-	updateMachineConfig := func(machineName string) {
-		machine := m.Deployment.GetMachine(machineName)
-		if machine != nil {
-			viper.Set(
-				fmt.Sprintf(
-					"deployments.%s.azure.%s.%s",
-					m.Deployment.UniqueID,
-					m.Deployment.Azure.ResourceGroupName,
-					machineName,
-				),
-				models.MachineConfigToWrite(machine),
-			)
-			writeConfig()
-		}
-	}
-
 	defer func() {
 		fmt.Println(m.RenderFinalTable())
 	}()
 
-	// Prepare resource group
+	if err := prepareResourceGroup(ctx, azureProvider); err != nil {
+		return err
+	}
+
+	if err := createResources(ctx, azureProvider, m); err != nil {
+		return err
+	}
+
+	if err := provisionMachines(ctx, azureProvider, m); err != nil {
+		return err
+	}
+
+	if err := provisionBacalhauCluster(ctx, azureProvider, m); err != nil {
+		return err
+	}
+
+	if err := finalizeDeployment(ctx, azureProvider); err != nil {
+		return err
+	}
+
+	l.Info("Deployment finalized")
+	time.Sleep(RetryTimeout)
+	prog.Quit()
+
+	return nil
+}
+
+func prepareResourceGroup(ctx context.Context, azureProvider *azure.AzureProvider) error {
+	l := logger.Get()
 	l.Debug("Preparing resource group")
 	err := azureProvider.PrepareResourceGroup(ctx)
 	if err != nil {
@@ -208,16 +222,28 @@ func runDeployment(
 	}
 	l.Debug("Resource group prepared successfully")
 	writeConfig()
+	return nil
+}
 
-	// Create resources
+func createResources(
+	ctx context.Context,
+	azureProvider *azure.AzureProvider,
+	m *display.DisplayModel,
+) error {
 	if err := azureProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
 	for _, machine := range m.Deployment.Machines {
-		updateMachineConfig(machine.GetName())
+		updateMachineConfig(m.Deployment, machine.GetName())
 	}
+	return nil
+}
 
-	// Provision machines
+func provisionMachines(
+	ctx context.Context,
+	azureProvider *azure.AzureProvider,
+	m *display.DisplayModel,
+) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(m.Deployment.Machines))
 
@@ -230,7 +256,7 @@ func runDeployment(
 				errChan <- fmt.Errorf("failed to provision machine %s: %w", machineName, err)
 				return
 			}
-			updateMachineConfig(machineName)
+			updateMachineConfig(m.Deployment, machineName)
 		}(machine.GetName())
 	}
 
@@ -243,22 +269,74 @@ func runDeployment(
 		}
 	}
 
-	// Provision Bacalhau cluster
+	return nil
+}
+
+func provisionBacalhauCluster(
+	ctx context.Context,
+	azureProvider *azure.AzureProvider,
+	m *display.DisplayModel,
+) error {
 	if err := azureProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 	for _, machine := range m.Deployment.Machines {
-		updateMachineConfig(machine.GetName())
+		updateMachineConfig(m.Deployment, machine.GetName())
 	}
+	return nil
+}
 
-	// Finalize deployment
+func finalizeDeployment(ctx context.Context, azureProvider *azure.AzureProvider) error {
 	if err := azureProvider.FinalizeDeployment(ctx); err != nil {
 		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
-
-	l.Info("Deployment finalized")
-	time.Sleep(RetryTimeout)
-	prog.Quit()
-
 	return nil
+}
+
+func writeConfig() {
+	l := logger.Get()
+	configFile := viper.ConfigFileUsed()
+	if configFile != "" {
+		if err := viper.WriteConfigAs(configFile); err != nil {
+			l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+		} else {
+			l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
+		}
+	}
+}
+
+func updateMachineConfig(deployment *models.Deployment, machineName string) {
+	machine := deployment.GetMachine(machineName)
+	if machine != nil {
+		viper.Set(
+			fmt.Sprintf(
+				"deployments.%s.azure.%s.%s",
+				deployment.UniqueID,
+				deployment.Azure.ResourceGroupName,
+				machineName,
+			),
+			models.MachineConfigToWrite(machine),
+		)
+		writeConfig()
+	}
+}
+
+func handleDeploymentCompletion(ctx context.Context, m *display.DisplayModel, deploymentErr error) {
+	writeConfig()
+
+	if os.Getenv("ANDAIME_TEST_MODE") != "true" {
+		fmt.Print("\033[H\033[2J")
+		fmt.Println(m.RenderFinalTable())
+	}
+
+	if deploymentErr != nil {
+		fmt.Println("Deployment failed, but configuration was written to file.")
+		fmt.Println("The deployment error was:")
+		fmt.Println(deploymentErr)
+	}
+
+	if ctx.Err() != nil {
+		fmt.Println("General (unknown) error running program:")
+		fmt.Println(ctx.Err())
+	}
 }

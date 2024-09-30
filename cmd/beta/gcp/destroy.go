@@ -1,4 +1,4 @@
-package azure
+package gcp
 
 import (
 	"bufio"
@@ -7,14 +7,17 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/azure"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -32,27 +35,21 @@ type ConfigDeployment struct {
 
 var DestroyCmd = &cobra.Command{
 	Use:   "destroy",
-	Short: "List and destroy Azure deployments",
-	Long: `List all active Azure deployments in config.yaml, 
-and allow the user to select one for destruction. Use --all to destroy all deployments.`,
+	Short: "List and destroy GCP deployments",
+	Long: `List all active GCP deployments in config.yaml, 
+and allow the user to select one for destruction. Projects that are already being destroyed will not be listed.`,
 	RunE: runDestroy,
 }
 
-func GetAzureDestroyCmd() *cobra.Command {
-	destroyCmd := &cobra.Command{
-		Use:   "destroy",
-		Short: "Destroy Azure deployments",
-		RunE:  runDestroy,
-	}
-
-	destroyCmd.Flags().StringP("name", "n", "", "The name of the deployment to destroy")
-	destroyCmd.Flags().IntP("index", "i", 0, "The index of the deployment to destroy")
-	destroyCmd.Flags().Bool("all", false, "Destroy all deployments")
-	destroyCmd.Flags().
+func GetGCPDestroyCmd() *cobra.Command {
+	DestroyCmd.Flags().StringP("name", "n", "", "The name of the deployment to destroy")
+	DestroyCmd.Flags().IntP("index", "i", 0, "The index of the deployment to destroy")
+	DestroyCmd.Flags().Bool("all", false, "Destroy all deployments")
+	DestroyCmd.Flags().String("config", "", "Path to the config file")
+	DestroyCmd.Flags().
 		Bool("dry-run", false, "Perform a dry run without actually destroying resources")
-	destroyCmd.MarkFlagsMutuallyExclusive("name", "index", "all")
-
-	return destroyCmd
+	DestroyCmd.MarkFlagsMutuallyExclusive("name", "index", "all")
+	return DestroyCmd
 }
 
 func runDestroy(cmd *cobra.Command, args []string) error {
@@ -61,6 +58,10 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	flags, err := parseFlags(cmd)
 	if err != nil {
+		return err
+	}
+
+	if err := initializeConfig(cmd); err != nil {
 		return err
 	}
 
@@ -114,12 +115,12 @@ func getDeployments() ([]ConfigDeployment, error) {
 	}
 
 	for uniqueID, details := range deploymentMap {
-		azureDeployments, err := extractAzureDeployments(uniqueID, details)
+		gcpDeployments, err := extractGCPDeployments(uniqueID, details)
 		if err != nil {
 			fmt.Printf("Error processing deployment %s: %v\n", uniqueID, err)
 			continue
 		}
-		deployments = append(deployments, azureDeployments...)
+		deployments = append(deployments, gcpDeployments...)
 	}
 
 	sort.Slice(deployments, func(i, j int) bool {
@@ -129,32 +130,44 @@ func getDeployments() ([]ConfigDeployment, error) {
 	return deployments, nil
 }
 
-func extractAzureDeployments(uniqueID string, details interface{}) ([]ConfigDeployment, error) {
+func extractGCPDeployments(uniqueID string, details interface{}) ([]ConfigDeployment, error) {
 	var deployments []ConfigDeployment
 	deploymentClouds, ok := details.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid deployment details for %s", uniqueID)
 	}
 
-	azureDetails, ok := deploymentClouds["azure"].(map[string]interface{})
+	gcpDetails, ok := deploymentClouds["gcp"].(map[string]interface{})
 	if !ok {
-		return nil, nil // Not an Azure deployment, skip
+		return nil, nil // Not a GCP deployment, skip
 	}
 
-	for rgName := range azureDetails {
+	for projectID := range gcpDetails {
 		deployments = append(deployments, ConfigDeployment{
-			Name:         rgName,
-			Type:         models.DeploymentTypeAzure,
-			ID:           rgName,
+			Name:         projectID,
+			Type:         models.DeploymentTypeGCP,
+			ID:           projectID,
 			UniqueID:     uniqueID,
-			FullViperKey: fmt.Sprintf("deployments.%s.azure.%s", uniqueID, rgName),
+			FullViperKey: fmt.Sprintf("deployments.%s.gcp.%s", uniqueID, projectID),
 		})
 	}
 
 	return deployments, nil
 }
 
-func destroyAllDeployments(_ context.Context, deployments []ConfigDeployment, dryRun bool) error {
+func destroyAllDeployments(ctx context.Context, deployments []ConfigDeployment, dryRun bool) error {
+	gcpProvider, err := createGCPProvider(ctx)
+	if err != nil {
+		return err
+	}
+
+	projects, err := gcpProvider.ListProjects(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get projects: %w", err)
+	}
+
+	deployments = appendAndaimeDeployments(deployments, projects)
+
 	if len(deployments) == 0 {
 		fmt.Println("No deployments to destroy")
 		return nil
@@ -175,13 +188,25 @@ func destroyAllDeployments(_ context.Context, deployments []ConfigDeployment, dr
 		}
 	}
 
+	g, ctx := errgroup.WithContext(ctx)
+	var mu sync.Mutex
 	for _, dep := range deployments {
-		err := destroyDeployment(dep, dryRun)
-		if err != nil {
-			fmt.Printf("Failed to destroy deployment %s: %v\n", dep.Name, err)
-		} else {
-			fmt.Printf("Successfully destroyed deployment %s\n", dep.Name)
-		}
+		dep := dep // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			err := destroyDeployment(dep, dryRun)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				fmt.Printf("Failed to destroy deployment %s: %v\n", dep.Name, err)
+			} else {
+				fmt.Printf("Successfully destroyed deployment %s\n", dep.Name)
+			}
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("error occurred while destroying deployments: %w", err)
 	}
 
 	if dryRun {
@@ -192,47 +217,49 @@ func destroyAllDeployments(_ context.Context, deployments []ConfigDeployment, dr
 	return nil
 }
 
-func createAzureProvider(ctx context.Context) (*azure.AzureProvider, error) {
-	subscriptionID := viper.GetString("azure.subscription_id")
-	provider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
+func createGCPProvider(ctx context.Context) (*gcp_provider.GCPProvider, error) {
+	provider, err := gcp_provider.NewGCPProviderFunc(
+		ctx,
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Azure provider: %w", err)
+		return nil, fmt.Errorf("failed to create GCP provider: %w", err)
 	}
 	if provider == nil {
-		return nil, fmt.Errorf("azure provider is nil after creation")
+		return nil, fmt.Errorf("GCP provider is nil after creation")
 	}
 	return provider, nil
 }
 
 func appendAndaimeDeployments(
 	deployments []ConfigDeployment,
-	resourceGroups []*armresources.ResourceGroup,
+	projects []*resourcemanagerpb.Project,
 ) []ConfigDeployment {
-	for _, rg := range resourceGroups {
-		if isAndaimeDeployment(rg) && !isBeingDestroyed(rg) &&
-			!isAlreadyListed(deployments, *rg.Name) {
+	for _, project := range projects {
+		if isAndaimeDeployment(project) && !isBeingDestroyed(project) &&
+			!isAlreadyListed(deployments, project.ProjectId) {
 			deployments = append(deployments, ConfigDeployment{
-				Name: *rg.Name,
-				Type: models.DeploymentTypeAzure,
-				ID:   *rg.Name,
+				Name: project.DisplayName,
+				Type: models.DeploymentTypeGCP,
+				ID:   project.ProjectId,
 			})
 		}
 	}
 	return deployments
 }
 
-func isAndaimeDeployment(rg *armresources.ResourceGroup) bool {
-	createdBy, ok := rg.Tags["deployed-by"]
-	return ok && createdBy != nil && strings.EqualFold(*createdBy, "andaime")
+func isAndaimeDeployment(project *resourcemanagerpb.Project) bool {
+	return project.Labels["deployed-by"] == "andaime"
 }
 
-func isBeingDestroyed(rg *armresources.ResourceGroup) bool {
-	return *rg.Properties.ProvisioningState == "Deleting"
+func isBeingDestroyed(project *resourcemanagerpb.Project) bool {
+	return project.State == resourcemanagerpb.Project_DELETE_REQUESTED
 }
 
-func isAlreadyListed(deployments []ConfigDeployment, name string) bool {
+func isAlreadyListed(deployments []ConfigDeployment, projectID string) bool {
 	for _, dep := range deployments {
-		if dep.Name == name {
+		if dep.ID == projectID {
 			return true
 		}
 	}
@@ -303,31 +330,61 @@ func destroyDeployment(dep ConfigDeployment, dryRun bool) error {
 
 	ctx := context.Background()
 
-	return destroyAzureDeployment(ctx, dep, dryRun)
+	return destroyGCPDeployment(ctx, dep, dryRun)
 }
 
-func destroyAzureDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) error {
-	azureProvider, err := createAzureProvider(ctx)
+func destroyGCPDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) error {
+	gcpProvider, err := createGCPProvider(ctx)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("   Destroying Azure resources\n")
-	err = azureProvider.DestroyResources(ctx, dep.ID)
-	if err != nil {
-		if strings.Contains(err.Error(), "ResourceGroupNotFound") {
-			fmt.Printf("   -- Resource group is already destroyed.\n")
-		} else {
-			return fmt.Errorf("failed to destroy Azure deployment %s: %w", dep.Name, err)
-		}
+	fmt.Printf("   Destroying GCP resources for %s\n", dep.Name)
+	if dryRun {
+		fmt.Printf("   -- Dry run: Would destroy project %s\n", dep.ID)
 	} else {
-		fmt.Printf("   -- Started successfully\n")
+		err = retry(func() error {
+			return gcpProvider.DestroyProject(ctx, dep.ID)
+		}, 3, time.Second)
+
+		if err != nil {
+			if strings.Contains(err.Error(), "Project not found") {
+				fmt.Printf("   -- Project is already destroyed.\n")
+			} else {
+				return fmt.Errorf("failed to destroy GCP deployment %s: %w", dep.Name, err)
+			}
+		} else {
+			fmt.Printf("   -- Project %s has been scheduled for deletion\n", dep.ID)
+		}
+
+		fmt.Printf("   Removing deployment from config\n")
+		if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
+			return err
+		}
 	}
 
-	fmt.Printf("   Removing deployment from config\n")
-	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
-		return err
-	}
+	return nil
+}
 
+func retry(f func() error, attempts int, sleep time.Duration) (err error) {
+	for i := 0; ; i++ {
+		err = f()
+		if err == nil {
+			return
+		}
+		if i >= (attempts - 1) {
+			break
+		}
+		time.Sleep(sleep)
+		fmt.Printf("Retrying after error: %v\n", err)
+	}
+	return fmt.Errorf("after %d attempts, last error: %s", attempts, err)
+}
+
+func initializeConfig(cmd *cobra.Command) error {
+	l := logger.Get()
+	// The config should already be initialized by the root command
+	// We can just log the config file being used
+	l.Debugf("Using config file: %s", viper.ConfigFileUsed())
 	return nil
 }

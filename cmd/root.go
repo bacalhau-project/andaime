@@ -5,65 +5,48 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/bacalhau-project/andaime/cmd/beta/aws"
-	"github.com/bacalhau-project/andaime/cmd/beta/azure"
-	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-
-	// Register providers
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
-	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	configFile                string
-	projectName               string
-	targetPlatform            string
-	numberOfOrchestratorNodes int
-	numberOfComputeNodes      int
-	targetRegions             string
-	orchestratorIP            string
-	awsProfile                string
-	verboseMode               bool
-	outputFormat              string
+	configFile   string
+	verboseMode  bool
+	outputFormat string
 
-	once                             sync.Once
-	numberOfDefaultOrchestratorNodes = 1
-	numberOfDefaultComputeNodes      = 2
+	once sync.Once
 )
-
-var shouldInitAWSFlag bool
-var shouldInitAzureFlag bool
-var shouldInitGCPFlag bool
-
-type cloudProvider struct {
-	awsProvider   *aws_provider.AWSProvider
-	azureProvider *azure_provider.AzureProvider
-	gcpProvider   *gcp_provider.GCPProvider
-}
 
 func Execute() error {
 	l := initLogger()
 	l.Debug("Initializing configuration")
-	initConfig()
-	l.Debug("Configuration initialized")
+
+	rootCmd := SetupRootCommand()
+
+	// Parse flags before initializing config
+	if err := rootCmd.PersistentFlags().Parse(os.Args[1:]); err != nil {
+		return fmt.Errorf("failed to parse flags: %w", err)
+	}
+
+	if err := initConfig(); err != nil {
+		l.Errorf("Failed to initialize config: %v", err)
+		return err
+	}
 
 	ctx, cancel := setupSignalHandling()
 	defer cancel()
 
 	setupPanicHandling()
 
-	rootCmd := SetupRootCommand()
 	rootCmd.SetContext(ctx)
 	if err := rootCmd.Execute(); err != nil {
 		l.Errorf("Command execution failed: %v", err)
@@ -90,7 +73,7 @@ func setupSignalHandling() (context.Context, context.CancelFunc) {
 		l := logger.Get()
 		l.Info("Interrupt received, cancelling execution...")
 		cancel()
-		time.Sleep(RetryTimeout)
+		time.Sleep(2 * time.Second) // RetryTimeout
 		l.Info("Forcing exit")
 		os.Exit(0)
 	}()
@@ -112,7 +95,7 @@ func logPanic(l *logger.Logger, r interface{}) {
 	debugLog, err := os.OpenFile(
 		"/tmp/andaime.log",
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		FilePermissions,
+		0644, // FilePermissions
 	)
 	if err == nil {
 		defer debugLog.Close()
@@ -134,26 +117,21 @@ func SetupRootCommand() *cobra.Command {
 		Long: `Andaime is a comprehensive tool for managing cloud resources,
        including deploying and managing Bacalhau nodes across multiple cloud providers.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := cmd.ParseFlags(os.Args[1:]); err != nil {
-				return err
-			}
 			if verboseMode {
 				logger.SetLevel(logger.DEBUG)
 			}
-			initConfig()
 			return nil
 		},
 	}
 
-	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().
+		StringVar(&configFile, "config", "", "config file (default is ./config.yaml)")
+	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
+	rootCmd.PersistentFlags().
+		StringVar(&outputFormat, "output", "text", "Output format: text or json")
 
-	setupFlags(rootCmd)
-	betaCmd := getBetaCmd(rootCmd)
-	betaCmd.AddCommand(aws.AwsCmd)
-	betaCmd.AddCommand(azure.GetAzureCmd())
-	betaCmd.AddCommand(gcp.GetGCPCmd())
-
-	initializeCloudProviders()
+	// Add beta command
+	rootCmd.AddCommand(GetBetaCmd())
 
 	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		cmd.Println("Error:", err)
@@ -166,70 +144,51 @@ func SetupRootCommand() *cobra.Command {
 
 func setupFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().
-		StringVar(&configFile, "config", "", "config file (default is $HOME/.andaime.yaml)")
+		StringVar(&configFile, "config", "", "config file (default is ./config.yaml)")
 	cmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
 	cmd.PersistentFlags().StringVar(&outputFormat, "output", "text", "Output format: text or json")
-	cmd.PersistentFlags().StringVar(&projectName, "project-name", "", "Set project name")
-	cmd.PersistentFlags().StringVar(&targetPlatform, "target-platform", "", "Set target platform")
-	cmd.PersistentFlags().
-		IntVar(&numberOfOrchestratorNodes,
-			"orchestrator-nodes",
-			numberOfDefaultOrchestratorNodes,
-			"Set number of orchestrator nodes")
-	cmd.PersistentFlags().
-		IntVar(&numberOfComputeNodes, "compute-nodes", numberOfDefaultComputeNodes, "Set number of compute nodes")
-	cmd.PersistentFlags().
-		StringVar(&targetRegions, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
-	cmd.PersistentFlags().
-		StringVar(&orchestratorIP, "orchestrator-ip", "", "IP address of existing orchestrator node")
-	cmd.PersistentFlags().
-		StringVar(&awsProfile, "aws-profile", "default", "AWS profile to use for credentials")
 }
 
-func initConfig() {
+func initConfig() error {
 	l := logger.Get()
 	l.Debug("Starting initConfig")
 
 	viper.SetConfigType("yaml")
-	setupConfigFile()
+
+	if configFile != "" {
+		// Use config file from the flag.
+		absPath, err := filepath.Abs(configFile)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for config file: %w", err)
+		}
+		viper.SetConfigFile(absPath)
+		l.Debugf("Using config file specified by flag: %s", absPath)
+	} else {
+		// Search for config in the working directory
+		viper.AddConfigPath(".")
+		viper.SetConfigName("config")
+		l.Debug("No config file specified, using default: ./config.yaml")
+	}
+
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			l.Debug("No config file found")
+			if configFile != "" {
+				// Only return an error if a specific config file was requested
+				return fmt.Errorf("config file not found: %s", configFile)
+			}
+			l.Debug("No config file found, using defaults and environment variables")
 		} else {
-			l.Errorf("Error reading config file: %v", err)
+			return fmt.Errorf("error reading config file: %w", err)
 		}
 	} else {
-		l.Debugf("Successfully read config file: %s", viper.ConfigFileUsed())
+		l.Infof("Using config file: %s", viper.ConfigFileUsed())
 	}
 
 	validateOutputFormat()
 	l.Info("Configuration initialization complete")
-}
-
-func setupConfigFile() {
-	l := logger.Get()
-	if configFile != "" {
-		l.Debugf("Using config file: %s", configFile)
-		viper.SetConfigFile(configFile)
-		return
-	}
-
-	l.Debug("No config file specified, using default paths")
-	home, err := os.UserHomeDir()
-	if err != nil {
-		l.Error(
-			"Unable to determine home directory. Please specify a config file using the --config flag.",
-		)
-		return
-	}
-
-	viper.AddConfigPath(home)
-	viper.AddConfigPath(".")
-	viper.SetConfigName(".andaime")
-	viper.SetConfigName("config")
-	l.Debugf("Default config paths: %s/.andaime.yaml, %s/config.yaml, ./config.yaml", home, home)
+	return nil
 }
 
 func validateOutputFormat() {
@@ -240,79 +199,10 @@ func validateOutputFormat() {
 	}
 }
 
-func initializeCloudProviders() (*cloudProvider, error) {
-	cp := &cloudProvider{}
-
-	// if shouldInitAWS() {
-	// 	if err := initAWSProvider(cp); err != nil {
-	// 		logger.Get().Errorf("Failed to initialize AWS provider: %v", err)
-	// 		return nil, err
-	// 	}
-	// }
-
-	if shouldInitAzure() {
-		if err := initAzureProvider(cp); err != nil {
-			logger.Get().Errorf("Failed to initialize Azure provider: %v", err)
-			return nil, err
-		}
-	}
-
-	if shouldInitGCP() {
-		if err := initGCPProvider(cp); err != nil {
-			logger.Get().Errorf("Failed to initialize GCP provider: %v", err)
-			return nil, err
-		}
-	}
-
-	return cp, nil
-}
-
-// func initAWSProvider(c *cloudProvider) error {
-// 	awsProvider, err := aws_provider.NewAWSProvider(viper.GetViper())
-// 	if err != nil {
-// 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
-// 	}
-// 	c.awsProvider = awsProvider
-// 	return nil
-// }
-
-func initAzureProvider(c *cloudProvider) error {
-	ctx := context.Background()
-	azureProvider, err := azure_provider.NewAzureProviderFunc(
-		ctx,
-		viper.GetString("azure.subscription_id"),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to initialize Azure provider: %w", err)
-	}
-	c.azureProvider = azureProvider
-	return nil
-}
-
-func initGCPProvider(c *cloudProvider) error {
-	ctx := context.Background()
-	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
-		ctx,
-		viper.GetString("gcp.organization_id"),
-		viper.GetString("gcp.billing_account_id"),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to initialize GCP provider: %w", err)
-	}
-	c.gcpProvider = gcpProvider
-	return nil
-}
-
-func shouldInitAWS() bool {
-	return viper.IsSet("aws")
-}
-
-func shouldInitAzure() bool {
-	return viper.IsSet("azure")
-}
-
-func shouldInitGCP() bool {
-	return viper.IsSet("gcp")
+// SetConfigFile allows setting the config file path programmatically
+// This is useful for testing purposes
+func SetConfigFile(path string) {
+	configFile = path
 }
 
 // GetRootCommandForTest returns the root command without executing it

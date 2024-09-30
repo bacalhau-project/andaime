@@ -89,6 +89,7 @@ dockerclient
 dockertypes
 downloadurlrequestretries
 downloadurlrequesttimeout
+dryrun
 dupl
 eastasia
 eastus

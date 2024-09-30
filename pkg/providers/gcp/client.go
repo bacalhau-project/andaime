@@ -45,6 +45,8 @@ import (
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
+const maxBackOffTime = 120 * time.Second
+
 type LiveGCPClient struct {
 	parentString           string
 	projectClient          *resourcemanager.ProjectsClient
@@ -62,8 +64,6 @@ type LiveGCPClient struct {
 	zonesListClient        *compute.ZonesClient
 	machineTypeListClient  *compute.MachineTypesClient
 	resourceManagerService *cloudresourcemanager.Service
-
-	apisEnabled chan bool
 }
 
 func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, networkName string) error {
@@ -298,6 +298,7 @@ After completing these steps, run your application again.`
 
 func (c *LiveGCPClient) EnsureProject(
 	ctx context.Context,
+	organizationID,
 	projectID string,
 ) (string, error) {
 	l := logger.Get()
@@ -306,10 +307,15 @@ func (c *LiveGCPClient) EnsureProject(
 		return "", fmt.Errorf("global model or deployment is nil")
 	}
 
+	if m.Deployment.GCP.OrganizationID == "" {
+		return "", fmt.Errorf("organization ID not set on GCP.OrganizationID")
+	}
+
 	req := &resourcemanagerpb.CreateProjectRequest{
 		Project: &resourcemanagerpb.Project{
 			ProjectId:   projectID,
 			DisplayName: projectID,
+			Parent:      fmt.Sprintf("organizations/%s", m.Deployment.GCP.OrganizationID),
 			Labels: map[string]string{
 				"deployed-by": "andaime",
 			},
@@ -324,14 +330,24 @@ func (c *LiveGCPClient) EnsureProject(
 			return c.checkExistingProjectPermissions(ctx, projectID)
 		}
 		l.Errorf("Failed to create project: %v", err)
-		return "", fmt.Errorf("create project: %v (Code: %s, Details: %+v)", err, status.Code(err), err)
+		return "", fmt.Errorf(
+			"create project: %v (Code: %s, Details: %+v)",
+			err,
+			status.Code(err),
+			err,
+		)
 	}
 
 	l.Debugf("Waiting for project creation to complete")
 	project, err := createCallResponse.Wait(ctx)
 	if err != nil {
 		l.Errorf("Failed to wait for project creation: %v", err)
-		return "", fmt.Errorf("wait for project creation: %v (Code: %s, Details: %+v)", err, status.Code(err), err)
+		return "", fmt.Errorf(
+			"wait for project creation: %v (Code: %s, Details: %+v)",
+			err,
+			status.Code(err),
+			err,
+		)
 	}
 
 	l.Infof(
@@ -357,7 +373,7 @@ func (c *LiveGCPClient) EnsureProject(
 	}
 
 	// Test permissions and resource creation
-	if err := c.testProjectPermissions(ctx, project.ProjectId); err != nil {
+	if err := c.testProjectPermissions(ctx, organizationID, project.ProjectId); err != nil {
 		return "", fmt.Errorf("failed to verify project permissions: %v", err)
 	}
 
@@ -470,75 +486,72 @@ func (c *LiveGCPClient) checkExistingProjectPermissions(
 
 	l.Debugf("User has permissions on existing project %s", projectID)
 
-	// Test permissions and resource creation for existing project
-	if err := c.testProjectPermissions(ctx, projectID); err != nil {
-		return "", fmt.Errorf("failed to verify project permissions: %v", err)
-	}
-
 	return existingProject.ProjectId, nil
 }
 
-func (c *LiveGCPClient) testProjectPermissions(ctx context.Context, projectID string) error {
+func (c *LiveGCPClient) testProjectPermissions(
+	ctx context.Context,
+	organizationID, projectID string,
+) error {
 	l := logger.Get()
 	l.Infof("Testing permissions and resource creation for project %s", projectID)
 
-	// Test Compute Engine API
-	zonesIterator := c.zonesListClient.List(ctx, &computepb.ListZonesRequest{})
-	_, err := zonesIterator.Next()
-	if err != nil && err != iterator.Done {
-		return fmt.Errorf("failed to list zones, check Compute Engine permissions: %v", err)
-	}
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = maxBackOffTime
 
-	// Test Cloud Storage API
-	it := c.storageClient.Buckets(ctx, projectID)
-	_, err = it.Next()
-	if err != nil && err != iterator.Done {
-		return fmt.Errorf("failed to list buckets, check Cloud Storage permissions: %v", err)
-	}
+	return backoff.Retry(func() error {
+		// Test Compute Engine API
+		zonesIterator := c.zonesListClient.List(ctx, &computepb.ListZonesRequest{
+			Project: projectID,
+		})
+		_, err := zonesIterator.Next()
+		if err != nil && err != iterator.Done {
+			return fmt.Errorf("failed to list zones, check Compute Engine permissions: %v", err)
+		}
 
-	// Test IAM permissions
-	iamRequest := &cloudresourcemanager.TestIamPermissionsRequest{
-		Permissions: []string{
-			"resourcemanager.projects.get",
-			"compute.instances.create",
-			"storage.buckets.create",
-		},
-	}
-	iamResponse, err := c.resourceManagerService.Projects.TestIamPermissions(projectID, iamRequest).
-		Do()
-	if err != nil {
-		return fmt.Errorf("failed to test IAM permissions: %v", err)
-	}
-	if len(iamResponse.Permissions) != len(iamRequest.Permissions) {
-		missingPermissions := diffPermissions(iamRequest.Permissions, iamResponse.Permissions)
-		return fmt.Errorf("missing required permissions: %v", missingPermissions)
-	}
+		// Test Cloud Storage API
+		it := c.storageClient.Buckets(ctx, projectID)
+		_, err = it.Next()
+		if err != nil && err != iterator.Done {
+			return fmt.Errorf("failed to list buckets, check Cloud Storage permissions: %v", err)
+		}
 
-	// Test Service Usage API
-	servicesRequest := &serviceusagepb.BatchGetServicesRequest{
-		Names: []string{
-			fmt.Sprintf("projects/%s/services/compute.googleapis.com", projectID),
-			fmt.Sprintf("projects/%s/services/storage-api.googleapis.com", projectID),
-		},
-	}
-	batchServicesRequest, err := c.serviceUsageClient.BatchGetServices(
-		ctx,
-		servicesRequest,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to check service usage, ensure necessary APIs are enabled: %v",
-			err,
-		)
-	}
+		// Test IAM permissions
+		iamRequest := &cloudresourcemanager.TestIamPermissionsRequest{
+			Permissions: []string{
+				"resourcemanager.projects.get",
+				"compute.instances.create",
+				"storage.buckets.create",
+			},
+		}
+		iamResponse, err := c.resourceManagerService.Projects.TestIamPermissions(projectID, iamRequest).
+			Do()
+		if err != nil {
+			return fmt.Errorf("failed to test IAM permissions: %v", err)
+		}
+		if len(iamResponse.Permissions) != len(iamRequest.Permissions) {
+			missingPermissions := diffPermissions(iamRequest.Permissions, iamResponse.Permissions)
+			return fmt.Errorf("missing required permissions: %v", missingPermissions)
+		}
 
-	batchServicesRequest.GetServices()
+		// Test Service Usage API
+		servicesRequest := &serviceusagepb.BatchGetServicesRequest{
+			Names: []string{
+				fmt.Sprintf("projects/%s/services/compute.googleapis.com", projectID),
+				fmt.Sprintf("projects/%s/services/storage-api.googleapis.com", projectID),
+			},
+			Parent: fmt.Sprintf("organizations/%s", organizationID),
+		}
+		_, err = c.serviceUsageClient.BatchGetServices(ctx, servicesRequest)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to check service usage, ensure necessary APIs are enabled: %v",
+				err,
+			)
+		}
 
-	l.Infof(
-		"Successfully verified permissions and resource creation capabilities for project %s",
-		projectID,
-	)
-	return nil
+		return nil
+	}, b)
 }
 
 // Helper function to find missing permissions
@@ -885,7 +898,6 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 	}
 
 	projectID := m.Deployment.GetProjectID()
-
 	l.Infof("Enabling Compute Engine API for project: %s", projectID)
 	err := c.EnableAPI(ctx, projectID, "compute.googleapis.com")
 	if err != nil {
@@ -1343,18 +1355,116 @@ func (c *LiveGCPClient) SetBillingAccount(
 
 	billingAccountName := getBillingAccountName(billingAccountID)
 
-	req := &billingpb.UpdateProjectBillingInfoRequest{
-		Name: fmt.Sprintf("projects/%s", projectID),
-		ProjectBillingInfo: &billingpb.ProjectBillingInfo{
-			ProjectId:          projectID,
-			BillingAccountName: billingAccountName,
-		},
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 120 * time.Second
+
+	return backoff.Retry(func() error {
+		// First, ensure the service account exists
+		serviceAccount, err := c.ensureServiceAccount(ctx, projectID)
+		if err != nil {
+			l.Warnf("Failed to ensure service account: %v. Retrying...", err)
+			return err
+		}
+
+		// Then, set the billing account
+		req := &billingpb.UpdateProjectBillingInfoRequest{
+			Name: fmt.Sprintf("projects/%s", projectID),
+			ProjectBillingInfo: &billingpb.ProjectBillingInfo{
+				ProjectId:          projectID,
+				BillingAccountName: billingAccountName,
+			},
+		}
+
+		_, err = c.cloudBillingClient.UpdateProjectBillingInfo(ctx, req)
+		if err != nil {
+			if strings.Contains(err.Error(), "service account") {
+				l.Warnf("Service account issue when setting billing account: %v. Retrying...", err)
+				return err // Retry on service account issues
+			}
+			return backoff.Permanent(fmt.Errorf("failed to update billing info: %v", err))
+		}
+
+		l.Infof("Successfully set billing account %s for project %s using service account %s",
+			billingAccountID, projectID, serviceAccount.Email)
+		return nil
+	}, b)
+}
+
+func (c *LiveGCPClient) ensureServiceAccount(
+	ctx context.Context,
+	projectID string,
+) (*iam.ServiceAccount, error) {
+	l := logger.Get()
+	serviceAccountName := "andaime-sa"
+	serviceAccountEmail := fmt.Sprintf(
+		"%s@%s.iam.gserviceaccount.com",
+		serviceAccountName,
+		projectID,
+	)
+
+	// Try to get the existing service account
+	sa, err := c.iamService.Projects.ServiceAccounts.Get(
+		fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail)).Do()
+	if err == nil {
+		return sa, nil
 	}
 
-	_, err := c.cloudBillingClient.UpdateProjectBillingInfo(ctx, req)
-	if err != nil {
-		l.Errorf("Failed to update billing info: %v", err)
-		return fmt.Errorf("failed to update billing info: %v", err)
+	// If not found, create a new service account
+	if isNotFoundError(err) {
+		l.Infof("Service account %s not found, creating a new one", serviceAccountEmail)
+		createReq := &iam.CreateServiceAccountRequest{
+			AccountId: serviceAccountName,
+			ServiceAccount: &iam.ServiceAccount{
+				DisplayName: "Billing Service Account",
+			},
+		}
+		sa, err = c.iamService.Projects.ServiceAccounts.Create(fmt.Sprintf("projects/%s", projectID), createReq).
+			Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create service account: %v", err)
+		}
+
+		// Grant necessary roles to the service account
+		if err := c.grantBillingRoles(ctx, projectID, sa.Email); err != nil {
+			return nil, fmt.Errorf("failed to grant billing roles: %v", err)
+		}
+
+		return sa, nil
+	}
+
+	return nil, fmt.Errorf("failed to get or create service account: %v", err)
+}
+
+func (c *LiveGCPClient) grantBillingRoles(
+	ctx context.Context,
+	projectID, serviceAccountEmail string,
+) error {
+	l := logger.Get()
+	roles := []string{
+		"roles/billing.projectManager",
+		"roles/billing.user",
+	}
+
+	for _, role := range roles {
+		policy, err := c.resourceManagerService.Projects.GetIamPolicy(projectID, &cloudresourcemanager.GetIamPolicyRequest{}).
+			Do()
+		if err != nil {
+			return fmt.Errorf("failed to get IAM policy: %v", err)
+		}
+
+		policy.Bindings = append(policy.Bindings, &cloudresourcemanager.Binding{
+			Role:    role,
+			Members: []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)},
+		})
+
+		_, err = c.resourceManagerService.Projects.SetIamPolicy(projectID, &cloudresourcemanager.SetIamPolicyRequest{
+			Policy: policy,
+		}).
+			Do()
+		if err != nil {
+			return fmt.Errorf("failed to set IAM policy for role %s: %v", role, err)
+		}
+		l.Infof("Granted role %s to service account %s", role, serviceAccountEmail)
 	}
 
 	return nil
@@ -1443,41 +1553,6 @@ func (c *LiveGCPClient) CreateServiceAccount(
 	}
 
 	return existingSA, nil
-}
-
-func (c *LiveGCPClient) CreateServiceAccountKey(
-	ctx context.Context,
-	projectID, serviceAccountEmail string,
-) (*iam.ServiceAccountKey, error) {
-	l := logger.Get()
-	l.Infof("Creating service account key for %s in project %s", serviceAccountEmail, projectID)
-
-	// Check if the service account exists
-	_, err := c.iamService.Projects.ServiceAccounts.
-		Get("projects/" + projectID + "/serviceAccounts/" + serviceAccountEmail).
-		Do()
-	if err != nil {
-		if isNotFoundError(err) {
-			l.Infof("Service account %s does not exist, creating a new one", serviceAccountEmail)
-			serviceAccount, err := c.CreateServiceAccount(ctx, projectID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create service account: %v", err)
-			}
-			serviceAccountEmail = serviceAccount.Email
-		} else {
-			return nil, fmt.Errorf("failed to get service account: %v", err)
-		}
-	}
-
-	key, err := c.iamService.Projects.ServiceAccounts.Keys.Create(
-		fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail),
-		&iam.CreateServiceAccountKeyRequest{},
-	).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create service account key: %v", err)
-	}
-
-	return key, nil
 }
 
 func (c *LiveGCPClient) WaitForRegionalOperation(

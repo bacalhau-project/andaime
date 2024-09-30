@@ -9,7 +9,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -32,64 +31,43 @@ func GetGCPCreateDeploymentCmd() *cobra.Command {
 }
 
 func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
-    l := logger.Get()
-    ctx := cmd.Context()
-    var cancel context.CancelFunc
-    ctx, cancel = context.WithCancel(ctx)
-    defer cancel()
+	ctx := cmd.Context()
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
 
-    configFile, _ := cmd.Flags().GetString("config")
-    if configFile != "" {
-        viper.SetConfigFile(configFile)
-        if err := viper.ReadInConfig(); err != nil {
-            return fmt.Errorf("failed to read configuration file: %w", err)
-        }
-    }
+	configFile, _ := cmd.Flags().GetString("config")
+	if configFile != "" {
+		viper.SetConfigFile(configFile)
+		if err := viper.ReadInConfig(); err != nil {
+			return fmt.Errorf("failed to read configuration file: %w", err)
+		}
+	}
 
-    if err := initializeConfig(cmd); err != nil {
-        return err
-    }
+	if err := initializeConfig(cmd); err != nil {
+		return err
+	}
 
-    gcpProvider, err := initializeGCPProvider(ctx)
-    if err != nil {
-        return err
-    }
+	gcpProvider, err := initializeGCPProvider(ctx)
+	if err != nil {
+		return err
+	}
 
-    deployment, err := prepareDeployment(ctx, gcpProvider)
-    if err != nil {
-        return err
-    }
+	deployment, err := prepareDeployment(ctx, gcpProvider)
+	if err != nil {
+		return err
+	}
 
-    m := display.NewDisplayModel(deployment)
-    prog := display.GetGlobalProgramFunc()
-    prog.InitProgram(m)
+	m := display.NewDisplayModel(deployment)
+	prog := display.GetGlobalProgramFunc()
+	prog.InitProgram(m)
 
-    // Enable required APIs before starting resource polling
-    l.Info("Enabling required APIs...")
-    if err := gcpProvider.EnableRequiredAPIs(ctx); err != nil {
-        l.Error(fmt.Sprintf("Failed to enable required APIs: %v", err))
-        return err
-    }
-    l.Info("Required APIs enabled successfully")
+	go startResourcePolling(ctx, gcpProvider)
 
-    pollingErrChan := startResourcePolling(ctx, gcpProvider)
+	deploymentErr := runDeploymentAsync(ctx, gcpProvider, cancel)
 
-    _, err = prog.Run()
-    if err != nil {
-        l.Error(fmt.Sprintf("Error running program: %v", err))
-        cancel()
-        return err
-    }
+	handleDeploymentCompletion(ctx, m, deploymentErr)
 
-    deploymentErr := runDeploymentAsync(ctx, gcpProvider, cancel)
-
-    handleDeploymentCompletion(ctx, m, deploymentErr, pollingErrChan)
-
-    return nil
-}
-
-func initializeConfig(_ *cobra.Command) error {
-	common.SetDefaultConfigurations("gcp")
 	return nil
 }
 
@@ -160,6 +138,7 @@ func runDeploymentAsync(
 	cancel context.CancelFunc,
 ) error {
 	l := logger.Get()
+	prog := display.GetGlobalProgramFunc()
 	deploymentDone := make(chan struct{})
 	var deploymentErr error
 
@@ -178,6 +157,13 @@ func runDeploymentAsync(
 		}
 	}()
 
+	_, err := prog.Run()
+	if err != nil {
+		l.Error(fmt.Sprintf("Error running program: %v", err))
+		cancel()
+		return err
+	}
+
 	select {
 	case <-deploymentDone:
 	case <-ctx.Done():
@@ -189,38 +175,46 @@ func runDeploymentAsync(
 }
 
 func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
-    l := logger.Get()
-    prog := display.GetGlobalProgramFunc()
-    m := display.GetGlobalModelFunc()
-    if m == nil || m.Deployment == nil {
-        return fmt.Errorf("display model or deployment is nil")
-    }
+	l := logger.Get()
+	prog := display.GetGlobalProgramFunc()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
 
-    if err := ensureProject(ctx, gcpProvider); err != nil {
-        return err
-    }
+	if err := ensureProject(ctx, gcpProvider); err != nil {
+		return err
+	}
 
-    if err := createResources(ctx, gcpProvider, m); err != nil {
-        return err
-    }
+	// Enable required APIs before starting resource polling
+	l.Info("Enabling required APIs...")
+	if err := gcpProvider.EnableRequiredAPIs(ctx); err != nil {
+		l.Error(fmt.Sprintf("Failed to enable required APIs: %v", err))
+		return err
+	}
+	l.Info("Required APIs enabled successfully")
 
-    if err := provisionMachines(ctx, gcpProvider, m); err != nil {
-        return err
-    }
+	if err := createResources(ctx, gcpProvider, m); err != nil {
+		return err
+	}
 
-    if err := provisionBacalhauCluster(ctx, gcpProvider, m); err != nil {
-        return err
-    }
+	if err := provisionMachines(ctx, gcpProvider, m); err != nil {
+		return err
+	}
 
-    if err := finalizeDeployment(ctx, gcpProvider); err != nil {
-        return err
-    }
+	if err := provisionBacalhauCluster(ctx, gcpProvider, m); err != nil {
+		return err
+	}
 
-    l.Info("Deployment finalized")
-    time.Sleep(RetryTimeout)
-    prog.Quit()
+	if err := finalizeDeployment(ctx, gcpProvider); err != nil {
+		return err
+	}
 
-    return nil
+	l.Info("Deployment finalized")
+	time.Sleep(RetryTimeout)
+	prog.Quit()
+
+	return nil
 }
 
 func ensureProject(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
@@ -351,7 +345,6 @@ func handleDeploymentCompletion(
 	ctx context.Context,
 	m *display.DisplayModel,
 	deploymentErr error,
-	pollingErrChan <-chan error,
 ) {
 	writeConfig()
 

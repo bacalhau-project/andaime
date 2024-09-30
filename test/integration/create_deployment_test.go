@@ -11,12 +11,12 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bacalhau-project/andaime/cmd"
-	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -25,9 +25,17 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 
+	"github.com/bacalhau-project/andaime/cmd/beta/azure"
+	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
+
+	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
+	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
+
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
 var (
@@ -97,7 +105,8 @@ func (s *IntegrationTestSuite) SetupTest() {
 	os.WriteFile(f.Name(), []byte(configContent), 0o644)
 
 	s.viperConfigFile = f.Name()
-	viper.SetConfigFile(s.viperConfigFile)
+	cmd.SetConfigFile(s.viperConfigFile)   // Set the config file for the root command
+	viper.SetConfigFile(s.viperConfigFile) // Also set it for Viper directly
 
 	s.setupCommonConfig()
 	s.setupMockClusterDeployer()
@@ -124,12 +133,19 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 		viper.Set("azure.subscription_id", "4a45a76b-5754-461d-84a1-f5e47b0a7198")
 		viper.Set("azure.default_count_per_zone", 1)
 		viper.Set("azure.default_location", "eastus2")
-		viper.Set("azure.default_machine_type", "Standard_DS5_v2")
+		viper.Set("azure.default_machine_type", "Standard_D4s_v5")
 		viper.Set("azure.resource_group_location", "eastus2")
 		viper.Set("azure.default_disk_size_gb", 30)
 		viper.Set("azure.machines", []interface{}{
 			map[string]interface{}{
-				"location": "eastus",
+				"location": "eastus2",
+				"parameters": map[string]interface{}{
+					"count":        1,
+					"orchestrator": true,
+				},
+			},
+			map[string]interface{}{
+				"location": "westus",
 				"parameters": map[string]interface{}{
 					"count": 1,
 				},
@@ -147,6 +163,13 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 		viper.Set("gcp.machines", []interface{}{
 			map[string]interface{}{
 				"location": "us-central1-a",
+				"parameters": map[string]interface{}{
+					"count":        1,
+					"orchestrator": true,
+				},
+			},
+			map[string]interface{}{
+				"location": "us-central1-b",
 				"parameters": map[string]interface{}{
 					"count": 1,
 				},
@@ -204,10 +227,11 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 		name     string
 		provider models.DeploymentType
 	}{
-		{"Azure", models.DeploymentTypeAzure},
-		{"GCP", models.DeploymentTypeGCP},
+		{"azure", models.DeploymentTypeAzure},
+		{"gcp", models.DeploymentTypeGCP},
 	}
 
+	var err error
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			s.SetupTest()
@@ -217,18 +241,142 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 			viper.Set("general.project_prefix", deploymentName)
 
 			m := display.GetGlobalModelFunc()
-			m.Deployment, _ = models.NewDeployment()
-			m.Deployment.DeploymentType = tt.provider
-			m.Deployment.Name = deploymentName
+			m.Deployment = &models.Deployment{
+				DeploymentType: tt.provider,
+				Name:           deploymentName,
+			}
+
+			var providerCmd *cobra.Command
+			var createDeploymentCmd *cobra.Command
+
+			switch tt.provider {
+			case models.DeploymentTypeAzure:
+				providerCmd = azure.GetAzureCmd()
+				createDeploymentCmd = azure.GetAzureCreateDeploymentCmd()
+				createDeploymentCmd.SetContext(context.Background())
+
+				s.azureProvider, err = azure_provider.NewAzureProviderFunc(
+					context.Background(),
+					viper.GetString("azure.subscription_id"),
+				)
+				s.Require().NoError(err)
+
+				mockPoller := new(MockPoller)
+				mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
+					Return(armresources.DeploymentsClientCreateOrUpdateResponse{
+						DeploymentExtended: testdata.FakeDeployment(),
+					}, nil)
+
+				mockAzureClient := new(azure_mock.MockAzureClienter)
+				mockAzureClient.On("ValidateMachineType",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(true, nil)
+				mockAzureClient.On("GetOrCreateResourceGroup",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(testdata.FakeResourceGroup(), nil)
+				mockAzureClient.On("DeployTemplate",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(mockPoller, nil)
+				mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
+					Return(testdata.FakeVirtualMachine(), nil)
+				mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
+					Return(testdata.FakeNetworkInterface(), nil)
+				mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
+					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
+
+				azure_provider.NewAzureProviderFunc = func(ctx context.Context,
+					subscriptionID string) (*azure_provider.AzureProvider, error) {
+					return s.azureProvider, nil
+				}
+				azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interface.AzureClienter, error) {
+					return mockAzureClient, nil
+				}
+				err = azure.ExecuteCreateDeployment(createDeploymentCmd, []string{})
+				s.Require().NoError(err)
+			case models.DeploymentTypeGCP:
+				providerCmd = gcp.GetGCPCmd()
+				createDeploymentCmd = gcp.GetGCPCreateDeploymentCmd()
+				createDeploymentCmd.SetContext(context.Background())
+
+				mockGCPClient := new(gcp_mock.MockGCPClienter)
+				mockGCPClient.On("IsAPIEnabled", mock.Anything, mock.Anything, mock.Anything).
+					Return(true, nil)
+				mockGCPClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+					Return(true, nil)
+				mockGCPClient.On("EnsureProject",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return("test-1292-gcp", nil)
+				mockGCPClient.On("EnableAPI",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(nil)
+				mockGCPClient.On("CreateFirewallRules",
+					mock.Anything,
+					mock.Anything,
+				).Return(nil)
+				mockGCPClient.On("CreateVM",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(testdata.FakeGCPInstance(), nil)
+
+				s.gcpProvider, err = gcp_provider.NewGCPProvider(
+					context.Background(),
+					viper.GetString("gcp.organization_id"),
+					viper.GetString("gcp.billing_account_id"),
+				)
+				s.Require().NoError(err)
+
+				gcp_provider.NewGCPClientFunc = func(ctx context.Context,
+					organizationID string,
+				) (gcp_interface.GCPClienter, func(), error) {
+					return s.gcpProvider.GetGCPClient(), func() {}, nil
+				}
+
+				s.gcpProvider.SetGCPClient(mockGCPClient)
+
+				machine, err := models.NewMachine(
+					tt.provider,
+					"us-central1-a",
+					"n2-standard-2",
+					30,
+					models.CloudSpecificInfo{},
+				)
+				s.Require().NoError(err)
+				machine.SetOrchestrator(true)
+				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
+
+				gcp_provider.NewGCPProviderFunc = func(ctx context.Context,
+					organizationID, billingAccountID string,
+				) (*gcp_provider.GCPProvider, error) {
+					return s.gcpProvider, nil
+				}
+
+				err = gcp.ExecuteCreateDeployment(createDeploymentCmd, []string{})
+				s.Require().NoError(err)
+			}
 
 			rootCmd := cmd.GetRootCommandForTest()
-			gcpCmd := gcp.GetGCPCmd()
-			rootCmd.AddCommand(gcpCmd)
 
-			createDeploymentCmd := gcp.GetGCPCreateDeploymentCmd()
-			gcpCmd.AddCommand(createDeploymentCmd)
+			rootCmd.AddCommand(providerCmd)
+			providerCmd.AddCommand(createDeploymentCmd)
 
-			rootCmd.SetArgs([]string{"gcp", "create-deployment", "--config", s.viperConfigFile})
+			rootCmd.SetArgs(
+				[]string{tt.name, "create-deployment", "--config", s.viperConfigFile},
+			)
 
 			err := rootCmd.Execute()
 			s.Require().NoError(err)

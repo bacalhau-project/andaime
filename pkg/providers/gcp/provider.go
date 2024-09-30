@@ -139,17 +139,9 @@ func (p *GCPProvider) EnsureProject(
 		)
 	}
 
-	// Check for the specific permission before attempting to create the project
-	err := p.GetGCPClient().CheckSpecificPermission(ctx, "resourcemanager.projects.get")
-	if err != nil {
-		l := logger.Get()
-		l.Errorf("Permission 'resourcemanager.projects.get' is not granted. Error: %v", err)
-		l.Info("Please ensure that your GCP account has the 'resourcemanager.projects.get' permission.")
-		return fmt.Errorf("missing required permission: %w", err)
-	}
-
 	// Create the project
-	createdProjectID, err := p.GetGCPClient().EnsureProject(ctx, m.Deployment.GetProjectID())
+	createdProjectID, err := p.GetGCPClient().
+		EnsureProject(ctx, m.Deployment.GCP.OrganizationID, m.Deployment.GetProjectID())
 	if err != nil {
 		for _, machine := range m.Deployment.Machines {
 			machine.SetMachineResourceState(

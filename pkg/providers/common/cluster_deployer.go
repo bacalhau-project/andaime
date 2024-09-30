@@ -36,58 +36,68 @@ func (cd *ClusterDeployer) SetSSHClient(client sshutils.SSHClienter) {
 	cd.sshClient = client
 }
 
-func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
+// func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context) error {
+// 	m := display.GetGlobalModelFunc()
 
-	var errGroup errgroup.Group
-	for _, machine := range m.Deployment.Machines {
-		internalMachine := machine
-		errGroup.Go(func() error {
-			goRoutineID := goroutine.RegisterGoroutine(
-				fmt.Sprintf("ProvisionPackagesOnMachine-%s", internalMachine.GetName()),
-			)
-			defer goroutine.DeregisterGoroutine(goRoutineID)
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				internalMachine.GetName(),
-				models.AzureResourceTypeVM,
-				models.ResourceStatePending,
-				"Provisioning Docker & packages on machine",
-			))
-			err := cd.ProvisionPackagesOnMachine(ctx, internalMachine.GetName())
-			if err != nil {
-				m.UpdateStatus(models.NewDisplayStatusWithText(
-					internalMachine.GetName(),
-					models.AzureResourceTypeVM,
-					models.ResourceStateFailed,
-					fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
-				))
-				return fmt.Errorf(
-					"failed to provision packages on machine %s: %v",
-					internalMachine.GetName(),
-					err,
-				)
-			}
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				internalMachine.GetName(),
-				models.AzureResourceTypeVM,
-				models.ResourceStateSucceeded,
-				"Provisioned Docker & packages on machine",
-			))
-			return nil
-		})
-	}
-	if err := errGroup.Wait(); err != nil {
-		return fmt.Errorf("failed to provision packages on all machines: %v", err)
-	}
+// 	var errGroup errgroup.Group
+// 	for _, machine := range m.Deployment.Machines {
+// 		internalMachine := machine
+// 		errGroup.Go(func() error {
+// 			goRoutineID := goroutine.RegisterGoroutine(
+// 				fmt.Sprintf("ProvisionPackagesOnMachine-%s", internalMachine.GetName()),
+// 			)
+// 			defer goroutine.DeregisterGoroutine(goRoutineID)
 
-	for _, machine := range m.Deployment.GetMachines() {
-		for _, resource := range machine.GetMachineResources() {
-			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
-		}
-	}
+// 			// Doing this because for some reason, certain resources are not registering
+// 			// as done, and it's irritating to see that.
+// 			for _, resource := range internalMachine.GetMachineResources() {
+// 				internalMachine.SetMachineResourceState(
+// 					resource.ResourceName,
+// 					models.ResourceStateSucceeded,
+// 				)
+// 			}
 
-	return nil
-}
+// 			m.UpdateStatus(models.NewDisplayStatusWithText(
+// 				internalMachine.GetName(),
+// 				models.AzureResourceTypeVM,
+// 				models.ResourceStatePending,
+// 				"Provisioning Docker & packages on machine",
+// 			))
+// 			err := cd.ProvisionPackagesOnMachine(ctx, internalMachine.GetName())
+// 			if err != nil {
+// 				m.UpdateStatus(models.NewDisplayStatusWithText(
+// 					internalMachine.GetName(),
+// 					models.AzureResourceTypeVM,
+// 					models.ResourceStateFailed,
+// 					fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
+// 				))
+// 				return fmt.Errorf(
+// 					"failed to provision packages on machine %s: %v",
+// 					internalMachine.GetName(),
+// 					err,
+// 				)
+// 			}
+// 			m.UpdateStatus(models.NewDisplayStatusWithText(
+// 				internalMachine.GetName(),
+// 				models.AzureResourceTypeVM,
+// 				models.ResourceStateSucceeded,
+// 				"Provisioned Docker & packages on machine",
+// 			))
+// 			return nil
+// 		})
+// 	}
+// 	if err := errGroup.Wait(); err != nil {
+// 		return fmt.Errorf("failed to provision packages on all machines: %v", err)
+// 	}
+
+// 	for _, machine := range m.Deployment.GetMachines() {
+// 		for _, resource := range machine.GetMachineResources() {
+// 			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
+// 		}
+// 	}
+
+// 	return nil
+// }
 
 func (cd *ClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 	l := logger.Get()

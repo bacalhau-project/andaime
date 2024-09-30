@@ -22,6 +22,7 @@ type GCPClienter interface {
 
 	EnsureProject(
 		ctx context.Context,
+		organizationID string,
 		projectID string,
 	) (string, error)
 	DestroyProject(ctx context.Context, projectID string) error
@@ -52,10 +53,6 @@ type GCPClienter interface {
 		ctx context.Context,
 		projectID string,
 	) (*iam.ServiceAccount, error)
-	CreateServiceAccountKey(
-		ctx context.Context,
-		projectID, serviceAccountEmail string,
-	) (*iam.ServiceAccountKey, error)
 	WaitForRegionalOperation(
 		ctx context.Context,
 		project, region, operation string,
@@ -82,4 +79,7 @@ type GCPClienter interface {
 	EnsureVPCNetwork(ctx context.Context, networkName string) error
 	EnsureFirewallRules(ctx context.Context, networkName string) error
 	// EnsureStorageBucket(ctx context.Context, location, bucketName string) error
+
+	// Add this new method
+	ProjectExists(ctx context.Context, projectID string) (bool, error)
 }

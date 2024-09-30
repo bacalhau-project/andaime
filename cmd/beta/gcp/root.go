@@ -8,10 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/option"
@@ -26,40 +24,6 @@ var GCPCmd = &cobra.Command{
 	Short: "GCP-related commands",
 	Long:  `Commands for interacting with Google Cloud Platform (GCP).`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
-
-		// Check both individual and application default credentials
-		if err := checkGCPAuthentication(ctx); err != nil {
-			cmd.SilenceUsage = true
-			cmd.SilenceErrors = true
-			return handleGCPError(err)
-		}
-
-		organizationID := viper.GetString("gcp.organization_id")
-		if organizationID == "" {
-			fmt.Printf(
-				"'organization_id' is not set in the configuration file: %s\n",
-				viper.ConfigFileUsed(),
-			)
-			return nil
-		}
-
-		m := display.GetGlobalModelFunc()
-		if !viper.IsSet("gcp.billing_account_id") {
-			fmt.Printf(
-				"'gcp.billing_account_id' is not set in the configuration file: %s\n",
-				viper.ConfigFileUsed(),
-			)
-			return nil
-		}
-		billingAccountID := viper.GetString("gcp.billing_account_id")
-		m.Deployment.GCP.BillingAccountID = billingAccountID
-
-		// Check required APIs on the admin project (what this is executing on)
-		if err := checkRequiredAPIs(ctx, organizationID); err != nil {
-			return err
-		}
-
 		return nil
 	},
 }
@@ -73,7 +37,7 @@ func InitializeCommands() {
 		GCPCmd.AddCommand(GetGCPCreateDeploymentCmd())
 		GCPCmd.AddCommand(GetGCPCreateProjectCmd())
 		GCPCmd.AddCommand(GetGCPCreateVMCmd())
-		GCPCmd.AddCommand(GetGCPDestroyProjectCmd())
+		GCPCmd.AddCommand(GetGCPDestroyCmd())
 	})
 }
 
@@ -165,7 +129,7 @@ in the configuration file and ensure you have the necessary permissions.`,
 	return err
 }
 
-func checkRequiredAPIs(ctx context.Context, organizationID string) error {
+func checkRequiredAPIs(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
 	requiredAPIs := []string{
 		"compute.googleapis.com",
 		"cloudresourcemanager.googleapis.com",
@@ -212,16 +176,11 @@ func checkRequiredAPIs(ctx context.Context, organizationID string) error {
 	} else {
 		adminProjectID = commandlineProvidedProjectID
 	}
-	gcpClient, cleanup, err := gcp.NewGCPClient(ctx, organizationID)
-	if err != nil {
-		return fmt.Errorf("failed to create GCP client: %v", err)
-	}
-	defer cleanup()
 
 	disabledAPIs := []string{}
 
 	for _, api := range requiredAPIs {
-		enabled, err := gcpClient.IsAPIEnabled(ctx, adminProjectID, api)
+		enabled, err := gcpProvider.GetGCPClient().IsAPIEnabled(ctx, adminProjectID, api)
 		if err != nil {
 			return fmt.Errorf("failed to check API status: %v", err)
 		}
