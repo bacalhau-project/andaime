@@ -539,21 +539,6 @@ func (c *LiveGCPClient) testProjectPermissions(
 	}, b)
 }
 
-// Helper function to find missing permissions
-func diffPermissions(requested, granted []string) []string {
-	grantedSet := make(map[string]struct{})
-	for _, p := range granted {
-		grantedSet[p] = struct{}{}
-	}
-
-	var missing []string
-	for _, p := range requested {
-		if _, ok := grantedSet[p]; !ok {
-			missing = append(missing, p)
-		}
-	}
-	return missing
-}
 
 func (c *LiveGCPClient) DestroyProject(ctx context.Context, projectID string) error {
 	log.Printf("DEBUG: Attempting to destroy project: %s", projectID)
