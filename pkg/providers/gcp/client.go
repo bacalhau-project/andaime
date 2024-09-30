@@ -6,7 +6,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
+	"github.com/cenkalti/backoff/v4"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -189,4 +191,102 @@ func callNewClientFunc(
 
 func isNotFoundError(err error) bool {
 	return status.Code(err) == codes.NotFound
+}
+
+func (c *LiveGCPClient) testProjectPermissions(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	l.Infof("Testing permissions and resource creation for project %s", projectID)
+
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = maxBackOffTime
+
+	return backoff.Retry(func() error {
+		if err := c.TestComputeEngineAPI(ctx, projectID); err != nil {
+			return err
+		}
+		if err := c.TestCloudStorageAPI(ctx, projectID); err != nil {
+			return err
+		}
+		if err := c.TestIAMPermissions(ctx, projectID); err != nil {
+			return err
+		}
+		if err := c.TestServiceUsageAPI(ctx, projectID); err != nil {
+			return err
+		}
+		return nil
+	}, b)
+}
+
+func (c *LiveGCPClient) TestComputeEngineAPI(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	l.Infof("Testing Compute Engine API for project %s", projectID)
+	
+	// Test listing instances
+	req := &compute.ListInstancesRequest{
+		Project: projectID,
+		Zone:    "us-central1-a", // You might want to make this configurable
+	}
+	
+	it := c.computeClient.List(ctx, req)
+	_, err := it.Next()
+	if err != nil && err != iterator.Done {
+		return fmt.Errorf("failed to list instances: %v", err)
+	}
+	
+	l.Infof("Successfully tested Compute Engine API for project %s", projectID)
+	return nil
+}
+
+func (c *LiveGCPClient) TestCloudStorageAPI(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	l.Infof("Testing Cloud Storage API for project %s", projectID)
+	
+	// Test listing buckets
+	it := c.storageClient.Buckets(ctx, projectID)
+	_, err := it.Next()
+	if err != nil && err != iterator.Done {
+		return fmt.Errorf("failed to list buckets: %v", err)
+	}
+	
+	l.Infof("Successfully tested Cloud Storage API for project %s", projectID)
+	return nil
+}
+
+func (c *LiveGCPClient) TestIAMPermissions(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	l.Infof("Testing IAM permissions for project %s", projectID)
+	
+	// Test listing service accounts
+	resource := fmt.Sprintf("projects/%s", projectID)
+	req := &iam.ListServiceAccountsRequest{
+		Name: resource,
+	}
+	
+	_, err := c.iamService.Projects.ServiceAccounts.List(resource).Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to list service accounts: %v", err)
+	}
+	
+	l.Infof("Successfully tested IAM permissions for project %s", projectID)
+	return nil
+}
+
+func (c *LiveGCPClient) TestServiceUsageAPI(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	l.Infof("Testing Service Usage API for project %s", projectID)
+	
+	// Test listing enabled services
+	req := &serviceusagepb.ListServicesRequest{
+		Parent: fmt.Sprintf("projects/%s", projectID),
+		Filter: "state:ENABLED",
+	}
+	
+	it := c.serviceUsageClient.ListServices(ctx, req)
+	_, err := it.Next()
+	if err != nil && err != iterator.Done {
+		return fmt.Errorf("failed to list enabled services: %v", err)
+	}
+	
+	l.Infof("Successfully tested Service Usage API for project %s", projectID)
+	return nil
 }
