@@ -366,6 +366,12 @@ func (c *LiveGCPClient) EnsureProject(
 
 func (c *LiveGCPClient) enableRequiredAPIs(ctx context.Context, projectID string) error {
 	l := logger.Get()
+
+	// Check project access before enabling APIs
+	if err := c.CheckProjectAccess(ctx, projectID); err != nil {
+		return fmt.Errorf("failed to access project: %v", err)
+	}
+
 	requiredAPIs := []string{
 		"compute.googleapis.com",
 		"cloudasset.googleapis.com",
@@ -818,7 +824,7 @@ func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string
 	l.Debugf("Full service name: %s", serviceName)
 
 	retryBackoff := backoff.NewExponentialBackOff()
-	retryBackoff.MaxElapsedTime = 2 * time.Minute
+	retryBackoff.MaxElapsedTime = 5 * time.Minute // Increased from 2 to 5 minutes
 
 	l.Debugf("Starting API enablement with max retry time of %v", retryBackoff.MaxElapsedTime)
 
@@ -837,9 +843,17 @@ func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string
 				l.Debugf("Retry attempt %d for API %s due to context cancellation", attempt, apiName)
 				return err // Retry on context canceled
 			}
+			if status.Code(err) == codes.PermissionDenied {
+				l.Errorf("Permission denied while enabling API %s: %v", apiName, err)
+				return backoff.Permanent(err) // Don't retry on permission denied
+			}
+			if status.Code(err) == codes.NotFound {
+				l.Errorf("Project or API not found while enabling API %s: %v", apiName, err)
+				return backoff.Permanent(err) // Don't retry on not found
+			}
 			lastErr = fmt.Errorf("failed to enable API %s: %v", apiName, err)
 			l.Debugf("API enablement failed on attempt %d: %v", attempt, lastErr)
-			return backoff.Permanent(lastErr) // Don't retry on other errors
+			return err // Retry on other errors
 		}
 		l.Debugf("API %s successfully enabled on attempt %d", apiName, attempt)
 		return nil
@@ -847,10 +861,10 @@ func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string
 
 	if err != nil {
 		if lastErr != nil {
-			l.Debugf("API enablement failed after %d attempts: %v", attempt, lastErr)
+			l.Errorf("API enablement failed after %d attempts: %v", attempt, lastErr)
 			return lastErr
 		}
-		l.Debugf("API enablement failed after %d attempts: %v", attempt, err)
+		l.Errorf("API enablement failed after %d attempts: %v", attempt, err)
 		return fmt.Errorf("failed to enable API %s after retries: %v", apiName, err)
 	}
 
@@ -1757,5 +1771,23 @@ func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	}
 
 	l.Debug("All required permissions are granted")
+	return nil
+}
+func (c *LiveGCPClient) CheckProjectAccess(ctx context.Context, projectID string) error {
+	l := logger.Get()
+	l.Debugf("Checking access to project: %s", projectID)
+
+	service, err := cloudresourcemanager.NewService(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create resource manager client: %v", err)
+	}
+
+	_, err = service.Projects.Get(projectID).Do()
+	if err != nil {
+		l.Errorf("Failed to access project %s: %v", projectID, err)
+		return fmt.Errorf("failed to access project %s: %v", projectID, err)
+	}
+
+	l.Infof("Successfully accessed project: %s", projectID)
 	return nil
 }
