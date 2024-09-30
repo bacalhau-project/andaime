@@ -222,7 +222,7 @@ func (c *LiveGCPClient) TestComputeEngineAPI(ctx context.Context, projectID stri
 	l.Infof("Testing Compute Engine API for project %s", projectID)
 	
 	// Test listing instances
-	req := &compute.ListInstancesRequest{
+	req := &computepb.ListInstancesRequest{
 		Project: projectID,
 		Zone:    "us-central1-a", // You might want to make this configurable
 	}
