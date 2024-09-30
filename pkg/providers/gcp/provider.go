@@ -204,8 +204,8 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil || m.Deployment.GCP == nil ||
 		m.Deployment.GCP.ProjectID == "" {
-		l.Errorf("global model or deployment is nil")
-		return nil, fmt.Errorf("global model or deployment is nil")
+		l.Debug("Project ID not set yet, skipping resource polling")
+		return nil, nil
 	}
 
 	resources, err := p.GetGCPClient().ListAllAssetsInProject(ctx, m.Deployment.GCP.ProjectID)
@@ -226,6 +226,20 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
+		
+		// Wait for the project ID to be set
+		for {
+			if m := display.GetGlobalModelFunc(); m != nil && m.Deployment != nil && m.Deployment.GCP != nil && m.Deployment.GCP.ProjectID != "" {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+				// Wait and check again
+			}
+		}
+
 		ticker := time.NewTicker(10 * time.Second) // Poll every 10 seconds
 		defer ticker.Stop()
 		for {
