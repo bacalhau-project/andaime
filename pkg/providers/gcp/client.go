@@ -9,6 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/cenkalti/backoff/v4"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,10 +19,13 @@ import (
 	compute "cloud.google.com/go/compute/apiv1"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	serviceusage "cloud.google.com/go/serviceusage/apiv1"
+	serviceusagepb "cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
 	"cloud.google.com/go/storage"
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iam/v1"
+	computepb "google.golang.org/genproto/googleapis/cloud/compute/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -289,4 +293,117 @@ func (c *LiveGCPClient) TestServiceUsageAPI(ctx context.Context, projectID strin
 	
 	l.Infof("Successfully tested Service Usage API for project %s", projectID)
 	return nil
+}
+func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID, networkName string) error {
+	l := logger.Get()
+	l.Infof("Ensuring VPC network %s exists in project %s", networkName, projectID)
+
+	getReq := &computepb.GetNetworkRequest{
+		Project: projectID,
+		Network: networkName,
+	}
+
+	_, err := c.networksClient.Get(ctx, getReq)
+	if err == nil {
+		l.Infof("VPC network %s already exists in project %s", networkName, projectID)
+		return nil
+	}
+
+	if !isNotFoundError(err) {
+		return fmt.Errorf("error checking for existing network: %v", err)
+	}
+
+	createReq := &computepb.InsertNetworkRequest{
+		Project: projectID,
+		NetworkResource: &computepb.Network{
+			Name:                  &networkName,
+			AutoCreateSubnetworks: proto.Bool(true),
+		},
+	}
+
+	op, err := c.networksClient.Insert(ctx, createReq)
+	if err != nil {
+		return fmt.Errorf("error creating network: %v", err)
+	}
+
+	err = c.waitForOperation(ctx, projectID, op)
+	if err != nil {
+		return fmt.Errorf("error waiting for network creation: %v", err)
+	}
+
+	l.Infof("Successfully created VPC network %s in project %s", networkName, projectID)
+	return nil
+}
+func (c *LiveGCPClient) EnsureServiceAccount(ctx context.Context, projectID, serviceAccountName string) error {
+	l := logger.Get()
+	l.Infof("Ensuring service account %s exists in project %s", serviceAccountName, projectID)
+
+	fullServiceAccountName := fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", projectID, serviceAccountName, projectID)
+
+	_, err := c.iamService.Projects.ServiceAccounts.Get(fullServiceAccountName).Do()
+	if err == nil {
+		l.Infof("Service account %s already exists in project %s", serviceAccountName, projectID)
+		return nil
+	}
+
+	if !isNotFoundError(err) {
+		return fmt.Errorf("error checking for existing service account: %v", err)
+	}
+
+	createReq := &iam.CreateServiceAccountRequest{
+		AccountId: serviceAccountName,
+		ServiceAccount: &iam.ServiceAccount{
+			DisplayName: serviceAccountName,
+		},
+	}
+
+	_, err = c.iamService.Projects.ServiceAccounts.Create(fmt.Sprintf("projects/%s", projectID), createReq).Do()
+	if err != nil {
+		return fmt.Errorf("error creating service account: %v", err)
+	}
+
+	l.Infof("Successfully created service account %s in project %s", serviceAccountName, projectID)
+	return nil
+}
+func (c *LiveGCPClient) generateStartupScript() string {
+	script := `#!/bin/bash
+set -e
+
+# Update and install necessary packages
+apt-get update
+apt-get install -y docker.io
+
+# Start Docker service
+systemctl start docker
+systemctl enable docker
+
+# Pull and run your application container
+# Replace with your actual container image and run command
+docker pull your-container-image:latest
+docker run -d your-container-image:latest
+
+# Additional setup steps can be added here
+`
+	return script
+}
+
+func (c *LiveGCPClient) waitForOperation(ctx context.Context, projectID string, op *computepb.Operation) error {
+	for {
+		result, err := c.operationsClient.Wait(ctx, &computepb.WaitGlobalOperationRequest{
+			Project:   projectID,
+			Operation: *op.Name,
+		})
+		if err != nil {
+			return err
+		}
+
+		if result.Status == computepb.Operation_DONE {
+			if result.Error != nil {
+				return fmt.Errorf("operation failed: %v", result.Error)
+			}
+			return nil
+		}
+
+		time.Sleep(5 * time.Second)
+	}
 }
