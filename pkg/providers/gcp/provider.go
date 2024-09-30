@@ -265,42 +265,61 @@ func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
 
 // EnableRequiredAPIs enables all required GCP APIs for the project
 func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
+    l := logger.Get()
+    m := display.GetGlobalModelFunc()
 
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("global model or deployment is nil")
-	}
+    if m == nil || m.Deployment == nil {
+        return fmt.Errorf("global model or deployment is nil")
+    }
 
-	projectID := m.Deployment.GetProjectID()
-	if projectID == "" {
-		return fmt.Errorf("project ID is not set in the deployment")
-	}
+    projectID := m.Deployment.GetProjectID()
+    if projectID == "" {
+        return fmt.Errorf("project ID is not set in the deployment")
+    }
 
-	var apiEg errgroup.Group
-	for _, api := range GetRequiredAPIs() {
-		api := api
-		apiEg.Go(func() error {
-			for _, machine := range m.Deployment.Machines {
-				machine.SetMachineResourceState(api, models.ResourceStatePending)
-			}
-			err := p.GetGCPClient().EnableAPI(ctx, projectID, api)
-			if err != nil {
-				for _, machine := range m.Deployment.Machines {
-					machine.SetMachineResourceState(api, models.ResourceStateFailed)
-				}
-				return fmt.Errorf("failed to enable API %s: %v", api, err)
-			}
-			for _, machine := range m.Deployment.Machines {
-				machine.SetMachineResourceState(api, models.ResourceStateSucceeded)
-			}
-			return nil
-		})
-	}
-	if err := apiEg.Wait(); err != nil {
-		return fmt.Errorf("failed to enable APIs: %v", err)
-	}
+    l.Info(fmt.Sprintf("Enabling required APIs for project %s", projectID))
 
-	return nil
+    var apiEg errgroup.Group
+    for _, api := range GetRequiredAPIs() {
+        api := api
+        apiEg.Go(func() error {
+            for _, machine := range m.Deployment.Machines {
+                machine.SetMachineResourceState(api, models.ResourceStatePending)
+            }
+            
+            // Use backoff for enabling each API
+            b := backoff.NewExponentialBackOff()
+            b.MaxElapsedTime = 5 * time.Minute
+
+            err := backoff.Retry(func() error {
+                err := p.GetGCPClient().EnableAPI(ctx, projectID, api)
+                if err != nil {
+                    l.Warn(fmt.Sprintf("Failed to enable API %s, retrying: %v", api, err))
+                    return err
+                }
+                return nil
+            }, b)
+
+            if err != nil {
+                for _, machine := range m.Deployment.Machines {
+                    machine.SetMachineResourceState(api, models.ResourceStateFailed)
+                }
+                return fmt.Errorf("failed to enable API %s after retries: %v", api, err)
+            }
+            
+            for _, machine := range m.Deployment.Machines {
+                machine.SetMachineResourceState(api, models.ResourceStateSucceeded)
+            }
+            l.Info(fmt.Sprintf("Successfully enabled API: %s", api))
+            return nil
+        })
+    }
+    if err := apiEg.Wait(); err != nil {
+        return fmt.Errorf("failed to enable APIs: %v", err)
+    }
+
+    l.Info("All required APIs enabled successfully")
+    return nil
 }
 
 // EnableAPI enables a specific GCP API for the project
