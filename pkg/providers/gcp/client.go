@@ -818,34 +818,47 @@ func (c *LiveGCPClient) EnableAPI(ctx context.Context, projectID, apiName string
 	l.Infof("Enabling API %s for project %s", apiName, projectID)
 
 	serviceName := fmt.Sprintf("projects/%s/services/%s", projectID, apiName)
+	l.Debugf("Full service name: %s", serviceName)
 
 	retryBackoff := backoff.NewExponentialBackOff()
 	retryBackoff.MaxElapsedTime = 2 * time.Minute
 
+	l.Debugf("Starting API enablement with max retry time of %v", retryBackoff.MaxElapsedTime)
+
 	var lastErr error
+	attempt := 0
 	err := backoff.Retry(func() error {
+		attempt++
+		l.Debugf("Attempt %d to enable API %s", attempt, apiName)
+
 		_, err := c.serviceUsageClient.EnableService(ctx, &serviceusagepb.EnableServiceRequest{
 			Name: serviceName,
 		})
 		if err != nil {
 			if status.Code(err) == codes.Canceled {
 				l.Warnf("Context canceled while enabling API %s, retrying: %v", apiName, err)
+				l.Debugf("Retry attempt %d for API %s due to context cancellation", attempt, apiName)
 				return err // Retry on context canceled
 			}
 			lastErr = fmt.Errorf("failed to enable API %s: %v", apiName, err)
+			l.Debugf("API enablement failed on attempt %d: %v", attempt, lastErr)
 			return backoff.Permanent(lastErr) // Don't retry on other errors
 		}
+		l.Debugf("API %s successfully enabled on attempt %d", apiName, attempt)
 		return nil
 	}, retryBackoff)
 
 	if err != nil {
 		if lastErr != nil {
+			l.Debugf("API enablement failed after %d attempts: %v", attempt, lastErr)
 			return lastErr
 		}
+		l.Debugf("API enablement failed after %d attempts: %v", attempt, err)
 		return fmt.Errorf("failed to enable API %s after retries: %v", apiName, err)
 	}
 
 	l.Infof("Successfully enabled API: %s", apiName)
+	l.Debugf("API %s enabled after %d attempts", apiName, attempt)
 	return nil
 }
 
