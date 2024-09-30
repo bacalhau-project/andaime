@@ -197,29 +197,7 @@ func isNotFoundError(err error) bool {
 	return status.Code(err) == codes.NotFound
 }
 
-func (c *LiveGCPClient) testProjectPermissions(ctx context.Context, projectID string) error {
-	l := logger.Get()
-	l.Infof("Testing permissions and resource creation for project %s", projectID)
-
-	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = maxBackOffTime
-
-	return backoff.Retry(func() error {
-		if err := c.TestComputeEngineAPI(ctx, projectID); err != nil {
-			return err
-		}
-		if err := c.TestCloudStorageAPI(ctx, projectID); err != nil {
-			return err
-		}
-		if err := c.TestIAMPermissions(ctx, projectID); err != nil {
-			return err
-		}
-		if err := c.TestServiceUsageAPI(ctx, projectID); err != nil {
-			return err
-		}
-		return nil
-	}, b)
-}
+// Remove this function as it's already declared in client_project.go
 
 func (c *LiveGCPClient) TestComputeEngineAPI(ctx context.Context, projectID string) error {
 	l := logger.Get()
@@ -294,7 +272,7 @@ func (c *LiveGCPClient) TestServiceUsageAPI(ctx context.Context, projectID strin
 	l.Infof("Successfully tested Service Usage API for project %s", projectID)
 	return nil
 }
-func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID, networkName string) error {
+func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID string) error {
 	l := logger.Get()
 	l.Infof("Ensuring VPC network %s exists in project %s", networkName, projectID)
 
@@ -326,7 +304,7 @@ func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID, network
 		return fmt.Errorf("error creating network: %v", err)
 	}
 
-	err = c.waitForOperation(ctx, projectID, op)
+	err = c.waitForOperation(ctx, projectID, op.Proto())
 	if err != nil {
 		return fmt.Errorf("error waiting for network creation: %v", err)
 	}
@@ -397,7 +375,7 @@ func (c *LiveGCPClient) waitForOperation(ctx context.Context, projectID string, 
 			return err
 		}
 
-		if result.Status == computepb.Operation_DONE {
+		if *result.Status == computepb.Operation_DONE {
 			if result.Error != nil {
 				return fmt.Errorf("operation failed: %v", result.Error)
 			}
