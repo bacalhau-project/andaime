@@ -3,7 +3,6 @@ package gcp
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -42,49 +41,84 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		}
 	}()
 
-	configFile := viper.GetString("config")
-	if configFile == "" {
-		configFile = "./config.yaml"
+	configFile, _ := cmd.Flags().GetString("config")
+	if configFile != "" {
+		viper.SetConfigFile(configFile)
+		if err := viper.ReadInConfig(); err != nil {
+			return fmt.Errorf("failed to read configuration file: %w", err)
+		}
 	}
 
-	configFile, err := filepath.Abs(configFile)
+	if err := initializeConfig(cmd); err != nil {
+		return err
+	}
+
+	gcpProvider, err := initializeGCPProvider(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path for config file: %w", err)
+		return err
 	}
-	fmt.Println("Using config file:", configFile)
-	viper.SetConfigFile(configFile)
-	if err := viper.ReadInConfig(); err != nil {
-		return fmt.Errorf("failed to read configuration file: %w", err)
+
+	deployment, err := prepareDeployment(ctx, gcpProvider)
+	if err != nil {
+		return err
 	}
+
+	m := display.NewDisplayModel(deployment)
+	prog := display.GetGlobalProgramFunc()
+	prog.InitProgram(m)
+
+	pollingErrChan := startResourcePolling(ctx, gcpProvider)
+
+	_, err = prog.Run()
+	if err != nil {
+		l.Error(fmt.Sprintf("Error running program: %v", err))
+		cancel()
+	}
+
+	deploymentErr := runDeploymentAsync(ctx, gcpProvider, cancel)
+
+	handleDeploymentCompletion(ctx, m, deploymentErr, pollingErrChan)
+
+	return nil
+}
+
+func initializeConfig(_ *cobra.Command) error {
 	common.SetDefaultConfigurations("gcp")
+	return nil
+}
+
+func initializeGCPProvider(ctx context.Context) (*gcp_provider.GCPProvider, error) {
 	organizationID := viper.GetString("gcp.organization_id")
 	if organizationID == "" {
-		return fmt.Errorf("gcp.organization_id is not set in the configuration")
+		return nil, fmt.Errorf("gcp.organization_id is not set in the configuration")
 	}
 
 	billingAccountID := viper.GetString("gcp.billing_account_id")
 	if billingAccountID == "" {
-		return fmt.Errorf("gcp.billing_account_id is not set in the configuration")
+		return nil, fmt.Errorf("gcp.billing_account_id is not set in the configuration")
 	}
 
-	// Initialize the GCP provider
 	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
 		organizationID,
 		billingAccountID,
 	)
 	if err != nil {
-		l.Error(fmt.Sprintf("Failed to create GCP provider: %v", err))
-		return fmt.Errorf("failed to create GCP provider: %w", err)
+		return nil, fmt.Errorf("failed to create GCP provider: %w", err)
 	}
 
-	// Prepare the deployment
+	return gcpProvider, nil
+}
+
+func prepareDeployment(
+	ctx context.Context,
+	gcpProvider *gcp_provider.GCPProvider,
+) (*models.Deployment, error) {
 	deployment, err := gcpProvider.PrepareDeployment(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to prepare deployment: %w", err)
+		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
-	m := display.NewDisplayModel(deployment)
 	machines, locations, err := gcpProvider.ProcessMachinesConfig(ctx)
 	if err != nil {
 		if err.Error() == "no machines configuration found for provider gcp" {
@@ -92,27 +126,36 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 				`You can check the machine types available for a zone with the command: 
 gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 			)
-			return nil
+			return nil, nil
 		}
-		return fmt.Errorf("failed to process machines config: %w", err)
+		return nil, fmt.Errorf("failed to process machines config: %w", err)
 	}
-	m.Deployment.SetMachines(machines)
-	m.Deployment.SetLocations(locations)
+	deployment.SetMachines(machines)
+	deployment.SetLocations(locations)
 
-	prog := display.GetGlobalProgramFunc()
-	prog.InitProgram(m)
+	return deployment, nil
+}
 
+func startResourcePolling(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) <-chan error {
 	pollingErrChan := gcpProvider.StartResourcePolling(ctx)
 	go func() {
 		for err := range pollingErrChan {
 			if err != nil {
-				l.Error(fmt.Sprintf("Resource polling error: %v", err))
+				logger.Get().Error(fmt.Sprintf("Resource polling error: %v", err))
 			}
 		}
 	}()
+	return pollingErrChan
+}
 
-	var deploymentErr error
+func runDeploymentAsync(
+	ctx context.Context,
+	gcpProvider *gcp_provider.GCPProvider,
+	cancel context.CancelFunc,
+) error {
+	l := logger.Get()
 	deploymentDone := make(chan struct{})
+	var deploymentErr error
 
 	go func() {
 		defer close(deploymentDone)
@@ -124,18 +167,11 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 			deploymentErr = runDeployment(ctx, gcpProvider)
 			if deploymentErr != nil {
 				l.Error(fmt.Sprintf("Deployment failed: %v", deploymentErr))
-				cancel() // Cancel the context on error
+				cancel()
 			}
 		}
 	}()
 
-	_, err = prog.Run()
-	if err != nil {
-		l.Error(fmt.Sprintf("Error running program: %v", err))
-		cancel() // Cancel the context on error
-	}
-
-	// Wait for deployment to finish or context to be cancelled
 	select {
 	case <-deploymentDone:
 	case <-ctx.Done():
@@ -143,33 +179,7 @@ gcloud compute machine-types list --zones <ZONE> | jq -r '.[].name'`,
 		<-deploymentDone
 	}
 
-	// Write configuration to file
-	configFile = viper.ConfigFileUsed()
-	if configFile == "" {
-		l.Error("No configuration file found, could not write to file.")
-		return nil
-	}
-	if err := viper.WriteConfigAs(configFile); err != nil {
-		l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
-	} else {
-		l.Info(fmt.Sprintf("Configuration written to %s", configFile))
-	}
-
-	// Always print the final table, even if we force quit
-	fmt.Println(m.RenderFinalTable())
-
-	if deploymentErr != nil {
-		fmt.Println("Deployment failed, but configuration was written to file.")
-		fmt.Println("The deployment error was:")
-		fmt.Println(deploymentErr)
-	}
-
-	if err != nil {
-		fmt.Println("General (unknown) error running program:")
-		fmt.Println(err)
-	}
-
-	return nil
+	return deploymentErr
 }
 
 func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
@@ -180,34 +190,43 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
-	writeConfig := func() {
-		configFile := viper.ConfigFileUsed()
-		if configFile != "" {
-			if err := viper.WriteConfigAs(configFile); err != nil {
-				l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
-			} else {
-				l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
-			}
-		}
+	if err := checkRequiredAPIs(ctx, gcpProvider); err != nil {
+		return err
 	}
 
-	updateMachineConfig := func(machineName string) {
-		machine := m.Deployment.GetMachine(machineName)
-		if machine != nil {
-			viper.Set(
-				fmt.Sprintf(
-					"deployments.%s.gcp.%s.%s",
-					m.Deployment.UniqueID,
-					m.Deployment.GCP.ProjectID,
-					machineName,
-				),
-				models.MachineConfigToWrite(machine),
-			)
-			writeConfig()
-		}
+	if err := ensureProject(ctx, gcpProvider); err != nil {
+		return err
 	}
 
-	// Ensure project
+	if err := enableRequiredAPIs(ctx, gcpProvider); err != nil {
+		return err
+	}
+
+	if err := createResources(ctx, gcpProvider, m); err != nil {
+		return err
+	}
+
+	if err := provisionMachines(ctx, gcpProvider, m); err != nil {
+		return err
+	}
+
+	if err := provisionBacalhauCluster(ctx, gcpProvider, m); err != nil {
+		return err
+	}
+
+	if err := finalizeDeployment(ctx, gcpProvider); err != nil {
+		return err
+	}
+
+	l.Info("Deployment finalized")
+	time.Sleep(RetryTimeout)
+	prog.Quit()
+
+	return nil
+}
+
+func ensureProject(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
+	l := logger.Get()
 	l.Debug("Ensuring project")
 	err := gcpProvider.EnsureProject(ctx)
 	if err != nil {
@@ -215,8 +234,11 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 		return fmt.Errorf("failed to ensure project: %w", err)
 	}
 	writeConfig()
+	return nil
+}
 
-	// Enable required APIs
+func enableRequiredAPIs(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
+	l := logger.Get()
 	l.Debug("Enabling required APIs")
 	if err := gcpProvider.EnableRequiredAPIs(ctx); err != nil {
 		l.Error(fmt.Sprintf("Failed to enable required APIs: %v", err))
@@ -224,16 +246,28 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	}
 	l.Debug("Required APIs enabled successfully")
 	writeConfig()
+	return nil
+}
 
-	// Create resources
+func createResources(
+	ctx context.Context,
+	gcpProvider *gcp_provider.GCPProvider,
+	m *display.DisplayModel,
+) error {
 	if err := gcpProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
 	for _, machine := range m.Deployment.Machines {
-		updateMachineConfig(machine.GetName())
+		updateMachineConfig(m.Deployment, machine.GetName())
 	}
+	return nil
+}
 
-	// Provision machines
+func provisionMachines(
+	ctx context.Context,
+	gcpProvider *gcp_provider.GCPProvider,
+	m *display.DisplayModel,
+) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(m.Deployment.Machines))
 
@@ -249,7 +283,7 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 			machine := m.Deployment.GetMachine(machineName)
 			machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
 			machine.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateSucceeded)
-			updateMachineConfig(machineName)
+			updateMachineConfig(m.Deployment, machineName)
 		}(machine.GetName())
 	}
 
@@ -262,28 +296,77 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 		}
 	}
 
-	// Provision Bacalhau cluster
+	return nil
+}
+
+func provisionBacalhauCluster(
+	ctx context.Context,
+	gcpProvider *gcp_provider.GCPProvider,
+	m *display.DisplayModel,
+) error {
 	if err := gcpProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 	for _, machine := range m.Deployment.Machines {
 		machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
-		updateMachineConfig(machine.GetName())
+		updateMachineConfig(m.Deployment, machine.GetName())
 	}
-
-	// Finalize deployment
-	if err := gcpProvider.FinalizeDeployment(ctx); err != nil {
-		return fmt.Errorf("failed to finalize deployment: %w", err)
-	}
-
-	l.Info("Deployment finalized")
-	time.Sleep(RetryTimeout)
-	prog.Quit()
-
 	return nil
 }
 
-func init() {
-	createGCPDeploymentCmd.Flags().String("config", "", "config file path")
-	viper.BindPFlag("config", createGCPDeploymentCmd.Flags().Lookup("config"))
+func finalizeDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
+	if err := gcpProvider.FinalizeDeployment(ctx); err != nil {
+		return fmt.Errorf("failed to finalize deployment: %w", err)
+	}
+	return nil
+}
+
+func writeConfig() {
+	l := logger.Get()
+	configFile := viper.ConfigFileUsed()
+	if configFile != "" {
+		if err := viper.WriteConfigAs(configFile); err != nil {
+			l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+		} else {
+			l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
+		}
+	}
+}
+
+func updateMachineConfig(deployment *models.Deployment, machineName string) {
+	machine := deployment.GetMachine(machineName)
+	if machine != nil {
+		viper.Set(
+			fmt.Sprintf(
+				"deployments.%s.gcp.%s.%s",
+				deployment.UniqueID,
+				deployment.GCP.ProjectID,
+				machineName,
+			),
+			models.MachineConfigToWrite(machine),
+		)
+		writeConfig()
+	}
+}
+
+func handleDeploymentCompletion(
+	ctx context.Context,
+	m *display.DisplayModel,
+	deploymentErr error,
+	pollingErrChan <-chan error,
+) {
+	writeConfig()
+
+	fmt.Println(m.RenderFinalTable())
+
+	if deploymentErr != nil {
+		fmt.Println("Deployment failed, but configuration was written to file.")
+		fmt.Println("The deployment error was:")
+		fmt.Println(deploymentErr)
+	}
+
+	if ctx.Err() != nil {
+		fmt.Println("General (unknown) error running program:")
+		fmt.Println(ctx.Err())
+	}
 }

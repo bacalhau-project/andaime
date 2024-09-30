@@ -140,7 +140,7 @@ func (p *GCPProvider) EnsureProject(
 	}
 
 	// Create the project
-	createdProjectID, err := p.Client.EnsureProject(ctx, m.Deployment.GetProjectID())
+	createdProjectID, err := p.GetGCPClient().EnsureProject(ctx, m.Deployment.GetProjectID())
 	if err != nil {
 		for _, machine := range m.Deployment.Machines {
 			machine.SetMachineResourceState(
@@ -174,14 +174,14 @@ func (p *GCPProvider) DestroyProject(
 	ctx context.Context,
 	projectID string,
 ) error {
-	return p.Client.DestroyProject(ctx, projectID)
+	return p.GetGCPClient().DestroyProject(ctx, projectID)
 }
 
 // ListProjects lists all GCP projects
 func (p *GCPProvider) ListProjects(
 	ctx context.Context,
 ) ([]*resourcemanagerpb.Project, error) {
-	return p.Client.ListProjects(ctx, &resourcemanagerpb.ListProjectsRequest{})
+	return p.GetGCPClient().ListProjects(ctx, &resourcemanagerpb.ListProjectsRequest{})
 }
 
 // PrepareDeployment prepares the deployment configuration
@@ -201,7 +201,14 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 		return []interface{}{}, nil
 	}
 	l := logger.Get()
-	resources, err := p.Client.ListAllAssetsInProject(ctx, p.ProjectID)
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil || m.Deployment.GCP == nil ||
+		m.Deployment.GCP.ProjectID == "" {
+		l.Errorf("global model or deployment is nil")
+		return nil, fmt.Errorf("global model or deployment is nil")
+	}
+
+	resources, err := p.GetGCPClient().ListAllAssetsInProject(ctx, m.Deployment.GCP.ProjectID)
 	if err != nil {
 		l.Errorf("Failed to poll resources: %v", err)
 		return nil, err
@@ -248,12 +255,12 @@ func (p *GCPProvider) ListAllAssetsInProject(
 	ctx context.Context,
 	projectID string,
 ) ([]*assetpb.Asset, error) {
-	return p.Client.ListAllAssetsInProject(ctx, projectID)
+	return p.GetGCPClient().ListAllAssetsInProject(ctx, projectID)
 }
 
 // CheckAuthentication verifies GCP authentication
 func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
-	return p.Client.CheckAuthentication(ctx)
+	return p.GetGCPClient().CheckAuthentication(ctx)
 }
 
 // EnableRequiredAPIs enables all required GCP APIs for the project
@@ -276,7 +283,7 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 			for _, machine := range m.Deployment.Machines {
 				machine.SetMachineResourceState(api, models.ResourceStatePending)
 			}
-			err := p.Client.EnableAPI(ctx, projectID, api)
+			err := p.GetGCPClient().EnableAPI(ctx, projectID, api)
 			if err != nil {
 				for _, machine := range m.Deployment.Machines {
 					machine.SetMachineResourceState(api, models.ResourceStateFailed)
@@ -313,7 +320,7 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 	l.Infof("Checking API status: %s for project: %s", apiName, projectID)
 
 	// First, check if the API is already enabled
-	enabled, err := p.Client.IsAPIEnabled(ctx, projectID, apiName)
+	enabled, err := p.GetGCPClient().IsAPIEnabled(ctx, projectID, apiName)
 	if err != nil {
 		l.Warnf("Failed to check API status: %v", err)
 		return fmt.Errorf("failed to check API status: %v", err)
@@ -324,7 +331,7 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 
 	l.Infof("Attempting to enable API: %s for project: %s", apiName, projectID)
 
-	err = p.Client.EnableAPI(ctx, projectID, apiName)
+	err = p.GetGCPClient().EnableAPI(ctx, projectID, apiName)
 	if err != nil {
 		if strings.Contains(err.Error(), "permission denied") {
 			l.Warnf(
@@ -364,7 +371,7 @@ func (p *GCPProvider) CreateVPCNetwork(
 	// Define the operation to retry
 	operation := func() error {
 		l.Infof("Attempting to create VPC network %s...", networkName)
-		err := p.Client.CreateVPCNetwork(ctx, networkName)
+		err := p.GetGCPClient().CreateVPCNetwork(ctx, networkName)
 		if err != nil {
 			if strings.Contains(err.Error(), "Compute Engine API has not been used") {
 				l.Infof("Compute Engine API is not yet active. Retrying... (VPC)")
@@ -400,7 +407,7 @@ func (p *GCPProvider) CreateFirewallRules(
 	l := logger.Get()
 	l.Infof("Creating firewall rules for network: %s", networkName)
 
-	err := p.Client.CreateFirewallRules(ctx, networkName)
+	err := p.GetGCPClient().CreateFirewallRules(ctx, networkName)
 	if err != nil {
 		return fmt.Errorf("failed to create firewall rules: %v", err)
 	}
@@ -414,12 +421,12 @@ func (p *GCPProvider) CreateStorageBucket(
 	ctx context.Context,
 	bucketName string,
 ) error {
-	return p.Client.CreateStorageBucket(ctx, bucketName)
+	return p.GetGCPClient().CreateStorageBucket(ctx, bucketName)
 }
 
 // ListBillingAccounts lists all billing accounts associated with the GCP organization
 func (p *GCPProvider) ListBillingAccounts(ctx context.Context) ([]string, error) {
-	return p.Client.ListBillingAccounts(ctx)
+	return p.GetGCPClient().ListBillingAccounts(ctx)
 }
 
 // SetBillingAccount sets the billing account for the GCP project
@@ -435,7 +442,7 @@ func (p *GCPProvider) SetBillingAccount(
 		m.Deployment.GetProjectID(),
 	)
 
-	return p.Client.SetBillingAccount(
+	return p.GetGCPClient().SetBillingAccount(
 		ctx,
 		m.Deployment.GCP.BillingAccountID,
 	)
@@ -465,7 +472,7 @@ func (p *GCPProvider) GetVMExternalIP(
 	vmName string,
 	locationData map[string]string,
 ) (string, error) {
-	return p.Client.GetVMExternalIP(ctx, vmName, locationData)
+	return p.GetGCPClient().GetVMExternalIP(ctx, vmName, locationData)
 }
 
 // GCPVMConfig holds the configuration for a GCP VM
@@ -514,7 +521,7 @@ func (p *GCPProvider) EnsureVPCNetwork(
 	ctx context.Context,
 	vpcNetworkName string,
 ) error {
-	return p.Client.EnsureVPCNetwork(ctx, vpcNetworkName)
+	return p.GetGCPClient().EnsureVPCNetwork(ctx, vpcNetworkName)
 }
 
 // EnsureFirewallRules ensures that firewall rules are set for a network
@@ -522,7 +529,7 @@ func (p *GCPProvider) EnsureFirewallRules(
 	ctx context.Context,
 	networkName string,
 ) error {
-	return p.Client.EnsureFirewallRules(ctx, networkName)
+	return p.GetGCPClient().EnsureFirewallRules(ctx, networkName)
 }
 
 // GetClusterDeployer returns the current ClusterDeployer
@@ -540,7 +547,7 @@ func (p *GCPProvider) CreateVM(
 	ctx context.Context,
 	vmName string,
 ) (string, string, error) {
-	instance, err := p.Client.CreateVM(ctx, vmName)
+	instance, err := p.GetGCPClient().CreateVM(ctx, vmName)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create VM: %w", err)
 	}
