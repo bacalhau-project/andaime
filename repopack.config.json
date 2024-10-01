@@ -1,17 +1,50 @@
 {
+  "_copyright": "Copyright (c) 2024 Expanso oss@expanso.io",
+  "_license": "Licensed under the Apache2/MIT License",
+  "_path": "repopack.config.json",
   "output": {
-    "filePath": "repopack-andaime.txt",
-    "style": "plain",
-    "removeComments": false,
-    "removeEmptyLines": false,
-    "topFilesLength": 5,
-    "showLineNumbers": false
+    "filePath": "repopack-focused.txt"
   },
-  "include": [],
+  "include": [
+    "pkg/providers/*.go",
+    "pkg/models/*.go",
+    "cmd/**/*.go"
+  ],
+  "exclude": [
+    "vendor/*",
+    "node_modules/*",
+    "dist/*",
+    "build/*",
+    "tmp/*",
+    "temp/*",
+    "logs/*",
+    "coverage/*",
+    "test/*",
+    "tests/*",
+    "__tests__/*",
+    "__mocks__/*",
+    "mocks/*",
+    "docs/*",
+    "examples/*",
+    "scripts/*",
+    ".git/*",
+    ".github/*",
+    ".vscode/*",
+    ".idea/*"
+  ],
   "ignore": {
     "useGitignore": true,
     "useDefaultPatterns": true,
-    "customPatterns": []
+    "customPatterns": [
+      "*.md",
+      "*.txt",
+      "*.log",
+      "*.yaml",
+      "*.yml",
+      "*.toml",
+      "*.mod",
+      "*.sum"
+    ]
   },
   "security": {
     "enableSecurityCheck": true

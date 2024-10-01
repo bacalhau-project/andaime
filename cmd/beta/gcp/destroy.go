@@ -61,10 +61,6 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := initializeConfig(cmd); err != nil {
-		return err
-	}
-
 	deployments, err := getDeployments()
 	if err != nil {
 		return err
@@ -379,12 +375,4 @@ func retry(f func() error, attempts int, sleep time.Duration) (err error) {
 		fmt.Printf("Retrying after error: %v\n", err)
 	}
 	return fmt.Errorf("after %d attempts, last error: %s", attempts, err)
-}
-
-func initializeConfig(cmd *cobra.Command) error {
-	l := logger.Get()
-	// The config should already be initialized by the root command
-	// We can just log the config file being used
-	l.Debugf("Using config file: %s", viper.ConfigFileUsed())
-	return nil
 }

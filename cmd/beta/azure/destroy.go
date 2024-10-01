@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -16,10 +15,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/azure"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-)
-
-var (
-	configFileName = "config.yaml"
 )
 
 type ConfigDeployment struct {
@@ -30,18 +25,11 @@ type ConfigDeployment struct {
 	FullViperKey string
 }
 
-var DestroyCmd = &cobra.Command{
-	Use:   "destroy",
-	Short: "List and destroy Azure deployments",
-	Long: `List all active Azure deployments in config.yaml, 
-and allow the user to select one for destruction. Use --all to destroy all deployments.`,
-	RunE: runDestroy,
-}
-
 func GetAzureDestroyCmd() *cobra.Command {
 	destroyCmd := &cobra.Command{
 		Use:   "destroy",
 		Short: "Destroy Azure deployments",
+		Long:  `List and destroy Azure deployments from the configuration file.`,
 		RunE:  runDestroy,
 	}
 
@@ -192,53 +180,6 @@ func destroyAllDeployments(_ context.Context, deployments []ConfigDeployment, dr
 	return nil
 }
 
-func createAzureProvider(ctx context.Context) (*azure.AzureProvider, error) {
-	subscriptionID := viper.GetString("azure.subscription_id")
-	provider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Azure provider: %w", err)
-	}
-	if provider == nil {
-		return nil, fmt.Errorf("azure provider is nil after creation")
-	}
-	return provider, nil
-}
-
-func appendAndaimeDeployments(
-	deployments []ConfigDeployment,
-	resourceGroups []*armresources.ResourceGroup,
-) []ConfigDeployment {
-	for _, rg := range resourceGroups {
-		if isAndaimeDeployment(rg) && !isBeingDestroyed(rg) &&
-			!isAlreadyListed(deployments, *rg.Name) {
-			deployments = append(deployments, ConfigDeployment{
-				Name: *rg.Name,
-				Type: models.DeploymentTypeAzure,
-				ID:   *rg.Name,
-			})
-		}
-	}
-	return deployments
-}
-
-func isAndaimeDeployment(rg *armresources.ResourceGroup) bool {
-	createdBy, ok := rg.Tags["deployed-by"]
-	return ok && createdBy != nil && strings.EqualFold(*createdBy, "andaime")
-}
-
-func isBeingDestroyed(rg *armresources.ResourceGroup) bool {
-	return *rg.Properties.ProvisioningState == "Deleting"
-}
-
-func isAlreadyListed(deployments []ConfigDeployment, name string) bool {
-	for _, dep := range deployments {
-		if dep.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
 func selectDeployment(deployments []ConfigDeployment, flags struct {
 	name       string
 	index      int
@@ -313,21 +254,37 @@ func destroyAzureDeployment(ctx context.Context, dep ConfigDeployment, dryRun bo
 	}
 
 	fmt.Printf("   Destroying Azure resources\n")
-	err = azureProvider.DestroyResources(ctx, dep.ID)
-	if err != nil {
-		if strings.Contains(err.Error(), "ResourceGroupNotFound") {
-			fmt.Printf("   -- Resource group is already destroyed.\n")
-		} else {
-			return fmt.Errorf("failed to destroy Azure deployment %s: %w", dep.Name, err)
-		}
+	if dryRun {
+		fmt.Printf("   -- Dry run: Would destroy resource group %s\n", dep.ID)
 	} else {
-		fmt.Printf("   -- Started successfully\n")
-	}
+		err = azureProvider.DestroyResources(ctx, dep.ID)
+		if err != nil {
+			if strings.Contains(err.Error(), "ResourceGroupNotFound") {
+				fmt.Printf("   -- Resource group is already destroyed.\n")
+			} else {
+				return fmt.Errorf("failed to destroy Azure deployment %s: %w", dep.Name, err)
+			}
+		} else {
+			fmt.Printf("   -- Started successfully\n")
+		}
 
-	fmt.Printf("   Removing deployment from config\n")
-	if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
-		return err
+		fmt.Printf("   Removing deployment from config\n")
+		if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+func createAzureProvider(ctx context.Context) (*azure.AzureProvider, error) {
+	subscriptionID := viper.GetString("azure.subscription_id")
+	provider, err := azure.NewAzureProviderFunc(ctx, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Azure provider: %w", err)
+	}
+	if provider == nil {
+		return nil, fmt.Errorf("azure provider is nil after creation")
+	}
+	return provider, nil
 }

@@ -105,7 +105,6 @@ func (s *IntegrationTestSuite) SetupTest() {
 	os.WriteFile(f.Name(), []byte(configContent), 0o644)
 
 	s.viperConfigFile = f.Name()
-	cmd.SetConfigFile(s.viperConfigFile)   // Set the config file for the root command
 	viper.SetConfigFile(s.viperConfigFile) // Also set it for Viper directly
 
 	s.setupCommonConfig()
@@ -314,6 +313,7 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockGCPClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
 					Return(true, nil)
 				mockGCPClient.On("EnsureProject",
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,

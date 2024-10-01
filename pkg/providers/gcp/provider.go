@@ -141,7 +141,7 @@ func (p *GCPProvider) EnsureProject(
 
 	// Create the project
 	createdProjectID, err := p.GetGCPClient().
-		EnsureProject(ctx, m.Deployment.GCP.OrganizationID, m.Deployment.GetProjectID())
+		EnsureProject(ctx, p.OrganizationID, m.Deployment.GetProjectID(), p.BillingAccountID)
 	if err != nil {
 		for _, machine := range m.Deployment.Machines {
 			machine.SetMachineResourceState(
@@ -463,13 +463,13 @@ func (p *GCPProvider) CreateFirewallRules(
 	return nil
 }
 
-// CreateStorageBucket creates a storage bucket in GCP
-func (p *GCPProvider) CreateStorageBucket(
-	ctx context.Context,
-	bucketName string,
-) error {
-	return p.GetGCPClient().CreateStorageBucket(ctx, bucketName)
-}
+// // CreateStorageBucket creates a storage bucket in GCP
+// func (p *GCPProvider) CreateStorageBucket(
+// 	ctx context.Context,
+// 	bucketName string,
+// ) error {
+// 	return p.GetGCPClient().CreateStorageBucket(ctx, bucketName)
+// }
 
 // ListBillingAccounts lists all billing accounts associated with the GCP organization
 func (p *GCPProvider) ListBillingAccounts(ctx context.Context) ([]string, error) {
@@ -491,7 +491,8 @@ func (p *GCPProvider) SetBillingAccount(
 
 	return p.GetGCPClient().SetBillingAccount(
 		ctx,
-		m.Deployment.GCP.BillingAccountID,
+		m.Deployment.GetProjectID(),
+		billingAccountID,
 	)
 }
 
@@ -599,7 +600,13 @@ func (p *GCPProvider) CreateVM(
 	ctx context.Context,
 	vmName string,
 ) (string, string, error) {
-	instance, err := p.GetGCPClient().CreateVM(ctx, vmName)
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return "", "", fmt.Errorf("global model or deployment is nil")
+	}
+
+	instance, err := p.GetGCPClient().
+		CreateVM(ctx, m.Deployment.GetProjectID(), m.Deployment.Machines[vmName])
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create VM: %w", err)
 	}

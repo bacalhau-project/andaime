@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -145,4 +146,45 @@ func generateID(length int) string {
 		b[i] = letters[n.Int64()]
 	}
 	return string(b)
+}
+
+func InitConfig(configFile string) (string, error) {
+	l := logger.Get()
+	l.Debug("Starting initConfig")
+
+	viper.SetConfigType("yaml")
+
+	if configFile != "" {
+		// Use config file from the flag.
+		absPath, err := filepath.Abs(configFile)
+		if err != nil {
+			return "", fmt.Errorf("failed to get absolute path for config file: %w", err)
+		}
+		viper.SetConfigFile(absPath)
+		l.Debugf("Using config file specified by flag: %s", absPath)
+	} else {
+		// Search for config in the working directory
+		viper.AddConfigPath(".")
+		viper.SetConfigName("config")
+		l.Debug("No config file specified, using default: ./config.yaml")
+	}
+
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			if configFile != "" {
+				// Only return an error if a specific config file was requested
+				return "", fmt.Errorf("config file not found: %s", configFile)
+			}
+			l.Debug("No config file found, using defaults and environment variables")
+		} else {
+			return "", fmt.Errorf("error reading config file: %w", err)
+		}
+	} else {
+		l.Infof("Using config file: %s", viper.ConfigFileUsed())
+	}
+
+	l.Info("Configuration initialization complete")
+	return configFile, nil
 }

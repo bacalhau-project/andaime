@@ -25,7 +25,7 @@ func GenerateTags(projectID, uniqueID string) map[string]string {
 	return map[string]string{
 		"andaime":                   "true",
 		"andaime-id":                uniqueID,
-		"andaime-project":           fmt.Sprintf("%s-%s", uniqueID, projectID),
+		"andaime-project":           fmt.Sprintf("%s-%s", projectID, uniqueID),
 		"unique-id":                 uniqueID,
 		"project-id":                projectID,
 		"deployed-by":               "andaime",

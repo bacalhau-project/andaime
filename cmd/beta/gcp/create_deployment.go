@@ -36,18 +36,6 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	ctx, cancel = context.WithCancel(ctx)
 	defer cancel()
 
-	configFile, _ := cmd.Flags().GetString("config")
-	if configFile != "" {
-		viper.SetConfigFile(configFile)
-		if err := viper.ReadInConfig(); err != nil {
-			return fmt.Errorf("failed to read configuration file: %w", err)
-		}
-	}
-
-	if err := initializeConfig(cmd); err != nil {
-		return err
-	}
-
 	gcpProvider, err := initializeGCPProvider(ctx)
 	if err != nil {
 		return err

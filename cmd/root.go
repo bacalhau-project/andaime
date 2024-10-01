@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime/debug"
-	"sync"
 	"syscall"
 	"time"
 
@@ -15,6 +13,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -22,8 +21,6 @@ var (
 	configFile   string
 	verboseMode  bool
 	outputFormat string
-
-	once sync.Once
 )
 
 func Execute() error {
@@ -32,13 +29,8 @@ func Execute() error {
 
 	rootCmd := SetupRootCommand()
 
-	// Parse flags before initializing config
-	if err := rootCmd.PersistentFlags().Parse(os.Args[1:]); err != nil {
-		return fmt.Errorf("failed to parse flags: %w", err)
-	}
-
-	if err := initConfig(); err != nil {
-		l.Errorf("Failed to initialize config: %v", err)
+	// Parse config flag early
+	if err := parseConfigFlag(); err != nil {
 		return err
 	}
 
@@ -48,12 +40,49 @@ func Execute() error {
 	setupPanicHandling()
 
 	rootCmd.SetContext(ctx)
+
+	// Now execute the command
 	if err := rootCmd.Execute(); err != nil {
 		l.Errorf("Command execution failed: %v", err)
 		return err
 	}
 
 	l.Debug("Command execution completed")
+	return nil
+}
+
+func parseConfigFlag() error {
+	// Create a new flag set
+	flagSet := pflag.NewFlagSet("config", pflag.ContinueOnError)
+	flagSet.ParseErrorsWhitelist.UnknownFlags = true
+
+	// Add only the config flag
+	flagSet.StringVar(&configFile, "config", "", "config file path")
+
+	// Parse only the known flags (config in this case)
+	if err := flagSet.Parse(os.Args[1:]); err != nil {
+		return fmt.Errorf("failed to parse config flag: %w", err)
+	}
+
+	// If config file is provided, read it
+	if configFile != "" {
+		viper.SetConfigFile(configFile)
+		if err := viper.ReadInConfig(); err != nil {
+			return fmt.Errorf("failed to read configuration file: %w", err)
+		}
+	} else {
+		// Set default config file if not specified
+		viper.SetConfigName("config")
+		viper.AddConfigPath(".")
+		viper.AddConfigPath("$HOME/.andaime")
+		if err := viper.ReadInConfig(); err != nil {
+			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+				return fmt.Errorf("failed to read configuration file: %w", err)
+			}
+			// Config file not found; ignore error if desired
+		}
+	}
+
 	return nil
 }
 
@@ -124,85 +153,21 @@ func SetupRootCommand() *cobra.Command {
 		},
 	}
 
+	// Add global flags
 	rootCmd.PersistentFlags().
 		StringVar(&configFile, "config", "", "config file (default is ./config.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
 	rootCmd.PersistentFlags().
 		StringVar(&outputFormat, "output", "text", "Output format: text or json")
 
+	// Bind flags to viper
+	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
+
 	// Add beta command
 	rootCmd.AddCommand(GetBetaCmd())
 
-	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		cmd.Println("Error:", err)
-		cmd.Println(cmd.UsageString())
-		return err
-	})
-
 	return rootCmd
-}
-
-func setupFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().
-		StringVar(&configFile, "config", "", "config file (default is ./config.yaml)")
-	cmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output")
-	cmd.PersistentFlags().StringVar(&outputFormat, "output", "text", "Output format: text or json")
-}
-
-func initConfig() error {
-	l := logger.Get()
-	l.Debug("Starting initConfig")
-
-	viper.SetConfigType("yaml")
-
-	if configFile != "" {
-		// Use config file from the flag.
-		absPath, err := filepath.Abs(configFile)
-		if err != nil {
-			return fmt.Errorf("failed to get absolute path for config file: %w", err)
-		}
-		viper.SetConfigFile(absPath)
-		l.Debugf("Using config file specified by flag: %s", absPath)
-	} else {
-		// Search for config in the working directory
-		viper.AddConfigPath(".")
-		viper.SetConfigName("config")
-		l.Debug("No config file specified, using default: ./config.yaml")
-	}
-
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			if configFile != "" {
-				// Only return an error if a specific config file was requested
-				return fmt.Errorf("config file not found: %s", configFile)
-			}
-			l.Debug("No config file found, using defaults and environment variables")
-		} else {
-			return fmt.Errorf("error reading config file: %w", err)
-		}
-	} else {
-		l.Infof("Using config file: %s", viper.ConfigFileUsed())
-	}
-
-	validateOutputFormat()
-	l.Info("Configuration initialization complete")
-	return nil
-}
-
-func validateOutputFormat() {
-	l := logger.Get()
-	if outputFormat != "text" && outputFormat != "json" {
-		l.Warnf("Invalid output format '%s'. Using default: text", outputFormat)
-		outputFormat = "text"
-	}
-}
-
-// SetConfigFile allows setting the config file path programmatically
-// This is useful for testing purposes
-func SetConfigFile(path string) {
-	configFile = path
 }
 
 // GetRootCommandForTest returns the root command without executing it
