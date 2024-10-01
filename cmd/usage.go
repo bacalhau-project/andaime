@@ -6,7 +6,7 @@ import (
 )
 
 func PrintUsage() {
-	fmt.Println("Usage: ./main <create|destroy|list> [options]")
+	fmt.Println("Usage: ./andaime <create|destroy|list> [options]")
 	fmt.Println("Commands:")
 	fmt.Println("  create              Create AWS resources")
 	fmt.Println("  destroy             Destroy AWS resources")

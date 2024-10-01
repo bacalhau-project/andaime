@@ -4,7 +4,6 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +19,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/sso"
+	"github.com/aws/aws-sdk-go/service/ssooidc"
+	"github.com/spf13/cobra"
 )
 
 var VersionNumber string = "v0.0.1-alpha"
@@ -49,12 +51,17 @@ type InstanceInfo struct {
 type TemplateData struct {
 	ProjectName               string
 	TargetPlatform            string
+	MachineType               string
 	NumberOfOrchestratorNodes int
 	NumberOfComputeNodes      int
 	TargetRegions             string
 	AwsProfile                string
 	OrchestratorIPs           string
 	NodeType                  string
+	Location                  string
+	PublicIP                  string
+	Orchestrators             string
+	Token                     string
 }
 
 var (
@@ -90,69 +97,101 @@ var (
 )
 
 func GetSession(region string) *session.Session {
-	var sess *session.Session
-	var err error
-
-	awsAccessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-
-	if AWSProfileFlag != "" {
-		if VerboseModeFlag && !SessionGuidanceLogged {
-			SessionGuidanceLogged = true
-			fmt.Printf("\tUsing -aws-profile flag \"%s\"\n\n", AWSProfileFlag)
-		}
-
-		sess, err = session.NewSessionWithOptions(session.Options{
-			Profile: AWSProfileFlag,
-			Config:  aws.Config{Region: aws.String(region)},
-		})
-
-		if err != nil {
-			fmt.Printf("Error creating session for region %s: %v\n", region, err)
-			return nil
-		}
-
-		return sess
-	}
-
-	if awsAccessKeyID != "" && awsSecretAccessKey != "" {
-		if VerboseModeFlag && !SessionGuidanceLogged {
-			SessionGuidanceLogged = true
-			fmt.Println(
-				"\tUsing environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY",
-			)
-		}
-
-		sess, err = session.NewSession(&aws.Config{
-			Region:      aws.String(region),
-			Credentials: credentials.NewStaticCredentials(awsAccessKeyID, awsSecretAccessKey, ""),
-		})
-
-		if err != nil {
-			fmt.Printf("Error creating session for region %s: %v\n", region, err)
-			return nil
-		}
-
-		return sess
-	}
-
-	if VerboseModeFlag && !SessionGuidanceLogged {
-		SessionGuidanceLogged = true
-		fmt.Println("\tUsing default AWS profile")
-	}
-
-	sess, err = session.NewSession(&aws.Config{
-		Region: aws.String(region),
+	// Create the session
+	sess, err := session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+		Config: aws.Config{
+			Region: aws.String(region),
+		},
 	})
 
 	if err != nil {
-		fmt.Printf("Error creating session for region %s: %v\n\n", region, err)
+		fmt.Printf("Error creating session: %v\n", err)
 		return nil
+	}
+
+	// Check if we're using SSO
+	if os.Getenv("AWS_SSO_ACCOUNT_ID") != "" {
+		// Create SSOOIDC client
+		ssooidcClient := ssooidc.New(sess)
+
+		// Start device authorization
+		startDeviceAuthOutput, err := ssooidcClient.StartDeviceAuthorization(
+			&ssooidc.StartDeviceAuthorizationInput{
+				ClientId:     aws.String(os.Getenv("AWS_SSO_CLIENT_ID")),
+				ClientSecret: aws.String(os.Getenv("AWS_SSO_CLIENT_SECRET")),
+				StartUrl:     aws.String(os.Getenv("AWS_SSO_START_URL")),
+			},
+		)
+		if err != nil {
+			fmt.Printf("Error starting device authorization: %v\n", err)
+			return nil
+		}
+
+		// Print the user code and verification URI
+		fmt.Printf(
+			"Go to %s and enter the code: %s\n",
+			*startDeviceAuthOutput.VerificationUriComplete,
+			*startDeviceAuthOutput.UserCode,
+		)
+
+		// Wait for user to authenticate
+		var tokenOutput *ssooidc.CreateTokenOutput
+		for {
+			tokenOutput, err = ssooidcClient.CreateToken(&ssooidc.CreateTokenInput{
+				ClientId:     aws.String(os.Getenv("AWS_SSO_CLIENT_ID")),
+				ClientSecret: aws.String(os.Getenv("AWS_SSO_CLIENT_SECRET")),
+				GrantType:    aws.String("urn:ietf:params:oauth:grant-type:device_code"),
+				DeviceCode:   startDeviceAuthOutput.DeviceCode,
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); ok &&
+					aerr.Code() == "AuthorizationPendingException" {
+					time.Sleep(1 * time.Second)
+					continue
+				}
+				fmt.Printf("Error creating token: %v\n", err)
+				return nil
+			}
+			break
+		}
+
+		// Create SSO client
+		ssoClient := sso.New(sess)
+
+		// Get SSO role credentials
+		roleCredentials, err := ssoClient.GetRoleCredentials(&sso.GetRoleCredentialsInput{
+			AccessToken: tokenOutput.AccessToken,
+			AccountId:   aws.String(os.Getenv("AWS_SSO_ACCOUNT_ID")),
+			RoleName:    aws.String(os.Getenv("AWS_SSO_ROLE_NAME")),
+		})
+		if err != nil {
+			fmt.Printf("Error getting SSO role credentials: %v\n", err)
+			return nil
+		}
+
+		// Update session with SSO credentials
+		sess.Config.Credentials = credentials.NewStaticCredentials(
+			*roleCredentials.RoleCredentials.AccessKeyId,
+			*roleCredentials.RoleCredentials.SecretAccessKey,
+			*roleCredentials.RoleCredentials.SessionToken,
+		)
+	}
+
+	// Verify that credentials are available
+	_, err = sess.Config.Credentials.Get()
+	if err != nil {
+		fmt.Printf("Error getting credentials: %v\n", err)
+		return nil
+	}
+
+	if VerboseModeFlag {
+		sess.Config.LogLevel = aws.LogLevel(aws.LogDebugWithHTTPBody)
+		sess.Config.Logger = aws.NewDefaultLogger()
 	}
 
 	return sess
 }
-
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	describeImagesInput := &ec2.DescribeImagesInput{
 		Filters: []*ec2.Filter{
@@ -206,22 +245,24 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	return *latestImage.ImageId, nil
 }
 
-func DeployOnAWS() {
+func DeployOnAWS(cmd *cobra.Command) error {
 	targetRegions := strings.Split(TargetRegionsFlag, ",")
 	noOfOrchestratorNodes := ProjectSettings["NumberOfOrchestratorNodes"].(int)
 	noOfComputeNodes := ProjectSettings["NumberOfComputeNodes"].(int)
 
-	if command == "create" {
+	switch cmd.Use {
+	case "create":
 		// Ensure VPC and Security Groups exist
 		ensureVPCAndSGsExist(targetRegions)
-		createResources(targetRegions, noOfOrchestratorNodes, noOfComputeNodes)
-	} else if command == "destroy" {
-		destroyResources()
-	} else if command == "list" {
-		listResources()
-	} else {
+		return createResources(targetRegions, noOfOrchestratorNodes, noOfComputeNodes)
+	case "destroy":
+		return destroyResources()
+	case "list":
+		return listResources()
+	default:
 		fmt.Println("Unknown command. Use 'create', 'destroy', or 'list'.")
 	}
+	return nil
 }
 
 func ensureVPCAndSGsExist(regions []string) {
@@ -250,7 +291,7 @@ func ensureVPCAndSGsExist(regions []string) {
 	wg.Wait()
 }
 
-func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes int) {
+func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes int) error {
 	var wg sync.WaitGroup
 	var orchestratorIPs []string
 
@@ -285,6 +326,7 @@ func createResources(regions []string, noOfOrchestratorNodes, noOfComputeNodes i
 		}(regions[i%len(regions)])
 	}
 	wg.Wait()
+	return nil
 }
 
 func formatOrchestratorIPs(orchestratorIPs []string) string {
@@ -938,11 +980,11 @@ func createSecurityGroupIfNotExists(svc *ec2.EC2, vpcID *string, region string) 
 	return nil
 }
 
-func destroyResources() {
+func destroyResources() error {
 	regions, err := getAllRegions()
 	if err != nil {
 		fmt.Printf("Unable to get list of regions: %v\n", err)
-		return
+		return err
 	}
 
 	var wg sync.WaitGroup
@@ -959,6 +1001,7 @@ func destroyResources() {
 
 	wg.Wait()
 	fmt.Println("Resources destroyed in all regions.")
+	return nil
 }
 
 func getAllRegions() ([]string, error) {
@@ -1336,11 +1379,11 @@ func deleteInstances(svc *ec2.EC2, region string) {
 	}
 }
 
-func listResources() {
+func listResources() error {
 	regions, err := getAllRegions()
 	if err != nil {
 		fmt.Printf("Unable to get list of regions: %v\n", err)
-		return
+		return err
 	}
 
 	resourceTypes := []string{
@@ -1407,6 +1450,8 @@ func listResources() {
 	}
 
 	fmt.Printf("%d nodes in %d regions\n", totalNodes, totalRegions)
+
+	return nil
 }
 
 //nolint:gocyclo,funlen
@@ -1796,19 +1841,11 @@ func ProcessFlags() {
 	}
 }
 
-//nolint:gocyclo,funlen,unused
-func andaimeMain(cmd string, _ ...[]string) {
+// Update the andaimeMain function to remove references to the command variable
+func andaimeMain(cmd *cobra.Command, args []string) {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")
-
-	// Assign it to the global value
-	command = cmd
-	command = os.Args[1]
-	if command == "--help" || command == "-h" {
-		PrintUsage()
-		os.Exit(0)
-	}
 
 	ProcessEnvVars()
 	configErr := ProcessConfigFile()
@@ -1817,113 +1854,151 @@ func andaimeMain(cmd string, _ ...[]string) {
 		fmt.Println("Error reading configuration file:", configErr)
 	}
 
-	flag.BoolVar(
-		&VerboseModeFlag,
-		"verbose",
-		false,
-		"Generate verbose output throughout execution",
-	)
-	flag.StringVar(&ProjectNameFlag, "project-name", "", "Set project name")
-	flag.StringVar(&TargetPlatformFlag, "target-platform", "", "Set target platform")
-	flag.IntVar(
-		&NumberOfOrchestratorNodesFlag,
-		"orchestrator-nodes",
-		-1,
-		"Set number of orchestrator nodes",
-	)
-	flag.IntVar(&NumberOfComputeNodesFlag, "compute-nodes", -1, "Set number of compute nodes")
-	flag.StringVar(
-		&TargetRegionsFlag,
-		"target-regions",
-		"us-east-1",
-		"Comma-separated list of target AWS regions",
-	)
-	flag.StringVar(
-		&OrchestratorIPFlag,
-		"orchestrator-ip",
-		"",
-		"IP address of existing orchestrator node",
-	)
-	flag.StringVar(&AWSProfileFlag, "aws-profile", "", "AWS profile to use for credentials")
-	flag.StringVar(
-		&InstanceTypeFlag,
-		"instance-type",
-		"t2.medium",
-		"The instance type for both the compute and orchestrator nodes",
-	)
-	flag.StringVar(
-		&ComputeInstanceTypeFlag,
-		"compute-instance-type",
-		"",
-		"The instance type for the compute nodes. Overrides --instance-type for compute nodes.",
-	)
-	flag.StringVar(
-		&OrchestratorInstanceTypeFlag,
-		"orchestrator-instance-type",
-		"",
-		"The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.",
-	)
-	flag.IntVar(
-		&BootVolumeSizeFlag,
-		"volume-size",
-		DefaultBootVolumeSize,
-		"The volume size of each node created (Gigabytes). Default: 8",
-	)
-	flag.BoolVar(&helpFlag, "help", false, "Show help message")
-
-	flag.Parse()
-
-	if helpFlag {
-		PrintUsage()
-		os.Exit(0)
-	}
-
 	ProcessFlags()
 
-	if command == "version" {
+	if cmd.Use == "version" {
 		fmt.Println(VersionNumber)
-		os.Exit(0)
+		return
 	}
 
 	fmt.Print("\n== Andaime ==\n")
 
-	if command == "create" {
-		fmt.Println("Project configuration:")
-		fmt.Println("=======================")
-		fmt.Println("")
-		fmt.Printf(
-			"\tProject name: \"%s\" (set by %s)\n",
-			ProjectSettings["ProjectName"],
-			SetBy["ProjectName"],
-		)
-		fmt.Printf(
-			"\tTarget Platform: \"%s\" (set by %s)\n",
-			ProjectSettings["TargetPlatform"],
-			SetBy["TargetPlatform"],
-		)
-		fmt.Printf(
-			"\tNo. of Orchestrator Nodes: %d (set by %s)\n",
-			ProjectSettings["NumberOfOrchestratorNodes"],
-			SetBy["NumberOfOrchestratorNodes"],
-		)
-		fmt.Printf(
-			"\tNo. of Compute Nodes: %d (set by %s)\n",
-			ProjectSettings["NumberOfComputeNodes"],
-			SetBy["NumberOfComputeNodes"],
-		)
-		fmt.Printf("\tAWS Profile: \"%s\"\n", AWSProfileFlag)
-		fmt.Print("\n")
-	}
-
-	if command == "list" {
-		fmt.Println("Listing resources...")
-	}
-
-	if command == "destroy" {
-		fmt.Println("Destroying resources...")
+	if cmd.Use == "create" {
+		printProjectConfiguration()
 	}
 
 	if ProjectSettings["TargetPlatform"] == "aws" {
-		DeployOnAWS()
+		DeployOnAWS(cmd)
 	}
+}
+
+// GetAndaimeCmd returns the Cobra command for Andaime
+func GetAwsCmd() *cobra.Command {
+	awsCmd := &cobra.Command{
+		Use:   "aws",
+		Short: "Manage AWS resources for Bacalhau",
+		Long:  `Andaime is a tool to create, destroy, and list AWS resources for Bacalhau deployment.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("no subcommand provided. Use 'create', 'destroy', or 'list'")
+			}
+			return fmt.Errorf("unknown subcommand: %s. Use 'create', 'destroy', or 'list'", args[0])
+		},
+	}
+
+	awsCmd.AddCommand(
+		getCreateCmd(),
+		getDestroyCmd(),
+		getListCmd(),
+		getVersionCmd(),
+	)
+
+	awsCmd.PersistentFlags().
+		BoolVar(&VerboseModeFlag, "verbose", false, "Generate verbose output throughout execution")
+	awsCmd.PersistentFlags().StringVar(&ProjectNameFlag, "project-name", "", "Set project name")
+	awsCmd.PersistentFlags().
+		StringVar(&TargetPlatformFlag, "target-platform", "", "Set target platform")
+	awsCmd.PersistentFlags().
+		IntVar(&NumberOfOrchestratorNodesFlag, "orchestrator-nodes", -1, "Set number of orchestrator nodes")
+	awsCmd.PersistentFlags().
+		IntVar(&NumberOfComputeNodesFlag, "compute-nodes", -1, "Set number of compute nodes")
+	awsCmd.PersistentFlags().
+		StringVar(&TargetRegionsFlag, "target-regions", "us-east-1", "Comma-separated list of target AWS regions")
+	awsCmd.PersistentFlags().
+		StringVar(&OrchestratorIPFlag, "orchestrator-ip", "", "IP address of existing orchestrator node")
+	awsCmd.PersistentFlags().
+		StringVar(&AWSProfileFlag, "aws-profile", "", "AWS profile to use for credentials")
+	awsCmd.PersistentFlags().
+		StringVar(&InstanceTypeFlag, "instance-type", "t2.medium", "The instance type for both the compute and orchestrator nodes")
+	awsCmd.PersistentFlags().
+		StringVar(&ComputeInstanceTypeFlag, "compute-instance-type", "", "The instance type for the compute nodes. Overrides --instance-type for compute nodes.")
+	awsCmd.PersistentFlags().
+		StringVar(&OrchestratorInstanceTypeFlag, "orchestrator-instance-type", "", "The instance type for the orchestrator nodes. Overrides --instance-type for orchestrator nodes.")
+	awsCmd.PersistentFlags().
+		IntVar(&BootVolumeSizeFlag, "volume-size", DefaultBootVolumeSize, "The volume size of each node created (Gigabytes). Default: 8")
+
+	return awsCmd
+}
+func getCreateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "create",
+		Short: "Create AWS resources",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ProcessEnvVars()
+			ProcessConfigFile()
+			ProcessFlags()
+			printProjectConfiguration()
+			DeployOnAWS(cmd)
+			return nil
+		},
+	}
+}
+
+func getDestroyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "destroy",
+		Short: "Destroy AWS resources",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ProcessEnvVars()
+			ProcessConfigFile()
+			ProcessFlags()
+			fmt.Println("Destroying resources...")
+			DeployOnAWS(cmd)
+			return nil
+		},
+	}
+}
+
+func getListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List AWS resources tagged with 'project: andaime'",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ProcessEnvVars()
+			ProcessConfigFile()
+			ProcessFlags()
+			fmt.Println("Listing resources...")
+			DeployOnAWS(cmd)
+			return nil
+		},
+	}
+}
+func getVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the version number of Andaime",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println(VersionNumber)
+			return nil
+		},
+	}
+}
+
+func printProjectConfiguration() {
+	fmt.Println("\n== Andaime ==")
+	fmt.Println("Project configuration:")
+	fmt.Println("=======================")
+	fmt.Println("")
+	fmt.Printf(
+		"\tProject name: \"%s\" (set by %s)\n",
+		ProjectSettings["ProjectName"],
+		SetBy["ProjectName"],
+	)
+	fmt.Printf(
+		"\tTarget Platform: \"%s\" (set by %s)\n",
+		ProjectSettings["TargetPlatform"],
+		SetBy["TargetPlatform"],
+	)
+	fmt.Printf(
+		"\tNo. of Orchestrator Nodes: %d (set by %s)\n",
+		ProjectSettings["NumberOfOrchestratorNodes"],
+		SetBy["NumberOfOrchestratorNodes"],
+	)
+	fmt.Printf(
+		"\tNo. of Compute Nodes: %d (set by %s)\n",
+		ProjectSettings["NumberOfComputeNodes"],
+		SetBy["NumberOfComputeNodes"],
+	)
+	fmt.Printf("\tAWS Profile: \"%s\"\n", AWSProfileFlag)
+	fmt.Print("\n")
 }
