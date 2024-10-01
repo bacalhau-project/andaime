@@ -165,6 +165,7 @@ func SetupRootCommand() *cobra.Command {
 	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 
 	// Add beta command
+	rootCmd.AddCommand(GetAwsCmd())
 	rootCmd.AddCommand(GetBetaCmd())
 
 	return rootCmd

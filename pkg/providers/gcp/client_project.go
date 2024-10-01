@@ -56,7 +56,7 @@ func (c *LiveGCPClient) EnsureProject(
 
 func (c *LiveGCPClient) setupProject(
 	ctx context.Context,
-	organizationID string,
+	_ string,
 	projectID string,
 	billingAccountID string,
 ) error {

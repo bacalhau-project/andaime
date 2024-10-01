@@ -17,7 +17,7 @@ ORCHESTRATORS="{{.OrchestratorIPs}}"
 
 # Write environment variables to /etc/node-config
 cat << EOF > /etc/node-config
-MACHINE_TYPE={{ .MachineType }}
+MACHINE_TYPE={{.MachineType}}
 NODE_TYPE={{.NodeType}}
 VCPU_COUNT=$VCPU_COUNT
 MEMORY_GB=$MEMORY_GB
