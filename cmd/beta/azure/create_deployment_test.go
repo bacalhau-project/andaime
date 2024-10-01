@@ -214,8 +214,8 @@ func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment() {
 	m := display.NewDisplayModel(deployment)
 	suite.Require().NotNil(m)
 
-	suite.Contains(deployment.ProjectID, "test-project")
-	suite.Contains(deployment.ProjectID, deployment.UniqueID)
+	suite.Contains(deployment.GetProjectID(), "test-project")
+	suite.Contains(deployment.UniqueID, deployment.UniqueID)
 	suite.Equal("eastus", deployment.Azure.ResourceGroupLocation)
 	suite.NotEmpty(deployment.SSHPublicKeyMaterial)
 	suite.NotEmpty(deployment.SSHPrivateKeyMaterial)

@@ -96,7 +96,7 @@ func (s *PkgProvidersCommonMachineConfigTestSuite) TestProcessMachinesConfig() {
 		if machine.IsOrchestrator() {
 			orchestratorCount++
 		}
-		s.Equal("azureuser", machine.GetSSHUser())
+		s.Equal("andaimeuser", machine.GetSSHUser())
 		s.Equal(22, machine.GetSSHPort())
 		s.NotNil(machine.GetSSHPrivateKeyMaterial())
 	}

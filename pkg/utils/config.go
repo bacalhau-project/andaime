@@ -1,14 +1,17 @@
 package utils
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
+	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 	"sigs.k8s.io/yaml"
 )
@@ -120,82 +123,68 @@ func IsValidGUID(guid string) bool {
 	return r.MatchString(guid)
 }
 
-type BacalhauSettings struct {
-	Key   string      `json:"key"`
-	Value interface{} `json:"value"`
+// GenerateUniqueID generates a unique ID of length 8
+func GenerateUniqueID() string {
+	return generateID(8) //nolint:mnd
 }
 
-func ReadBacalhauSettingsFromViper() ([]BacalhauSettings, error) {
-	bacalhauSettings := viper.Get("general.bacalhau_settings")
+// CreateShortID generates a short ID of length 6
+func CreateShortID() string {
+	return generateID(6) //nolint:mnd
+}
 
-	if bacalhauSettings == nil {
-		return nil, nil
+func generateID(length int) string {
+	l := logger.Get()
+
+	var letters = []rune("bcdfghjklmnpqrstvwxz")
+	b := make([]rune, length)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			l.Fatalf("Failed to generate unique ID: %v", err)
+		}
+		b[i] = letters[n.Int64()]
+	}
+	return string(b)
+}
+
+func InitConfig(configFile string) (string, error) {
+	l := logger.Get()
+	l.Debug("Starting initConfig")
+
+	viper.SetConfigType("yaml")
+
+	if configFile != "" {
+		// Use config file from the flag.
+		absPath, err := filepath.Abs(configFile)
+		if err != nil {
+			return "", fmt.Errorf("failed to get absolute path for config file: %w", err)
+		}
+		viper.SetConfigFile(absPath)
+		l.Debugf("Using config file specified by flag: %s", absPath)
+	} else {
+		// Search for config in the working directory
+		viper.AddConfigPath(".")
+		viper.SetConfigName("config")
+		l.Debug("No config file specified, using default: ./config.yaml")
 	}
 
-	var result []BacalhauSettings
+	viper.AutomaticEnv()
 
-	switch settings := bacalhauSettings.(type) {
-	case []interface{}:
-		// Handle the slice of maps structure (as in the YAML example)
-		for _, setting := range settings {
-			settingMap, ok := setting.(map[string]interface{})
-			if !ok {
-				return nil, fmt.Errorf("invalid setting type: expected map[string]interface{}, got %T", setting)
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			if configFile != "" {
+				// Only return an error if a specific config file was requested
+				return "", fmt.Errorf("config file not found: %s", configFile)
 			}
-
-			key, ok := settingMap["key"].(string)
-			if !ok {
-				return nil, fmt.Errorf("invalid key type: expected string, got %T", settingMap["Key"])
-			}
-
-			value, ok := settingMap["value"]
-			if !ok {
-				return nil, fmt.Errorf("missing Value for key: %s", key)
-			}
-
-			result = append(result, BacalhauSettings{Key: key, Value: value})
+			l.Debug("No config file found, using defaults and environment variables")
+		} else {
+			return "", fmt.Errorf("error reading config file: %w", err)
 		}
-
-	case map[string]interface{}:
-		// Handle the map structure (as it appears in your tests)
-		for key, value := range settings {
-			result = append(result, BacalhauSettings{Key: key, Value: value})
-		}
-
-	case map[string]string:
-		// Handle the map[string]string structure (another possible format)
-		for key, value := range settings {
-			result = append(result, BacalhauSettings{Key: key, Value: value})
-		}
-
-	default:
-		return nil, fmt.Errorf(
-			"invalid bacalhau_settings type: expected []interface{} or map[string]interface{}, got %T",
-			bacalhauSettings,
-		)
+	} else {
+		l.Infof("Using config file: %s", viper.ConfigFileUsed())
 	}
 
-	// Process the values to ensure consistent types
-	for i, setting := range result {
-		switch v := setting.Value.(type) {
-		case string:
-			// Keep as is
-		case []interface{}:
-			stringSlice := make([]string, 0, len(v))
-			for _, item := range v {
-				strItem, ok := item.(string)
-				if !ok {
-					return nil, fmt.Errorf("invalid value type in slice for key %s: expected string, got %T", setting.Key, item)
-				}
-				stringSlice = append(stringSlice, strItem)
-			}
-			result[i].Value = stringSlice
-		case bool:
-			result[i].Value = strconv.FormatBool(v)
-		default:
-			return nil, fmt.Errorf("invalid value type for key %s: expected string, []string, bool or []interface{}, got %T", setting.Key, setting.Value)
-		}
-	}
-
-	return result, nil
+	l.Info("Configuration initialization complete")
+	return configFile, nil
 }

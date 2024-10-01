@@ -14,7 +14,7 @@ type ClusterDeployerer interface {
 		state models.MachineResourceState,
 	) error
 
-	ProvisionAllMachinesWithPackages(ctx context.Context) error
+	// ProvisionAllMachinesWithPackages(ctx context.Context) error
 	ProvisionPackagesOnMachine(ctx context.Context, machineName string) error
 	ExecuteCustomScript(
 		ctx context.Context,

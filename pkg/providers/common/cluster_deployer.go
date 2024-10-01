@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
-	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,58 +36,68 @@ func (cd *ClusterDeployer) SetSSHClient(client sshutils.SSHClienter) {
 	cd.sshClient = client
 }
 
-func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
+// func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context) error {
+// 	m := display.GetGlobalModelFunc()
 
-	var errGroup errgroup.Group
-	for _, machine := range m.Deployment.Machines {
-		internalMachine := machine
-		errGroup.Go(func() error {
-			goRoutineID := goroutine.RegisterGoroutine(
-				fmt.Sprintf("ProvisionPackagesOnMachine-%s", internalMachine.GetName()),
-			)
-			defer goroutine.DeregisterGoroutine(goRoutineID)
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				internalMachine.GetName(),
-				models.AzureResourceTypeVM,
-				models.ResourceStatePending,
-				"Provisioning Docker & packages on machine",
-			))
-			err := cd.ProvisionPackagesOnMachine(ctx, internalMachine.GetName())
-			if err != nil {
-				m.UpdateStatus(models.NewDisplayStatusWithText(
-					internalMachine.GetName(),
-					models.AzureResourceTypeVM,
-					models.ResourceStateFailed,
-					fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
-				))
-				return fmt.Errorf(
-					"failed to provision packages on machine %s: %v",
-					internalMachine.GetName(),
-					err,
-				)
-			}
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				internalMachine.GetName(),
-				models.AzureResourceTypeVM,
-				models.ResourceStateSucceeded,
-				"Provisioned Docker & packages on machine",
-			))
-			return nil
-		})
-	}
-	if err := errGroup.Wait(); err != nil {
-		return fmt.Errorf("failed to provision packages on all machines: %v", err)
-	}
+// 	var errGroup errgroup.Group
+// 	for _, machine := range m.Deployment.Machines {
+// 		internalMachine := machine
+// 		errGroup.Go(func() error {
+// 			goRoutineID := goroutine.RegisterGoroutine(
+// 				fmt.Sprintf("ProvisionPackagesOnMachine-%s", internalMachine.GetName()),
+// 			)
+// 			defer goroutine.DeregisterGoroutine(goRoutineID)
 
-	for _, machine := range m.Deployment.GetMachines() {
-		for _, resource := range machine.GetMachineResources() {
-			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
-		}
-	}
+// 			// Doing this because for some reason, certain resources are not registering
+// 			// as done, and it's irritating to see that.
+// 			for _, resource := range internalMachine.GetMachineResources() {
+// 				internalMachine.SetMachineResourceState(
+// 					resource.ResourceName,
+// 					models.ResourceStateSucceeded,
+// 				)
+// 			}
 
-	return nil
-}
+// 			m.UpdateStatus(models.NewDisplayStatusWithText(
+// 				internalMachine.GetName(),
+// 				models.AzureResourceTypeVM,
+// 				models.ResourceStatePending,
+// 				"Provisioning Docker & packages on machine",
+// 			))
+// 			err := cd.ProvisionPackagesOnMachine(ctx, internalMachine.GetName())
+// 			if err != nil {
+// 				m.UpdateStatus(models.NewDisplayStatusWithText(
+// 					internalMachine.GetName(),
+// 					models.AzureResourceTypeVM,
+// 					models.ResourceStateFailed,
+// 					fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
+// 				))
+// 				return fmt.Errorf(
+// 					"failed to provision packages on machine %s: %v",
+// 					internalMachine.GetName(),
+// 					err,
+// 				)
+// 			}
+// 			m.UpdateStatus(models.NewDisplayStatusWithText(
+// 				internalMachine.GetName(),
+// 				models.AzureResourceTypeVM,
+// 				models.ResourceStateSucceeded,
+// 				"Provisioned Docker & packages on machine",
+// 			))
+// 			return nil
+// 		})
+// 	}
+// 	if err := errGroup.Wait(); err != nil {
+// 		return fmt.Errorf("failed to provision packages on all machines: %v", err)
+// 	}
+
+// 	for _, machine := range m.Deployment.GetMachines() {
+// 		for _, resource := range machine.GetMachineResources() {
+// 			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
+// 		}
+// 	}
+
+// 	return nil
+// }
 
 func (cd *ClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 	l := logger.Get()
@@ -342,6 +350,13 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		return fmt.Errorf("no orchestrator IP found")
 	}
 
+	var projectID string
+	if m.Deployment.DeploymentType == models.DeploymentTypeAzure {
+		projectID = m.Deployment.Azure.ResourceGroupName
+	} else if m.Deployment.DeploymentType == models.DeploymentTypeGCP {
+		projectID = m.Deployment.GetProjectID()
+	}
+
 	var scriptBuffer bytes.Buffer
 	err = tmpl.ExecuteTemplate(&scriptBuffer, "getNodeMetadataScript", map[string]interface{}{
 		"MachineType":   machine.GetVMSize(),
@@ -351,7 +366,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		"IP":            machine.GetPublicIP(),
 		"Token":         "",
 		"NodeType":      nodeType,
-		"Project":       m.Deployment.ProjectID,
+		"ProjectID":     projectID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute node metadata script template: %w", err)
@@ -472,13 +487,14 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 	machine models.Machiner,
 ) error {
 	l := logger.Get()
-	customScriptPath := viper.GetString("general.custom_script_path")
-	if customScriptPath == "" {
+	m := display.GetGlobalModelFunc()
+
+	if m.Deployment.CustomScriptPath == "" {
 		l.Info("No custom script path provided, skipping execution")
 		return nil
 	}
 
-	scriptContent, err := os.ReadFile(customScriptPath)
+	scriptContent, err := os.ReadFile(m.Deployment.CustomScriptPath)
 	if err != nil {
 		return fmt.Errorf("failed to read custom script: %w", err)
 	}
@@ -521,7 +537,7 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	return nil
 }
 
-func combineSettings(settings []utils.BacalhauSettings) map[string]string {
+func combineSettings(settings []models.BacalhauSettings) map[string]string {
 	combined := make(map[string]string)
 	for _, setting := range settings {
 		switch v := setting.Value.(type) {
@@ -544,6 +560,13 @@ func applySettings(
 		cmd := fmt.Sprintf("sudo bacalhau config set '%s' '%s'", key, value)
 		output, err := sshConfig.ExecuteCommand(ctx, cmd)
 		if err != nil {
+			if strings.Contains(
+				output,
+				fmt.Sprintf("invalid configuration key \"%s\": not found", key),
+			) {
+				l.Errorf("Bad setting detected: %s", key)
+				return fmt.Errorf("bad setting detected: %s", key)
+			}
 			l.Errorf("Failed to apply Bacalhau config %s: %v", key, err)
 			return fmt.Errorf("failed to apply Bacalhau config %s: %w", key, err)
 		}
@@ -572,9 +595,19 @@ func verifySettings(
 		found := false
 		for _, config := range configList {
 			if config["Key"] == key {
-				found = true
 				actualValue := fmt.Sprintf("%v", config["Value"])
-				if actualValue != expectedValue {
+				if strings.HasPrefix(actualValue, "[") && strings.HasSuffix(actualValue, "]") {
+					actualValue = strings.TrimPrefix(actualValue, "[")
+					actualValue = strings.TrimSuffix(actualValue, "]")
+				}
+				if values, ok := config["Value"].([]string); ok {
+					for _, value := range values {
+						if value == expectedValue {
+							found = true
+							break
+						}
+					}
+				} else if actualValue != expectedValue {
 					l.Warnf(
 						"Bacalhau config %s has unexpected value. Expected: %s, Actual: %s",
 						key,
@@ -582,7 +615,7 @@ func verifySettings(
 						actualValue,
 					)
 				} else {
-					l.Infof("Verified Bacalhau config %s: %s", key, actualValue)
+					l.Debugf("Verified Bacalhau config %s: %s", key, actualValue)
 				}
 				break
 			}
@@ -672,28 +705,4 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 			l.Debugf("Waiting for all machines to reach state: %d", state)
 		}
 	}
-}
-
-// flattenMap converts a nested map structure to a flat map with dot-separated keys
-func flattenMap(m map[string]interface{}, prefix string) map[string]interface{} {
-	flatMap := make(map[string]interface{})
-	for k, v := range m {
-		newKey := k
-		if prefix != "" {
-			newKey = prefix + "." + k
-		}
-		switch v := v.(type) {
-		case map[string]interface{}:
-			for fk, fv := range flattenMap(v, newKey) {
-				flatMap[fk] = fv
-			}
-		case []interface{}:
-			flatMap[newKey] = strings.Join(utils.InterfaceSliceToStringSlice(v), ",")
-		case bool:
-			flatMap[newKey] = strconv.FormatBool(v)
-		default:
-			flatMap[newKey] = v
-		}
-	}
-	return flatMap
 }

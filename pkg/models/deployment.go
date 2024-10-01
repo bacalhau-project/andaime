@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/bacalhau-project/andaime/pkg/utils"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 )
 
@@ -79,7 +79,7 @@ type Deployment struct {
 	UniqueID               string
 	StartTime              time.Time
 	EndTime                time.Time
-	ProjectID              string
+	projectID              string
 	Locations              []string
 	AllowedPorts           []int
 	SSHUser                string
@@ -92,7 +92,7 @@ type Deployment struct {
 	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	deploymentMutex        sync.RWMutex
-	BacalhauSettings       []utils.BacalhauSettings
+	BacalhauSettings       []BacalhauSettings
 	CustomScriptPath       string
 }
 
@@ -107,11 +107,12 @@ const (
 )
 
 func NewDeployment() (*Deployment, error) {
+	l := logger.Get()
 	projectPrefix := viper.GetString("general.project_prefix")
 	if projectPrefix == "" {
 		return nil, fmt.Errorf("general.project_prefix is not set")
 	}
-	uniqueID := time.Now().Format("0601021504")
+	uniqueID := fmt.Sprintf("u%s", time.Now().Format("0601021504"))
 	projectID := projectPrefix + "-" + uniqueID
 	deployment := &Deployment{
 		StartTime:              time.Now(),
@@ -119,9 +120,30 @@ func NewDeployment() (*Deployment, error) {
 		UniqueID:               uniqueID,
 		Azure:                  &AzureConfig{},
 		GCP:                    &GCPConfig{},
-		ProjectID:              projectID,
 		Tags:                   make(map[string]string),
 		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
+	}
+
+	timestamp := time.Now().Format("01021504") // mmddhhmm
+	if deployment.DeploymentType == DeploymentTypeGCP {
+		uniqueProjectID := fmt.Sprintf("%s-%s", projectPrefix, timestamp)
+
+		// Check if the unique project ID is too long
+		if len(uniqueProjectID) > MaximumGCPUniqueProjectIDLength {
+			l.Warnf(
+				"unique project ID is too long, it should be less than %d characters -- %s...",
+				MaximumGCPUniqueProjectIDLength,
+				uniqueProjectID[:MaximumGCPUniqueProjectIDLength],
+			)
+			return nil, fmt.Errorf(
+				"unique project ID is too long, it should be less than %d characters",
+				MaximumGCPUniqueProjectIDLength,
+			)
+		}
+
+		l.Debugf("Ensuring project: %s", uniqueProjectID)
+
+		deployment.SetProjectID(projectID)
 	}
 	return deployment, nil
 }
@@ -133,7 +155,7 @@ func (d *Deployment) ToMap() map[string]interface{} {
 		"ResourceGroupName":     d.Azure.ResourceGroupName,
 		"ResourceGroupLocation": d.Azure.ResourceGroupLocation,
 		"Machines":              d.Machines,
-		"ProjectID":             d.ProjectID,
+		"ProjectID":             d.projectID,
 		"UniqueID":              d.UniqueID,
 	}
 }
@@ -227,6 +249,25 @@ func (d *Deployment) SetLocations(locations map[string]bool) {
 	for location := range locations {
 		d.Locations = append(d.Locations, location)
 	}
+}
+
+func (d *Deployment) GetProjectID() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.projectID == "" {
+		panic("project ID is not set in the deployment")
+	}
+	return d.projectID
+}
+
+func (d *Deployment) SetProjectID(projectID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if projectID == "" {
+		return
+	}
+	d.projectID = projectID
+	d.GCP.ProjectID = projectID
 }
 
 type StatusUpdateMsg struct {

@@ -378,8 +378,16 @@ func GetMachinesInLocation(resourceName string, machines map[string]Machiner) ([
 //
 //nolint:lll
 func createStatus(machineName, resourceID, resourceType, state string) DisplayStatus {
+	l := logger.Get()
 	azureResourceType := GetAzureResourceType(resourceType)
 	stateType := ConvertFromAzureStringToResourceState(state)
+
+	l.Infof("Updating machine: %s, resource: %s, type: %s, state: %s",
+		machineName,
+		resourceID,
+		resourceType,
+		state,
+	)
 
 	return *NewDisplayStatus(machineName, resourceID, azureResourceType, stateType)
 }

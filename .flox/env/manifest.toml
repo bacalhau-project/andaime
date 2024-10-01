@@ -10,7 +10,7 @@ version = 1
 [install]
 python312Full = { pkg-path = "python312Full" }
 pip = { pkg-path = "python312Packages.pip" }
-go_1_22.pkg-path = "go_1_22"
+go_1_23.pkg-path = "go_1_23"
 golangci-lint.pkg-path = "golangci-lint"
 just.pkg-path = "just"
 

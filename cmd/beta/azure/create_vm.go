@@ -59,18 +59,6 @@ func createVM(cmd *cobra.Command, args []string) error {
 		viper.Set("azure.resource_group_name", resourceGroupName)
 	}
 
-	// Set up a single machine configuration
-	machines := []map[string]interface{}{
-		{
-			"location": location,
-			"parameters": map[string]interface{}{
-				"type":  vmSize,
-				"count": 1,
-			},
-		},
-	}
-	viper.Set("azure.machines", machines)
-
 	// Call the existing executeCreateDeployment function from create_deployment.go
 	if err := ExecuteCreateDeployment(cmd, nil); err != nil {
 		return fmt.Errorf("failed to create VM: %w", err)

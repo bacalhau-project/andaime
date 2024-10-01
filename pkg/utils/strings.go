@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -38,31 +36,6 @@ func ParseStringToIntOrZero(row string) int {
 	return parsedInt
 }
 
-// GenerateUniqueID generates a unique ID of length 8
-func GenerateUniqueID() string {
-	return generateID(8) //nolint:mnd
-}
-
-// CreateShortID generates a short ID of length 6
-func CreateShortID() string {
-	return generateID(6) //nolint:mnd
-}
-
-func generateID(length int) string {
-	l := logger.Get()
-
-	var letters = []rune("bcdfghjklmnpqrstvwxz")
-	b := make([]rune, length)
-	for i := range b {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
-		if err != nil {
-			l.Fatalf("Failed to generate unique ID: %v", err)
-		}
-		b[i] = letters[n.Int64()]
-	}
-	return string(b)
-}
-
 func ExpandPath(path string) (string, error) {
 	if strings.HasPrefix(path, "~/") {
 		usr, err := user.Current()
@@ -87,7 +60,12 @@ func GenerateUniqueName(projectID, uniqueID string) string {
 	}
 
 	// Combine the parts
-	vmName := fmt.Sprintf("vm-%s-%s-%s", shortProjectID, shortUniqueID, GenerateUniqueID()[:4])
+	vmName := fmt.Sprintf(
+		"vm-%s-%s-%s",
+		shortProjectID,
+		shortUniqueID,
+		CreateShortID()[:4],
+	)
 
 	// Ensure the total length is less than 20 characters
 	if len(vmName) > 19 {

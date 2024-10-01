@@ -31,10 +31,21 @@ gcp:
       parameters:
         orchestrator: true
 general:
-  log_level: info
-  log_path: /tmp/andaime.log
   project_prefix: andaime
-  ssh_port: 22
-  ssh_private_key_path: /Users/daaronch/.ssh/id_rsa
-  ssh_public_key_path: /Users/daaronch/.ssh/id_rsa.pub
-  ssh_user: andaimeuser
+  ssh_public_key_path: ./testdata/dummy_keys/id_ed25519.pub
+  ssh_private_key_path: ./testdata/dummy_keys/id_ed25519
+  bacalhau_settings:
+    - Key: "node.allowlistedlocalpaths"
+      Value:
+        - /tmp
+        - /data
+    - Key: "node.compute.controlplanesettings.infoupdatefrequency"
+      Value: 5s
+    - Key: "node.compute.controlplanesettings.heartbeatfrequency"
+      Value: 5s
+    - Key: "node.compute.controlplanesettings.resourceupdatefrequency"
+      Value: 5s
+    - Key: "node.requester.controlplanesettings.nodedisconnectedafter"
+      Value: 5s
+    - Key: "node.compute.jobselection.acceptnetworkedjobs"
+      Value: true

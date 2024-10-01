@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 // ToPtr returns a pointer to the given value
@@ -61,4 +63,47 @@ func SafeConvertToInt32(value int) int32 {
 
 	//nolint:gosec
 	return int32(value)
+}
+
+const (
+	FormatHours = 1 << iota
+	FormatMinutes
+	FormatSeconds
+	FormatMilliseconds
+)
+
+func FormatDuration(d time.Duration, format int) string {
+	d = d.Round(time.Millisecond) // Round to nearest millisecond
+
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+	d -= s * time.Second
+	ms := d / time.Millisecond
+
+	var parts []string
+
+	if format&FormatHours != 0 && h > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", h))
+	}
+
+	if format&FormatMinutes != 0 {
+		parts = append(parts, fmt.Sprintf("%02dm", m))
+	}
+
+	if format&FormatSeconds != 0 {
+		parts = append(parts, fmt.Sprintf("%02ds", s))
+	}
+
+	if format&FormatMilliseconds != 0 {
+		parts = append(parts, fmt.Sprintf("%03dms", ms))
+	}
+
+	if len(parts) == 0 {
+		return "0s"
+	}
+
+	return strings.Join(parts, "")
 }

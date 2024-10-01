@@ -15,25 +15,21 @@ var (
 	betaCmd *cobra.Command
 )
 
-func getBetaCmd(rootCmd *cobra.Command) *cobra.Command {
-	once.Do(func() {
-		betaCmd = &cobra.Command{
-			Use:   "beta",
-			Short: "Beta commands for testing and development",
-			Long:  `Beta commands are experimental features that are not yet ready for production use.`,
-			Run: func(cmd *cobra.Command, args []string) {
-				fmt.Println("Use 'andaime beta [command]' to run a beta command.")
-				fmt.Println(
-					"Use 'andaime beta --help' for more information about available beta commands.",
-				)
-			},
-		}
-		rootCmd.AddCommand(betaCmd)
-
-		betaCmd.AddCommand(beta.GetTestDisplayCmd())
-		betaCmd.AddCommand(azure.GetAzureCmd())
-		betaCmd.AddCommand(gcp.GetGCPCmd())
-		// betaCmd.AddCommand(azure.GetAwsCmd())
-	})
+func GetBetaCmd() *cobra.Command {
+	betaCmd = &cobra.Command{
+		Use:   "beta",
+		Short: "Beta commands for testing and development",
+		Long:  `Beta commands are experimental features that are not yet ready for production use.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Use 'andaime beta [command]' to run a beta command.")
+			fmt.Println(
+				"Use 'andaime beta --help' for more information about available beta commands.",
+			)
+		},
+	}
+	betaCmd.AddCommand(beta.GetTestDisplayCmd())
+	betaCmd.AddCommand(azure.GetAzureCmd())
+	betaCmd.AddCommand(gcp.GetGCPCmd())
+	// betaCmd.AddCommand(azure.GetAwsCmd())
 	return betaCmd
 }

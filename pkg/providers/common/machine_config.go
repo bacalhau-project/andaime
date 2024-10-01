@@ -248,7 +248,12 @@ func createNewMachine(
 		newMachine.SetServiceState(service.Name, models.ServiceStateNotStarted)
 	}
 
-	newMachine.SetSSHUser("azureuser")
+	user := viper.GetString("general.ssh_user")
+	if user == "" {
+		user = "andaimeuser"
+	}
+
+	newMachine.SetSSHUser(user)
 	newMachine.SetSSHPort(sshPort)
 	newMachine.SetSSHPrivateKeyMaterial(privateKeyBytes)
 	newMachine.SetSSHPrivateKeyPath(privateKeyPath)

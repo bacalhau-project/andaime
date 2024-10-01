@@ -55,7 +55,7 @@ const (
 	DebugFilePath           = "/tmp/andaime-debug.log"
 	DebugFilePermissions    = 0644
 	WaitingForMachinesTime  = 1 * time.Minute
-	DefaultSSHUser          = "azureuser"
+	DefaultSSHUser          = "andaimeuser"
 	DefaultSSHPort          = 22
 )
 
@@ -117,14 +117,14 @@ func NewAzureProvider(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
-	provider.Client = client
+	provider.SetAzureClient(client)
 
 	return provider, nil
 }
 
 func (p *AzureProvider) CheckAuthentication(ctx context.Context) error {
 	// Attempt to list resource groups as a simple authentication check
-	_, err := p.Client.ListAllResourceGroups(ctx)
+	_, err := p.GetAzureClient().ListAllResourceGroups(ctx)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
@@ -209,7 +209,7 @@ func (p *AzureProvider) GetOrCreateResourceGroup(
 	locationData string,
 	tags map[string]string,
 ) (*armresources.ResourceGroup, error) {
-	resourceGroup, err := p.Client.GetOrCreateResourceGroup(
+	resourceGroup, err := p.GetAzureClient().GetOrCreateResourceGroup(
 		ctx,
 		resourceGroupName,
 		locationData,
@@ -223,13 +223,13 @@ func (p *AzureProvider) GetOrCreateResourceGroup(
 
 // DestroyResourceGroup deletes the specified resource group.
 func (p *AzureProvider) DestroyResourceGroup(ctx context.Context, resourceGroupName string) error {
-	return p.Client.DestroyResourceGroup(ctx, resourceGroupName)
+	return p.GetAzureClient().DestroyResourceGroup(ctx, resourceGroupName)
 }
 
 // DestroyResources destroys the specified resource group if it exists.
 func (p *AzureProvider) DestroyResources(ctx context.Context, resourceGroupName string) error {
 	l := logger.Get()
-	client := p.Client
+	client := p.GetAzureClient()
 
 	// Check if the resource group exists before attempting to destroy it.
 	exists, err := client.ResourceGroupExists(ctx, resourceGroupName)
@@ -263,7 +263,7 @@ func (p *AzureProvider) GetVMExternalIP(
 	if locationData["location"] == "" {
 		return "", fmt.Errorf("location data is empty")
 	}
-	return p.Client.GetVMExternalIP(ctx, vmName, locationData)
+	return p.GetAzureClient().GetVMExternalIP(ctx, vmName, locationData)
 }
 
 // StartResourcePolling starts polling Azure resources for updates.
@@ -444,7 +444,7 @@ func (p *AzureProvider) GetResources(
 	resourceGroupName string,
 	tags map[string]*string,
 ) ([]interface{}, error) {
-	return p.Client.GetResources(ctx, p.SubscriptionID, resourceGroupName, tags)
+	return p.GetAzureClient().GetResources(ctx, p.SubscriptionID, resourceGroupName, tags)
 }
 
 // writeToDebugLog writes a message to the debug log file with a timestamp.
@@ -502,25 +502,25 @@ func (p *AzureProvider) GetSKUsByLocation(
 	ctx context.Context,
 	location string,
 ) ([]armcompute.ResourceSKU, error) {
-	return p.Client.GetSKUsByLocation(ctx, location)
+	return p.GetAzureClient().GetSKUsByLocation(ctx, location)
 }
 
 func (p *AzureProvider) ListAllResourceGroups(
 	ctx context.Context,
 ) ([]*armresources.ResourceGroup, error) {
-	if p.Client == nil {
+	if p.GetAzureClient() == nil {
 		l := logger.Get()
 		l.Error("Azure client is not initialized")
 		return nil, fmt.Errorf("Azure client is not initialized")
 	}
-	return p.Client.ListAllResourceGroups(ctx)
+	return p.GetAzureClient().ListAllResourceGroups(ctx)
 }
 
 func (p *AzureProvider) ListAllResourcesInSubscription(
 	ctx context.Context,
 	tags map[string]*string,
 ) ([]interface{}, error) {
-	return p.Client.ListAllResourcesInSubscription(ctx, p.SubscriptionID, p.Tags)
+	return p.GetAzureClient().ListAllResourcesInSubscription(ctx, p.SubscriptionID, p.Tags)
 }
 
 // Add this method to the AzureProvider struct
@@ -529,7 +529,7 @@ func (p *AzureProvider) ValidateMachineType(
 	ctx context.Context,
 	location, machineType string,
 ) (bool, error) {
-	return p.Client.ValidateMachineType(ctx, location, machineType)
+	return p.GetAzureClient().ValidateMachineType(ctx, location, machineType)
 }
 
 func (p *AzureProvider) FinalizeDeployment(ctx context.Context) error {

@@ -82,7 +82,6 @@ func createVM(cmd *cobra.Command, args []string) error {
 
 	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
-		projectID,
 		organizationID,
 		billingAccountID,
 	)
@@ -99,8 +98,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
-	m.Deployment.ProjectID = projectID
-	m.Deployment.GCP.ProjectID = projectID
+	m.Deployment.SetProjectID(projectID)
 	m.Deployment.GCP.OrganizationID = organizationID
 	m.Deployment.GCP.BillingAccountID = billingAccountID
 	m.Deployment.GCP.DefaultRegion = getRegionFromZone(zone)
@@ -121,8 +119,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	m.Deployment.SetMachines(map[string]models.Machiner{
 		vmName: machine,
 	})
-
-	publicIP, _, err := gcpProvider.CreateVM(ctx, vmName)
+	publicIPAddress, _, err := gcpProvider.CreateVM(ctx, vmName)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
@@ -133,7 +130,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("VM created successfully: %s (External IP: %s)\n", vmName, publicIP)
+	fmt.Printf("VM created successfully: %s (External IP: %s)\n", vmName, publicIPAddress)
 	return nil
 }
 

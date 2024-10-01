@@ -20,7 +20,13 @@ func GetGCPCreateProjectCmd() *cobra.Command {
 			if organizationID == "" {
 				return fmt.Errorf("organization_id is not set in the configuration")
 			}
-			return createProject(cmd.Context(), projectID)
+			m := display.GetGlobalModelFunc()
+			if m == nil || m.Deployment == nil {
+				return fmt.Errorf("global model or deployment is nil")
+			}
+			m.Deployment.SetProjectID(projectID)
+
+			return createProject(cmd.Context())
 		},
 	}
 
@@ -30,11 +36,13 @@ func GetGCPCreateProjectCmd() *cobra.Command {
 	return cmd
 }
 
-func createProject(ctx context.Context, projectID string) error {
+func createProject(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
 	gcpProvider, err := gcp_provider.NewGCPProviderFunc(
 		ctx,
-		projectID,
 		viper.GetString("gcp.organization_id"),
 		viper.GetString("gcp.billing_account_id"),
 	)
@@ -44,19 +52,19 @@ func createProject(ctx context.Context, projectID string) error {
 	}
 
 	// Use EnsureProject to create or reuse an existing project
-	m.Deployment.ProjectID, err = gcpProvider.EnsureProject(ctx, projectID)
+	err = gcpProvider.EnsureProject(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to ensure project: %w", err)
 	}
 
-	fmt.Printf("Project ensured successfully: %s\n", m.Deployment.ProjectID)
+	fmt.Printf("Project ensured successfully: %s\n", m.Deployment.GetProjectID())
 
 	// Update status of all machines with the project being created
 	for i := range m.Deployment.Machines {
 		m.Deployment.GetMachine(i).SetStatusMessage(
 			fmt.Sprintf(
 				"Associated with project: %s",
-				m.Deployment.ProjectID,
+				m.Deployment.GetProjectID(),
 			),
 		)
 	}

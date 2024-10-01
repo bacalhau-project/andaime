@@ -174,11 +174,16 @@ func NewMachine(
 		ID:            machineName,
 		Name:          machineName,
 		StartTime:     time.Now(),
-		Location:      location,
 		VMSize:        vmSize,
 		DiskSizeGB:    diskSizeGB,
 		CloudProvider: cloudProvider,
 		CloudSpecific: cloudSpecificInfo,
+	}
+
+	// There is some logic in SetLocation so we do this outside of the struct
+	err := returnMachine.SetLocation(location)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, service := range RequiredServices {
@@ -231,7 +236,7 @@ func (mach *Machine) SetOrchestrator(orchestrator bool) {
 }
 
 func (mach *Machine) SetLocation(location string) error {
-	switch mach.DeploymentType {
+	switch mach.CloudProvider {
 	case DeploymentTypeAzure:
 		if !internal_azure.IsValidAzureLocation(location) {
 			return fmt.Errorf("invalid Azure location: %s", location)
@@ -240,6 +245,12 @@ func (mach *Machine) SetLocation(location string) error {
 		if !internal_gcp.IsValidGCPLocation(location) {
 			return fmt.Errorf("invalid GCP location: %s", location)
 		}
+		mach.CloudSpecific.Zone = location
+		region, err := internal_gcp.GetGCPRegionFromZone(location)
+		if err != nil {
+			return fmt.Errorf("invalid GCP location: %s", location)
+		}
+		mach.CloudSpecific.Region = region
 	default:
 		return fmt.Errorf("unknown deployment type: %s", mach.DeploymentType)
 	}
@@ -789,6 +800,33 @@ func (mach *Machine) SetStartTime(startTime time.Time) {
 
 func (mach *Machine) SetDeploymentEndTime(endTime time.Time) {
 	mach.DeploymentEndTime = endTime
+}
+
+func MachineConfigToWrite(machine Machiner) map[string]interface{} {
+	sshEnabled := machine.GetServiceState(
+		ServiceTypeSSH.Name,
+	) == ServiceStateSucceeded
+	dockerInstalled := machine.GetServiceState(
+		ServiceTypeDocker.Name,
+	) == ServiceStateSucceeded
+	bacalhauInstalled := machine.GetServiceState(
+		ServiceTypeBacalhau.Name,
+	) == ServiceStateSucceeded
+	scriptInstalled := machine.GetServiceState(
+		ServiceTypeScript.Name,
+	) == ServiceStateSucceeded
+	orchestrator := machine.IsOrchestrator()
+
+	return map[string]interface{}{
+		"name":              machine.GetName(),
+		"publicip":          machine.GetPublicIP(),
+		"privateip":         machine.GetPrivateIP(),
+		"SSHEnabled":        sshEnabled,
+		"DockerInstalled":   dockerInstalled,
+		"BacalhauInstalled": bacalhauInstalled,
+		"ScriptInstalled":   scriptInstalled,
+		"Orchestrator":      orchestrator,
+	}
 }
 
 // Ensure that Machine implements Machiner

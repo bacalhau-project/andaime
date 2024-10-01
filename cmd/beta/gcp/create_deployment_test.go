@@ -90,7 +90,6 @@ func (suite *CmdBetaGCPCreateDeploymentSuite) SetupTest() {
 	var err error
 	suite.gcpProvider, err = gcp_provider.NewGCPProviderFunc(
 		suite.ctx,
-		viper.GetString("gcp.project_id"),
 		viper.GetString("gcp.organization_id"),
 		viper.GetString("gcp.billing_account_id"),
 	)
@@ -270,7 +269,7 @@ func (suite *CmdBetaGCPCreateDeploymentSuite) TestPrepareDeployment() {
 	suite.Require().NotNil(deployment)
 
 	suite.Equal(models.DeploymentTypeGCP, deployment.DeploymentType)
-	suite.Contains(deployment.ProjectID, viper.GetString("general.project_prefix"))
+	suite.Contains(deployment.GetProjectID(), viper.GetString("general.project_prefix"))
 	suite.Equal("us-central1", deployment.GCP.DefaultRegion)
 	suite.Equal("us-central1-a", deployment.GCP.DefaultZone)
 	suite.Equal("test-billing-account-id", deployment.GCP.BillingAccountID)

@@ -1,17 +1,16 @@
-package azure
+package gcp_test
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
+
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
-	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
+	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -25,22 +24,22 @@ import (
 var localCustomScriptPath string
 var localCustomScriptContent []byte
 
-type PkgProvidersAzureIntegrationTest struct {
+type PkgProvidersGCPIntegrationTest struct {
 	suite.Suite
-	provider               *AzureProvider
+	provider               *gcp.GCPProvider
 	clusterDeployer        *common.ClusterDeployer
 	origGetGlobalModelFunc func() *display.DisplayModel
 	testDisplayModel       *display.DisplayModel
-	mockAzureClient        *azure_mocks.MockAzureClienter
+	mockGCPClient          *gcp_mocks.MockGCPClienter
 	mockSSHConfig          *sshutils.MockSSHConfig
 	cleanup                func()
 }
 
-func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
+func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	tempConfigFile, err := os.CreateTemp("", "config*.yaml")
 	s.Require().NoError(err)
 
-	testConfig, err := testdata.ReadTestAzureConfig()
+	testConfig, err := testdata.ReadTestGCPConfig()
 	s.Require().NoError(err)
 
 	f, err := os.CreateTemp("", "local_custom_script*.sh")
@@ -61,19 +60,18 @@ func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	err = viper.ReadInConfig()
 	s.Require().NoError(err)
 
-	viper.Set("azure.subscription_id", "test-subscription-id")
-	viper.Set("azure.resource_group_location", "eastus")
+	viper.Set("gcp.project_id", "test-project-id")
+	viper.Set("gcp.region", "us-central1")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
-	viper.Set("general.custom_script_path", localCustomScriptPath)
-	viper.Set("azure.default_disk_size_gb", 30)
+	viper.Set("gcp.default_disk_size_gb", 30)
 
-	s.mockAzureClient = new(azure_mocks.MockAzureClienter)
-	s.provider = &AzureProvider{
-		Client: s.mockAzureClient,
+	s.mockGCPClient = new(gcp_mocks.MockGCPClienter)
+	s.provider = &gcp.GCPProvider{
+		Client: s.mockGCPClient,
 	}
 
-	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeAzure)
+	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeGCP)
 
 	s.cleanup = func() {
 		_ = os.Remove(tempConfigFile.Name())
@@ -82,35 +80,33 @@ func (s *PkgProvidersAzureIntegrationTest) SetupSuite() {
 	}
 }
 
-func (s *PkgProvidersAzureIntegrationTest) TearDownSuite() {
+func (s *PkgProvidersGCPIntegrationTest) TearDownSuite() {
 	s.cleanup()
 }
 
-func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
-	mockPoller := new(MockPoller)
-	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-		Return(armresources.DeploymentsClientCreateOrUpdateResponse{
-			DeploymentExtended: testdata.FakeDeployment(),
-		}, nil)
-
-	s.mockAzureClient.On("DeployTemplate",
-		mock.Anything,
-		mock.Anything,
-		mock.AnythingOfType("string"),
-		mock.AnythingOfType("map[string]interface {}"),
-		mock.AnythingOfType("map[string]interface {}"),
-		mock.AnythingOfType("map[string]*string"),
-	).Return(mockPoller, nil).Maybe()
-
-	s.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-		Return(testdata.FakeVirtualMachine(), nil)
-
-	s.mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-		Return(testdata.FakeNetworkInterface(), nil)
-	s.mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-		Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
+func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
+	s.mockGCPClient.On("EnsureProject", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return("test-project-id", nil)
+	s.mockGCPClient.On("EnableAPI", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateResources", mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateFirewallRules", mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateVM", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPInstance(), nil)
+	s.mockGCPClient.On("GetInstance", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPInstance(), nil)
+	s.mockGCPClient.On("GetOperation", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPOperation(), nil)
+	s.mockGCPClient.On("GetMachineType", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPMachineType(), nil)
+	s.mockGCPClient.On("GetNetwork", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPNetwork(), nil)
+	s.mockGCPClient.On("GetSubnetwork", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPSubnetwork(), nil)
 
 	deployment, err := models.NewDeployment()
+	deployment.SetProjectID("test-project-id")
 	s.Require().NoError(err)
 	m := display.NewDisplayModel(deployment)
 
@@ -119,16 +115,16 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		location     string
 		orchestrator bool
 	}{
-		{"orchestrator", "eastus", true},
-		{"worker1", "eastus2", false},
-		{"worker2", "westus", false},
+		{"orchestrator", "us-central1-a", true},
+		{"worker1", "us-central1-b", false},
+		{"worker2", "us-central1-c", false},
 	}
 
 	for _, machine := range machines {
 		m, err := models.NewMachine(
-			models.DeploymentTypeAzure,
+			models.DeploymentTypeGCP,
 			machine.location,
-			"Standard_D2s_v3",
+			"n1-standard-2",
 			30,
 			models.CloudSpecificInfo{},
 		)
@@ -141,15 +137,13 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		deployment.SetMachine(machine.name, m)
 	}
 
-	m.Deployment.Azure.ResourceGroupLocation = "eastus"
-	m.Deployment.Locations = []string{"eastus", "eastus2", "westus"}
+	m.Deployment.GCP.DefaultRegion = "us-central1"
+	m.Deployment.Locations = []string{"us-central1-a", "us-central1-b", "us-central1-c"}
 	m.Deployment.SSHPublicKeyMaterial = "PUBLIC KEY MATERIAL"
-
+	m.Deployment.CustomScriptPath = localCustomScriptPath
 	bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
 	s.Require().NoError(err)
 	m.Deployment.BacalhauSettings = bacalhauSettings
-
-	m.Deployment.CustomScriptPath = localCustomScriptPath
 
 	s.testDisplayModel = m
 
@@ -259,7 +253,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            1,
 			},
 			{
-				Cmd:              "bacalhau node list --output json --api-host 20.30.40.50",
+				Cmd:              "bacalhau node list --output json --api-host 35.200.100.100",
 				ProgressCallback: mock.Anything,
 				Output:           `[{"id": "node1"}]`,
 				Error:            nil,
@@ -273,13 +267,6 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'node.requester.controlplanesettings.nodedisconnectedafter' '5s'`,
-				ProgressCallback: mock.Anything,
-				Output:           "",
-				Error:            nil,
-				Times:            3,
-			},
-			{
 				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.resourceupdatefrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
@@ -287,7 +274,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            3,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.infoupdatefrequency' '5s'`,
+				Cmd:              `sudo bacalhau config set 'node.requester.controlplanesettings.nodedisconnectedafter' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
@@ -295,6 +282,13 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.heartbeatfrequency' '5s'`,
+				ProgressCallback: mock.Anything,
+				Output:           "",
+				Error:            nil,
+				Times:            3,
+			},
+			{
+				Cmd:              `sudo bacalhau config set 'node.compute.controlplanesettings.infoupdatefrequency' '5s'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
@@ -329,10 +323,9 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
 		return s.mockSSHConfig, nil
 	}
-
 }
 
-func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
+func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	l := logger.Get()
 	l.Info("Starting TestProvisionResourcesSuccess")
 
@@ -388,40 +381,6 @@ func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
 	s.mockSSHConfig.AssertExpectations(s.T())
 }
 
-func TestAzureIntegrationSuite(t *testing.T) {
-	suite.Run(t, new(PkgProvidersAzureIntegrationTest))
-}
-
-type MockPoller struct {
-	mock.Mock
-}
-
-func (m *MockPoller) PollUntilDone(
-	ctx context.Context,
-	options *runtime.PollUntilDoneOptions,
-) (armresources.DeploymentsClientCreateOrUpdateResponse, error) {
-	args := m.Called(ctx, options)
-	return args.Get(0).(armresources.DeploymentsClientCreateOrUpdateResponse), args.Error(1)
-}
-
-func (m *MockPoller) ResumeToken() (string, error) {
-	args := m.Called()
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockPoller) Result(
-	ctx context.Context,
-) (armresources.DeploymentsClientCreateOrUpdateResponse, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(armresources.DeploymentsClientCreateOrUpdateResponse), args.Error(1)
-}
-
-func (m *MockPoller) Done() bool {
-	args := m.Called()
-	return args.Bool(0)
-}
-
-func (m *MockPoller) Poll(ctx context.Context) (*http.Response, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(*http.Response), args.Error(1)
+func TestGCPIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(PkgProvidersGCPIntegrationTest))
 }

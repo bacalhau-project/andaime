@@ -101,7 +101,7 @@ func PrepareDeployment(
 	}
 
 	// Check if a custom script is specified and validate it
-	customScriptPath := viper.GetString("general.custom_script")
+	customScriptPath := viper.GetString("general.custom_script_path")
 	if customScriptPath != "" {
 		if err := isValidScript(customScriptPath); err != nil {
 			return nil, fmt.Errorf("invalid custom script: %w", err)
@@ -110,7 +110,7 @@ func PrepareDeployment(
 	}
 
 	// Validate Bacalhau settings
-	bacalhauSettings, err := utils.ReadBacalhauSettingsFromViper()
+	bacalhauSettings, err := models.ReadBacalhauSettingsFromViper()
 	if err != nil {
 		return nil, fmt.Errorf("invalid Bacalhau settings: %w", err)
 	}
@@ -238,6 +238,7 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 	}
 
 	deployment.Name = fmt.Sprintf("%s-%s", projectPrefix, uniqueID)
+	deployment.SetProjectID(deployment.Name)
 
 	if provider == models.DeploymentTypeAzure {
 		deployment.Azure.ResourceGroupLocation = viper.GetString("azure.resource_group_location")
@@ -259,7 +260,7 @@ func setDeploymentBasicInfo(deployment *models.Deployment, provider models.Deplo
 			deployment.Azure.DefaultCountPerZone = 1
 		}
 	} else if provider == models.DeploymentTypeGCP {
-		deployment.GCP.ProjectID = fmt.Sprintf("%s-%s", deployment.Name, uniqueID)
+		deployment.SetProjectID(deployment.Name)
 		deployment.GCP.OrganizationID = viper.GetString("gcp.organization_id")
 		if deployment.GCP.OrganizationID == "" {
 			return fmt.Errorf("gcp.organization_id is not set")
