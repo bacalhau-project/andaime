@@ -89,6 +89,8 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 		Return("test-project-id", nil)
 	s.mockGCPClient.On("EnableAPI", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateResources", mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateFirewallRules", mock.Anything, mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateVM", mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeGCPInstance(), nil)

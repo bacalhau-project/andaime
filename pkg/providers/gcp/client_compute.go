@@ -42,6 +42,10 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 			NetworkResource: network,
 		})
 		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				l.Debugf("Network %s already exists, skipping creation", networkName)
+				return backoff.Permanent(nil)
+			}
 			return fmt.Errorf("failed to create network: %v", err)
 		}
 
@@ -154,41 +158,113 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	return nil
 }
 
+func (c *LiveGCPClient) CreateIP(
+	ctx context.Context,
+	projectID, region string,
+	addressName string,
+) (string, error) {
+	if region == "" {
+		return "", fmt.Errorf("region is not set")
+	}
+
+	if projectID == "" {
+		return "", fmt.Errorf("projectID is not set")
+	}
+
+	if addressName == "" {
+		return "", fmt.Errorf("addressName is not set")
+	}
+
+	// Insert the address
+	op, err := c.addressesClient.Insert(ctx, &computepb.InsertAddressRequest{
+		Project: projectID,
+		Region:  region,
+		AddressResource: &computepb.Address{
+			Name:        to.Ptr(addressName),
+			AddressType: to.Ptr("EXTERNAL"),
+			Region:      to.Ptr(region),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to reserve IP address: %v", err)
+	}
+
+	err = op.Wait(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to reserve IP address: %v", err)
+	}
+
+	return addressName, nil
+}
+
 func (c *LiveGCPClient) CreateVM(
 	ctx context.Context,
 	projectID string,
 	machine models.Machiner,
 ) (*computepb.Instance, error) {
+	publicIPName, err := c.CreateIP(
+		ctx,
+		projectID,
+		machine.GetRegion(),
+		fmt.Sprintf("%s-ip", machine.GetName()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IP: %w", err)
+	}
+
+	// Create a 1 minute backoff for the IP creation
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 1 * time.Minute
+
+	var ip *computepb.Address
+
+	operation := func() error {
+		ip, err = c.addressesClient.Get(ctx, &computepb.GetAddressRequest{
+			Project: projectID,
+			Region:  machine.GetRegion(),
+			Address: publicIPName,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get IP address: %w", err)
+		}
+		return nil
+	}
+
+	err = backoff.Retry(operation, b)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reserve IP address: %w", err)
+	}
+
 	// Validate input and prerequisites
 	if err := c.validateCreateVMInput(ctx, projectID, machine); err != nil {
 		return nil, fmt.Errorf("input validation failed: %w", err)
 	}
 
 	// Prepare VM configuration
-	instance, err := c.prepareVMInstance(ctx, projectID, machine)
+	instance, err := c.prepareVMInstance(ctx, projectID, machine, *ip.Address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare VM instance: %w", err)
 	}
 
-	// Create VM
-	ops, err := c.computeClient.Insert(ctx, &computepb.InsertInstanceRequest{
+	// Create the instance
+	op, err := c.computeClient.Insert(ctx, &computepb.InsertInstanceRequest{
 		Project:          projectID,
 		Zone:             machine.GetLocation(),
 		InstanceResource: instance,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create VM instance: %w", err)
+		return nil, fmt.Errorf("failed to create instance: %w", err)
 	}
 
-	// Wait for VM creation to complete
-	if err := ops.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("failed to wait for VM instance creation: %w", err)
+	err = op.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for instance creation: %w", err)
 	}
 
 	// Retrieve and return the created instance
 	return c.computeClient.Get(ctx, &computepb.GetInstanceRequest{
 		Project:  projectID,
-		Zone:     machine.GetLocation(),
+		Zone:     machine.GetZone(),
 		Instance: machine.GetName(),
 	})
 }
@@ -230,6 +306,7 @@ func (c *LiveGCPClient) prepareVMInstance(
 	ctx context.Context,
 	projectID string,
 	machine models.Machiner,
+	publicIP string,
 ) (*computepb.Instance, error) {
 	networkName := "default"
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
@@ -237,7 +314,23 @@ func (c *LiveGCPClient) prepareVMInstance(
 		return nil, fmt.Errorf("failed to get or create network: %w", err)
 	}
 
-	startupScript := c.generateStartupScript()
+	// Get the SSH public and private keys
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return nil, fmt.Errorf("global model or deployment is nil")
+	}
+
+	startupScript := c.generateStartupScript(
+		machine.GetSSHUser(),
+		strings.TrimSpace(m.Deployment.SSHPublicKeyMaterial),
+	)
+
+	// Format the SSH key for GCP
+	sshKeyEntry := fmt.Sprintf(
+		"%s:%s",
+		machine.GetSSHUser(),
+		strings.TrimSpace(m.Deployment.SSHPublicKeyMaterial),
+	)
 
 	instance := &computepb.Instance{
 		Name: proto.String(machine.GetName()),
@@ -262,8 +355,9 @@ func (c *LiveGCPClient) prepareVMInstance(
 				Network: network.SelfLink,
 				AccessConfigs: []*computepb.AccessConfig{
 					{
-						Type: to.Ptr("ONE_TO_ONE_NAT"),
-						Name: to.Ptr("External NAT"),
+						Type:  to.Ptr("ONE_TO_ONE_NAT"),
+						Name:  to.Ptr("External NAT"),
+						NatIP: to.Ptr(publicIP),
 					},
 				},
 			},
@@ -282,17 +376,21 @@ func (c *LiveGCPClient) prepareVMInstance(
 					Key:   to.Ptr("startup-script"),
 					Value: to.Ptr(startupScript),
 				},
+				{
+					Key:   to.Ptr("ssh-keys"),
+					Value: to.Ptr(machine.GetSSHUser() + ":" + sshKeyEntry),
+				},
 			},
 		},
 	}
 
 	return instance, nil
 }
-
 func (c *LiveGCPClient) getOrCreateNetwork(
 	ctx context.Context,
 	projectID, networkName string,
 ) (*computepb.Network, error) {
+	// Always try to get the network first
 	network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 		Project: projectID,
 		Network: networkName,
@@ -301,6 +399,12 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 		return network, nil
 	}
 
+	// If it's the default network and we couldn't get it, there's a problem
+	if networkName == "default" {
+		return nil, fmt.Errorf("default network not found in project %s: %v", projectID, err)
+	}
+
+	// For non-default networks, create if not found
 	if !isNotFoundError(err) {
 		return nil, fmt.Errorf("failed to get network: %v", err)
 	}
@@ -331,60 +435,6 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 		Network: networkName,
 	})
 }
-
-// func (c *LiveGCPClient) WaitForGlobalOperation(
-// 	ctx context.Context,
-// 	project, operation string,
-// ) error {
-// 	for {
-// 		op, err := c.operationsClient.Get(ctx, &computepb.GetGlobalOperationRequest{
-// 			Project:   project,
-// 			Operation: operation,
-// 		})
-// 		if err != nil {
-// 			return fmt.Errorf("failed to get operation status: %v", err)
-// 		}
-// 		if op.Status == to.Ptr(computepb.Operation_DONE) {
-// 			if op.Error != nil {
-// 				return fmt.Errorf("operation failed: %v", op.Error.Errors)
-// 			}
-// 			return nil
-// 		}
-// 		select {
-// 		case <-ctx.Done():
-// 			return ctx.Err()
-// 		default:
-// 			time.Sleep(common.ResourcePollingInterval)
-// 		}
-// 	}
-// }
-
-// func (c *LiveGCPClient) WaitForZoneOperation(
-// 	ctx context.Context,
-// 	project, zone, operation string,
-// ) error {
-// 	for {
-// 		op, err := c.operationsClient.Get(ctx, &computepb.GetGlobalOperationRequest{
-// 			Project:   project,
-// 			Operation: operation,
-// 		})
-// 		if err != nil {
-// 			return fmt.Errorf("failed to get operation status: %v", err)
-// 		}
-// 		if op.Status == to.Ptr(computepb.Operation_DONE) {
-// 			if op.Error != nil {
-// 				return fmt.Errorf("operation failed: %v", op.Error.Errors)
-// 			}
-// 			return nil
-// 		}
-// 		select {
-// 		case <-ctx.Done():
-// 			return ctx.Err()
-// 		default:
-// 			time.Sleep(common.ResourcePollingInterval)
-// 		}
-// 	}
-// }
 
 func (c *LiveGCPClient) validateZone(ctx context.Context, projectID, zone string) error {
 	l := logger.Get()

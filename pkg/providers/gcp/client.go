@@ -43,6 +43,7 @@ type LiveGCPClient struct {
 	storageClient          *storage.Client
 	computeClient          *compute.InstancesClient
 	networksClient         *compute.NetworksClient
+	addressesClient        *compute.AddressesClient
 	firewallsClient        *compute.FirewallsClient
 	operationsClient       *compute.GlobalOperationsClient
 	zonesClient            *compute.ZonesClient
@@ -117,6 +118,12 @@ func NewGCPClient(
 	}
 	clientList = append(clientList, networksClient)
 
+	addressesClient, err := compute.NewAddressesRESTClient(ctx, clientOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	clientList = append(clientList, addressesClient)
+
 	zoneOperationsClient, err := compute.NewZoneOperationsRESTClient(ctx, clientOpts...)
 	if err != nil {
 		return nil, nil, err
@@ -186,6 +193,7 @@ func NewGCPClient(
 		serviceUsageClient:     serviceUsageClient,
 		computeClient:          computeClient,
 		networksClient:         networksClient,
+		addressesClient:        addressesClient,
 		firewallsClient:        firewallsClient,
 		operationsClient:       globalOperationsClient,
 		zonesClient:            zonesClient,
@@ -239,11 +247,11 @@ func (c *LiveGCPClient) TestComputeEngineAPI(
 		projectID,
 		utils.FormatDuration(
 			elapsedTime,
-			utils.FormatMinutes|utils.FormatSeconds|utils.FormatMilliseconds,
+			utils.FormatMinutes|utils.FormatSeconds,
 		),
 		utils.FormatDuration(
 			maxElapsedTime,
-			utils.FormatMinutes|utils.FormatSeconds|utils.FormatMilliseconds,
+			utils.FormatMinutes|utils.FormatSeconds,
 		),
 	)
 
@@ -344,7 +352,7 @@ func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID string) 
 		return fmt.Errorf("error creating network: %v", err)
 	}
 
-	err = c.WaitForOperation(ctx, projectID, op.Proto())
+	err = op.Wait(ctx)
 	if err != nil {
 		return fmt.Errorf("error waiting for network creation: %v", err)
 	}
@@ -393,9 +401,27 @@ func (c *LiveGCPClient) EnsureServiceAccount(
 	l.Infof("Successfully created service account %s in project %s", serviceAccountName, projectID)
 	return nil
 }
-func (c *LiveGCPClient) generateStartupScript() string {
+
+func (c *LiveGCPClient) generateStartupScript(sshUser string, publicKeyMaterial string) string {
 	script := `#!/bin/bash
 set -e
+
+# Create the SSH user if it doesn't exist
+if ! id "` + sshUser + `" &>/dev/null; then
+    useradd -m -s /bin/bash ` + sshUser + `
+fi
+
+# Add the SSH public key to the user's authorized keys
+mkdir -p /home/` + sshUser + `/.ssh
+echo "` + publicKeyMaterial + `" >> /home/` + sshUser + `/.ssh/authorized_keys
+chmod 600 /home/` + sshUser + `/.ssh/authorized_keys
+chown -R ` + sshUser + `:` + sshUser + ` /home/` + sshUser + `/.ssh
+
+# Add the SSH User to the sudo group
+usermod -aG sudo ` + sshUser + `
+
+# Allow SSH user to sudo without password
+echo "` + sshUser + ` ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Update and install necessary packages
 apt-get update
@@ -410,27 +436,27 @@ systemctl enable docker
 	return script
 }
 
-func (c *LiveGCPClient) WaitForOperation(
-	ctx context.Context,
-	projectID string,
-	op *computepb.Operation,
-) error {
-	for {
-		result, err := c.operationsClient.Wait(ctx, &computepb.WaitGlobalOperationRequest{
-			Project:   projectID,
-			Operation: *op.Name,
-		})
-		if err != nil {
-			return err
-		}
+// func (c *LiveGCPClient) WaitForOperation(
+// 	ctx context.Context,
+// 	projectID string,
+// 	op *computepb.Operation,
+// ) error {
+// 	for {
+// 		result, err := c.operationsClient.Wait(ctx, &computepb.WaitGlobalOperationRequest{
+// 			Project:   projectID,
+// 			Operation: *op.Name,
+// 		})
+// 		if err != nil {
+// 			return err
+// 		}
 
-		if *result.Status == computepb.Operation_DONE {
-			if result.Error != nil {
-				return fmt.Errorf("operation failed: %v", result.Error)
-			}
-			return nil
-		}
+// 		if *result.Status == computepb.Operation_DONE {
+// 			if result.Error != nil {
+// 				return fmt.Errorf("operation failed: %v", result.Error)
+// 			}
+// 			return nil
+// 		}
 
-		time.Sleep(5 * time.Second)
-	}
-}
+// 		time.Sleep(5 * time.Second)
+// 	}
+// }

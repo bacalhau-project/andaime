@@ -100,3 +100,12 @@ func GetGCPDiskImageURL(projectID, family string) string {
 		family,
 	)
 }
+
+func GetGCPRegionFromZone(zone string) (string, error) {
+	parts := strings.Split(zone, "-")
+	//nolint:gomnd
+	if len(parts) >= 3 {
+		return fmt.Sprintf("%s-%s", parts[0], parts[1]), nil
+	}
+	return "", fmt.Errorf("invalid zone for GCP: %s", zone)
+}

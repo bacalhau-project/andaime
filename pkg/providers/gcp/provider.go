@@ -405,41 +405,34 @@ func (p *GCPProvider) CreateVPCNetwork(
 	m := display.GetGlobalModelFunc()
 	l.Infof("Creating VPC network %s in project %s", networkName, m.Deployment.GetProjectID())
 
-	// First, ensure that the Compute Engine API is enabled
-	err := p.EnableAPI(ctx, "compute.googleapis.com")
-	if err != nil {
-		return fmt.Errorf("failed to enable Compute Engine API: %w", err)
-	}
-
-	// Define the exponential backoff strategy
-	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 3 * time.Minute
-
-	// Define the operation to retry
-	operation := func() error {
-		l.Infof("Attempting to create VPC network %s...", networkName)
-		err := p.GetGCPClient().CreateVPCNetwork(ctx, networkName)
-		if err != nil {
-			if strings.Contains(err.Error(), "Compute Engine API has not been used") {
-				l.Infof("Compute Engine API is not yet active. Retrying... (VPC)")
-				return err // This error will trigger a retry
-			}
-			return backoff.Permanent(err) // This error will not trigger a retry
-		}
-		return nil
-	}
-
-	// Define the notify function to keep the user updated
-	notify := func(err error, duration time.Duration) {
-		l.Infof("Attempt to create VPC network failed. Retrying in %v: %v", duration, err)
+	for _, machine := range m.Deployment.Machines {
+		m.UpdateStatus(
+			models.NewDisplayStatusWithText(
+				machine.GetName(),
+				models.GCPResourceTypeInstance,
+				models.ResourceStatePending,
+				"Creating VPC Network.",
+			),
+		)
 	}
 
 	// Execute the operation with backoff
-	err = backoff.RetryNotify(operation, b, notify)
-
+	l.Infof("Attempting to create VPC network %s...", networkName)
+	err := p.GetGCPClient().CreateVPCNetwork(ctx, networkName)
 	if err != nil {
 		l.Errorf("Failed to create VPC network after multiple attempts: %v", err)
 		return fmt.Errorf("failed to create VPC network: %v", err)
+	}
+
+	for _, machine := range m.Deployment.Machines {
+		m.UpdateStatus(
+			models.NewDisplayStatusWithText(
+				machine.GetName(),
+				models.GCPResourceTypeInstance,
+				models.ResourceStateSucceeded,
+				"VPC Network Created.",
+			),
+		)
 	}
 
 	l.Infof("VPC network %s created successfully", networkName)

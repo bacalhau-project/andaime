@@ -217,6 +217,65 @@ func (_c *MockGCPClienter_CreateFirewallRules_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// CreateIP provides a mock function with given fields: ctx, projectID, location, addressName
+func (_m *MockGCPClienter) CreateIP(ctx context.Context, projectID string, location string, addressName string) (string, error) {
+	ret := _m.Called(ctx, projectID, location, addressName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateIP")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (string, error)); ok {
+		return rf(ctx, projectID, location, addressName)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) string); ok {
+		r0 = rf(ctx, projectID, location, addressName)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = rf(ctx, projectID, location, addressName)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockGCPClienter_CreateIP_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateIP'
+type MockGCPClienter_CreateIP_Call struct {
+	*mock.Call
+}
+
+// CreateIP is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - location string
+//   - addressName string
+func (_e *MockGCPClienter_Expecter) CreateIP(ctx interface{}, projectID interface{}, location interface{}, addressName interface{}) *MockGCPClienter_CreateIP_Call {
+	return &MockGCPClienter_CreateIP_Call{Call: _e.mock.On("CreateIP", ctx, projectID, location, addressName)}
+}
+
+func (_c *MockGCPClienter_CreateIP_Call) Run(run func(ctx context.Context, projectID string, location string, addressName string)) *MockGCPClienter_CreateIP_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *MockGCPClienter_CreateIP_Call) Return(_a0 string, _a1 error) *MockGCPClienter_CreateIP_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockGCPClienter_CreateIP_Call) RunAndReturn(run func(context.Context, string, string, string) (string, error)) *MockGCPClienter_CreateIP_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateServiceAccount provides a mock function with given fields: ctx, projectID
 func (_m *MockGCPClienter) CreateServiceAccount(ctx context.Context, projectID string) (*iam.ServiceAccount, error) {
 	ret := _m.Called(ctx, projectID)
@@ -1264,54 +1323,6 @@ func (_c *MockGCPClienter_ValidateMachineType_Call) Return(_a0 bool, _a1 error) 
 }
 
 func (_c *MockGCPClienter_ValidateMachineType_Call) RunAndReturn(run func(context.Context, string, string) (bool, error)) *MockGCPClienter_ValidateMachineType_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// WaitForOperation provides a mock function with given fields: ctx, projectID, op
-func (_m *MockGCPClienter) WaitForOperation(ctx context.Context, projectID string, op *computepb.Operation) error {
-	ret := _m.Called(ctx, projectID, op)
-
-	if len(ret) == 0 {
-		panic("no return value specified for WaitForOperation")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, *computepb.Operation) error); ok {
-		r0 = rf(ctx, projectID, op)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockGCPClienter_WaitForOperation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitForOperation'
-type MockGCPClienter_WaitForOperation_Call struct {
-	*mock.Call
-}
-
-// WaitForOperation is a helper method to define mock.On call
-//   - ctx context.Context
-//   - projectID string
-//   - op *computepb.Operation
-func (_e *MockGCPClienter_Expecter) WaitForOperation(ctx interface{}, projectID interface{}, op interface{}) *MockGCPClienter_WaitForOperation_Call {
-	return &MockGCPClienter_WaitForOperation_Call{Call: _e.mock.On("WaitForOperation", ctx, projectID, op)}
-}
-
-func (_c *MockGCPClienter_WaitForOperation_Call) Run(run func(ctx context.Context, projectID string, op *computepb.Operation)) *MockGCPClienter_WaitForOperation_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(*computepb.Operation))
-	})
-	return _c
-}
-
-func (_c *MockGCPClienter_WaitForOperation_Call) Return(_a0 error) *MockGCPClienter_WaitForOperation_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockGCPClienter_WaitForOperation_Call) RunAndReturn(run func(context.Context, string, *computepb.Operation) error) *MockGCPClienter_WaitForOperation_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -323,6 +323,9 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					mock.Anything,
 					mock.Anything,
 				).Return(nil)
+				mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything).Return(nil)
+				mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).
+					Return(nil)
 				mockGCPClient.On("CreateFirewallRules",
 					mock.Anything,
 					mock.Anything,

@@ -10,6 +10,7 @@ allocatedcapacity
 allowlistedlocalpaths
 Andaime
 andaimeconfig
+andaimeuser
 apitype
 apiv
 armcompute

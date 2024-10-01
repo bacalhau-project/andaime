@@ -40,17 +40,23 @@ type GCPClienter interface {
 	EnableAPI(ctx context.Context, projectID, apiName string) error
 	CreateVPCNetwork(ctx context.Context, networkName string) error
 	CreateFirewallRules(ctx context.Context, networkName string) error
+	CreateIP(
+		ctx context.Context,
+		projectID string,
+		location string,
+		addressName string,
+	) (string, error)
 	// CreateStorageBucket(ctx context.Context, bucketName string) error
 	CreateVM(
 		ctx context.Context,
 		projectID string,
 		machine models.Machiner,
 	) (*computepb.Instance, error)
-	WaitForOperation(
-		ctx context.Context,
-		projectID string,
-		op *computepb.Operation,
-	) error
+	// WaitForOperation(
+	// 	ctx context.Context,
+	// 	projectID string,
+	// 	op *computepb.Operation,
+	// ) error
 	SetBillingAccount(
 		ctx context.Context,
 		projectID string,

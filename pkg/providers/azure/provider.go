@@ -55,7 +55,7 @@ const (
 	DebugFilePath           = "/tmp/andaime-debug.log"
 	DebugFilePermissions    = 0644
 	WaitingForMachinesTime  = 1 * time.Minute
-	DefaultSSHUser          = "azureuser"
+	DefaultSSHUser          = "andaimeuser"
 	DefaultSSHPort          = 22
 )
 

@@ -28,6 +28,15 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	}
 
 	var eg errgroup.Group
+	eg.Go(func() error {
+		return p.CreateVPCNetwork(ctx, "default")
+	})
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("failed to create VPC rules: %v", err)
+	}
+
+	eg = errgroup.Group{}
 	// Create firewall rules for the project
 	eg.Go(func() error {
 		return p.CreateFirewallRules(ctx, "default")
