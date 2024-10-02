@@ -325,14 +325,15 @@ Contributions are welcome! To contribute to Andaime, follow these steps:
 2. **Clone Your Fork:**
 
    ```bash
-   git clone https://github.com/yourusername/andaime.git
+   USERNAME=yourusername
+   git clone https://github.com/$USERNAME/andaime.git
    cd andaime
    ```
 
 3. **Create a New Branch:**
 
    ```bash
-   git checkout -b feature/your-feature-name
+   git checkout -b feature/$USERNAME-your-feature-name
    ```
 
 4. **Make Your Changes:**
@@ -348,7 +349,7 @@ Contributions are welcome! To contribute to Andaime, follow these steps:
 6. **Push to Your Fork:**
 
    ```bash
-   git push origin feature/your-feature-name
+   git push origin feature/$USERNAME-your-feature-name
    ```
 
 7. **Open a Pull Request:**
@@ -360,7 +361,3 @@ Contributions are welcome! To contribute to Andaime, follow these steps:
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
----
-
-**Note:** This README provides an overview based on the provided Go code. Ensure to update repository links, specific commands, and other placeholders as per your actual project details.
