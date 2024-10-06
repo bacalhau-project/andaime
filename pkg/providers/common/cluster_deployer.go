@@ -36,69 +36,6 @@ func (cd *ClusterDeployer) SetSSHClient(client sshutils.SSHClienter) {
 	cd.sshClient = client
 }
 
-// func (cd *ClusterDeployer) ProvisionAllMachinesWithPackages(ctx context.Context) error {
-// 	m := display.GetGlobalModelFunc()
-
-// 	var errGroup errgroup.Group
-// 	for _, machine := range m.Deployment.Machines {
-// 		internalMachine := machine
-// 		errGroup.Go(func() error {
-// 			goRoutineID := goroutine.RegisterGoroutine(
-// 				fmt.Sprintf("ProvisionPackagesOnMachine-%s", internalMachine.GetName()),
-// 			)
-// 			defer goroutine.DeregisterGoroutine(goRoutineID)
-
-// 			// Doing this because for some reason, certain resources are not registering
-// 			// as done, and it's irritating to see that.
-// 			for _, resource := range internalMachine.GetMachineResources() {
-// 				internalMachine.SetMachineResourceState(
-// 					resource.ResourceName,
-// 					models.ResourceStateSucceeded,
-// 				)
-// 			}
-
-// 			m.UpdateStatus(models.NewDisplayStatusWithText(
-// 				internalMachine.GetName(),
-// 				models.AzureResourceTypeVM,
-// 				models.ResourceStatePending,
-// 				"Provisioning Docker & packages on machine",
-// 			))
-// 			err := cd.ProvisionPackagesOnMachine(ctx, internalMachine.GetName())
-// 			if err != nil {
-// 				m.UpdateStatus(models.NewDisplayStatusWithText(
-// 					internalMachine.GetName(),
-// 					models.AzureResourceTypeVM,
-// 					models.ResourceStateFailed,
-// 					fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
-// 				))
-// 				return fmt.Errorf(
-// 					"failed to provision packages on machine %s: %v",
-// 					internalMachine.GetName(),
-// 					err,
-// 				)
-// 			}
-// 			m.UpdateStatus(models.NewDisplayStatusWithText(
-// 				internalMachine.GetName(),
-// 				models.AzureResourceTypeVM,
-// 				models.ResourceStateSucceeded,
-// 				"Provisioned Docker & packages on machine",
-// 			))
-// 			return nil
-// 		})
-// 	}
-// 	if err := errGroup.Wait(); err != nil {
-// 		return fmt.Errorf("failed to provision packages on all machines: %v", err)
-// 	}
-
-// 	for _, machine := range m.Deployment.GetMachines() {
-// 		for _, resource := range machine.GetMachineResources() {
-// 			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
-// 		}
-// 	}
-
-// 	return nil
-// }
-
 func (cd *ClusterDeployer) ProvisionBacalhauCluster(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -162,7 +99,7 @@ func (cd *ClusterDeployer) ProvisionOrchestrator(ctx context.Context, machineNam
 		return fmt.Errorf("orchestrator machine is nil")
 	}
 
-	err := cd.provisionBacalhauNode(ctx, orchestratorMachine.GetName(), "requester")
+	err := cd.ProvisionBacalhauNode(ctx, orchestratorMachine, "requester", "")
 	if err != nil {
 		return err
 	}
@@ -200,7 +137,8 @@ func (cd *ClusterDeployer) ProvisionWorker(
 ) error {
 	m := display.GetGlobalModelFunc()
 
-	if m.Deployment.GetMachine(machineName).IsOrchestrator() {
+	machine := m.Deployment.GetMachine(machineName)
+	if machine.IsOrchestrator() {
 		l := logger.Get()
 		l.Errorf(
 			"machine %s is an orchestrator, and should not be deployed as a worker",
@@ -212,7 +150,7 @@ func (cd *ClusterDeployer) ProvisionWorker(
 		)
 	}
 
-	return cd.provisionBacalhauNode(ctx, machineName, "compute")
+	return cd.ProvisionBacalhauNode(ctx, machine, "compute", m.Deployment.OrchestratorIP)
 }
 
 func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
@@ -238,15 +176,13 @@ func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
 	return orchestratorMachine, nil
 }
 
-func (cd *ClusterDeployer) provisionBacalhauNode(
+func (cd *ClusterDeployer) ProvisionBacalhauNode(
 	ctx context.Context,
-	machineName string,
+	machine models.Machiner,
 	nodeType string,
+	orchestratorIP string,
 ) error {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-
-	machine := m.Deployment.GetMachine(machineName)
 	sshConfig, err := cd.createSSHConfig(machine)
 	if err != nil {
 		return err
@@ -254,7 +190,7 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
-	if nodeType == "compute" && m.Deployment.OrchestratorIP == "" {
+	if nodeType == "compute" && orchestratorIP == "" {
 		return cd.HandleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
 	}
 
@@ -293,11 +229,6 @@ func (cd *ClusterDeployer) provisionBacalhauNode(
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
-
-	if machine.IsOrchestrator() {
-		m.Deployment.OrchestratorIP = machine.GetPublicIP()
-		machine.SetOrchestratorIP("0.0.0.0")
-	}
 
 	machine.SetComplete()
 
