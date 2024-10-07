@@ -250,7 +250,7 @@ func createNewMachine(
 
 	user := viper.GetString("general.ssh_user")
 	if user == "" {
-		user = "andaimeuser"
+		user = DefaultSSHUser
 	}
 
 	newMachine.SetSSHUser(user)

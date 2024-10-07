@@ -36,7 +36,7 @@ func SetDefaultConfigurations(provider models.DeploymentType) {
 	viper.SetDefault("general.log_level", getDefaultLogLevel())
 	viper.SetDefault("general.ssh_public_key_path", "~/.ssh/id_rsa.pub")
 	viper.SetDefault("general.ssh_private_key_path", "~/.ssh/id_rsa")
-	viper.SetDefault("general.ssh_user", "andaime")
+	viper.SetDefault("general.ssh_user", DefaultSSHUser)
 	viper.SetDefault("general.ssh_port", 22)
 
 	if provider == models.DeploymentTypeAzure {
@@ -165,6 +165,7 @@ func PrepareDeployment(
 			DiskSizeGB:   defaultDiskSizeGB,
 			Orchestrator: false,
 		}
+		machine.SetNodeType(models.BacalhauNodeTypeCompute)
 
 		if params, ok := machineConfig["parameters"].(map[string]interface{}); ok {
 			var count int
@@ -207,6 +208,7 @@ func PrepareDeployment(
 				machine.Orchestrator = orchestrator
 				orchestratorMachineName = machine.Name
 				orchestratorLocation = machine.Location
+				machine.SetNodeType(models.BacalhauNodeTypeOrchestrator)
 				if count > 1 && !orchestratorMessagePrinted {
 					l.Infof(
 						"Orchestrator flag is set, but count is greater than 1. Making the first machine the orchestrator.",

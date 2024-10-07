@@ -49,6 +49,7 @@ func (p *AzureProvider) PrepareDeployment(
 
 	// Set the SSH public key material
 	deployment.SSHPublicKeyPath = viper.GetString("general.ssh_public_key_path")
+	deployment.SSHUser = viper.GetString("general.ssh_user")
 	deployment.Azure.DefaultLocation = viper.GetString("azure.default_location")
 	deployment.Azure.SubscriptionID = viper.GetString("azure.subscription_id")
 	deployment.Azure.DefaultVMSize = viper.GetString("azure.default_machine_type")
@@ -457,7 +458,7 @@ func (p *AzureProvider) prepareDeploymentParams(
 	m := display.GetGlobalModelFunc()
 	return map[string]interface{}{
 		"vmName":        machine.GetName(),
-		"adminUsername": "andaimeuser",
+		"adminUsername": m.Deployment.SSHUser,
 		"sshPublicKey":  strings.TrimSpace(string(machine.GetSSHPublicKeyMaterial())),
 		"dnsLabelPrefix": fmt.Sprintf(
 			"vm-%s-%s",

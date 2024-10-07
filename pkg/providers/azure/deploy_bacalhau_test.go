@@ -108,7 +108,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestFindOrchestratorMachine()
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata() {
 	s.SetupTest()
 	s.deployment.SetMachines(map[string]models.Machiner{
-		"test": &models.Machine{Name: "test", VMSize: "Standard_DS4_v2", Location: "eastus2"},
+		"test": &models.Machine{
+			Name:     "test",
+			VMSize:   "Standard_DS4_v2",
+			Location: "eastus2",
+			NodeType: models.BacalhauNodeTypeOrchestrator,
+		},
 	})
 
 	sshBehavior := sshutils.ExpectedSSHBehavior{
@@ -332,7 +337,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 				},
 			},
 			machines: map[string]models.Machiner{
-				"test": &models.Machine{Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
+				"test": &models.Machine{
+					Name:         "test",
+					Orchestrator: true,
+					PublicIP:     "1.2.3.4",
+					NodeType:     models.BacalhauNodeTypeOrchestrator,
+				},
 			},
 			expectedError: "",
 		},
@@ -350,7 +360,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 				},
 			},
 			machines: map[string]models.Machiner{
-				"test": &models.Machine{Name: "test", Orchestrator: true, PublicIP: "1.2.3.4"},
+				"test": &models.Machine{
+					Name:         "test",
+					Orchestrator: true,
+					PublicIP:     "1.2.3.4",
+					NodeType:     models.BacalhauNodeTypeOrchestrator,
+				},
 			},
 			expectedError: "failed to push node config metadata script",
 		},
@@ -396,6 +411,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployBacalhauNode() {
 					Orchestrator:   false,
 					PublicIP:       "2.3.4.5",
 					OrchestratorIP: "1.2.3.4",
+					NodeType:       models.BacalhauNodeTypeCompute,
 				},
 			},
 			expectedError: "",
