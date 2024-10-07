@@ -524,21 +524,17 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			deployment := &models.Deployment{
-				BacalhauSettings: bacalhauSettings,
-			}
-
-			display.GetGlobalModelFunc = func() *display.DisplayModel {
-				return &display.DisplayModel{
-					Deployment: deployment,
-				}
-			}
+			// display.GetGlobalModelFunc = func() *display.DisplayModel {
+			// 	return &display.DisplayModel{
+			// 		Deployment: deployment,
+			// 	}
+			// }
 
 			mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(tt.sshBehavior)
 
 			cd := NewClusterDeployer(models.DeploymentTypeAzure)
 
-			err = cd.ApplyBacalhauConfigs(context.Background(), mockSSHConfig)
+			err = cd.ApplyBacalhauConfigs(context.Background(), mockSSHConfig, bacalhauSettings)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)

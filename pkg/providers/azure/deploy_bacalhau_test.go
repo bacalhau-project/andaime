@@ -60,8 +60,12 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestFindOrchestratorMachine()
 		{
 			name: "Single orchestrator",
 			machines: map[string]models.Machiner{
-				"orch":   &models.Machine{Name: "orch", Orchestrator: true},
-				"worker": &models.Machine{Name: "worker"},
+				"orch": &models.Machine{
+					Name:         "orch",
+					Orchestrator: true,
+					NodeType:     models.BacalhauNodeTypeOrchestrator,
+				},
+				"worker": &models.Machine{Name: "worker", NodeType: models.BacalhauNodeTypeCompute},
 			},
 			expectedError: "",
 		},
@@ -134,7 +138,6 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata()
 		s.ctx,
 		s.deployment.GetMachine("test"),
 		s.mockSSHConfig,
-		"compute",
 	)
 
 	s.NoError(err)
@@ -429,6 +432,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 	location := "eastus"
 	orchestrators := "0.0.0.0"
 	vmSize := "Standard_DS4_v2"
+	nodeType := models.BacalhauNodeTypeOrchestrator
 
 	expectedLines := map[string][]string{
 		"get-node-config-metadata.sh": {
@@ -442,7 +446,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 			fmt.Sprintf(`IP="%s"`, ip),
 			fmt.Sprintf(`ORCHESTRATORS="%s"`, orchestrators),
 			`TOKEN=""`,
-			`NODE_TYPE="requester"`,
+			fmt.Sprintf(`NODE_TYPE="%s"`, nodeType),
 		},
 		"install-bacalhau.sh": {
 			`sudo curl -sSL https://get.bacalhau.org/install.sh?dl="${BACALHAU_INSTALL_ID}" | sudo bash`,
@@ -459,6 +463,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 			PublicIP:     ip,
 			VMSize:       vmSize,
 			Location:     location,
+			NodeType:     models.BacalhauNodeTypeOrchestrator,
 		},
 	})
 

@@ -53,6 +53,8 @@ type Machiner interface {
 	SetSSHPort(port int)
 
 	// Status and state
+	GetNodeType() string
+	SetNodeType(nodeType string)
 	IsOrchestrator() bool
 	SetOrchestrator(orchestrator bool)
 	IsComplete() bool
@@ -95,6 +97,11 @@ type Machiner interface {
 	LogTimingInfo(logger logger.Logger)
 }
 
+const (
+	BacalhauNodeTypeCompute      = "compute"
+	BacalhauNodeTypeOrchestrator = "requester"
+)
+
 type Machine struct {
 	ID       string
 	Name     string
@@ -102,6 +109,7 @@ type Machine struct {
 	Location string
 	Region   string
 	Zone     string
+	NodeType string
 
 	StatusMessage string
 	Parameters    Parameters
@@ -800,6 +808,14 @@ func (mach *Machine) SetStartTime(startTime time.Time) {
 
 func (mach *Machine) SetDeploymentEndTime(endTime time.Time) {
 	mach.DeploymentEndTime = endTime
+}
+
+func (mach *Machine) GetNodeType() string {
+	return mach.NodeType
+}
+
+func (mach *Machine) SetNodeType(nodeType string) {
+	mach.NodeType = nodeType
 }
 
 func MachineConfigToWrite(machine Machiner) map[string]interface{} {

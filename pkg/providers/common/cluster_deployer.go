@@ -99,7 +99,19 @@ func (cd *ClusterDeployer) ProvisionOrchestrator(ctx context.Context, machineNam
 		return fmt.Errorf("orchestrator machine is nil")
 	}
 
-	err := cd.ProvisionBacalhauNode(ctx, orchestratorMachine, "requester", "")
+	sshConfig, err := cd.createSSHConfig(orchestratorMachine)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %w", err)
+	}
+
+	orchestratorMachine.SetOrchestratorIP("0.0.0.0")
+	orchestratorMachine.SetNodeType(models.BacalhauNodeTypeOrchestrator)
+
+	err = cd.ProvisionBacalhauNode(ctx,
+		sshConfig,
+		orchestratorMachine,
+		m.Deployment.BacalhauSettings,
+	)
 	if err != nil {
 		return err
 	}
@@ -116,6 +128,7 @@ func (cd *ClusterDeployer) ProvisionOrchestrator(ctx context.Context, machineNam
 		if machine.IsOrchestrator() {
 			continue
 		}
+		machine.SetNodeType(models.BacalhauNodeTypeCompute)
 		err = m.Deployment.UpdateMachine(machine.GetName(), func(mach models.Machiner) {
 			mach.SetOrchestratorIP(orchestratorIP)
 		})
@@ -150,7 +163,17 @@ func (cd *ClusterDeployer) ProvisionWorker(
 		)
 	}
 
-	return cd.ProvisionBacalhauNode(ctx, machine, "compute", m.Deployment.OrchestratorIP)
+	sshConfig, err := cd.createSSHConfig(machine)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %w", err)
+	}
+
+	return cd.ProvisionBacalhauNode(
+		ctx,
+		sshConfig,
+		machine,
+		m.Deployment.BacalhauSettings,
+	)
 }
 
 func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
@@ -176,25 +199,58 @@ func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
 	return orchestratorMachine, nil
 }
 
+// ProvisionBacalhauNode provisions a Bacalhau node on the specified machine.
+// It performs a series of steps to configure, install, and verify the Bacalhau service.
+//
+// Parameters:
+//   - ctx: The context for controlling the function's lifecycle.
+//   - machine: The machine on which the Bacalhau node will be provisioned.
+//   - nodeType: The type of the node, e.g., "compute".
+//   - orchestratorIP: The IP address of the orchestrator, required if nodeType is "compute".
+//
+// Returns:
+//   - error: An error if any step in the provisioning process fails.
+//
+// The function performs the following steps:
+//  1. Creates an SSH configuration for the machine.
+//  2. Sets the service state to updating.
+//  3. Validates the orchestrator IP if the node type is "compute".
+//  4. Sets up node configuration metadata.
+//  5. Installs the Bacalhau service.
+//  6. Installs the Bacalhau run script.
+//  7. Sets up the Bacalhau service.
+//  8. Verifies the Bacalhau deployment.
+//  9. Applies Bacalhau configurations.
+//  10. Executes any custom scripts.
+//  11. Restarts the Bacalhau service to ensure everything is functioning correctly.
+//
+// If any step fails, the function handles the deployment error and returns the error.
+// Upon successful completion, it logs the success, updates the service state to succeeded,
+// and marks the machine as complete.
 func (cd *ClusterDeployer) ProvisionBacalhauNode(
 	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
 	machine models.Machiner,
-	nodeType string,
-	orchestratorIP string,
+	bacalhauSettings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
-	sshConfig, err := cd.createSSHConfig(machine)
-	if err != nil {
-		return err
-	}
-
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
-	if nodeType == "compute" && orchestratorIP == "" {
+	if machine.GetNodeType() != models.BacalhauNodeTypeCompute &&
+		machine.GetNodeType() != models.BacalhauNodeTypeOrchestrator {
+		return cd.HandleDeploymentError(
+			ctx,
+			machine,
+			fmt.Errorf("invalid node type: %s", machine.GetNodeType()),
+		)
+	}
+
+	if machine.GetNodeType() == models.BacalhauNodeTypeCompute &&
+		machine.GetOrchestratorIP() == "" {
 		return cd.HandleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
 	}
 
-	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig, nodeType); err != nil {
+	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig); err != nil {
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
@@ -214,7 +270,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
-	if err := cd.ApplyBacalhauConfigs(ctx, sshConfig); err != nil {
+	if err := cd.ApplyBacalhauConfigs(ctx, sshConfig, bacalhauSettings); err != nil {
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
@@ -248,7 +304,6 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	ctx context.Context,
 	machine models.Machiner,
 	sshConfig sshutils.SSHConfiger,
-	nodeType string,
 ) error {
 	m := display.GetGlobalModelFunc()
 
@@ -271,7 +326,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	}
 
 	orchestrators := []string{}
-	if nodeType == "requester" {
+	if machine.GetNodeType() == models.BacalhauNodeTypeOrchestrator {
 		orchestrators = append(orchestrators, "0.0.0.0")
 	} else if machine.GetOrchestratorIP() != "" {
 		orchestrators = append(orchestrators, machine.GetOrchestratorIP())
@@ -279,6 +334,11 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		orchestrators = append(orchestrators, m.Deployment.OrchestratorIP)
 	} else {
 		return fmt.Errorf("no orchestrator IP found")
+	}
+
+	if machine.GetNodeType() != models.BacalhauNodeTypeCompute &&
+		machine.GetNodeType() != models.BacalhauNodeTypeOrchestrator {
+		return fmt.Errorf("invalid node type: %s", machine.GetNodeType())
 	}
 
 	var projectID string
@@ -296,7 +356,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 		"Orchestrators": strings.Join(orchestrators, ","),
 		"IP":            machine.GetPublicIP(),
 		"Token":         "",
-		"NodeType":      nodeType,
+		"NodeType":      machine.GetNodeType(),
 		"ProjectID":     projectID,
 	})
 	if err != nil {
@@ -449,12 +509,10 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	ctx context.Context,
 	sshConfig sshutils.SSHConfiger,
+	combinedSettings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
 	l.Info("Applying Bacalhau configurations")
-
-	combinedSettings := combineSettings(m.Deployment.BacalhauSettings)
 
 	if err := applySettings(ctx, sshConfig, combinedSettings); err != nil {
 		return fmt.Errorf("failed to apply Bacalhau configs: %w", err)
@@ -484,24 +542,40 @@ func combineSettings(settings []models.BacalhauSettings) map[string]string {
 func applySettings(
 	ctx context.Context,
 	sshConfig sshutils.SSHConfiger,
-	settings map[string]string,
+	settings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
-	for key, value := range settings {
-		cmd := fmt.Sprintf("sudo bacalhau config set '%s' '%s'", key, value)
+	for _, setting := range settings {
+		var valueStr string
+		switch v := setting.Value.(type) {
+		case string:
+			valueStr = v
+		case []string:
+			valueStr = fmt.Sprintf("[%s]", strings.Join(v, ","))
+		case []interface{}:
+			var values []string
+			for _, item := range v {
+				values = append(values, fmt.Sprintf("%v", item))
+			}
+			valueStr = fmt.Sprintf("[%s]", strings.Join(values, ","))
+		default:
+			valueStr = fmt.Sprintf("%v", v)
+		}
+
+		cmd := fmt.Sprintf("sudo bacalhau config set '%s' '%s'", setting.Key, valueStr)
 		output, err := sshConfig.ExecuteCommand(ctx, cmd)
 		if err != nil {
 			if strings.Contains(
 				output,
-				fmt.Sprintf("invalid configuration key \"%s\": not found", key),
+				fmt.Sprintf("invalid configuration key \"%s\": not found", setting.Key),
 			) {
-				l.Errorf("Bad setting detected: %s", key)
-				return fmt.Errorf("bad setting detected: %s", key)
+				l.Errorf("Bad setting detected: %s", setting.Key)
+				return fmt.Errorf("bad setting detected: %s", setting.Key)
 			}
-			l.Errorf("Failed to apply Bacalhau config %s: %v", key, err)
-			return fmt.Errorf("failed to apply Bacalhau config %s: %w", key, err)
+			l.Errorf("Failed to apply Bacalhau config %s: %v", setting.Key, err)
+			return fmt.Errorf("failed to apply Bacalhau config %s: %w", setting.Key, err)
 		}
-		l.Infof("Applied Bacalhau config %s: %s", key, output)
+		l.Infof("Applied Bacalhau config %s: %s", setting.Key, output)
 	}
 	return nil
 }
@@ -509,7 +583,7 @@ func applySettings(
 func verifySettings(
 	ctx context.Context,
 	sshConfig sshutils.SSHConfiger,
-	expectedSettings map[string]string,
+	expectedSettings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
 	output, err := sshConfig.ExecuteCommand(ctx, "sudo bacalhau config list --output json")
@@ -522,10 +596,10 @@ func verifySettings(
 		return fmt.Errorf("failed to parse Bacalhau config: %w", err)
 	}
 
-	for key, expectedValue := range expectedSettings {
+	for _, expectedSetting := range expectedSettings {
 		found := false
 		for _, config := range configList {
-			if config["Key"] == key {
+			if config["Key"] == expectedSetting.Key {
 				actualValue := fmt.Sprintf("%v", config["Value"])
 				if strings.HasPrefix(actualValue, "[") && strings.HasSuffix(actualValue, "]") {
 					actualValue = strings.TrimPrefix(actualValue, "[")
@@ -533,26 +607,26 @@ func verifySettings(
 				}
 				if values, ok := config["Value"].([]string); ok {
 					for _, value := range values {
-						if value == expectedValue {
+						if value == expectedSetting.Value {
 							found = true
 							break
 						}
 					}
-				} else if actualValue != expectedValue {
+				} else if actualValue != expectedSetting.Value {
 					l.Warnf(
 						"Bacalhau config %s has unexpected value. Expected: %s, Actual: %s",
-						key,
-						expectedValue,
+						expectedSetting.Key,
+						expectedSetting.Value,
 						actualValue,
 					)
 				} else {
-					l.Debugf("Verified Bacalhau config %s: %s", key, actualValue)
+					l.Debugf("Verified Bacalhau config %s: %s", expectedSetting.Key, actualValue)
 				}
 				break
 			}
 		}
 		if !found {
-			l.Warnf("Bacalhau config %s not found in the final configuration", key)
+			l.Warnf("Bacalhau config %s not found in the final configuration", expectedSetting.Key)
 		}
 	}
 

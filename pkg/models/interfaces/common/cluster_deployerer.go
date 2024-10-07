@@ -21,7 +21,9 @@ type ClusterDeployerer interface {
 		sshConfig sshutils.SSHConfiger,
 		machine models.Machiner,
 	) error
-	ApplyBacalhauConfigs(ctx context.Context, sshConfig sshutils.SSHConfiger) error
+	ApplyBacalhauConfigs(ctx context.Context,
+		sshConfig sshutils.SSHConfiger,
+		bacalhauSettings []models.BacalhauSettings) error
 
 	ProvisionBacalhauCluster(ctx context.Context) error
 	ProvisionOrchestrator(ctx context.Context, machineName string) error
