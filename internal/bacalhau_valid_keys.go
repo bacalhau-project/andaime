@@ -3,7 +3,7 @@ package internal
 import "strings"
 
 func IsValidBacalhauKey(key string) bool {
-	allKeys := strings.Split(allKeysString14, "\n")
+	allKeys := strings.Split(allKeysString15, "\n")
 	for _, k := range allKeys {
 		if k == key {
 			return true

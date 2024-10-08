@@ -396,18 +396,18 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Single configuration",
 			bacalhauSettings: map[string]string{
-				"node.allowlistedlocalpaths": `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths": `"/tmp","/data"`,
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'node.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
 						Cmd:    "sudo bacalhau config list --output json",
-						Output: `[{"Key":"'node.allowlistedlocalpaths'","Value":["/tmp","/data"]}]`,
+						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data"]}]`,
 						Error:  nil,
 					},
 				},
@@ -417,32 +417,32 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Multiple configurations",
 			bacalhauSettings: map[string]string{
-				"node.allowlistedlocalpaths":                            `"/tmp","/data"`,
-				"node.compute.controlplanesettings.infoupdatefrequency": "5s",
-				"node.compute.jobselection.acceptnetworkedjobs":         "true",
+				"compute.allowlistedlocalpaths":           `"/tmp","/data"`,
+				"compute.heartbeat.interval":              "5s",
+				"jobadmissioncontrol.acceptnetworkedjobs": "true",
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'node.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
-						Cmd:    `sudo bacalhau config set 'node.compute.controlplanesettings.infoupdatefrequency' '5s'`,
+						Cmd:    `sudo bacalhau config set 'compute.heartbeat.interval' '5s'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
-						Cmd:    `sudo bacalhau config set 'node.compute.jobselection.acceptnetworkedjobs' 'true'`,
+						Cmd:    `sudo bacalhau config set 'jobadmissioncontrol.acceptnetworkedjobs' 'true'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
 						Cmd: "sudo bacalhau config list --output json",
-						Output: `[{"Key":"'node.allowlistedlocalpaths'","Value":["/tmp","/data"]},
-{"Key":"'orchestrator.nodemanager.disconnecttimeout'","Value":"5s"},
-{"Key":"'node.compute.jobselection.acceptnetworkedjobs'","Value":true}]`,
+						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data"]},
+{"Key":"'compute.heartbeat.interval'","Value":"5s"},
+{"Key":"'jobadmissioncontrol.acceptnetworkedjobs'","Value":true}]`,
 						Error: nil,
 					},
 				},
@@ -468,18 +468,18 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Unexpected value in configuration",
 			bacalhauSettings: map[string]string{
-				"node.allowlistedlocalpaths": `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths": `"/tmp","/data"`,
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'node.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
 						Cmd:    "sudo bacalhau config list --output json",
-						Output: `[{"Key":"'node.allowlistedlocalpaths'","Value":["/tmp","/data"]}]`,
+						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data"]}]`,
 						Error:  nil,
 					},
 				},
@@ -489,12 +489,12 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Missing configuration in final list",
 			bacalhauSettings: map[string]string{
-				"node.allowlistedlocalpaths": `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths": `"/tmp","/data"`,
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'node.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
@@ -550,534 +550,535 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 }
 
 const fullValidConfigOutput = `
+
 [
   {
-    "Key": "node.serverapi.clienttls.insecure",
-    "Value": false
+    "Key": "JobAdmissionControl.RejectStatelessJobs",
+    "Value": false,
+    "Description": "RejectStatelessJobs indicates whether to reject stateless jobs, i.e. jobs without inputs."
   },
   {
-    "Key": "node.compute.localpublisher.port",
-    "Value": 6001
+    "Key": "Orchestrator.Scheduler.HousekeepingInterval",
+    "Value": "30s",
+    "Description": "HousekeepingInterval specifies how often to run housekeeping tasks."
   },
   {
-    "Key": "node.compute.capacity.ignorephysicalresourcelimits",
-    "Value": false
+    "Key": "Orchestrator.Scheduler.QueueBackoff",
+    "Value": "1m0s",
+    "Description": "QueueBackoff specifies the time to wait before retrying a failed job."
   },
   {
-    "Key": "node.compute.jobtimeouts.minjobexecutiontimeout",
-    "Value": 500000000
+    "Key": "ResultDownloaders.Timeout",
+    "Value": "0s",
+    "Description": "Timeout specifies the maximum time allowed for a download operation."
   },
   {
-    "Key": "node.requester.worker.workerevaldequeuemaxbackoff",
-    "Value": 30000000000
+    "Key": "JobAdmissionControl.AcceptNetworkedJobs",
+    "Value": true,
+    "Description": "AcceptNetworkedJobs indicates whether to accept jobs that require network access."
   },
   {
-    "Key": "node.requester.evaluationbroker.evalbrokermaxretrycount",
-    "Value": 10
+    "Key": "Compute.AllocatedCapacity.CPU",
+    "Value": "70%",
+    "Description": "CPU specifies the amount of CPU a compute node allocates for running jobs. It can be expressed as a percentage (e.g., \"85%\") or a Kubernetes resource string (e.g., \"100m\")."
   },
   {
-    "Key": "node.compute.executionstore.path",
-    "Value": "/root/.bacalhau/compute_store/executions.db"
+    "Key": "InputSources.Disabled",
+    "Value": null,
+    "Description": "Disabled specifies a list of storages that are disabled."
   },
   {
-    "Key": "update.checkstatepath",
-    "Value": "/root/.bacalhau/update.json"
+    "Key": "JobAdmissionControl.ProbeHTTP",
+    "Value": "",
+    "Description": "ProbeHTTP specifies the HTTP endpoint for probing job submission."
   },
   {
-    "Key": "node.clientapi.clienttls.usetls",
-    "Value": false
+    "Key": "WebUI.Listen",
+    "Value": "0.0.0.0:8438",
+    "Description": "Listen specifies the address and port on which the Web UI listens."
   },
   {
-    "Key": "node.clientapi.clienttls.insecure",
-    "Value": false
+    "Key": "API.TLS.Insecure",
+    "Value": false,
+    "Description": "Insecure allows insecure TLS connections (e.g., self-signed certificates)."
   },
   {
-    "Key": "node.computestoragepath",
-    "Value": "/root/.bacalhau/executor_storages"
-  },
-  {
-    "Key": "node.compute.logstreamconfig.channelbuffersize",
-    "Value": 10
-  },
-  {
-    "Key": "node.compute.capacity.totalresourcelimits.disk",
-    "Value": ""
-  },
-  {
-    "Key": "node.requester.worker.workerevaldequeuetimeout",
-    "Value": 5000000000
-  },
-  {
-    "Key": "node.allowlistedlocalpaths",
+    "Key": "Compute.AllowListedLocalPaths",
     "Value": [
-      "/tmp,/data"
-    ]
+      "/tmp",
+      "/data"
+    ],
+    "Description": "AllowListedLocalPaths specifies a list of local file system paths that the compute node is allowed to access."
   },
   {
-    "Key": "node.requester.jobselectionpolicy.probehttp",
-    "Value": ""
+    "Key": "Compute.Auth.Token",
+    "Value": "",
+    "Description": "Token specifies the key for compute nodes to be able to access the orchestrator."
   },
   {
-    "Key": "node.clientapi.host",
-    "Value": "bootstrap.production.bacalhau.org"
+    "Key": "JobDefaults.Batch.Task.Resources.GPU",
+    "Value": "",
+    "Description": "GPU specifies the default number of GPUs allocated to a task. It uses Kubernetes resource string format (e.g., \"1\" for 1 GPU). This value is used when the task hasn't explicitly set its GPU requirement."
   },
   {
-    "Key": "node.serverapi.port",
-    "Value": 1234
+    "Key": "JobDefaults.Batch.Task.Resources.Memory",
+    "Value": "1Gb",
+    "Description": "Memory specifies the default amount of memory allocated to a task. It uses Kubernetes resource string format (e.g., \"256Mi\" for 256 mebibytes). This value is used when the task hasn't explicitly set its memory requirement."
   },
   {
-    "Key": "node.compute.localpublisher.address",
-    "Value": "public"
+    "Key": "JobDefaults.Daemon.Priority",
+    "Value": 0,
+    "Description": "Priority specifies the default priority allocated to a service or daemon job. This value is used when the job hasn't explicitly set its priority requirement."
   },
   {
-    "Key": "node.compute.capacity.jobresourcelimits.cpu",
-    "Value": ""
+    "Key": "JobDefaults.Ops.Task.Resources.GPU",
+    "Value": "",
+    "Description": "GPU specifies the default number of GPUs allocated to a task. It uses Kubernetes resource string format (e.g., \"1\" for 1 GPU). This value is used when the task hasn't explicitly set its GPU requirement."
   },
   {
-    "Key": "node.requester.jobstore.path",
-    "Value": "/root/.bacalhau/orchestrator_store/jobs.db"
+    "Key": "Orchestrator.Cluster.Advertise",
+    "Value": "",
+    "Description": "Advertise specifies the address to advertise to other cluster members."
   },
   {
-    "Key": "auth.tokenspath",
-    "Value": "/root/.bacalhau/tokens.json"
+    "Key": "Compute.AllocatedCapacity.Memory",
+    "Value": "70%",
+    "Description": "Memory specifies the amount of Memory a compute node allocates for running jobs. It can be expressed as a percentage (e.g., \"85%\") or a Kubernetes resource string (e.g., \"1Gi\")."
   },
   {
-    "Key": "node.serverapi.clienttls.usetls",
-    "Value": false
+    "Key": "Publishers.Types.Local.Port",
+    "Value": 6001,
+    "Description": "Port specifies the port the publisher serves on."
   },
   {
-    "Key": "node.compute.logging.logrunningexecutionsinterval",
-    "Value": 10000000000
+    "Key": "JobDefaults.Ops.Task.Publisher.Type",
+    "Value": "",
+    "Description": "Type specifies the publisher type. e.g. \"s3\", \"local\", \"ipfs\", etc."
   },
   {
-    "Key": "node.compute.manifestcache.frequency",
-    "Value": 3600000000000
+    "Key": "JobDefaults.Service.Task.Resources.GPU",
+    "Value": "",
+    "Description": "GPU specifies the default number of GPUs allocated to a task. It uses Kubernetes resource string format (e.g., \"1\" for 1 GPU). This value is used when the task hasn't explicitly set its GPU requirement."
   },
   {
-    "Key": "node.name",
-    "Value": "n-c5f1f4b7-8ad7-4446-8531-c1d24d3c249b"
+    "Key": "Logging.LogDebugInfoInterval",
+    "Value": "30s",
+    "Description": "LogDebugInfoInterval specifies the interval for logging debug information."
   },
   {
-    "Key": "node.compute.jobtimeouts.jobnegotiationtimeout",
-    "Value": 180000000000
+    "Key": "FeatureFlags.ExecTranslation",
+    "Value": false,
+    "Description": "ExecTranslation enables the execution translation feature."
   },
   {
-    "Key": "node.requester.externalverifierhook",
-    "Value": ""
+    "Key": "API.TLS.SelfSigned",
+    "Value": false,
+    "Description": "SelfSigned indicates whether to use a self-signed certificate."
   },
   {
-    "Key": "node.requester.tagcache.size",
-    "Value": 0
+    "Key": "Compute.Heartbeat.ResourceUpdateInterval",
+    "Value": "30s",
+    "Description": "ResourceUpdateInterval specifies the time between updates of resource information to the orchestrator."
   },
   {
-    "Key": "node.webui.port",
-    "Value": 8483
+    "Key": "InputSources.Types.IPFS.Endpoint",
+    "Value": "",
+    "Description": "Endpoint specifies the multi-address to connect to for IPFS. e.g /ip4/127.0.0.1/tcp/5001"
   },
   {
-    "Key": "node.network.advertisedaddress",
-    "Value": ""
+    "Key": "JobDefaults.Batch.Task.Timeouts.TotalTimeout",
+    "Value": "0s",
+    "Description": "TotalTimeout is the maximum total time allowed for a task"
   },
   {
-    "Key": "node.compute.jobselection.probehttp",
-    "Value": ""
+    "Key": "JobDefaults.Ops.Task.Resources.Disk",
+    "Value": "",
+    "Description": "Disk specifies the default amount of disk space allocated to a task. It uses Kubernetes resource string format (e.g., \"1Gi\" for 1 gibibyte). This value is used when the task hasn't explicitly set its disk space requirement."
   },
   {
-    "Key": "node.disabledfeatures.engines",
-    "Value": []
+    "Key": "Orchestrator.Scheduler.HousekeepingTimeout",
+    "Value": "2m0s",
+    "Description": "HousekeepingTimeout specifies the maximum time allowed for a single housekeeping run."
   },
   {
-    "Key": "node.serverapi.tls.autocertcachepath",
-    "Value": ""
+    "Key": "API.Auth.AccessPolicyPath",
+    "Value": "",
+    "Description": "AccessPolicyPath is the path to a file or directory that will be loaded as the policy to apply to all inbound API requests. If unspecified, a policy that permits access to all API endpoints to both authenticated and unauthenticated users (the default as of v1.2.0) will be used."
   },
   {
-    "Key": "node.compute.capacity.defaultjobresourcelimits.cpu",
-    "Value": "500m"
+    "Key": "Compute.AllocatedCapacity.GPU",
+    "Value": "100%",
+    "Description": "GPU specifies the amount of GPU a compute node allocates for running jobs. It can be expressed as a percentage (e.g., \"85%\") or a Kubernetes resource string (e.g., \"1\"). Note: When using percentages, the result is always rounded up to the nearest whole GPU."
   },
   {
-    "Key": "node.requester.worker.workercount",
-    "Value": 2
+    "Key": "JobDefaults.Ops.Task.Timeouts.ExecutionTimeout",
+    "Value": "0s",
+    "Description": "ExecutionTimeout is the maximum time allowed for task execution"
   },
   {
-    "Key": "node.requester.translationenabled",
-    "Value": false
+    "Key": "Labels",
+    "Value": null,
+    "Description": "Labels are key-value pairs used to describe and categorize the nodes."
   },
   {
-    "Key": "node.labels",
-    "Value": {}
+    "Key": "Logging.Mode",
+    "Value": "default",
+    "Description": "Mode specifies the logging mode. One of: default, json."
   },
   {
-    "Key": "node.compute.capacity.jobresourcelimits.disk",
-    "Value": ""
+    "Key": "Publishers.Types.IPFS.Endpoint",
+    "Value": "",
+    "Description": "Endpoint specifies the multi-address to connect to for IPFS. e.g /ip4/127.0.0.1/tcp/5001"
   },
   {
-    "Key": "node.compute.capacity.defaultjobresourcelimits.memory",
-    "Value": "1Gb"
+    "Key": "API.Host",
+    "Value": "0.0.0.0",
+    "Description": "Host specifies the hostname or IP address on which the API server listens or the client connects."
   },
   {
-    "Key": "node.compute.jobtimeouts.defaultjobexecutiontimeout",
-    "Value": 600000000000
+    "Key": "API.TLS.AutoCertCachePath",
+    "Value": "",
+    "Description": "AutoCertCachePath specifies the directory to cache auto-generated certificates."
   },
   {
-    "Key": "node.requester.failureinjectionconfig.isbadactor",
-    "Value": false
+    "Key": "API.TLS.CAFile",
+    "Value": "",
+    "Description": "CAFile specifies the path to the Certificate Authority file."
   },
   {
-    "Key": "node.requester.controlplanesettings.nodedisconnectedafter",
-    "Value": 5000000000
+    "Key": "DisableAnalytics",
+    "Value": false,
+    "Description": "No description available"
   },
   {
-    "Key": "node.compute.capacity.totalresourcelimits.gpu",
-    "Value": ""
+    "Key": "Engines.Disabled",
+    "Value": null,
+    "Description": "Disabled specifies a list of engines that are disabled."
   },
   {
-    "Key": "node.compute.capacity.jobresourcelimits.memory",
-    "Value": ""
+    "Key": "JobDefaults.Ops.Task.Publisher.Params",
+    "Value": null,
+    "Description": "Params specifies the publisher configuration data."
   },
   {
-    "Key": "node.requester.worker.workerevaldequeuebasebackoff",
-    "Value": 1000000000
+    "Key": "JobDefaults.Service.Task.Resources.Memory",
+    "Value": "1Gb",
+    "Description": "Memory specifies the default amount of memory allocated to a task. It uses Kubernetes resource string format (e.g., \"256Mi\" for 256 mebibytes). This value is used when the task hasn't explicitly set its memory requirement."
   },
   {
-    "Key": "auth.accesspolicypath",
-    "Value": ""
+    "Key": "Orchestrator.Auth.Token",
+    "Value": "",
+    "Description": "Token specifies the key for compute nodes to be able to access the orchestrator"
   },
   {
-    "Key": "node.serverapi.tls.selfsigned",
-    "Value": false
-  },
-  {
-    "Key": "node.requester.scheduler.queuebackoff",
-    "Value": 60000000000
-  },
-  {
-    "Key": "node.network.cluster.port",
-    "Value": 0
-  },
-  {
-    "Key": "node.downloadurlrequestretries",
-    "Value": 3
-  },
-  {
-    "Key": "node.executorpluginpath",
-    "Value": "/root/.bacalhau/plugins"
-  },
-  {
-    "Key": "node.compute.executionstore.type",
-    "Value": "BoltDB"
-  },
-  {
-    "Key": "node.requester.evaluationbroker.evalbrokervisibilitytimeout",
-    "Value": 60000000000
-  },
-  {
-    "Key": "node.webui.enabled",
-    "Value": false
-  },
-  {
-    "Key": "node.serverapi.tls.serverkey",
-    "Value": ""
-  },
-  {
-    "Key": "node.compute.jobselection.acceptnetworkedjobs",
-    "Value": true
-  },
-  {
-    "Key": "node.requester.controlplanesettings.heartbeatcheckfrequency",
-    "Value": 5000000000
-  },
-  {
-    "Key": "node.disabledfeatures.publishers",
-    "Value": []
-  },
-  {
-    "Key": "node.ipfs.connect",
-    "Value": ""
-  },
-  {
-    "Key": "node.compute.capacity.totalresourcelimits.cpu",
-    "Value": ""
-  },
-  {
-    "Key": "node.compute.jobtimeouts.maxjobexecutiontimeout",
-    "Value": 9223372036000000000
-  },
-  {
-    "Key": "node.requester.jobdefaults.totaltimeout",
-    "Value": 1800000000000
-  },
-  {
-    "Key": "update.skipchecks",
-    "Value": false
-  },
-  {
-    "Key": "update.checkfrequency",
-    "Value": 86400000000000
-  },
-  {
-    "Key": "node.clientapi.port",
-    "Value": 1234
-  },
-  {
-    "Key": "node.volumesizerequesttimeout",
-    "Value": 120000000000
-  },
-  {
-    "Key": "node.requester.jobselectionpolicy.rejectstatelessjobs",
-    "Value": false
-  },
-  {
-    "Key": "node.requester.scheduler.nodeoversubscriptionfactor",
-    "Value": 1.5
-  },
-  {
-    "Key": "node.requester.controlplanesettings.heartbeattopic",
-    "Value": "heartbeat"
-  },
-  {
-    "Key": "node.compute.controlplanesettings.heartbeatfrequency",
-    "Value": 5000000000
-  },
-  {
-    "Key": "node.requester.noderankrandomnessrange",
-    "Value": 5
-  },
-  {
-    "Key": "node.network.storedir",
-    "Value": "/root/.bacalhau/orchestrator_store/nats-store"
-  },
-  {
-    "Key": "node.network.cluster.peers",
-    "Value": null
-  },
-  {
-    "Key": "node.requester.jobselectionpolicy.acceptnetworkedjobs",
-    "Value": true
-  },
-  {
-    "Key": "node.requester.jobstore.type",
-    "Value": "BoltDB"
-  },
-  {
-    "Key": "auth.methods",
+    "Key": "API.Auth.Methods",
     "Value": {
       "ClientKey": {
-        "Type": "challenge",
-        "PolicyPath": ""
+        "Type": "challenge"
       }
-    }
+    },
+    "Description": "Methods maps \"method names\" to authenticator implementations. A method name is a human-readable string chosen by the person configuring the system that is shown to users to help them pick the authentication method they want to use. There can be multiple usages of the same Authenticator *type* but with different configs and parameters, each identified with a unique method name.  For example, if an implementation wants to allow users to log in with Github or Bitbucket, they might both use an authenticator implementation of type \"oidc\", and each would appear once on this provider with key / method name \"github\" and \"bitbucket\".  By default, only a single authentication method that accepts authentication via client keys will be enabled."
   },
   {
-    "Key": "node.network.port",
-    "Value": 4222
+    "Key": "StrictVersionMatch",
+    "Value": false,
+    "Description": "StrictVersionMatch indicates whether to enforce strict version matching."
   },
   {
-    "Key": "node.clientapi.tls.serverkey",
-    "Value": ""
+    "Key": "Engines.Types.Docker.ManifestCache.Size",
+    "Value": 1000,
+    "Description": "Size specifies the size of the Docker manifest cache."
   },
   {
-    "Key": "node.clientapi.tls.autocert",
-    "Value": ""
+    "Key": "JobAdmissionControl.ProbeExec",
+    "Value": "",
+    "Description": "ProbeExec specifies the command to execute for probing job submission."
   },
   {
-    "Key": "node.compute.controlplanesettings.infoupdatefrequency",
-    "Value": 60000000000
+    "Key": "JobDefaults.Batch.Task.Timeouts.ExecutionTimeout",
+    "Value": "0s",
+    "Description": "ExecutionTimeout is the maximum time allowed for task execution"
   },
   {
-    "Key": "node.compute.capacity.defaultjobresourcelimits.disk",
-    "Value": ""
+    "Key": "JobDefaults.Service.Priority",
+    "Value": 0,
+    "Description": "Priority specifies the default priority allocated to a service or daemon job. This value is used when the job hasn't explicitly set its priority requirement."
   },
   {
-    "Key": "node.serverapi.host",
-    "Value": "0.0.0.0"
+    "Key": "JobDefaults.Service.Task.Resources.CPU",
+    "Value": "500m",
+    "Description": "CPU specifies the default amount of CPU allocated to a task. It uses Kubernetes resource string format (e.g., \"100m\" for 0.1 CPU cores). This value is used when the task hasn't explicitly set its CPU requirement."
   },
   {
-    "Key": "node.serverapi.clienttls.cacert",
-    "Value": ""
+    "Key": "Compute.Heartbeat.InfoUpdateInterval",
+    "Value": "1m0s",
+    "Description": "InfoUpdateInterval specifies the time between updates of non-resource information to the orchestrator."
   },
   {
-    "Key": "node.compute.manifestcache.duration",
-    "Value": 3600000000000
+    "Key": "Orchestrator.Port",
+    "Value": 4222,
+    "Description": "Host specifies the port number on which the Orchestrator server listens for compute node connections."
   },
   {
-    "Key": "node.requester.manualnodeapproval",
-    "Value": false
-  },
-  {
-    "Key": "node.requester.storageprovider.s3.presignedurlexpiration",
-    "Value": 1800000000000
-  },
-  {
-    "Key": "node.clientapi.tls.servercertificate",
-    "Value": ""
-  },
-  {
-    "Key": "node.compute.capacity.jobresourcelimits.gpu",
-    "Value": ""
-  },
-  {
-    "Key": "node.network.orchestrators",
-    "Value": null
-  },
-  {
-    "Key": "node.network.cluster.name",
-    "Value": ""
-  },
-  {
-    "Key": "node.nameprovider",
-    "Value": "puuid"
-  },
-  {
-    "Key": "node.clientapi.tls.selfsigned",
-    "Value": false
-  },
-  {
-    "Key": "node.strictversionmatch",
-    "Value": false
-  },
-  {
-    "Key": "node.requester.tagcache.frequency",
-    "Value": 0
-  },
-  {
-    "Key": "node.loggingmode",
-    "Value": "default"
-  },
-  {
-    "Key": "node.disabledfeatures.storages",
-    "Value": []
-  },
-  {
-    "Key": "node.compute.controlplanesettings.heartbeattopic",
-    "Value": "heartbeat"
-  },
-  {
-    "Key": "node.requester.defaultpublisher",
-    "Value": ""
-  },
-  {
-    "Key": "node.requester.jobdefaults.queuetimeout",
-    "Value": 0
-  },
-  {
-    "Key": "node.clientapi.clienttls.cacert",
-    "Value": ""
-  },
-  {
-    "Key": "node.compute.capacity.totalresourcelimits.memory",
-    "Value": ""
-  },
-  {
-    "Key": "node.requester.tagcache.duration",
-    "Value": 0
-  },
-  {
-    "Key": "node.compute.jobselection.rejectstatelessjobs",
-    "Value": false
-  },
-  {
-    "Key": "node.compute.jobtimeouts.jobexecutiontimeoutclientidbypasslist",
-    "Value": []
-  },
-  {
-    "Key": "node.requester.evaluationbroker.evalbrokerinitialretrydelay",
-    "Value": 1000000000
-  },
-  {
-    "Key": "node.network.authsecret",
-    "Value": ""
-  },
-  {
-    "Key": "node.requester.overaskforbidsfactor",
-    "Value": 3
-  },
-  {
-    "Key": "user.installationid",
-    "Value": "BACA14A0-eeee-eeee-eeee-194519911992"
-  },
-  {
-    "Key": "node.requester.jobdefaults.executiontimeout",
-    "Value": 0
-  },
-  {
-    "Key": "node.compute.jobselection.probeexec",
-    "Value": ""
-  },
-  {
-    "Key": "node.compute.jobselection.locality",
-    "Value": 1
-  },
-  {
-    "Key": "node.compute.manifestcache.size",
-    "Value": 1000
-  },
-  {
-    "Key": "node.requester.jobselectionpolicy.locality",
-    "Value": 1
-  },
-  {
-    "Key": "node.requester.evaluationbroker.evalbrokersubsequentretrydelay",
-    "Value": 30000000000
-  },
-  {
-    "Key": "node.requester.storageprovider.s3.presignedurldisabled",
-    "Value": false
-  },
-  {
-    "Key": "node.requester.nodeinfostorettl",
-    "Value": 600000000000
-  },
-  {
-    "Key": "node.clientapi.tls.autocertcachepath",
-    "Value": "/root/.bacalhau/autocert-cache"
-  },
-  {
-    "Key": "node.requester.jobselectionpolicy.probeexec",
-    "Value": ""
-  },
-  {
-    "Key": "user.keypath",
-    "Value": "/root/.bacalhau/user_id.pem"
-  },
-  {
-    "Key": "node.type",
+    "Key": "Compute.Orchestrators",
     "Value": [
-      "requester"
-    ]
+      "nats://127.0.0.1:4222"
+    ],
+    "Description": "Orchestrators specifies a list of orchestrator endpoints that this compute node connects to."
   },
   {
-    "Key": "node.serverapi.tls.autocert",
-    "Value": ""
+    "Key": "JobDefaults.Daemon.Task.Resources.Disk",
+    "Value": "",
+    "Description": "Disk specifies the default amount of disk space allocated to a task. It uses Kubernetes resource string format (e.g., \"1Gi\" for 1 gibibyte). This value is used when the task hasn't explicitly set its disk space requirement."
   },
   {
-    "Key": "node.compute.capacity.defaultjobresourcelimits.gpu",
-    "Value": ""
+    "Key": "JobDefaults.Daemon.Task.Resources.GPU",
+    "Value": "",
+    "Description": "GPU specifies the default number of GPUs allocated to a task. It uses Kubernetes resource string format (e.g., \"1\" for 1 GPU). This value is used when the task hasn't explicitly set its GPU requirement."
   },
   {
-    "Key": "node.requester.housekeepingbackgroundtaskinterval",
-    "Value": 30000000000
+    "Key": "JobDefaults.Daemon.Task.Resources.Memory",
+    "Value": "1Gb",
+    "Description": "Memory specifies the default amount of memory allocated to a task. It uses Kubernetes resource string format (e.g., \"256Mi\" for 256 mebibytes). This value is used when the task hasn't explicitly set its memory requirement."
   },
   {
-    "Key": "metrics.eventtracerpath",
-    "Value": "/dev/null"
+    "Key": "Orchestrator.Advertise",
+    "Value": "",
+    "Description": "Advertise specifies URL to advertise to other servers."
   },
   {
-    "Key": "node.network.cluster.advertisedaddress",
-    "Value": ""
+    "Key": "Orchestrator.Cluster.Port",
+    "Value": 0,
+    "Description": "Port specifies the port number for cluster communication."
   },
   {
-    "Key": "node.serverapi.tls.servercertificate",
-    "Value": ""
+    "Key": "Orchestrator.Host",
+    "Value": "0.0.0.0",
+    "Description": "Host specifies the hostname or IP address on which the Orchestrator server listens for compute node connections."
   },
   {
-    "Key": "node.downloadurlrequesttimeout",
-    "Value": 300000000000
+    "Key": "Orchestrator.Scheduler.WorkerCount",
+    "Value": 12,
+    "Description": "WorkerCount specifies the number of concurrent workers for job scheduling."
   },
   {
-    "Key": "node.compute.localpublisher.directory",
-    "Value": ""
+    "Key": "InputSources.MaxRetryCount",
+    "Value": 3,
+    "Description": "ReadTimeout specifies the maximum number of attempts for reading from a storage."
   },
   {
-    "Key": "node.compute.controlplanesettings.resourceupdatefrequency",
-    "Value": 30000000000
+    "Key": "ResultDownloaders.Types.IPFS.Endpoint",
+    "Value": "",
+    "Description": "Endpoint specifies the multi-address to connect to for IPFS. e.g /ip4/127.0.0.1/tcp/5001"
+  },
+  {
+    "Key": "Publishers.Types.S3.PreSignedURLExpiration",
+    "Value": "0s",
+    "Description": "PreSignedURLExpiration specifies the duration before a pre-signed URL expires."
+  },
+  {
+    "Key": "Engines.Types.Docker.ManifestCache.Refresh",
+    "Value": "1h0m0s",
+    "Description": "Refresh specifies the refresh interval for cache entries."
+  },
+  {
+    "Key": "JobDefaults.Batch.Task.Publisher.Params",
+    "Value": null,
+    "Description": "Params specifies the publisher configuration data."
+  },
+  {
+    "Key": "JobDefaults.Daemon.Task.Resources.CPU",
+    "Value": "500m",
+    "Description": "CPU specifies the default amount of CPU allocated to a task. It uses Kubernetes resource string format (e.g., \"100m\" for 0.1 CPU cores). This value is used when the task hasn't explicitly set its CPU requirement."
+  },
+  {
+    "Key": "JobDefaults.Ops.Priority",
+    "Value": 0,
+    "Description": "Priority specifies the default priority allocated to a batch or ops job. This value is used when the job hasn't explicitly set its priority requirement."
+  },
+  {
+    "Key": "Orchestrator.Enabled",
+    "Value": false,
+    "Description": "Enabled indicates whether the orchestrator node is active and available for job submission."
+  },
+  {
+    "Key": "Publishers.Types.Local.Address",
+    "Value": "127.0.0.1",
+    "Description": "Address specifies the endpoint the publisher serves on."
+  },
+  {
+    "Key": "API.TLS.CertFile",
+    "Value": "",
+    "Description": "CertFile specifies the path to the TLS certificate file."
+  },
+  {
+    "Key": "Orchestrator.Cluster.Host",
+    "Value": "",
+    "Description": "Host specifies the hostname or IP address for cluster communication."
+  },
+  {
+    "Key": "Orchestrator.EvaluationBroker.MaxRetryCount",
+    "Value": 10,
+    "Description": "MaxRetryCount specifies the maximum number of times an evaluation can be retried before being marked as failed."
+  },
+  {
+    "Key": "Publishers.Disabled",
+    "Value": null,
+    "Description": "Disabled specifies a list of publishers that are disabled."
+  },
+  {
+    "Key": "ResultDownloaders.Disabled",
+    "Value": null,
+    "Description": "Disabled is a list of downloaders that are disabled."
+  },
+  {
+    "Key": "NameProvider",
+    "Value": "puuid",
+    "Description": "NameProvider specifies the method used to generate names for the node. One of: hostname, aws, gcp, uuid, puuid."
+  },
+  {
+    "Key": "JobDefaults.Batch.Priority",
+    "Value": 0,
+    "Description": "Priority specifies the default priority allocated to a batch or ops job. This value is used when the job hasn't explicitly set its priority requirement."
+  },
+  {
+    "Key": "JobDefaults.Batch.Task.Publisher.Type",
+    "Value": "",
+    "Description": "Type specifies the publisher type. e.g. \"s3\", \"local\", \"ipfs\", etc."
+  },
+  {
+    "Key": "JobDefaults.Batch.Task.Resources.CPU",
+    "Value": "500m",
+    "Description": "CPU specifies the default amount of CPU allocated to a task. It uses Kubernetes resource string format (e.g., \"100m\" for 0.1 CPU cores). This value is used when the task hasn't explicitly set its CPU requirement."
+  },
+  {
+    "Key": "Logging.Level",
+    "Value": "info",
+    "Description": "Level sets the logging level. One of: trace, debug, info, warn, error, fatal, panic."
+  },
+  {
+    "Key": "Orchestrator.Cluster.Name",
+    "Value": "",
+    "Description": "Name specifies the unique identifier for this orchestrator cluster."
+  },
+  {
+    "Key": "InputSources.ReadTimeout",
+    "Value": "5m0s",
+    "Description": "ReadTimeout specifies the maximum time allowed for reading from a storage."
+  },
+  {
+    "Key": "Orchestrator.Cluster.Peers",
+    "Value": null,
+    "Description": "Peers is a list of other cluster members to connect to on startup."
+  },
+  {
+    "Key": "Orchestrator.NodeManager.DisconnectTimeout",
+    "Value": "5s",
+    "Description": "DisconnectTimeout specifies how long to wait before considering a node disconnected."
+  },
+  {
+    "Key": "Orchestrator.NodeManager.ManualApproval",
+    "Value": false,
+    "Description": "ManualApproval, if true, requires manual approval for new compute nodes joining the cluster."
+  },
+  {
+    "Key": "API.TLS.KeyFile",
+    "Value": "",
+    "Description": "KeyFile specifies the path to the TLS private key file."
+  },
+  {
+    "Key": "API.TLS.UseTLS",
+    "Value": false,
+    "Description": "UseTLS indicates whether to use TLS for client connections."
+  },
+  {
+    "Key": "JobDefaults.Batch.Task.Resources.Disk",
+    "Value": "",
+    "Description": "Disk specifies the default amount of disk space allocated to a task. It uses Kubernetes resource string format (e.g., \"1Gi\" for 1 gibibyte). This value is used when the task hasn't explicitly set its disk space requirement."
+  },
+  {
+    "Key": "JobDefaults.Ops.Task.Resources.CPU",
+    "Value": "500m",
+    "Description": "CPU specifies the default amount of CPU allocated to a task. It uses Kubernetes resource string format (e.g., \"100m\" for 0.1 CPU cores). This value is used when the task hasn't explicitly set its CPU requirement."
+  },
+  {
+    "Key": "JobDefaults.Ops.Task.Resources.Memory",
+    "Value": "1Gb",
+    "Description": "Memory specifies the default amount of memory allocated to a task. It uses Kubernetes resource string format (e.g., \"256Mi\" for 256 mebibytes). This value is used when the task hasn't explicitly set its memory requirement."
+  },
+  {
+    "Key": "JobDefaults.Ops.Task.Timeouts.TotalTimeout",
+    "Value": "0s",
+    "Description": "TotalTimeout is the maximum total time allowed for a task"
+  },
+  {
+    "Key": "Orchestrator.EvaluationBroker.VisibilityTimeout",
+    "Value": "1m0s",
+    "Description": "VisibilityTimeout specifies how long an evaluation can be claimed before it's returned to the queue."
+  },
+  {
+    "Key": "Publishers.Types.S3.PreSignedURLDisabled",
+    "Value": false,
+    "Description": "PreSignedURLDisabled specifies whether pre-signed URLs are enabled for the S3 provider."
+  },
+  {
+    "Key": "API.Port",
+    "Value": 1234,
+    "Description": "Port specifies the port number on which the API server listens or the client connects."
+  },
+  {
+    "Key": "WebUI.Backend",
+    "Value": "",
+    "Description": "Backend specifies the address and port of the backend API server. If empty, the Web UI will use the same address and port as the API server."
+  },
+  {
+    "Key": "WebUI.Enabled",
+    "Value": false,
+    "Description": "Enabled indicates whether the Web UI is enabled."
+  },
+  {
+    "Key": "UpdateConfig.Interval",
+    "Value": "24h0m0s",
+    "Description": "Interval specifies the time between update checks, when set to 0 update checks are not performed."
+  },
+  {
+    "Key": "Compute.AllocatedCapacity.Disk",
+    "Value": "70%",
+    "Description": "Disk specifies the amount of Disk space a compute node allocates for running jobs. It can be expressed as a percentage (e.g., \"85%\") or a Kubernetes resource string (e.g., \"10Gi\")."
+  },
+  {
+    "Key": "Compute.Enabled",
+    "Value": false,
+    "Description": "Enabled indicates whether the compute node is active and available for job execution."
+  },
+  {
+    "Key": "Compute.Heartbeat.Interval",
+    "Value": "5s",
+    "Description": "Interval specifies the time between heartbeat signals sent to the orchestrator."
+  },
+  {
+    "Key": "DataDir",
+    "Value": "/Users/daaronch/.bacalhau",
+    "Description": "DataDir specifies a location on disk where the bacalhau node will maintain state."
+  },
+  {
+    "Key": "Engines.Types.Docker.ManifestCache.TTL",
+    "Value": "1h0m0s",
+    "Description": "TTL specifies the time-to-live duration for cache entries."
+  },
+  {
+    "Key": "JobAdmissionControl.Locality",
+    "Value": "anywhere",
+    "Description": "Locality specifies the locality of the job input data."
+  },
+  {
+    "Key": "JobDefaults.Service.Task.Resources.Disk",
+    "Value": "",
+    "Description": "Disk specifies the default amount of disk space allocated to a task. It uses Kubernetes resource string format (e.g., \"1Gi\" for 1 gibibyte). This value is used when the task hasn't explicitly set its disk space requirement."
+  },
+  {
+    "Key": "API.TLS.AutoCert",
+    "Value": "",
+    "Description": "AutoCert specifies the domain for automatic certificate generation."
   }
 ]`

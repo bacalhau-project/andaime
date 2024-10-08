@@ -34,12 +34,12 @@ func TestReadBacalhauSettings(t *testing.T) {
 		// Go through each string and see if there is a BacalhauSettings that has it as the Key
 
 		listOfKeys := []string{
-			"node.allowlistedlocalpaths",
-			"node.compute.controlplanesettings.infoupdatefrequency",
-			"node.compute.controlplanesettings.heartbeatfrequency",
-			"node.compute.controlplanesettings.resourceupdatefrequency",
-			"node.requester.controlplanesettings.nodedisconnectedafter",
-			"node.compute.jobselection.acceptnetworkedjobs",
+			"compute.allowlistedlocalpaths",
+			"compute.heartbeat.interval",
+			"compute.heartbeat.infoupdateinterval",
+			"compute.heartbeat.resourceupdateinterval",
+			"orchestrator.nodemanager.disconnecttimeout",
+			"jobadmissioncontrol.acceptnetworkedjobs",
 		}
 
 		for _, key := range listOfKeys {
@@ -54,7 +54,7 @@ func TestReadBacalhauSettings(t *testing.T) {
 		}
 
 		for _, setting := range settings {
-			if setting.Key == "node.allowlistedlocalpaths" {
+			if setting.Key == "compute.allowlistedlocalpaths" {
 				paths, ok := setting.Value.([]string)
 				assert.True(t, ok)
 				assert.Contains(t, paths, "/tmp")

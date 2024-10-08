@@ -551,13 +551,13 @@ func applySettings(
 		case string:
 			valueStr = v
 		case []string:
-			valueStr = fmt.Sprintf("[%s]", strings.Join(v, ","))
+			valueStr = strings.Join(v, ",")
 		case []interface{}:
 			var values []string
 			for _, item := range v {
 				values = append(values, fmt.Sprintf("%v", item))
 			}
-			valueStr = fmt.Sprintf("[%s]", strings.Join(values, ","))
+			valueStr = strings.Join(values, ",")
 		default:
 			valueStr = fmt.Sprintf("%v", v)
 		}

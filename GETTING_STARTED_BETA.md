@@ -97,21 +97,21 @@ azure:
 
 general:
   bacalhau_settings:
-    - key: node.allowlistedlocalpaths
+    - key: compute.allowlistedlocalpaths
       value:
         - /tmp
         - /data
-    - key: node.compute.controlplanesettings.heartbeatfrequency
+    - key: compute.heartbeat.interval
       value: 5s
-    - key: node.requester.controlplanesettings.heartbeatcheckfrequency
+    - key: compute.heartbeat.infoupdateinterval
       value: 5s
-    - key: node.requester.controlplanesettings.nodedisconnectedafter
+    - key: compute.heartbeat.resourceupdateinterval
+      value: 5s
+    - key: orchestrator.nodemanager.disconnecttimeout
       value: 5s
     - key: user.installationid
       value: BACA14A0-eeee-eeee-eeee-194519911992
-    - key: node.requester.jobselectionpolicy.acceptnetworkedjobs
-      value: true
-    - key: node.compute.jobselection.acceptnetworkedjobs
+    - key: jobadmissioncontrol.acceptnetworkedjobs
       value: true
   custom_script_path: /Users/daaronch/code/andaime/scripts/install_k3s.sh
   log_level: debug

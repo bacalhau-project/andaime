@@ -12,5 +12,9 @@ azure:
 general:
   project_prefix: andaime
   ssh_public_key_path: ~/.ssh/id_rsa.pub
+  bacalhau_settings:
+    - key: user.installationid
+      value: BACA14A0-eeee-eeee-eeee-194519911992
+
 gcp:
   billing_account_id: "XXXXXX-XXXXXX-XXXXXX"

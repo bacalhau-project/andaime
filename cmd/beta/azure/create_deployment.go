@@ -21,6 +21,8 @@ const (
 	DefaultSSHPort = 22
 )
 
+var configMu sync.Mutex
+
 var createAzureDeploymentCmd = &cobra.Command{
 	Use:   "create-deployment",
 	Short: "Create a deployment in Azure",
@@ -256,7 +258,7 @@ func provisionMachines(
 				errChan <- fmt.Errorf("failed to provision machine %s: %w", machineName, err)
 				return
 			}
-			updateMachineConfig(m.Deployment, machineName)
+			go updateMachineConfig(m.Deployment, machineName)
 		}(machine.GetName())
 	}
 
@@ -306,6 +308,9 @@ func writeConfig() {
 }
 
 func updateMachineConfig(deployment *models.Deployment, machineName string) {
+	configMu.Lock()
+	defer configMu.Unlock()
+
 	machine := deployment.GetMachine(machineName)
 	if machine != nil {
 		viper.Set(
