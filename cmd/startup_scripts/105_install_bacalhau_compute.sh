@@ -55,12 +55,10 @@ start_bacalhau() {
 
     # Start Bacalhau
     if [[ "$NODE_TYPE" == "orchestrator" ]]; then
-        bacalhau serve --node-type requester --requester-job-translation-enabled=true
+        bacalhau serve --orchestrator
     else
         /usr/local/bin/bacalhau serve \
             --node-type compute \
-            --orchestrators "${ORCHESTRATORS}" \
-            --job-selection-accept-networked=true \
             --labels "${LABELS}" \
             >> "${LOG_FILE}" 2>&1 &
         
