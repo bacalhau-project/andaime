@@ -250,6 +250,10 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
 	}
 
+	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
+		return err
+	}
+
 	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig); err != nil {
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
@@ -644,30 +648,27 @@ func (cd *ClusterDeployer) HandleDeploymentError(
 	return err
 }
 
-func (cd *ClusterDeployer) ProvisionPackagesOnMachine(
+func (cd *ClusterDeployer) ProvisionMachine(
 	ctx context.Context,
-	machineName string,
+	sshConfig sshutils.SSHConfiger,
+	machine models.Machiner,
 ) error {
 	m := display.GetGlobalModelFunc()
 	if m == nil {
 		return fmt.Errorf("global display model is not initialized")
 	}
-	mach := m.Deployment.GetMachine(machineName)
-	if mach == nil {
-		return fmt.Errorf("machine %s not found", machineName)
-	}
 
 	status := models.NewDisplayStatusWithText(
-		machineName,
+		machine.GetName(),
 		models.AzureResourceTypeVM,
 		models.ResourceStatePending,
 		"Provisioning Docker & packages on machine",
 	)
 	m.UpdateStatus(status)
-	err := mach.InstallDockerAndCorePackages(ctx)
+	err := machine.InstallDockerAndCorePackages(ctx)
 	if err != nil {
 		m.UpdateStatus(models.NewDisplayStatusWithText(
-			machineName,
+			machine.GetName(),
 			models.AzureResourceTypeVM,
 			models.ResourceStateFailed,
 			fmt.Sprintf("Failed to provision Docker & packages on machine: %v", err),
@@ -675,7 +676,7 @@ func (cd *ClusterDeployer) ProvisionPackagesOnMachine(
 		return err
 	}
 	m.UpdateStatus(models.NewDisplayStatusWithText(
-		machineName,
+		machine.GetName(),
 		models.AzureResourceTypeVM,
 		models.ResourceStateSucceeded,
 		"Provisioned Docker & packages on machine",

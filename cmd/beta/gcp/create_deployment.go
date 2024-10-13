@@ -3,7 +3,6 @@ package gcp
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -186,10 +185,6 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 		return err
 	}
 
-	if err := provisionMachines(ctx, gcpProvider, m); err != nil {
-		return err
-	}
-
 	if err := provisionBacalhauCluster(ctx, gcpProvider, m); err != nil {
 		return err
 	}
@@ -240,42 +235,6 @@ func createResources(
 	for _, machine := range m.Deployment.Machines {
 		updateMachineConfig(m.Deployment, machine.GetName())
 	}
-	return nil
-}
-
-func provisionMachines(
-	ctx context.Context,
-	gcpProvider *gcp_provider.GCPProvider,
-	m *display.DisplayModel,
-) error {
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(m.Deployment.Machines))
-
-	for _, machine := range m.Deployment.Machines {
-		wg.Add(1)
-		go func(machineName string) {
-			defer wg.Done()
-			err := gcpProvider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machineName)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to provision machine %s: %w", machineName, err)
-				return
-			}
-			machine := m.Deployment.GetMachine(machineName)
-			machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
-			machine.SetServiceState(models.ServiceTypeDocker.Name, models.ServiceStateSucceeded)
-			updateMachineConfig(m.Deployment, machineName)
-		}(machine.GetName())
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	for err := range errChan {
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

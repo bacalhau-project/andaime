@@ -248,6 +248,7 @@ predeclared
 presignedurldisabled
 presignedurlexpiration
 privateip
+privkey
 probeexec
 probehttp
 Progammer

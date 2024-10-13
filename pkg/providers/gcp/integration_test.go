@@ -347,11 +347,6 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 
 	s.provider.SetClusterDeployer(s.clusterDeployer)
 	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
-		err := s.provider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machine.GetName())
-		s.Require().NoError(err)
-	}
-
 	err = s.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	s.Require().NoError(err)
 

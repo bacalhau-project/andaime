@@ -136,6 +136,24 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
+				Cmd:    "sudo /tmp/install-docker.sh",
+				Output: "",
+				Error:  nil,
+				Times:  2,
+			},
+			{
+				Cmd:    "sudo docker run hello-world",
+				Output: "Hello from Docker!",
+				Error:  nil,
+				Times:  2,
+			},
+			{
+				Cmd:    "sudo /tmp/install-core-packages.sh",
+				Output: "",
+				Error:  nil,
+				Times:  2,
+			},
+			{
 				Cmd:    "sudo /tmp/get-node-config-metadata.sh",
 				Output: "",
 				Error:  nil,

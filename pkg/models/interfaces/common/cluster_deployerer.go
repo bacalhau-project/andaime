@@ -8,14 +8,17 @@ import (
 )
 
 type ClusterDeployerer interface {
+	ProvisionMachine(
+		ctx context.Context,
+		sshConfig sshutils.SSHConfiger,
+		machine models.Machiner,
+	) error
 	WaitForAllMachinesToReachState(
 		ctx context.Context,
 		resourceType string,
 		state models.MachineResourceState,
 	) error
 
-	// ProvisionAllMachinesWithPackages(ctx context.Context) error
-	ProvisionPackagesOnMachine(ctx context.Context, machineName string) error
 	ExecuteCustomScript(
 		ctx context.Context,
 		sshConfig sshutils.SSHConfiger,

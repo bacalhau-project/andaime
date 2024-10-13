@@ -195,10 +195,6 @@ func runDeployment(ctx context.Context, azureProvider *azure.AzureProvider) erro
 		return err
 	}
 
-	if err := provisionMachines(ctx, azureProvider, m); err != nil {
-		return err
-	}
-
 	if err := provisionBacalhauCluster(ctx, azureProvider, m); err != nil {
 		return err
 	}
@@ -238,39 +234,6 @@ func createResources(
 	for _, machine := range m.Deployment.Machines {
 		updateMachineConfig(m.Deployment, machine.GetName())
 	}
-	return nil
-}
-
-func provisionMachines(
-	ctx context.Context,
-	azureProvider *azure.AzureProvider,
-	m *display.DisplayModel,
-) error {
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(m.Deployment.Machines))
-
-	for _, machine := range m.Deployment.Machines {
-		wg.Add(1)
-		go func(machineName string) {
-			defer wg.Done()
-			err := azureProvider.GetClusterDeployer().ProvisionPackagesOnMachine(ctx, machineName)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to provision machine %s: %w", machineName, err)
-				return
-			}
-			go updateMachineConfig(m.Deployment, machineName)
-		}(machine.GetName())
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	for err := range errChan {
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
