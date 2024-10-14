@@ -1224,6 +1224,9 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   asia-northeast1-b:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -1231,6 +1234,27 @@ locations:
   - c2-standard-4
   - c2-standard-60
   - c2-standard-8
+  - c2d-highcpu-112
+  - c2d-highcpu-16
+  - c2d-highcpu-2
+  - c2d-highcpu-32
+  - c2d-highcpu-4
+  - c2d-highcpu-56
+  - c2d-highcpu-8
+  - c2d-highmem-112
+  - c2d-highmem-16
+  - c2d-highmem-2
+  - c2d-highmem-32
+  - c2d-highmem-4
+  - c2d-highmem-56
+  - c2d-highmem-8
+  - c2d-standard-112
+  - c2d-standard-16
+  - c2d-standard-2
+  - c2d-standard-32
+  - c2d-standard-4
+  - c2d-standard-56
+  - c2d-standard-8
   - c3-highcpu-176
   - c3-highcpu-22
   - c3-highcpu-4
@@ -1249,6 +1273,14 @@ locations:
   - c3-standard-44
   - c3-standard-8
   - c3-standard-88
+  - c4-highcpu-16
+  - c4-highcpu-192
+  - c4-highcpu-2
+  - c4-highcpu-32
+  - c4-highcpu-4
+  - c4-highcpu-48
+  - c4-highcpu-8
+  - c4-highcpu-96
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -1523,6 +1555,27 @@ locations:
   - c2-standard-4
   - c2-standard-60
   - c2-standard-8
+  - c2d-highcpu-112
+  - c2d-highcpu-16
+  - c2d-highcpu-2
+  - c2d-highcpu-32
+  - c2d-highcpu-4
+  - c2d-highcpu-56
+  - c2d-highcpu-8
+  - c2d-highmem-112
+  - c2d-highmem-16
+  - c2d-highmem-2
+  - c2d-highmem-32
+  - c2d-highmem-4
+  - c2d-highmem-56
+  - c2d-highmem-8
+  - c2d-standard-112
+  - c2d-standard-16
+  - c2d-standard-2
+  - c2d-standard-32
+  - c2d-standard-4
+  - c2d-standard-56
+  - c2d-standard-8
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -2017,14 +2070,6 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
-  - t2d-standard-1
-  - t2d-standard-16
-  - t2d-standard-2
-  - t2d-standard-32
-  - t2d-standard-4
-  - t2d-standard-48
-  - t2d-standard-60
-  - t2d-standard-8
   asia-northeast3-b:
   - a2-highgpu-1g
   - a2-highgpu-2g
@@ -2154,14 +2199,6 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
-  - t2d-standard-1
-  - t2d-standard-16
-  - t2d-standard-2
-  - t2d-standard-32
-  - t2d-standard-4
-  - t2d-standard-48
-  - t2d-standard-60
-  - t2d-standard-8
   asia-northeast3-c:
   - c2-standard-16
   - c2-standard-30
@@ -2269,14 +2306,6 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
-  - t2d-standard-1
-  - t2d-standard-16
-  - t2d-standard-2
-  - t2d-standard-32
-  - t2d-standard-4
-  - t2d-standard-48
-  - t2d-standard-60
-  - t2d-standard-8
   asia-south1-a:
   - c2-standard-16
   - c2-standard-30
@@ -2304,6 +2333,21 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
+  - c3d-standard-16
+  - c3d-standard-16-lssd
+  - c3d-standard-180
+  - c3d-standard-180-lssd
+  - c3d-standard-30
+  - c3d-standard-30-lssd
+  - c3d-standard-360
+  - c3d-standard-360-lssd
+  - c3d-standard-4
+  - c3d-standard-60
+  - c3d-standard-60-lssd
+  - c3d-standard-8
+  - c3d-standard-8-lssd
+  - c3d-standard-90
+  - c3d-standard-90-lssd
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -2460,6 +2504,21 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
+  - c3d-standard-16
+  - c3d-standard-16-lssd
+  - c3d-standard-180
+  - c3d-standard-180-lssd
+  - c3d-standard-30
+  - c3d-standard-30-lssd
+  - c3d-standard-360
+  - c3d-standard-360-lssd
+  - c3d-standard-4
+  - c3d-standard-60
+  - c3d-standard-60-lssd
+  - c3d-standard-8
+  - c3d-standard-8-lssd
+  - c3d-standard-90
+  - c3d-standard-90-lssd
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -2586,6 +2645,30 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-48
+  - n4-highmem-64
+  - n4-highmem-8
+  - n4-highmem-80
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -2633,13 +2716,20 @@ locations:
   - c3d-highcpu-8
   - c3d-highcpu-90
   - c3d-standard-16
+  - c3d-standard-16-lssd
   - c3d-standard-180
+  - c3d-standard-180-lssd
   - c3d-standard-30
+  - c3d-standard-30-lssd
   - c3d-standard-360
+  - c3d-standard-360-lssd
   - c3d-standard-4
   - c3d-standard-60
+  - c3d-standard-60-lssd
   - c3d-standard-8
+  - c3d-standard-8-lssd
   - c3d-standard-90
+  - c3d-standard-90-lssd
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -2760,6 +2850,30 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-48
+  - n4-highmem-64
+  - n4-highmem-8
+  - n4-highmem-80
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -2824,6 +2938,11 @@ locations:
   - m2-megamem-416
   - m2-ultramem-208
   - m2-ultramem-416
+  - m3-megamem-128
+  - m3-megamem-64
+  - m3-ultramem-128
+  - m3-ultramem-32
+  - m3-ultramem-64
   - n1-highcpu-16
   - n1-highcpu-2
   - n1-highcpu-32
@@ -3326,6 +3445,10 @@ locations:
   - m1-ultramem-160
   - m1-ultramem-40
   - m1-ultramem-80
+  - m2-hypermem-416
+  - m2-megamem-416
+  - m2-ultramem-208
+  - m2-ultramem-416
   - m3-megamem-128
   - m3-megamem-64
   - m3-ultramem-128
@@ -3456,6 +3579,9 @@ locations:
   - a2-highgpu-2g
   - a2-highgpu-4g
   - a2-highgpu-8g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -3597,6 +3723,10 @@ locations:
   - m1-ultramem-160
   - m1-ultramem-40
   - m1-ultramem-80
+  - m2-hypermem-416
+  - m2-megamem-416
+  - m2-ultramem-208
+  - m2-ultramem-416
   - m3-megamem-128
   - m3-megamem-64
   - m3-ultramem-128
@@ -3739,6 +3869,9 @@ locations:
   - a2-ultragpu-2g
   - a2-ultragpu-4g
   - a2-ultragpu-8g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -3768,6 +3901,7 @@ locations:
   - c2d-standard-56
   - c2d-standard-8
   - c3-highcpu-176
+  - c3-highcpu-192-metal
   - c3-highcpu-22
   - c3-highcpu-4
   - c3-highcpu-44
@@ -4330,6 +4464,12 @@ locations:
   - c2-standard-4
   - c2-standard-60
   - c2-standard-8
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -4356,7 +4496,6 @@ locations:
   - m2-megamem-416
   - m2-ultramem-208
   - m2-ultramem-416
-  - m2-ultramemx-96
   - m3-megamem-128
   - m3-megamem-64
   - m3-ultramem-128
@@ -4487,7 +4626,6 @@ locations:
   - m2-megamem-416
   - m2-ultramem-208
   - m2-ultramem-416
-  - m2-ultramemx-96
   - n1-highcpu-16
   - n1-highcpu-2
   - n1-highcpu-32
@@ -4582,6 +4720,9 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   australia-southeast1-c:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -4625,7 +4766,6 @@ locations:
   - m1-ultramem-160
   - m1-ultramem-40
   - m1-ultramem-80
-  - m2-ultramemx-96
   - m3-megamem-128
   - m3-megamem-64
   - m3-ultramem-128
@@ -6005,6 +6145,9 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   europe-west1-b:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -6315,6 +6458,7 @@ locations:
   - c3-highcpu-8
   - c3-highcpu-88
   - c3-highmem-176
+  - c3-highmem-192-metal
   - c3-highmem-22
   - c3-highmem-4
   - c3-highmem-44
@@ -6537,6 +6681,8 @@ locations:
   - x4-megamem-1440-metal
   - x4-megamem-1920-metal
   - x4-megamem-960-metal
+  - z3-highmem-176
+  - z3-highmem-88
   europe-west1-d:
   - c2-standard-16
   - c2-standard-30
@@ -6793,6 +6939,8 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   europe-west2-a:
   - c2-standard-16
   - c2-standard-30
@@ -6820,6 +6968,12 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -6981,6 +7135,12 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -7270,6 +7430,8 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   europe-west3-a:
   - c2-standard-16
   - c2-standard-30
@@ -7297,209 +7459,6 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
-  - c3d-highcpu-16
-  - c3d-highcpu-180
-  - c3d-highcpu-30
-  - c3d-highcpu-360
-  - c3d-highcpu-4
-  - c3d-highcpu-60
-  - c3d-highcpu-8
-  - c3d-highcpu-90
-  - c3d-highmem-16
-  - c3d-highmem-180
-  - c3d-highmem-30
-  - c3d-highmem-360
-  - c3d-highmem-4
-  - c3d-highmem-60
-  - c3d-highmem-8
-  - c3d-highmem-90
-  - c3d-standard-16
-  - c3d-standard-180
-  - c3d-standard-30
-  - c3d-standard-360
-  - c3d-standard-4
-  - c3d-standard-60
-  - c3d-standard-8
-  - c3d-standard-90
-  - e2-highcpu-16
-  - e2-highcpu-2
-  - e2-highcpu-32
-  - e2-highcpu-4
-  - e2-highcpu-8
-  - e2-highmem-16
-  - e2-highmem-2
-  - e2-highmem-4
-  - e2-highmem-8
-  - e2-medium
-  - e2-micro
-  - e2-small
-  - e2-standard-16
-  - e2-standard-2
-  - e2-standard-32
-  - e2-standard-4
-  - e2-standard-8
-  - f1-micro
-  - g1-small
-  - g2-standard-12
-  - g2-standard-16
-  - g2-standard-24
-  - g2-standard-32
-  - g2-standard-4
-  - g2-standard-48
-  - g2-standard-8
-  - g2-standard-96
-  - m1-megamem-96
-  - m1-ultramem-160
-  - m1-ultramem-40
-  - m1-ultramem-80
-  - m2-hypermem-416
-  - m2-megamem-416
-  - m2-ultramem-208
-  - m2-ultramem-416
-  - m3-megamem-128
-  - m3-megamem-64
-  - m3-ultramem-128
-  - m3-ultramem-32
-  - m3-ultramem-64
-  - n1-highcpu-16
-  - n1-highcpu-2
-  - n1-highcpu-32
-  - n1-highcpu-4
-  - n1-highcpu-64
-  - n1-highcpu-8
-  - n1-highcpu-96
-  - n1-highmem-16
-  - n1-highmem-2
-  - n1-highmem-32
-  - n1-highmem-4
-  - n1-highmem-64
-  - n1-highmem-8
-  - n1-highmem-96
-  - n1-megamem-96
-  - n1-standard-1
-  - n1-standard-16
-  - n1-standard-2
-  - n1-standard-32
-  - n1-standard-4
-  - n1-standard-64
-  - n1-standard-8
-  - n1-standard-96
-  - n1-ultramem-160
-  - n1-ultramem-40
-  - n1-ultramem-80
-  - n2-highcpu-16
-  - n2-highcpu-2
-  - n2-highcpu-32
-  - n2-highcpu-4
-  - n2-highcpu-48
-  - n2-highcpu-64
-  - n2-highcpu-8
-  - n2-highcpu-80
-  - n2-highcpu-96
-  - n2-highmem-128
-  - n2-highmem-16
-  - n2-highmem-2
-  - n2-highmem-32
-  - n2-highmem-4
-  - n2-highmem-48
-  - n2-highmem-64
-  - n2-highmem-8
-  - n2-highmem-80
-  - n2-highmem-96
-  - n2-standard-128
-  - n2-standard-16
-  - n2-standard-2
-  - n2-standard-32
-  - n2-standard-4
-  - n2-standard-48
-  - n2-standard-64
-  - n2-standard-8
-  - n2-standard-80
-  - n2-standard-96
-  - n2d-highcpu-128
-  - n2d-highcpu-16
-  - n2d-highcpu-2
-  - n2d-highcpu-224
-  - n2d-highcpu-32
-  - n2d-highcpu-4
-  - n2d-highcpu-48
-  - n2d-highcpu-64
-  - n2d-highcpu-8
-  - n2d-highcpu-80
-  - n2d-highcpu-96
-  - n2d-highmem-16
-  - n2d-highmem-2
-  - n2d-highmem-32
-  - n2d-highmem-4
-  - n2d-highmem-48
-  - n2d-highmem-64
-  - n2d-highmem-8
-  - n2d-highmem-80
-  - n2d-highmem-96
-  - n2d-standard-128
-  - n2d-standard-16
-  - n2d-standard-2
-  - n2d-standard-224
-  - n2d-standard-32
-  - n2d-standard-4
-  - n2d-standard-48
-  - n2d-standard-64
-  - n2d-standard-8
-  - n2d-standard-80
-  - n2d-standard-96
-  - t2d-standard-1
-  - t2d-standard-16
-  - t2d-standard-2
-  - t2d-standard-32
-  - t2d-standard-4
-  - t2d-standard-48
-  - t2d-standard-60
-  - t2d-standard-8
-  europe-west3-b:
-  - c2-standard-16
-  - c2-standard-30
-  - c2-standard-4
-  - c2-standard-60
-  - c2-standard-8
-  - c2d-highcpu-112
-  - c2d-highcpu-16
-  - c2d-highcpu-2
-  - c2d-highcpu-32
-  - c2d-highcpu-4
-  - c2d-highcpu-56
-  - c2d-highcpu-8
-  - c2d-highmem-112
-  - c2d-highmem-16
-  - c2d-highmem-2
-  - c2d-highmem-32
-  - c2d-highmem-4
-  - c2d-highmem-56
-  - c2d-highmem-8
-  - c2d-standard-112
-  - c2d-standard-16
-  - c2d-standard-2
-  - c2d-standard-32
-  - c2d-standard-4
-  - c2d-standard-56
-  - c2d-standard-8
-  - c3-highcpu-176
-  - c3-highcpu-22
-  - c3-highcpu-4
-  - c3-highcpu-44
-  - c3-highcpu-8
-  - c3-highcpu-88
-  - c3-highmem-176
-  - c3-highmem-22
-  - c3-highmem-4
-  - c3-highmem-44
-  - c3-highmem-8
-  - c3-highmem-88
-  - c3-standard-176
-  - c3-standard-22
-  - c3-standard-4
-  - c3-standard-44
-  - c3-standard-8
-  - c3-standard-88
   - c3d-highcpu-16
   - c3d-highcpu-180
   - c3d-highcpu-30
@@ -7689,7 +7648,276 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  europe-west3-b:
+  - c2-standard-16
+  - c2-standard-30
+  - c2-standard-4
+  - c2-standard-60
+  - c2-standard-8
+  - c2d-highcpu-112
+  - c2d-highcpu-16
+  - c2d-highcpu-2
+  - c2d-highcpu-32
+  - c2d-highcpu-4
+  - c2d-highcpu-56
+  - c2d-highcpu-8
+  - c2d-highmem-112
+  - c2d-highmem-16
+  - c2d-highmem-2
+  - c2d-highmem-32
+  - c2d-highmem-4
+  - c2d-highmem-56
+  - c2d-highmem-8
+  - c2d-standard-112
+  - c2d-standard-16
+  - c2d-standard-2
+  - c2d-standard-32
+  - c2d-standard-4
+  - c2d-standard-56
+  - c2d-standard-8
+  - c3-highcpu-176
+  - c3-highcpu-22
+  - c3-highcpu-4
+  - c3-highcpu-44
+  - c3-highcpu-8
+  - c3-highcpu-88
+  - c3-highmem-176
+  - c3-highmem-22
+  - c3-highmem-4
+  - c3-highmem-44
+  - c3-highmem-8
+  - c3-highmem-88
+  - c3-standard-176
+  - c3-standard-176-lssd
+  - c3-standard-22
+  - c3-standard-22-lssd
+  - c3-standard-4
+  - c3-standard-4-lssd
+  - c3-standard-44
+  - c3-standard-44-lssd
+  - c3-standard-8
+  - c3-standard-8-lssd
+  - c3-standard-88
+  - c3-standard-88-lssd
+  - c3d-highcpu-16
+  - c3d-highcpu-180
+  - c3d-highcpu-30
+  - c3d-highcpu-360
+  - c3d-highcpu-4
+  - c3d-highcpu-60
+  - c3d-highcpu-8
+  - c3d-highcpu-90
+  - c3d-highmem-16
+  - c3d-highmem-180
+  - c3d-highmem-30
+  - c3d-highmem-360
+  - c3d-highmem-4
+  - c3d-highmem-60
+  - c3d-highmem-8
+  - c3d-highmem-90
+  - c3d-standard-16
+  - c3d-standard-16-lssd
+  - c3d-standard-180
+  - c3d-standard-180-lssd
+  - c3d-standard-30
+  - c3d-standard-30-lssd
+  - c3d-standard-360
+  - c3d-standard-360-lssd
+  - c3d-standard-4
+  - c3d-standard-60
+  - c3d-standard-60-lssd
+  - c3d-standard-8
+  - c3d-standard-8-lssd
+  - c3d-standard-90
+  - c3d-standard-90-lssd
+  - c4-highcpu-16
+  - c4-highcpu-192
+  - c4-highcpu-2
+  - c4-highcpu-32
+  - c4-highcpu-4
+  - c4-highcpu-48
+  - c4-highcpu-8
+  - c4-highcpu-96
+  - c4-highmem-16
+  - c4-highmem-192
+  - c4-highmem-2
+  - c4-highmem-32
+  - c4-highmem-4
+  - c4-highmem-48
+  - c4-highmem-8
+  - c4-highmem-96
+  - c4-standard-16
+  - c4-standard-192
+  - c4-standard-2
+  - c4-standard-32
+  - c4-standard-4
+  - c4-standard-48
+  - c4-standard-8
+  - c4-standard-96
+  - e2-highcpu-16
+  - e2-highcpu-2
+  - e2-highcpu-32
+  - e2-highcpu-4
+  - e2-highcpu-8
+  - e2-highmem-16
+  - e2-highmem-2
+  - e2-highmem-4
+  - e2-highmem-8
+  - e2-medium
+  - e2-micro
+  - e2-small
+  - e2-standard-16
+  - e2-standard-2
+  - e2-standard-32
+  - e2-standard-4
+  - e2-standard-8
+  - f1-micro
+  - g1-small
+  - g2-standard-12
+  - g2-standard-16
+  - g2-standard-24
+  - g2-standard-32
+  - g2-standard-4
+  - g2-standard-48
+  - g2-standard-8
+  - g2-standard-96
+  - m1-megamem-96
+  - m1-ultramem-160
+  - m1-ultramem-40
+  - m1-ultramem-80
+  - m2-hypermem-416
+  - m2-megamem-416
+  - m2-ultramem-208
+  - m2-ultramem-416
+  - m3-megamem-128
+  - m3-megamem-64
+  - m3-ultramem-128
+  - m3-ultramem-32
+  - m3-ultramem-64
+  - n1-highcpu-16
+  - n1-highcpu-2
+  - n1-highcpu-32
+  - n1-highcpu-4
+  - n1-highcpu-64
+  - n1-highcpu-8
+  - n1-highcpu-96
+  - n1-highmem-16
+  - n1-highmem-2
+  - n1-highmem-32
+  - n1-highmem-4
+  - n1-highmem-64
+  - n1-highmem-8
+  - n1-highmem-96
+  - n1-megamem-96
+  - n1-standard-1
+  - n1-standard-16
+  - n1-standard-2
+  - n1-standard-32
+  - n1-standard-4
+  - n1-standard-64
+  - n1-standard-8
+  - n1-standard-96
+  - n1-ultramem-160
+  - n1-ultramem-40
+  - n1-ultramem-80
+  - n2-highcpu-16
+  - n2-highcpu-2
+  - n2-highcpu-32
+  - n2-highcpu-4
+  - n2-highcpu-48
+  - n2-highcpu-64
+  - n2-highcpu-8
+  - n2-highcpu-80
+  - n2-highcpu-96
+  - n2-highmem-128
+  - n2-highmem-16
+  - n2-highmem-2
+  - n2-highmem-32
+  - n2-highmem-4
+  - n2-highmem-48
+  - n2-highmem-64
+  - n2-highmem-8
+  - n2-highmem-80
+  - n2-highmem-96
+  - n2-standard-128
+  - n2-standard-16
+  - n2-standard-2
+  - n2-standard-32
+  - n2-standard-4
+  - n2-standard-48
+  - n2-standard-64
+  - n2-standard-8
+  - n2-standard-80
+  - n2-standard-96
+  - n2d-highcpu-128
+  - n2d-highcpu-16
+  - n2d-highcpu-2
+  - n2d-highcpu-224
+  - n2d-highcpu-32
+  - n2d-highcpu-4
+  - n2d-highcpu-48
+  - n2d-highcpu-64
+  - n2d-highcpu-8
+  - n2d-highcpu-80
+  - n2d-highcpu-96
+  - n2d-highmem-16
+  - n2d-highmem-2
+  - n2d-highmem-32
+  - n2d-highmem-4
+  - n2d-highmem-48
+  - n2d-highmem-64
+  - n2d-highmem-8
+  - n2d-highmem-80
+  - n2d-highmem-96
+  - n2d-standard-128
+  - n2d-standard-16
+  - n2d-standard-2
+  - n2d-standard-224
+  - n2d-standard-32
+  - n2d-standard-4
+  - n2d-standard-48
+  - n2d-standard-64
+  - n2d-standard-8
+  - n2d-standard-80
+  - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-48
+  - n4-highmem-64
+  - n4-highmem-8
+  - n4-highmem-80
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
+  - t2d-standard-1
+  - t2d-standard-16
+  - t2d-standard-2
+  - t2d-standard-32
+  - t2d-standard-4
+  - t2d-standard-48
+  - t2d-standard-60
+  - t2d-standard-8
   europe-west3-c:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
+  - a3-highgpu-8g
+  - a3-megagpu-8g
   - c2-standard-16
   - c2-standard-30
   - c2-standard-4
@@ -7728,6 +7956,14 @@ locations:
   - c3-standard-44
   - c3-standard-8
   - c3-standard-88
+  - c3d-highcpu-16
+  - c3d-highcpu-180
+  - c3d-highcpu-30
+  - c3d-highcpu-360
+  - c3d-highcpu-4
+  - c3d-highcpu-60
+  - c3d-highcpu-8
+  - c3d-highcpu-90
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -8136,6 +8372,9 @@ locations:
   - a2-highgpu-4g
   - a2-highgpu-8g
   - a2-megagpu-16g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -8424,6 +8663,9 @@ locations:
   - z3-highmem-176
   - z3-highmem-88
   europe-west4-c:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -10368,6 +10610,17 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   me-central2-a:
+  - c2-standard-16
+  - c2-standard-30
+  - c2-standard-4
+  - c2-standard-60
+  - c2-standard-8
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -10567,6 +10820,12 @@ locations:
   - c2-standard-4
   - c2-standard-60
   - c2-standard-8
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -12367,8 +12626,6 @@ locations:
   - m2-megamem-416
   - m2-ultramem-208
   - m2-ultramem-416
-  - m2-ultramem2x-96
-  - m2-ultramemx-96
   - n1-ultramem-160
   - n1-ultramem-40
   - n1-ultramem-80
@@ -12470,8 +12727,6 @@ locations:
   - m2-megamem-416
   - m2-ultramem-208
   - m2-ultramem-416
-  - m2-ultramem2x-96
-  - m2-ultramemx-96
   - m3-megamem-128
   - m3-megamem-64
   - m3-ultramem-128
@@ -12519,6 +12774,9 @@ locations:
   - a2-ultragpu-2g
   - a2-ultragpu-4g
   - a2-ultragpu-8g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -12582,13 +12840,20 @@ locations:
   - c3d-highcpu-8
   - c3d-highcpu-90
   - c3d-highmem-16
+  - c3d-highmem-16-lssd
   - c3d-highmem-180
+  - c3d-highmem-180-lssd
   - c3d-highmem-30
+  - c3d-highmem-30-lssd
   - c3d-highmem-360
+  - c3d-highmem-360-lssd
   - c3d-highmem-4
   - c3d-highmem-60
+  - c3d-highmem-60-lssd
   - c3d-highmem-8
+  - c3d-highmem-8-lssd
   - c3d-highmem-90
+  - c3d-highmem-90-lssd
   - c3d-standard-16
   - c3d-standard-16-lssd
   - c3d-standard-180
@@ -12813,6 +13078,9 @@ locations:
   - a2-highgpu-4g
   - a2-highgpu-8g
   - a2-megagpu-16g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -13097,6 +13365,9 @@ locations:
   - a2-ultragpu-2g
   - a2-ultragpu-4g
   - a2-ultragpu-8g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -13159,13 +13430,20 @@ locations:
   - c3d-highcpu-8
   - c3d-highcpu-90
   - c3d-highmem-16
+  - c3d-highmem-16-lssd
   - c3d-highmem-180
+  - c3d-highmem-180-lssd
   - c3d-highmem-30
+  - c3d-highmem-30-lssd
   - c3d-highmem-360
+  - c3d-highmem-360-lssd
   - c3d-highmem-4
   - c3d-highmem-60
+  - c3d-highmem-60-lssd
   - c3d-highmem-8
+  - c3d-highmem-8-lssd
   - c3d-highmem-90
+  - c3d-highmem-90-lssd
   - c3d-standard-16
   - c3d-standard-16-lssd
   - c3d-standard-180
@@ -13450,8 +13728,6 @@ locations:
   - f1-micro
   - g1-small
   - m1-megamem-96
-  - m2-ultramem2x-96
-  - m2-ultramemx-96
   - m3-megamem-128
   - m3-megamem-64
   - m3-ultramem-128
@@ -13852,6 +14128,8 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   us-east1-c:
   - c2-standard-16
   - c2-standard-30
@@ -13887,6 +14165,7 @@ locations:
   - c3-highcpu-8
   - c3-highcpu-88
   - c3-highmem-176
+  - c3-highmem-192-metal
   - c3-highmem-22
   - c3-highmem-4
   - c3-highmem-44
@@ -14106,6 +14385,8 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   us-east1-d:
   - c2-standard-16
   - c2-standard-30
@@ -14372,7 +14653,12 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   us-east4-a:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -14402,12 +14688,14 @@ locations:
   - c2d-standard-56
   - c2d-standard-8
   - c3-highcpu-176
+  - c3-highcpu-192-metal
   - c3-highcpu-22
   - c3-highcpu-4
   - c3-highcpu-44
   - c3-highcpu-8
   - c3-highcpu-88
   - c3-highmem-176
+  - c3-highmem-192-metal
   - c3-highmem-22
   - c3-highmem-4
   - c3-highmem-44
@@ -14642,7 +14930,12 @@ locations:
   - x4-megamem-1440-metal
   - x4-megamem-1920-metal
   - x4-megamem-960-metal
+  - z3-highmem-176
+  - z3-highmem-88
   us-east4-b:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -14900,11 +15193,16 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   us-east4-c:
   - a2-ultragpu-1g
   - a2-ultragpu-2g
   - a2-ultragpu-4g
   - a2-ultragpu-8g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -15166,7 +15464,12 @@ locations:
   - x4-megamem-1440-metal
   - x4-megamem-1920-metal
   - x4-megamem-960-metal
+  - z3-highmem-176
+  - z3-highmem-88
   us-east5-a:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -15175,6 +15478,7 @@ locations:
   - c2-standard-60
   - c2-standard-8
   - c3-highcpu-176
+  - c3-highcpu-192-metal
   - c3-highcpu-22
   - c3-highcpu-4
   - c3-highcpu-44
@@ -15182,6 +15486,22 @@ locations:
   - c3-highcpu-88
   - c3-highmem-192-metal
   - c3-standard-192-metal
+  - c4-highcpu-16
+  - c4-highcpu-192
+  - c4-highcpu-2
+  - c4-highcpu-32
+  - c4-highcpu-4
+  - c4-highcpu-48
+  - c4-highcpu-8
+  - c4-highcpu-96
+  - c4-highmem-16
+  - c4-highmem-192
+  - c4-highmem-2
+  - c4-highmem-32
+  - c4-highmem-4
+  - c4-highmem-48
+  - c4-highmem-8
+  - c4-highmem-96
   - ct5lp-hightpu-1t
   - ct5lp-hightpu-4t
   - ct5lp-hightpu-8t
@@ -15263,6 +15583,30 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-48
+  - n4-highmem-64
+  - n4-highmem-8
+  - n4-highmem-80
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -15271,6 +15615,8 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   us-east5-b:
   - a2-ultragpu-1g
   - a2-ultragpu-2g
@@ -15296,6 +15642,30 @@ locations:
   - c3-highmem-8
   - c3-highmem-88
   - c3-standard-192-metal
+  - c4-highcpu-16
+  - c4-highcpu-192
+  - c4-highcpu-2
+  - c4-highcpu-32
+  - c4-highcpu-4
+  - c4-highcpu-48
+  - c4-highcpu-8
+  - c4-highcpu-96
+  - c4-highmem-16
+  - c4-highmem-192
+  - c4-highmem-2
+  - c4-highmem-32
+  - c4-highmem-4
+  - c4-highmem-48
+  - c4-highmem-8
+  - c4-highmem-96
+  - c4-standard-16
+  - c4-standard-192
+  - c4-standard-2
+  - c4-standard-32
+  - c4-standard-4
+  - c4-standard-48
+  - c4-standard-8
+  - c4-standard-96
   - ct5lp-hightpu-1t
   - ct5lp-hightpu-4t
   - ct5lp-hightpu-8t
@@ -15376,6 +15746,30 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-48
+  - n4-highmem-64
+  - n4-highmem-8
+  - n4-highmem-80
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -15390,6 +15784,30 @@ locations:
   - c2-standard-4
   - c2-standard-60
   - c2-standard-8
+  - c3-highcpu-176
+  - c3-highcpu-22
+  - c3-highcpu-4
+  - c3-highcpu-44
+  - c3-highcpu-8
+  - c3-highcpu-88
+  - c3-highmem-176
+  - c3-highmem-22
+  - c3-highmem-4
+  - c3-highmem-44
+  - c3-highmem-8
+  - c3-highmem-88
+  - c3-standard-176
+  - c3-standard-176-lssd
+  - c3-standard-22
+  - c3-standard-22-lssd
+  - c3-standard-4
+  - c3-standard-4-lssd
+  - c3-standard-44
+  - c3-standard-44-lssd
+  - c3-standard-8
+  - c3-standard-8-lssd
+  - c3-standard-88
+  - c3-standard-88-lssd
   - ct5lp-hightpu-1t
   - ct5lp-hightpu-4t
   - ct5lp-hightpu-8t
@@ -15717,6 +16135,9 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   us-west1-a:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -15760,6 +16181,14 @@ locations:
   - c3-standard-8-lssd
   - c3-standard-88
   - c3-standard-88-lssd
+  - c3d-highmem-16
+  - c3d-highmem-180
+  - c3d-highmem-30
+  - c3d-highmem-360
+  - c3d-highmem-4
+  - c3d-highmem-60
+  - c3d-highmem-8
+  - c3d-highmem-90
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -15897,6 +16326,9 @@ locations:
   - a2-highgpu-2g
   - a2-highgpu-4g
   - a2-highgpu-8g
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -15925,6 +16357,7 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
+  - c3-highcpu-192-metal
   - c3-highmem-192-metal
   - c3-standard-176
   - c3-standard-176-lssd
@@ -15939,6 +16372,14 @@ locations:
   - c3-standard-8-lssd
   - c3-standard-88
   - c3-standard-88-lssd
+  - c3d-highmem-16
+  - c3d-highmem-180
+  - c3d-highmem-30
+  - c3d-highmem-360
+  - c3d-highmem-4
+  - c3d-highmem-60
+  - c3d-highmem-8
+  - c3d-highmem-90
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -16981,6 +17422,9 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   us-west4-a:
+  - a3-highgpu-1g
+  - a3-highgpu-2g
+  - a3-highgpu-4g
   - a3-highgpu-8g
   - a3-megagpu-8g
   - c2-standard-16
@@ -17010,11 +17454,17 @@ locations:
   - c2d-standard-56
   - c2d-standard-8
   - c3-standard-176
+  - c3-standard-176-lssd
   - c3-standard-22
+  - c3-standard-22-lssd
   - c3-standard-4
+  - c3-standard-4-lssd
   - c3-standard-44
+  - c3-standard-44-lssd
   - c3-standard-8
+  - c3-standard-8-lssd
   - c3-standard-88
+  - c3-standard-88-lssd
   - c3d-standard-16
   - c3d-standard-16-lssd
   - c3d-standard-180
@@ -17484,16 +17934,16 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
 diskImages:
-- name: centos-stream-9-v20240815
+- name: centos-stream-9-v20241009
   family: centos-stream-9
-  description: CentOS, CentOS, Stream 9, x86_64 built on 20240815
+  description: CentOS, CentOS, Stream 9, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/centos-cloud/global/licenses/centos-stream-9
   architecture: X86_64
-- name: cos-101-17162-528-27
+- name: cos-101-17162-528-57
   family: cos-101-lts
-  description: 'Google, Container-Optimized OS, 101-17162.528.27 LTS, Kernel: COS-5.15.161
+  description: 'Google, Container-Optimized OS, 101-17162.528.57 LTS, Kernel: COS-5.15.161
     Kubernetes: 1.23.10 Docker: 20.10.27 Family: cos-101-lts'
   diskSizeGb: "10"
   licenses:
@@ -17501,9 +17951,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-105-17412-448-22
+- name: cos-105-17412-448-61
   family: cos-105-lts
-  description: 'Google, Container-Optimized OS, 105-17412.448.22 LTS, Kernel: COS-5.15.163
+  description: 'Google, Container-Optimized OS, 105-17412.448.61 LTS, Kernel: COS-5.15.163
     Kubernetes: 1.25.5 Docker: 23.0.3 Family: cos-105-lts'
   diskSizeGb: "10"
   licenses:
@@ -17511,9 +17961,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-109-17800-309-33
+- name: cos-109-17800-309-84
   family: cos-109-lts
-  description: 'Google, Container-Optimized OS, 109-17800.309.33 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 109-17800.309.84 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.27.3 Docker: 24.0.9 Family: cos-109-lts'
   diskSizeGb: "10"
   licenses:
@@ -17521,9 +17971,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-113-18244-151-33
+- name: cos-113-18244-151-96
   family: cos-113-lts
-  description: 'Google, Container-Optimized OS, 113-18244.151.33 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 113-18244.151.96 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.29.1 Docker: 24.0.9 Family: cos-113-lts'
   diskSizeGb: "10"
   licenses:
@@ -17531,23 +17981,33 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: debian-11-bullseye-v20240815
+- name: cos-117-18613-0-76
+  family: cos-117-lts
+  description: 'Google, Container-Optimized OS, 117-18613.0.76 LTS, Kernel: COS-6.6.44
+    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-117-lts'
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
+  architecture: X86_64
+- name: debian-11-bullseye-v20241009
   family: debian-11
-  description: Debian, Debian GNU/Linux, 11 (bullseye), amd64 built on 20240815
+  description: Debian, Debian GNU/Linux, 11 (bullseye), amd64 built on 20241009
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/debian-cloud/global/licenses/debian-11-bullseye
   architecture: X86_64
-- name: debian-12-bookworm-arm64-v20240815
+- name: debian-12-bookworm-arm64-v20241009
   family: debian-12-arm64
-  description: Debian, Debian GNU/Linux, 12 (bookworm), arm64 built on 20240815
+  description: Debian, Debian GNU/Linux, 12 (bookworm), arm64 built on 20241009
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/debian-cloud/global/licenses/debian-12-bookworm
   architecture: ARM64
-- name: debian-12-bookworm-v20240815
+- name: debian-12-bookworm-v20241009
   family: debian-12
-  description: Debian, Debian GNU/Linux, 12 (bookworm), amd64 built on 20240815
+  description: Debian, Debian GNU/Linux, 12 (bookworm), amd64 built on 20241009
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/debian-cloud/global/licenses/debian-12-bookworm
@@ -17566,140 +18026,140 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/opensuse-cloud/global/licenses/opensuse-leap-42
   architecture: X86_64
-- name: opensuse-leap-15-6-v20240703-arm64
+- name: opensuse-leap-15-6-v20241004-arm64
   family: opensuse-leap-arm64
-  description: openSUSE, openSUSE Leap 15.6, arm64 built on 20240703
+  description: openSUSE, openSUSE Leap 15.6, arm64 built on 20241004
   diskSizeGb: "10"
   licenses: []
   architecture: ARM64
-- name: opensuse-leap-15-6-v20240703-x86-64
+- name: opensuse-leap-15-6-v20241004-x86-64
   family: opensuse-leap
-  description: openSUSE, openSUSE Leap 15.6, x86_64 built on 20240703
+  description: openSUSE, openSUSE Leap 15.6, x86_64 built on 20241004
   diskSizeGb: "10"
   licenses: []
   architecture: X86_64
-- name: rhel-8-v20240815
+- name: rhel-8-v20241009
   family: rhel-8
-  description: Red Hat, Red Hat Enterprise Linux, 8, x86_64 built on 20240815
+  description: Red Hat, Red Hat Enterprise Linux, 8, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-cloud/global/licenses/rhel-8-server
   architecture: X86_64
-- name: rhel-9-arm64-v20240815
+- name: rhel-9-arm64-v20241009
   family: rhel-9-arm64
-  description: Red Hat, Red Hat Enterprise Linux, 9, aarch64 built on 20240815
+  description: Red Hat, Red Hat Enterprise Linux, 9, aarch64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-cloud/global/licenses/rhel-9-server
   architecture: ARM64
-- name: rhel-9-v20240815
+- name: rhel-9-v20241009
   family: rhel-9
-  description: Red Hat, Red Hat Enterprise Linux, 9, x86_64 built on 20240815
+  description: Red Hat, Red Hat Enterprise Linux, 9, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-cloud/global/licenses/rhel-9-server
   architecture: X86_64
-- name: rhel-8-10-sap-v20240815
+- name: rhel-8-10-sap-v20241009
   family: rhel-8-10-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA, 8.10, x86_64 built
-    on 20240815
+    on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-8-sap
   architecture: X86_64
-- name: rhel-8-4-sap-v20240815
+- name: rhel-8-4-sap-v20241009
   family: rhel-8-4-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA and Update Services,
-    8.4, x86_64 built on 20240815
+    8.4, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-8-sap
   architecture: X86_64
-- name: rhel-8-6-sap-v20240815
+- name: rhel-8-6-sap-v20241009
   family: rhel-8-6-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA and Update Services,
-    8.6, x86_64 built on 20240815
+    8.6, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-8-sap
   architecture: X86_64
-- name: rhel-8-8-sap-v20240815
+- name: rhel-8-8-sap-v20241009
   family: rhel-8-8-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA and Update Services,
-    8.8, x86_64 built on 20240815
+    8.8, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-8-sap
   architecture: X86_64
-- name: rhel-9-0-sap-v20240815
+- name: rhel-9-0-sap-v20241009
   family: rhel-9-0-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA and Update Services,
-    9.0, x86_64 built on 20240815
+    9.0, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-9-sap
   architecture: X86_64
-- name: rhel-9-2-sap-v20240815
+- name: rhel-9-2-sap-v20241009
   family: rhel-9-2-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA and Update Services,
-    9.2, x86_64 built on 20240815
+    9.2, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-9-sap
   architecture: X86_64
-- name: rhel-9-4-sap-v20240815
+- name: rhel-9-4-sap-v20241009
   family: rhel-9-4-sap-ha
   description: Red Hat, Red Hat Enterprise Linux for SAP with HA and Update Services,
-    9.4, x86_64 built on 20240815
+    9.4, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rhel-sap-cloud/global/licenses/rhel-9-sap
   architecture: X86_64
-- name: rocky-linux-8-optimized-gcp-arm64-v20240815
+- name: rocky-linux-8-optimized-gcp-arm64-v20241009
   family: rocky-linux-8-optimized-gcp-arm64
-  description: Rocky Linux, Rocky Linux, 8 optimized for GCP, aarch64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 8 optimized for GCP, aarch64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-8-optimized-gcp
   architecture: ARM64
-- name: rocky-linux-8-optimized-gcp-v20240815
+- name: rocky-linux-8-optimized-gcp-v20241009
   family: rocky-linux-8-optimized-gcp
-  description: Rocky Linux, Rocky Linux, 8 optimized for GCP, x86_64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 8 optimized for GCP, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-8-optimized-gcp
   architecture: X86_64
-- name: rocky-linux-8-v20240815
+- name: rocky-linux-8-v20241009
   family: rocky-linux-8
-  description: Rocky Linux, Rocky Linux, 8, x86_64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 8, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-8
   architecture: X86_64
-- name: rocky-linux-9-arm64-v20240815
+- name: rocky-linux-9-arm64-v20241009
   family: rocky-linux-9-arm64
-  description: Rocky Linux, Rocky Linux, 9, aarch64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 9, aarch64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-9
   architecture: ARM64
-- name: rocky-linux-9-optimized-gcp-arm64-v20240815
+- name: rocky-linux-9-optimized-gcp-arm64-v20241009
   family: rocky-linux-9-optimized-gcp-arm64
-  description: Rocky Linux, Rocky Linux, 9 optimized for GCP, aarch64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 9 optimized for GCP, aarch64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-9-optimized-gcp
   architecture: ARM64
-- name: rocky-linux-9-optimized-gcp-v20240815
+- name: rocky-linux-9-optimized-gcp-v20241009
   family: rocky-linux-9-optimized-gcp
-  description: Rocky Linux, Rocky Linux, 9 optimized for GCP, x86_64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 9 optimized for GCP, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-9-optimized-gcp
   architecture: X86_64
-- name: rocky-linux-9-v20240815
+- name: rocky-linux-9-v20241009
   family: rocky-linux-9
-  description: Rocky Linux, Rocky Linux, 9, x86_64 built on 20240815
+  description: Rocky Linux, Rocky Linux, 9, x86_64 built on 20241009
   diskSizeGb: "20"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/licenses/rocky-linux-9
@@ -17711,16 +18171,16 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-cloud/global/licenses/sles-12
   architecture: X86_64
-- name: sles-15-sp5-v20240821-arm64
+- name: sles-15-sp5-v20240913-arm64
   family: sles-15-sp5-arm64
-  description: SUSE, SUSE Linux Enterprise Server 15 SP5, arm64, built on 20240821
+  description: SUSE, SUSE Linux Enterprise Server 15 SP5, arm64, built on 20240913
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-cloud/global/licenses/sles-15
   architecture: ARM64
-- name: sles-15-sp5-v20240821-x86-64
+- name: sles-15-sp5-v20240913-x86-64
   family: sles-15-sp5
-  description: SUSE, SUSE Linux Enterprise Server 15 SP5, x86_64, built on 20240821
+  description: SUSE, SUSE Linux Enterprise Server 15 SP5, x86_64, built on 20240913
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-cloud/global/licenses/sles-15
@@ -17755,26 +18215,26 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
   architecture: X86_64
-- name: sles-15-sp3-sap-v20240808-x86-64
+- name: sles-15-sp3-sap-v20240916-x86-64
   family: sles-15-sp3-sap
   description: SUSE, SUSE Linux Enterprise Server 15 SP3 for SAP, x86_64, built on
-    20240808
+    20240916
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
   architecture: X86_64
-- name: sles-15-sp4-sap-v20240808-x86-64
+- name: sles-15-sp4-sap-v20240913-x86-64
   family: sles-15-sp4-sap
   description: SUSE, SUSE Linux Enterprise Server 15 SP4 for SAP, x86_64, built on
-    20240808
+    20240913
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
   architecture: X86_64
-- name: sles-15-sp5-sap-v20240821-x86-64
+- name: sles-15-sp5-sap-v20240913-x86-64
   family: sles-15-sp5-sap
   description: SUSE, SUSE Linux Enterprise Server 15 SP5 for SAP, x86_64, built on
-    20240821
+    20240913
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
@@ -17787,18 +18247,18 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
   architecture: X86_64
-- name: sles-sap-15-sp4-hardened-v20240808-x86-64
+- name: sles-sap-15-sp4-hardened-v20240913-x86-64
   family: sles-sap-15-sp4-hardened
   description: SUSE, SUSE Linux Enterprise Server 15 SP4 for SAP hardened with security
-    features, x86_64, built on 20240808
+    features, x86_64, built on 20240913
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
   architecture: X86_64
-- name: sles-sap-15-sp5-hardened-v20240821-x86-64
+- name: sles-sap-15-sp5-hardened-v20240913-x86-64
   family: sles-sap-15-sp5-hardened
   description: SUSE, SUSE Linux Enterprise Server 15 SP5 for SAP hardened with security
-    features, x86_64, built on 20240821
+    features, x86_64, built on 20240913
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
@@ -17811,97 +18271,89 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/suse-sap-cloud/global/licenses/sles-sap-15
   architecture: X86_64
-- name: ubuntu-pro-1604-xenial-v20240801
+- name: ubuntu-pro-1604-xenial-v20240924
   family: ubuntu-pro-1604-lts
   description: Canonical, Ubuntu, 16.04 LTS Pro Server, amd64 xenial pro server image
-    built on 2024-08-01
+    built on 2024-09-24
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-1604-lts
   architecture: X86_64
-- name: ubuntu-pro-1804-bionic-arm64-v20240905
+- name: ubuntu-pro-1804-bionic-arm64-v20240924
   family: ubuntu-pro-1804-lts-arm64
   description: Canonical, Ubuntu, 18.04 LTS Pro Server, arm64 bionic pro server image
-    built on 2024-09-05
+    built on 2024-09-24
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-1804-lts
   architecture: ARM64
-- name: ubuntu-pro-1804-bionic-v20240905
+- name: ubuntu-pro-1804-bionic-v20240924
   family: ubuntu-pro-1804-lts
   description: Canonical, Ubuntu, 18.04 LTS Pro Server, amd64 bionic pro server image
-    built on 2024-09-05
+    built on 2024-09-24
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-1804-lts
   architecture: X86_64
-- name: ubuntu-pro-2004-focal-arm64-v20240829
+- name: ubuntu-pro-2004-focal-arm64-v20240910
   family: ubuntu-pro-2004-lts-arm64
   description: Canonical, Ubuntu, 20.04 LTS Pro Server, arm64 focal pro server image
-    built on 2024-08-29
+    built on 2024-09-10
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-2004-lts
   architecture: ARM64
-- name: ubuntu-pro-2004-focal-v20240829
+- name: ubuntu-pro-2004-focal-v20240910
   family: ubuntu-pro-2004-lts
   description: Canonical, Ubuntu, 20.04 LTS Pro Server, amd64 focal pro server image
-    built on 2024-08-29
+    built on 2024-09-10
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-2004-lts
   architecture: X86_64
-- name: ubuntu-pro-2204-jammy-arm64-v20240904
+- name: ubuntu-pro-2204-jammy-arm64-v20240927
   family: ubuntu-pro-2204-lts-arm64
   description: Canonical, Ubuntu, 22.04 LTS Pro Server, arm64 jammy pro server image
-    built on 2024-09-04
+    built on 2024-09-27
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-2204-lts
   architecture: ARM64
-- name: ubuntu-pro-2204-jammy-v20240904
+- name: ubuntu-pro-2204-jammy-v20240927
   family: ubuntu-pro-2204-lts
   description: Canonical, Ubuntu, 22.04 LTS Pro Server, amd64 jammy pro server image
-    built on 2024-09-04
+    built on 2024-09-27
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-2204-lts
   architecture: X86_64
-- name: ubuntu-pro-2404-noble-amd64-v20240904
+- name: ubuntu-pro-2404-noble-amd64-v20241004
   family: ubuntu-pro-2404-lts-amd64
   description: Canonical, Ubuntu, 24.04 LTS Pro Server, amd64 noble pro server image
-    built on 2024-09-04
+    built on 2024-10-04
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-2404-lts
   architecture: X86_64
-- name: ubuntu-pro-2404-noble-arm64-v20240904
+- name: ubuntu-pro-2404-noble-arm64-v20241004
   family: ubuntu-pro-2404-lts-arm64
   description: Canonical, Ubuntu, 24.04 LTS Pro Server, arm64 noble pro server image
-    built on 2024-09-04
+    built on 2024-10-04
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-2404-lts
   architecture: ARM64
-- name: ubuntu-pro-fips-1804-bionic-v20240905
+- name: ubuntu-pro-fips-1804-bionic-v20240924
   family: ubuntu-pro-fips-1804-lts
   description: Canonical, Ubuntu, 18.04 LTS Pro FIPS Server, amd64 bionic pro fips
-    server image built on 2024-09-05
+    server image built on 2024-09-24
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-fips-1804-lts
   architecture: X86_64
-- name: ubuntu-pro-fips-2004-focal-v20240830
-  family: ubuntu-pro-fips-2004-lts
-  description: Canonical, Ubuntu, 20.04 LTS Pro FIPS Server, amd64 focal pro fips
-    server image built on 2024-08-30
-  diskSizeGb: "10"
-  licenses:
-  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-fips-2004-lts
-  architecture: X86_64
-- name: cos-arm64-101-17162-528-27
+- name: cos-arm64-101-17162-528-57
   family: cos-arm64-101-lts
-  description: 'Google, Container-Optimized OS, 101-17162.528.27 LTS, Kernel: COS-5.15.161
+  description: 'Google, Container-Optimized OS, 101-17162.528.57 LTS, Kernel: COS-5.15.161
     Kubernetes: 1.23.10 Docker: 20.10.27 Family: cos-arm64-101-lts'
   diskSizeGb: "10"
   licenses:
@@ -17909,9 +18361,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-105-17412-448-22
+- name: cos-arm64-105-17412-448-61
   family: cos-arm64-105-lts
-  description: 'Google, Container-Optimized OS, 105-17412.448.22 LTS, Kernel: COS-5.15.163
+  description: 'Google, Container-Optimized OS, 105-17412.448.61 LTS, Kernel: COS-5.15.163
     Kubernetes: 1.25.5 Docker: 23.0.3 Family: cos-arm64-105-lts'
   diskSizeGb: "10"
   licenses:
@@ -17919,9 +18371,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-109-17800-309-33
+- name: cos-arm64-109-17800-309-84
   family: cos-arm64-109-lts
-  description: 'Google, Container-Optimized OS, 109-17800.309.33 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 109-17800.309.84 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.27.3 Docker: 24.0.9 Family: cos-arm64-109-lts'
   diskSizeGb: "10"
   licenses:
@@ -17929,9 +18381,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-113-18244-151-33
+- name: cos-arm64-113-18244-151-96
   family: cos-arm64-113-lts
-  description: 'Google, Container-Optimized OS, 113-18244.151.33 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 113-18244.151.96 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.29.1 Docker: 24.0.9 Family: cos-arm64-113-lts'
   diskSizeGb: "10"
   licenses:
@@ -17939,25 +18391,25 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-beta-117-18613-0-24
-  family: cos-arm64-beta
-  description: 'Google, Container-Optimized OS, 117-18613.0.24 beta, Kernel: COS-6.6.44
-    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-beta'
+- name: cos-arm64-117-18613-0-76
+  family: cos-arm64-117-lts
+  description: 'Google, Container-Optimized OS, 117-18613.0.76 LTS, Kernel: COS-6.6.44
+    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-117-lts'
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-dev-121-18632-0-0
-  family: cos-arm64-dev
-  description: 'Google, Container-Optimized OS, 121-18632.0.0 dev, Kernel: COS-6.6.47
-    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-dev'
+- name: cos-arm64-beta-117-18613-0-76
+  family: cos-arm64-beta
+  description: 'Google, Container-Optimized OS, 117-18613.0.76 beta, Kernel: COS-6.6.44
+    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-beta'
   diskSizeGb: "10"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
 - name: ubuntu-2004-focal-arm64-v20240830
   family: ubuntu-2004-lts-arm64
@@ -17973,94 +18425,112 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2004-lts
   architecture: X86_64
-- name: ubuntu-2204-jammy-arm64-v20240904
+- name: ubuntu-2204-jammy-arm64-v20240927
   family: ubuntu-2204-lts-arm64
-  description: Canonical, Ubuntu, 22.04 LTS, arm64 jammy image built on 2024-09-04
+  description: Canonical, Ubuntu, 22.04 LTS, arm64 jammy image built on 2024-09-27
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2204-lts
   architecture: ARM64
-- name: ubuntu-2204-jammy-v20240904
+- name: ubuntu-2204-jammy-v20240927
   family: ubuntu-2204-lts
-  description: Canonical, Ubuntu, 22.04 LTS, amd64 jammy image built on 2024-09-04
+  description: Canonical, Ubuntu, 22.04 LTS, amd64 jammy image built on 2024-09-27
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2204-lts
   architecture: X86_64
-- name: windows-server-2016-dc-core-v20240819
+- name: ubuntu-pro-fips-2004-focal-v20241002
+  family: ubuntu-pro-fips-2004-lts
+  description: Canonical, Ubuntu, 20.04 LTS Pro FIPS Server, amd64 focal pro fips
+    server image built on 2024-10-02
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-fips-2004-lts
+  architecture: X86_64
+- name: windows-server-2016-dc-core-v20241010
   family: windows-2016-core
   description: Microsoft, Windows Server, 2016 Datacenter Core, Server Core, x64 built
-    on 20240819
+    on 20241010
   diskSizeGb: "32"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-core
   architecture: X86_64
-- name: windows-server-2016-dc-v20240819
+- name: windows-server-2016-dc-v20241010
   family: windows-2016
   description: Microsoft, Windows Server, 2016 Datacenter, Server with Desktop Experience,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: windows-server-2019-dc-core-v20240819
+- name: windows-server-2019-dc-core-v20241010
   family: windows-2019-core
   description: Microsoft, Windows Server, 2019 Datacenter Core, Server Core, x64 built
-    on 20240819
+    on 20241010
   diskSizeGb: "32"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-core
   architecture: X86_64
-- name: windows-server-2019-dc-v20240819
+- name: windows-server-2019-dc-v20241010
   family: windows-2019
   description: Microsoft, Windows Server, 2019 Datacenter, Server with Desktop Experience,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: windows-server-2022-dc-core-v20240819
+- name: windows-server-2022-dc-core-v20241010
   family: windows-2022-core
   description: Microsoft, Windows Server, 2022 Datacenter Core, Server Core, x64 built
-    on 20240819
+    on 20241010
   diskSizeGb: "40"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-core
   architecture: X86_64
-- name: sql-2016-enterprise-windows-2016-dc-v20240819
+- name: sql-2016-enterprise-windows-2016-dc-v20241010
   family: sql-ent-2016-win-2016
   description: Microsoft, SQL Server 2016 Enterprise, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2016-enterprise-windows-2019-dc-v20240819
+- name: sql-2016-enterprise-windows-2019-dc-v20241010
   family: sql-ent-2016-win-2019
   description: Microsoft, SQL Server 2016 Enterprise, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: cos-arm64-stable-113-18244-151-33
-  family: cos-arm64-stable
-  description: 'Google, Container-Optimized OS, 113-18244.151.33 stable, Kernel: COS-6.1.100
-    Kubernetes: 1.29.1 Docker: 24.0.9 Family: cos-arm64-stable'
+- name: cos-arm64-dev-121-18699-0-0
+  family: cos-arm64-dev
+  description: 'Google, Container-Optimized OS, 121-18699.0.0 dev, Kernel: COS-6.6.52
+    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-dev'
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-beta-117-18613-0-24
+- name: cos-arm64-stable-117-18613-0-76
+  family: cos-arm64-stable
+  description: 'Google, Container-Optimized OS, 117-18613.0.76 stable, Kernel: COS-6.6.44
+    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-stable'
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
+  architecture: ARM64
+- name: cos-beta-117-18613-0-76
   family: cos-beta
-  description: 'Google, Container-Optimized OS, 117-18613.0.24 beta, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.76 beta, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-beta'
   diskSizeGb: "10"
   licenses:
@@ -18068,389 +18538,419 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-dev-121-18632-0-0
+- name: cos-dev-121-18699-0-0
   family: cos-dev
-  description: 'Google, Container-Optimized OS, 121-18632.0.0 dev, Kernel: COS-6.6.47
+  description: 'Google, Container-Optimized OS, 121-18699.0.0 dev, Kernel: COS-6.6.52
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-dev'
   diskSizeGb: "10"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
+  - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: ubuntu-2404-noble-amd64-v20240904
+- name: ubuntu-2404-noble-amd64-v20241004
   family: ubuntu-2404-lts-amd64
-  description: Canonical, Ubuntu, 24.04 LTS, amd64 noble image built on 2024-09-04
+  description: Canonical, Ubuntu, 24.04 LTS, amd64 noble image built on 2024-10-04
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2404-lts
   architecture: X86_64
-- name: ubuntu-2404-noble-arm64-v20240904
+- name: ubuntu-2404-noble-arm64-v20241004
   family: ubuntu-2404-lts-arm64
-  description: Canonical, Ubuntu, 24.04 LTS, arm64 noble image built on 2024-09-04
+  description: Canonical, Ubuntu, 24.04 LTS, arm64 noble image built on 2024-10-04
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2404-lts
   architecture: ARM64
-- name: ubuntu-minimal-2004-focal-arm64-v20240831
+- name: ubuntu-2410-oracular-amd64-v20241009
+  family: ubuntu-2410-amd64
+  description: Canonical, Ubuntu, 24.10, amd64 oracular image built on 2024-10-09
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2410
+  architecture: X86_64
+- name: ubuntu-2410-oracular-arm64-v20241009
+  family: ubuntu-2410-arm64
+  description: Canonical, Ubuntu, 24.10, arm64 oracular image built on 2024-10-09
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2410
+  architecture: ARM64
+- name: ubuntu-minimal-2004-focal-arm64-v20240930
   family: ubuntu-minimal-2004-lts-arm64
   description: Canonical, Ubuntu, 20.04 LTS Minimal, arm64 focal minimal image built
-    on 2024-08-31
+    on 2024-09-30
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2004-lts
   architecture: ARM64
-- name: windows-server-2022-dc-v20240819
+- name: windows-server-2022-dc-v20241010
   family: windows-2022
   description: Microsoft, Windows Server, 2022 Datacenter, Server with Desktop Experience,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2016-standard-windows-2016-dc-v20240819
+- name: sql-2016-standard-windows-2016-dc-v20241010
   family: sql-std-2016-win-2016
   description: Microsoft, SQL Server 2016 Standard, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2016-standard-windows-2019-dc-v20240819
+- name: sql-2016-standard-windows-2019-dc-v20241010
   family: sql-std-2016-win-2019
   description: Microsoft, SQL Server 2016 Standard, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2016-web-windows-2016-dc-v20240819
+- name: sql-2016-web-windows-2016-dc-v20241010
   family: sql-web-2016-win-2016
   description: Microsoft, SQL Server 2016 Web, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2016-web-windows-2019-dc-v20240819
+- name: sql-2016-web-windows-2019-dc-v20241010
   family: sql-web-2016-win-2019
   description: Microsoft, SQL Server 2016 Web, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2017-enterprise-windows-2016-dc-v20240819
+- name: sql-2017-enterprise-windows-2016-dc-v20241010
   family: sql-ent-2017-win-2016
   description: Microsoft, SQL Server 2017 Enterprise, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2017-enterprise-windows-2019-dc-v20240819
-  family: sql-ent-2017-win-2019
-  description: Microsoft, SQL Server 2017 Enterprise, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
-  diskSizeGb: "50"
-  licenses:
-  - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-enterprise
-  - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
-  architecture: X86_64
-- name: cos-stable-113-18244-151-33
+- name: cos-stable-117-18613-0-76
   family: cos-stable
-  description: 'Google, Container-Optimized OS, 113-18244.151.33 stable, Kernel: COS-6.1.100
-    Kubernetes: 1.29.1 Docker: 24.0.9 Family: cos-stable'
+  description: 'Google, Container-Optimized OS, 117-18613.0.76 stable, Kernel: COS-6.6.44
+    Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-stable'
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: ubuntu-minimal-2004-focal-v20240831
+- name: ubuntu-minimal-2004-focal-v20240930
   family: ubuntu-minimal-2004-lts
   description: Canonical, Ubuntu, 20.04 LTS Minimal, amd64 focal minimal image built
-    on 2024-08-31
+    on 2024-09-30
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2004-lts
   architecture: X86_64
-- name: ubuntu-minimal-2204-jammy-arm64-v20240903
+- name: ubuntu-minimal-2204-jammy-arm64-v20240926
   family: ubuntu-minimal-2204-lts-arm64
   description: Canonical, Ubuntu, 22.04 LTS Minimal, arm64 jammy minimal image built
-    on 2024-09-03
+    on 2024-09-26
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2204-lts
   architecture: ARM64
-- name: ubuntu-minimal-2204-jammy-v20240903
+- name: ubuntu-minimal-2204-jammy-v20240926
   family: ubuntu-minimal-2204-lts
   description: Canonical, Ubuntu, 22.04 LTS Minimal, amd64 jammy minimal image built
-    on 2024-09-03
+    on 2024-09-26
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2204-lts
   architecture: X86_64
-- name: ubuntu-minimal-2404-noble-amd64-v20240903
-  family: ubuntu-minimal-2404-lts-amd64
-  description: Canonical, Ubuntu, 24.04 LTS Minimal, amd64 noble minimal image built
-    on 2024-09-03
-  diskSizeGb: "10"
+- name: sql-2017-enterprise-windows-2019-dc-v20241010
+  family: sql-ent-2017-win-2019
+  description: Microsoft, SQL Server 2017 Enterprise, on Windows Server 2019 Datacenter,
+    x64 built on 20241010
+  diskSizeGb: "50"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2404-lts
+  - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-enterprise
+  - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2017-enterprise-windows-2022-dc-v20240819
+- name: sql-2017-enterprise-windows-2022-dc-v20241010
   family: sql-ent-2017-win-2022
   description: Microsoft, SQL Server 2017 Enterprise, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2017-express-windows-2016-dc-v20240819
+- name: sql-2017-express-windows-2016-dc-v20241010
   family: sql-exp-2017-win-2016
   description: Microsoft, SQL Server 2017 Express, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-express
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2017-express-windows-2019-dc-v20240819
+- name: sql-2017-express-windows-2019-dc-v20241010
   family: sql-exp-2017-win-2019
   description: Microsoft, SQL Server 2017 Express, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-express
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2017-standard-windows-2016-dc-v20240819
+- name: sql-2017-standard-windows-2016-dc-v20241010
   family: sql-std-2017-win-2016
   description: Microsoft, SQL Server 2017 Standard, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2017-standard-windows-2019-dc-v20240819
+- name: sql-2017-standard-windows-2019-dc-v20241010
   family: sql-std-2017-win-2019
   description: Microsoft, SQL Server 2017 Standard, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2017-standard-windows-2022-dc-v20240819
+- name: sql-2017-standard-windows-2022-dc-v20241010
   family: sql-std-2017-win-2022
   description: Microsoft, SQL Server 2017 Standard, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: ubuntu-minimal-2404-noble-arm64-v20240903
+- name: ubuntu-minimal-2404-noble-amd64-v20241004
+  family: ubuntu-minimal-2404-lts-amd64
+  description: Canonical, Ubuntu, 24.04 LTS Minimal, amd64 noble minimal image built
+    on 2024-10-04
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2404-lts
+  architecture: X86_64
+- name: ubuntu-minimal-2404-noble-arm64-v20241004
   family: ubuntu-minimal-2404-lts-arm64
   description: Canonical, Ubuntu, 24.04 LTS Minimal, arm64 noble minimal image built
-    on 2024-09-03
+    on 2024-10-04
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2404-lts
   architecture: ARM64
-- name: sql-2017-web-windows-2016-dc-v20240819
+- name: ubuntu-minimal-2410-oracular-amd64-v20241009
+  family: ubuntu-minimal-2410-amd64
+  description: Canonical, Ubuntu, 24.10 Minimal, amd64 oracular minimal image built
+    on 2024-10-09
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2410
+  architecture: X86_64
+- name: ubuntu-minimal-2410-oracular-arm64-v20241009
+  family: ubuntu-minimal-2410-arm64
+  description: Canonical, Ubuntu, 24.10 Minimal, arm64 oracular minimal image built
+    on 2024-10-09
+  diskSizeGb: "10"
+  licenses:
+  - https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-minimal-2410
+  architecture: ARM64
+- name: sql-2017-web-windows-2016-dc-v20241010
   family: sql-web-2017-win-2016
   description: Microsoft, SQL Server 2017 Web, on Windows Server 2016 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: sql-2017-web-windows-2019-dc-v20240819
+- name: sql-2017-web-windows-2019-dc-v20241010
   family: sql-web-2017-win-2019
   description: Microsoft, SQL Server 2017 Web, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2017-web-windows-2022-dc-v20240819
+- name: sql-2017-web-windows-2022-dc-v20241010
   family: sql-web-2017-win-2022
   description: Microsoft, SQL Server 2017 Web, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2019-enterprise-windows-2019-dc-v20240819
+- name: sql-2019-enterprise-windows-2019-dc-v20241010
   family: sql-ent-2019-win-2019
   description: Microsoft, SQL Server 2019 Enterprise, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2019-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2019-enterprise-windows-2022-dc-v20240819
+- name: sql-2019-enterprise-windows-2022-dc-v20241010
   family: sql-ent-2019-win-2022
   description: Microsoft, SQL Server 2019 Enterprise, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2019-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2019-standard-windows-2019-dc-v20240819
+- name: sql-2019-standard-windows-2019-dc-v20241010
   family: sql-std-2019-win-2019
   description: Microsoft, SQL Server 2019 Standard, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2019-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2019-standard-windows-2022-dc-v20240819
+- name: sql-2019-standard-windows-2022-dc-v20241010
   family: sql-std-2019-win-2022
   description: Microsoft, SQL Server 2019 Standard, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2019-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2019-web-windows-2019-dc-v20240819
+- name: sql-2019-web-windows-2019-dc-v20241010
   family: sql-web-2019-win-2019
   description: Microsoft, SQL Server 2019 Web, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2019-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2019-web-windows-2022-dc-v20240819
+- name: sql-2019-web-windows-2022-dc-v20241010
   family: sql-web-2019-win-2022
   description: Microsoft, SQL Server 2019 Web, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2019-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2022-enterprise-windows-2019-dc-v20240819
+- name: sql-2022-enterprise-windows-2019-dc-v20241010
   family: sql-ent-2022-win-2019
   description: Microsoft, SQL Server 2022 Enterprise, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2022-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2022-enterprise-windows-2022-dc-v20240819
+- name: sql-2022-enterprise-windows-2022-dc-v20241010
   family: sql-ent-2022-win-2022
   description: Microsoft, SQL Server 2022 Enterprise, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2022-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2022-standard-windows-2019-dc-v20240819
+- name: sql-2022-standard-windows-2019-dc-v20241010
   family: sql-std-2022-win-2019
   description: Microsoft, SQL Server 2022 Standard, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2022-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2022-standard-windows-2022-dc-v20240819
+- name: sql-2022-standard-windows-2022-dc-v20241010
   family: sql-std-2022-win-2022
   description: Microsoft, SQL Server 2022 Standard, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2022-standard
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: sql-2022-web-windows-2019-dc-v20240819
+- name: sql-2022-web-windows-2019-dc-v20241010
   family: sql-web-2022-win-2019
   description: Microsoft, SQL Server 2022 Web, on Windows Server 2019 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2022-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: sql-2022-web-windows-2022-dc-v20240819
+- name: sql-2022-web-windows-2022-dc-v20241010
   family: sql-web-2022-win-2022
   description: Microsoft, SQL Server 2022 Web, on Windows Server 2022 Datacenter,
-    x64 built on 20240819
+    x64 built on 20241010
   diskSizeGb: "50"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2022-web
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2022-dc
   architecture: X86_64
-- name: fedora-coreos-40-20240808-3-0-gcp-aarch64
+- name: fedora-coreos-40-20240920-3-0-gcp-aarch64
   family: fedora-coreos-stable-arm64
-  description: Fedora, Fedora CoreOS stable, 40.20240808.3.0, aarch64 published on
-    2024-08-27
+  description: Fedora, Fedora CoreOS stable, 40.20240920.3.0, aarch64 published on
+    2024-10-07
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-stable
   - https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx
   architecture: ARM64
-- name: fedora-coreos-40-20240808-3-0-gcp-x86-64
+- name: fedora-coreos-40-20240920-3-0-gcp-x86-64
   family: fedora-coreos-stable
-  description: Fedora, Fedora CoreOS stable, 40.20240808.3.0, x86_64 published on
-    2024-08-27
+  description: Fedora, Fedora CoreOS stable, 40.20240920.3.0, x86_64 published on
+    2024-10-07
   diskSizeGb: "10"
   licenses:
   - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-stable
   - https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx
   architecture: X86_64
-- name: fedora-coreos-40-20240825-1-0-gcp-aarch64
-  family: fedora-coreos-next-arm64
-  description: Fedora, Fedora CoreOS next, 40.20240825.1.0, aarch64 published on 2024-08-27
+- name: fedora-coreos-40-20241006-2-1-gcp-aarch64
+  family: fedora-coreos-testing-arm64
+  description: Fedora, Fedora CoreOS testing, 40.20241006.2.1, aarch64 published on
+    2024-10-08
   diskSizeGb: "10"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-next
+  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-testing
   - https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx
   architecture: ARM64
-- name: fedora-coreos-40-20240825-1-0-gcp-x86-64
-  family: fedora-coreos-next
-  description: Fedora, Fedora CoreOS next, 40.20240825.1.0, x86_64 published on 2024-08-27
+- name: fedora-coreos-40-20241006-2-1-gcp-x86-64
+  family: fedora-coreos-testing
+  description: Fedora, Fedora CoreOS testing, 40.20241006.2.1, x86_64 published on
+    2024-10-08
   diskSizeGb: "10"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-next
+  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-testing
   - https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx
   architecture: X86_64
-- name: fedora-coreos-40-20240825-2-0-gcp-aarch64
-  family: fedora-coreos-testing-arm64
-  description: Fedora, Fedora CoreOS testing, 40.20240825.2.0, aarch64 published on
-    2024-08-27
+- name: fedora-coreos-41-20241006-1-1-gcp-aarch64
+  family: fedora-coreos-next-arm64
+  description: Fedora, Fedora CoreOS next, 41.20241006.1.1, aarch64 published on 2024-10-08
   diskSizeGb: "10"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-testing
+  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-next
   - https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx
   architecture: ARM64
-- name: fedora-coreos-40-20240825-2-0-gcp-x86-64
-  family: fedora-coreos-testing
-  description: Fedora, Fedora CoreOS testing, 40.20240825.2.0, x86_64 published on
-    2024-08-27
+- name: fedora-coreos-41-20241006-1-1-gcp-x86-64
+  family: fedora-coreos-next
+  description: Fedora, Fedora CoreOS next, 41.20241006.1.1, x86_64 published on 2024-10-08
   diskSizeGb: "10"
   licenses:
-  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-testing
+  - https://www.googleapis.com/compute/v1/projects/fedora-coreos-cloud/global/licenses/fedora-coreos-next
   - https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx
   architecture: X86_64
 removedZones: []

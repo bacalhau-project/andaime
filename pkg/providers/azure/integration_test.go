@@ -354,11 +354,6 @@ func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
 
 	s.provider.SetClusterDeployer(s.clusterDeployer)
 	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
-		err := s.provider.GetClusterDeployer().ProvisionMachine(ctx, s.mockSSHConfig, machine)
-		s.Require().NoError(err)
-	}
-
 	err = s.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	s.Require().NoError(err)
 
