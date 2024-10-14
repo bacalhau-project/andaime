@@ -161,7 +161,9 @@ type CloudSpecificInfo struct {
 	ResourceGroupName string
 
 	// GCP specific
-	Zone   string
+	Zone string
+
+	// Both GCP and AWS
 	Region string
 }
 
@@ -214,6 +216,13 @@ func NewMachine(
 			)
 		}
 		returnMachine.Type = GCPResourceTypeInstance
+	} else if cloudProvider == DeploymentTypeAWS {
+		for _, resource := range RequiredAWSResources {
+			returnMachine.SetMachineResource(
+				resource.GetResourceLowerString(),
+				ResourceStateNotStarted,
+			)
+		}
 	}
 
 	return returnMachine, nil
@@ -260,6 +269,11 @@ func (mach *Machine) SetLocation(location string) error {
 			return fmt.Errorf("invalid GCP location: %s", location)
 		}
 		mach.CloudSpecific.Region = region
+	case DeploymentTypeAWS:
+		if !internal_aws.IsValidAWSRegion(location) {
+			return fmt.Errorf("invalid AWS region: %s", location)
+		}
+		mach.CloudSpecific.Region = location
 	default:
 		return fmt.Errorf("unknown deployment type: %s", mach.DeploymentType)
 	}
