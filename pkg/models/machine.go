@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
@@ -634,6 +635,8 @@ func IsValidLocation(deploymentType DeploymentType, location string) bool {
 		return internal_azure.IsValidAzureLocation(location)
 	case DeploymentTypeGCP:
 		return internal_gcp.IsValidGCPLocation(location)
+	case DeploymentTypeAWS:
+		return internal_aws.IsValidAWSRegion(location)
 	default:
 		return false
 	}
