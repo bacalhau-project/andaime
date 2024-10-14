@@ -10,6 +10,7 @@ import (
 // SSHClienter interface defines the methods we need for SSH operations
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
+	IsConnected() bool
 	Close() error
 }
 
@@ -34,6 +35,10 @@ func (cl *SSHClient) Close() error {
 	return cl.Client.Close()
 }
 
+func (cl *SSHClient) IsConnected() bool {
+	return cl.Client != nil && cl.Client.IsConnected()
+}
+
 type SSHClientWrapper struct {
 	*ssh.Client
 }
@@ -48,6 +53,27 @@ func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {
 
 func (w *SSHClientWrapper) Close() error {
 	return w.Client.Close()
+}
+
+func (w *SSHClientWrapper) IsConnected() bool {
+	if w.Client == nil {
+		return false
+	}
+
+	// Try to create a new session
+	session, err := w.Client.NewSession()
+	if err != nil {
+		return false
+	}
+	defer session.Close()
+
+	// Run a simple command to check if the connection is alive
+	err = session.Run("echo")
+	if err != nil {
+		return false
+	}
+
+	return true
 }
 
 type SSHSessionWrapper struct {

@@ -219,6 +219,14 @@ func (c *SSHConfig) NewSession() (SSHSessioner, error) {
 		c.SSHClient = &SSHClientWrapper{Client: sshClient}
 	}
 
+	if !c.SSHClient.IsConnected() {
+		connectedClient, err := c.Connect()
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to SSH: %w", err)
+		}
+		c.SSHClient.(*SSHClientWrapper).Client = connectedClient.(*SSHClientWrapper).Client
+	}
+
 	return c.SSHClient.NewSession()
 }
 

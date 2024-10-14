@@ -82,6 +82,7 @@ func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	s.mockClient.On("NewSession").Return(s.mockSession, nil)
+	s.mockClient.On("IsConnected").Return(true)
 	expectedOutput := []byte("command output")
 	s.mockSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil)
 	s.mockSession.On("Close").Return(nil)
@@ -96,6 +97,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommandWithRetry() {
 	s.mockClient.On("NewSession").Return(s.mockSession, nil)
+	s.mockClient.On("IsConnected").Return(true)
 	expectedOutput := []byte("command output")
 	s.mockSession.On("CombinedOutput", "ls -l").
 		Return([]byte{}, fmt.Errorf("temporary error")).Once().
@@ -126,6 +128,7 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 	}
 
 	s.mockClient.On("NewSession").Return(s.mockSession, nil)
+	s.mockClient.On("IsConnected").Return(true)
 	remoteCmd := fmt.Sprintf("cat > %s", "/remote/path")
 	if executable {
 		remoteCmd += fmt.Sprintf(" && chmod +x %s", "/remote/path")
@@ -183,6 +186,7 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			s.mockClient.On("NewSession").Return(s.mockSession, nil)
+			s.mockClient.On("IsConnected").Return(true)
 			s.mockSession.On("Run", tt.expectedCmd).Return(nil)
 			s.mockSession.On("Close").Return(nil)
 

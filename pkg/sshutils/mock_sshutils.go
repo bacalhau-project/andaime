@@ -38,6 +38,11 @@ func (m *MockSSHClient) Close() error {
 	return args.Error(0)
 }
 
+func (m *MockSSHClient) IsConnected() bool {
+	args := m.Called()
+	return args.Bool(0)
+}
+
 func GetTypedMockClient(t *testing.T, log *logger.Logger) (*MockSSHClient, SSHConfiger) {
 	mockSSHClient, sshConfig := NewMockSSHClient(NewMockSSHDialer())
 	return mockSSHClient, sshConfig
