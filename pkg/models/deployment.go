@@ -110,7 +110,7 @@ func NewDeployment() (*Deployment, error) {
 	l := logger.Get()
 	projectPrefix := viper.GetString("general.project_prefix")
 	if projectPrefix == "" {
-		return nil, fmt.Errorf("general.project_prefix is not set")
+		projectPrefix = "andaime"
 	}
 	uniqueID := fmt.Sprintf("u%s", time.Now().Format("0601021504"))
 	projectID := projectPrefix + "-" + uniqueID
