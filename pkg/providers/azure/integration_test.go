@@ -266,7 +266,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            2,
 			},
 			{
-				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data'`,
+				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,

@@ -58,7 +58,7 @@ func TestReadBacalhauSettings(t *testing.T) {
 				paths, ok := setting.Value.([]string)
 				assert.True(t, ok)
 				assert.Contains(t, paths, "/tmp")
-				assert.Contains(t, paths, "/data")
+				assert.Contains(t, paths, "/data:rw")
 			}
 		}
 	})

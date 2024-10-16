@@ -488,8 +488,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 
 	expectedLines := map[string][]string{
 		"install-docker.sh": {
-			"sudo apt-get update",
-			"sudo apt-get install -y docker.io",
+			"sudo apt-get install -y docker-ce docker-ce-cli containerd.io",
 		},
 		"install-core-packages.sh": {
 			"sudo apt-get update && \\",
