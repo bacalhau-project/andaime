@@ -566,7 +566,7 @@ func applySettings(
 			valueStr = fmt.Sprintf("%v", v)
 		}
 
-		cmd := fmt.Sprintf("sudo bacalhau config set '%s' '%s'", setting.Key, valueStr)
+		cmd := fmt.Sprintf("sudo bacalhau config set '%s'='%s'", setting.Key, valueStr)
 		output, err := sshConfig.ExecuteCommand(ctx, cmd)
 		if err != nil {
 			if strings.Contains(

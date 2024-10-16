@@ -414,18 +414,18 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Single configuration",
 			bacalhauSettings: map[string]string{
-				"compute.allowlistedlocalpaths": `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths": `/tmp,/data:rw`,
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
 						Cmd:    "sudo bacalhau config list --output json",
-						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data"]}]`,
+						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data:rw"]}]`,
 						Error:  nil,
 					},
 				},
@@ -435,32 +435,32 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Multiple configurations",
 			bacalhauSettings: map[string]string{
-				"compute.allowlistedlocalpaths":           `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths":           `/tmp,/data:rw`,
 				"compute.heartbeat.interval":              "5s",
 				"jobadmissioncontrol.acceptnetworkedjobs": "true",
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
-						Cmd:    `sudo bacalhau config set 'compute.heartbeat.interval' '5s'`,
+						Cmd:    `sudo bacalhau config set 'compute.heartbeat.interval'='5s'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
-						Cmd:    `sudo bacalhau config set 'jobadmissioncontrol.acceptnetworkedjobs' 'true'`,
+						Cmd:    `sudo bacalhau config set 'jobadmissioncontrol.acceptnetworkedjobs'='true'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
 						Cmd: "sudo bacalhau config list --output json",
-						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data"]},
+						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data:rw"]},
 {"Key":"'compute.heartbeat.interval'","Value":"5s"},
-{"Key":"'jobadmissioncontrol.acceptnetworkedjobs'","Value":true}]`,
+{"Key":"'jobadmissioncontrol.acceptnetworkedjobs'","Value":"true"}]`,
 						Error: nil,
 					},
 				},
@@ -475,7 +475,7 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'invalid.config' 'value'`,
+						Cmd:    `sudo bacalhau config set 'invalid.config'='value'`,
 						Output: "",
 						Error:  errors.New("invalid bacalhau_settings keys: invalid.config"),
 					},
@@ -486,18 +486,18 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Unexpected value in configuration",
 			bacalhauSettings: map[string]string{
-				"compute.allowlistedlocalpaths": `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths": `/tmp,/data:rw`,
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
 					{
 						Cmd:    "sudo bacalhau config list --output json",
-						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data"]}]`,
+						Output: `[{"Key":"'compute.allowlistedlocalpaths'","Value":["/tmp","/data:rw"]}]`,
 						Error:  nil,
 					},
 				},
@@ -507,12 +507,12 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 		{
 			name: "Missing configuration in final list",
 			bacalhauSettings: map[string]string{
-				"compute.allowlistedlocalpaths": `"/tmp","/data"`,
+				"compute.allowlistedlocalpaths": `/tmp,/data:rw`,
 			},
 			sshBehavior: sshutils.ExpectedSSHBehavior{
 				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 					{
-						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths' '"/tmp","/data"'`,
+						Cmd:    `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
 						Output: "Configuration set successfully",
 						Error:  nil,
 					},
@@ -624,7 +624,7 @@ const fullValidConfigOutput = `
     "Key": "Compute.AllowListedLocalPaths",
     "Value": [
       "/tmp",
-      "/data"
+      "/data:rw"
     ],
     "Description": "AllowListedLocalPaths specifies a list of local file system paths that the compute node is allowed to access."
   },

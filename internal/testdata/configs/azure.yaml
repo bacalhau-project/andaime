@@ -28,7 +28,7 @@ general:
     - key: compute.allowlistedlocalpaths
       value:
         - /tmp
-        - /data
+        - /data:rw
     - key: compute.heartbeat.interval
       value: 5s
     - key: compute.heartbeat.infoupdateinterval
