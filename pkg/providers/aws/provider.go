@@ -67,12 +67,12 @@ func (cw *ConfigWrapper) GetString(key string) string {
 }
 
 // GetEC2Client returns the current EC2 client
-func (p *AWSProvider) GetEC2Client() (EC2Clienter, error) {
+func (p *AWSProvider) GetEC2Client() (awsinterfaces.EC2Clienter, error) {
 	return p.EC2Client, nil
 }
 
 // SetEC2Client sets a new EC2 client
-func (p *AWSProvider) SetEC2Client(client EC2Clienter) {
+func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
 	p.EC2Client = client
 }
 
@@ -111,36 +111,6 @@ func (p *AWSProvider) validateRegion(region string) error {
 	if region == "" {
 		return fmt.Errorf("AWS region is not specified in the configuration")
 	}
-	return nil
-}
-
-func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType InstanceType) error {
-	l := logger.Get()
-
-	image, err := p.GetLatestUbuntuImage(ctx, p.Region)
-	if err != nil {
-		return fmt.Errorf("failed to get latest Ubuntu image: %w", err)
-	}
-
-	l.Infof("Latest Ubuntu AMI ID for region %s: %s\n", p.Region, *image.ImageId)
-
-	var runInstancesInput *ec2.RunInstancesInput
-
-	switch instanceType {
-	case EC2Instance:
-		runInstancesInput = p.createEC2InstanceInput(image.ImageId)
-	case SpotInstance:
-		runInstancesInput = p.createSpotInstanceInput(image.ImageId)
-	default:
-		return fmt.Errorf("invalid instance type: %s", instanceType)
-	}
-
-	result, err := p.EC2Client.RunInstances(ctx, runInstancesInput)
-	if err != nil {
-		return fmt.Errorf("failed to create instance: %w", err)
-	}
-
-	l.Infof("Created instance: %s\n", *result.Instances[0].InstanceId)
 	return nil
 }
 
