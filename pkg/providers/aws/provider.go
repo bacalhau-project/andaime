@@ -103,6 +103,10 @@ func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType awsinte
 		return fmt.Errorf("failed to create instance: %w", err)
 	}
 
+	if len(result.Instances) == 0 {
+		return fmt.Errorf("no instances created")
+	}
+
 	l.Infof("Created instance: %s\n", *result.Instances[0].InstanceId)
 	return nil
 }
