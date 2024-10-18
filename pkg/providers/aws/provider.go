@@ -14,6 +14,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+type InstanceType string
+
+const (
+	EC2Instance  InstanceType = "EC2"
+	SpotInstance InstanceType = "Spot"
+)
+
 // ConfigInterface defines the interface for configuration operations
 type ConfigInterfacer interface {
 	GetString(key string) string
@@ -29,9 +36,9 @@ var ubuntuAMICache = make(map[string]string)
 var cacheLock sync.RWMutex
 
 // NewAWSProvider creates a new AWSProvider instance
-func NewAWSProvider(viper *viper.Viper) (*AWSProvider, error) {
+func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	ctx := context.Background()
-	awsConfig, err := awsconfig.LoadDefaultConfig(ctx)
+	awsConfig, err := awsconfig.LoadDefaultConfig(ctx, aws.WithRegion(v.GetString("aws.region")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
