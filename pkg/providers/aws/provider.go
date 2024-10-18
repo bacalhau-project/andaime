@@ -70,7 +70,7 @@ func (cw *ConfigWrapper) GetString(key string) string {
 }
 
 // GetEC2Client returns the current EC2 client
-func (p *AWSProvider) GetEC2Client() (EC2Clienter, error) {
+func (p *AWSProvider) GetEC2Client() (awsinterfaces.EC2Clienter, error) {
 	return p.EC2Client, nil
 }
 
