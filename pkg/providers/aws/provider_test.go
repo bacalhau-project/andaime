@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -60,6 +60,78 @@ func (m *MockEC2Client) DescribeInstanceTypes(
 ) (*ec2.DescribeInstanceTypesOutput, error) {
 	args := m.Called(ctx, params, optFns)
 	return args.Get(0).(*ec2.DescribeInstanceTypesOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) CreateSubnet(
+	ctx context.Context,
+	params *ec2.CreateSubnetInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateSubnetOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.CreateSubnetOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) CreateVpc(
+	ctx context.Context,
+	params *ec2.CreateVpcInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateVpcOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.CreateVpcOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) DescribeVpcs(
+	ctx context.Context,
+	params *ec2.DescribeVpcsInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeVpcsOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.DescribeVpcsOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) CreateInternetGateway(
+	ctx context.Context,
+	params *ec2.CreateInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateInternetGatewayOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.CreateInternetGatewayOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) AttachInternetGateway(
+	ctx context.Context,
+	params *ec2.AttachInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AttachInternetGatewayOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.AttachInternetGatewayOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) CreateRouteTable(
+	ctx context.Context,
+	params *ec2.CreateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateRouteTableOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.CreateRouteTableOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) CreateRoute(
+	ctx context.Context,
+	params *ec2.CreateRouteInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateRouteOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.CreateRouteOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) AssociateRouteTable(
+	ctx context.Context,
+	params *ec2.AssociateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AssociateRouteTableOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*ec2.AssociateRouteTableOutput), args.Error(1)
 }
 
 func TestNewAWSProvider(t *testing.T) {
