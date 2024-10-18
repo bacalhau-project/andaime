@@ -97,7 +97,7 @@ func (p *AWSProvider) validateRegion(region string) error {
 	return nil
 }
 
-func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
+func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType InstanceType) error {
 	l := logger.Get()
 	region, err := p.getRegion()
 	if err != nil {
@@ -110,7 +110,49 @@ func (p *AWSProvider) CreateDeployment(ctx context.Context) error {
 	}
 
 	l.Infof("Latest Ubuntu AMI ID for region %s: %s\n", region, *image.ImageId)
+
+	var runInstancesInput *ec2.RunInstancesInput
+
+	switch instanceType {
+	case EC2Instance:
+		runInstancesInput = p.createEC2InstanceInput(image.ImageId)
+	case SpotInstance:
+		runInstancesInput = p.createSpotInstanceInput(image.ImageId)
+	default:
+		return fmt.Errorf("invalid instance type: %s", instanceType)
+	}
+
+	result, err := p.EC2Client.RunInstances(ctx, runInstancesInput)
+	if err != nil {
+		return fmt.Errorf("failed to create instance: %w", err)
+	}
+
+	l.Infof("Created instance: %s\n", *result.Instances[0].InstanceId)
 	return nil
+}
+
+func (p *AWSProvider) createEC2InstanceInput(imageId *string) *ec2.RunInstancesInput {
+	return &ec2.RunInstancesInput{
+		ImageId:      imageId,
+		InstanceType: types.InstanceTypeT3Micro,
+		MinCount:     aws.Int32(1),
+		MaxCount:     aws.Int32(1),
+	}
+}
+
+func (p *AWSProvider) createSpotInstanceInput(imageId *string) *ec2.RunInstancesInput {
+	return &ec2.RunInstancesInput{
+		ImageId:      imageId,
+		InstanceType: types.InstanceTypeT3Micro,
+		MinCount:     aws.Int32(1),
+		MaxCount:     aws.Int32(1),
+		InstanceMarketOptions: &types.InstanceMarketOptionsRequest{
+			MarketType: types.MarketTypeSpot,
+			SpotOptions: &types.SpotMarketOptions{
+				MaxPrice: aws.String("0.05"), // Set your maximum spot price
+			},
+		},
+	}
 }
 
 func (p *AWSProvider) describeInstances(ctx context.Context) ([]*types.Instance, error) {
