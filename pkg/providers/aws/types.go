@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// AWSProviderFunc is a function type that returns an AWSProviderInterface
+// AWSProviderFunc is a function type that returns an AWSProviderer
 type AWSProviderFunc func(ctx context.Context) (awsinterfaces.AWSProviderer, error)
 
 type EC2Clienter interface {

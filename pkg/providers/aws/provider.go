@@ -77,7 +77,7 @@ func (p *AWSProvider) SetEC2Client(client EC2Clienter) {
 }
 
 // CreateDeployment performs the AWS deployment
-func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType InstanceType) error {
+func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType awsinterfaces.InstanceType) error {
 	l := logger.Get()
 
 	image, err := p.GetLatestUbuntuImage(ctx, p.Region)
@@ -90,9 +90,9 @@ func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType Instanc
 	var runInstancesInput *ec2.RunInstancesInput
 
 	switch instanceType {
-	case EC2Instance:
+	case awsinterfaces.EC2Instance:
 		runInstancesInput = p.createEC2InstanceInput(image.ImageId)
-	case SpotInstance:
+	case awsinterfaces.SpotInstance:
 		runInstancesInput = p.createSpotInstanceInput(image.ImageId)
 	default:
 		return fmt.Errorf("invalid instance type: %s", instanceType)
