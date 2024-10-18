@@ -8,8 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	awsmocks "github.com/bacalhau-project/andaime/mocks/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
@@ -22,7 +22,7 @@ type ConfigInterfacer interface {
 
 type AWSProvider struct {
 	Config    *aws.Config
-	EC2Client *awsmocks.MockEC2Clienter
+	EC2Client awsinterfaces.EC2Clienter
 	Region    string
 }
 
@@ -70,12 +70,12 @@ func (cw *ConfigWrapper) GetString(key string) string {
 }
 
 // GetEC2Client returns the current EC2 client
-func (p *AWSProvider) GetEC2Client() (*awsmocks.MockEC2Clienter, error) {
+func (p *AWSProvider) GetEC2Client() (awsinterfaces.EC2Clienter, error) {
 	return p.EC2Client, nil
 }
 
 // SetEC2Client sets a new EC2 client
-func (p *AWSProvider) SetEC2Client(client *awsmocks.MockEC2Clienter) {
+func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
 	p.EC2Client = client
 }
 
@@ -276,49 +276,4 @@ func (p *AWSProvider) GetLatestUbuntuImage(
 	}
 
 	if latestImage == nil {
-		return nil, fmt.Errorf("failed to find the latest Ubuntu image")
-	}
-
-	cacheLock.Lock()
-	ubuntuAMICache[region] = *latestImage.ImageId
-	cacheLock.Unlock()
-
-	return latestImage, nil
-}
-
-func (p *AWSProvider) Destroy(ctx context.Context) error {
-	return p.TerminateDeployment(ctx)
-}
-
-func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (string, error) {
-	input := &ec2.DescribeInstancesInput{
-		InstanceIds: []string{instanceID},
-	}
-	result, err := p.EC2Client.DescribeInstances(ctx, input)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe instance: %w", err)
-	}
-
-	if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
-		return "", fmt.Errorf("instance not found")
-	}
-
-	instance := result.Reservations[0].Instances[0]
-	if instance.PublicIpAddress == nil {
-		return "", fmt.Errorf("instance does not have a public IP address")
-	}
-
-	return *instance.PublicIpAddress, nil
-}
-
-func (p *AWSProvider) ValidateMachineType(ctx context.Context, instanceType string) (bool, error) {
-	input := &ec2.DescribeInstanceTypesInput{
-		InstanceTypes: []types.InstanceType{types.InstanceType(instanceType)},
-	}
-	result, err := p.EC2Client.DescribeInstanceTypes(ctx, input)
-	if err != nil {
-		return false, fmt.Errorf("failed to describe instance type: %w", err)
-	}
-
-	return len(result.InstanceTypes) > 0, nil
-}
+		return nil, fmt.Errorf("failed to fin
