@@ -31,6 +31,7 @@ type ConfigInterfacer interface {
 type AWSProvider struct {
 	Config    *aws.Config
 	EC2Client awsinterfaces.EC2Clienter
+	Region    string
 }
 
 var ubuntuAMICache = make(map[string]string)
@@ -39,9 +40,10 @@ var cacheLock sync.RWMutex
 // NewAWSProvider creates a new AWSProvider instance
 func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	ctx := context.Background()
+	region := v.GetString("aws.region")
 	awsConfig, err := awsconfig.LoadDefaultConfig(
 		ctx,
-		awsconfig.WithRegion(v.GetString("aws.region")),
+		awsconfig.WithRegion(region),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
@@ -51,6 +53,7 @@ func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	return &AWSProvider{
 		Config:    &awsConfig,
 		EC2Client: ec2Client,
+		Region:    region,
 	}, nil
 }
 
@@ -97,17 +100,13 @@ func (p *AWSProvider) validateRegion(region string) error {
 
 func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType InstanceType) error {
 	l := logger.Get()
-	region, err := p.getRegion()
-	if err != nil {
-		return fmt.Errorf("failed to get region: %w", err)
-	}
 
-	image, err := p.GetLatestUbuntuImage(ctx, region)
+	image, err := p.GetLatestUbuntuImage(ctx, p.Region)
 	if err != nil {
 		return fmt.Errorf("failed to get latest Ubuntu image: %w", err)
 	}
 
-	l.Infof("Latest Ubuntu AMI ID for region %s: %s\n", region, *image.ImageId)
+	l.Infof("Latest Ubuntu AMI ID for region %s: %s\n", p.Region, *image.ImageId)
 
 	var runInstancesInput *ec2.RunInstancesInput
 
@@ -214,16 +213,9 @@ func (p *AWSProvider) DestroyDeployment(ctx context.Context) error {
 }
 
 // GetLatestUbuntuImage gets the latest Ubuntu AMI for the specified region
-func (p *AWSProvider) GetLatestUbuntuImage(
-	ctx context.Context,
-	region string,
-) (*types.Image, error) {
-	if err := p.validateRegion(region); err != nil {
-		return nil, err
-	}
-
+func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, _ string) (*types.Image, error) {
 	cacheLock.RLock()
-	cachedAMI, found := ubuntuAMICache[region]
+	cachedAMI, found := ubuntuAMICache[p.Region]
 	cacheLock.RUnlock()
 
 	if found {
