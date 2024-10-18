@@ -213,7 +213,10 @@ func (p *AWSProvider) DestroyDeployment(ctx context.Context) error {
 }
 
 // GetLatestUbuntuImage gets the latest Ubuntu AMI for the specified region
-func (p *AWSProvider) GetLatestUbuntuImage(ctx context.Context, _ string) (*types.Image, error) {
+func (p *AWSProvider) GetLatestUbuntuImage(
+	ctx context.Context,
+	region string,
+) (*types.Image, error) {
 	cacheLock.RLock()
 	cachedAMI, found := ubuntuAMICache[p.Region]
 	cacheLock.RUnlock()
