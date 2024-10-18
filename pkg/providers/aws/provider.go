@@ -1,4 +1,4 @@
-package aws
+package awsprovider
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	awsmocks "github.com/bacalhau-project/andaime/mocks/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
@@ -22,7 +22,7 @@ type ConfigInterfacer interface {
 
 type AWSProvider struct {
 	Config    *aws.Config
-	EC2Client awsinterfaces.EC2Clienter
+	EC2Client *awsmocks.MockEC2Clienter
 	Region    string
 }
 
@@ -40,7 +40,7 @@ func NewAWSProvider(v *viper.Viper) (awsinterfaces.AWSProviderer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
-	ec2Client := ec2.NewFromConfig(awsConfig)
+	ec2Client := new(awsmocks.MockEC2Clienter)
 
 	awsProvider := &AWSProvider{
 		Config:    &awsConfig,
@@ -67,12 +67,12 @@ func (cw *ConfigWrapper) GetString(key string) string {
 }
 
 // GetEC2Client returns the current EC2 client
-func (p *AWSProvider) GetEC2Client() (awsinterfaces.EC2Clienter, error) {
+func (p *AWSProvider) GetEC2Client() (*awsmocks.MockEC2Clienter, error) {
 	return p.EC2Client, nil
 }
 
 // SetEC2Client sets a new EC2 client
-func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
+func (p *AWSProvider) SetEC2Client(client *awsmocks.MockEC2Clienter) {
 	p.EC2Client = client
 }
 
