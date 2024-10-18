@@ -38,7 +38,10 @@ var cacheLock sync.RWMutex
 // NewAWSProvider creates a new AWSProvider instance
 func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	ctx := context.Background()
-	awsConfig, err := awsconfig.LoadDefaultConfig(ctx, aws.WithRegion(v.GetString("aws.region")))
+	awsConfig, err := awsconfig.LoadDefaultConfig(
+		ctx,
+		awsconfig.WithRegion(v.GetString("aws.region")),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
