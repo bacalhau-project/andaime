@@ -28,9 +28,18 @@ type ConfigInterfacer interface {
 }
 
 // AWSProvider wraps the AWS deployment functionality
+type AWSProviderer interface {
+	GetEC2Client() (EC2Clienter, error)
+	SetEC2Client(client EC2Clienter)
+	CreateDeployment(ctx context.Context, instanceType InstanceType) error
+	ListDeployments(ctx context.Context) ([]*types.Instance, error)
+	TerminateDeployment(ctx context.Context) error
+	GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error)
+}
+
 type AWSProvider struct {
 	Config    *aws.Config
-	EC2Client awsinterfaces.EC2Clienter
+	EC2Client EC2Clienter
 	Region    string
 }
 
@@ -38,7 +47,7 @@ var ubuntuAMICache = make(map[string]string)
 var cacheLock sync.RWMutex
 
 // NewAWSProvider creates a new AWSProvider instance
-func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
+func NewAWSProvider(v *viper.Viper) (AWSProviderer, error) {
 	ctx := context.Background()
 	region := v.GetString("aws.region")
 	awsConfig, err := awsconfig.LoadDefaultConfig(
@@ -50,11 +59,13 @@ func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	}
 	ec2Client := ec2.NewFromConfig(awsConfig)
 
-	return &AWSProvider{
+	awsProvider := &AWSProvider{
 		Config:    &awsConfig,
 		EC2Client: ec2Client,
 		Region:    region,
-	}, nil
+	}
+
+	return awsProvider, nil
 }
 
 // ConfigWrapper wraps the AWS config to implement ConfigInterface
@@ -73,12 +84,12 @@ func (cw *ConfigWrapper) GetString(key string) string {
 }
 
 // GetEC2Client returns the current EC2 client
-func (p *AWSProvider) GetEC2Client() (awsinterfaces.EC2Clienter, error) {
+func (p *AWSProvider) GetEC2Client() (EC2Clienter, error) {
 	return p.EC2Client, nil
 }
 
 // SetEC2Client sets a new EC2 client
-func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
+func (p *AWSProvider) SetEC2Client(client EC2Clienter) {
 	p.EC2Client = client
 }
 
