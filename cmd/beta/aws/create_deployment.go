@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	"github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
