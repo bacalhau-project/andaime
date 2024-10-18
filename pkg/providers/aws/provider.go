@@ -1,4 +1,4 @@
-package aws
+package awsprovider
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
 )
 
@@ -77,7 +77,10 @@ func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
 }
 
 // CreateDeployment performs the AWS deployment
-func (p *AWSProvider) CreateDeployment(ctx context.Context, instanceType awsinterfaces.InstanceType) error {
+func (p *AWSProvider) CreateDeployment(
+	ctx context.Context,
+	instanceType awsinterfaces.InstanceType,
+) error {
 	l := logger.Get()
 
 	image, err := p.GetLatestUbuntuImage(ctx, p.Region)
@@ -278,4 +281,41 @@ func (p *AWSProvider) GetLatestUbuntuImage(
 	cacheLock.Unlock()
 
 	return latestImage, nil
+}
+
+func (p *AWSProvider) Destroy(ctx context.Context) error {
+	return p.TerminateDeployment(ctx)
+}
+
+func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (string, error) {
+	input := &ec2.DescribeInstancesInput{
+		InstanceIds: []string{instanceID},
+	}
+	result, err := p.EC2Client.DescribeInstances(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe instance: %w", err)
+	}
+
+	if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
+		return "", fmt.Errorf("instance not found")
+	}
+
+	instance := result.Reservations[0].Instances[0]
+	if instance.PublicIpAddress == nil {
+		return "", fmt.Errorf("instance does not have a public IP address")
+	}
+
+	return *instance.PublicIpAddress, nil
+}
+
+func (p *AWSProvider) ValidateMachineType(ctx context.Context, instanceType string) (bool, error) {
+	input := &ec2.DescribeInstanceTypesInput{
+		InstanceTypes: []types.InstanceType{types.InstanceType(instanceType)},
+	}
+	result, err := p.EC2Client.DescribeInstanceTypes(ctx, input)
+	if err != nil {
+		return false, fmt.Errorf("failed to describe instance type: %w", err)
+	}
+
+	return len(result.InstanceTypes) > 0, nil
 }
