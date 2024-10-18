@@ -3,6 +3,7 @@ package awsprovider
 import (
 	"context"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
@@ -10,18 +11,83 @@ import (
 )
 
 // NewEC2Client creates a new EC2 client
-func NewEC2Client(ctx context.Context) (*awsmocks.MockEC2Clienter, error) {
-	// For testing purposes, we're returning a mock client
-	return new(awsmocks.MockEC2Clienter), nil
-}
-
-// NewRealEC2Client creates a real EC2 client (for production use)
-func NewRealEC2Client(ctx context.Context) (awsinterfaces.EC2Clienter, error) {
+func NewEC2Client(ctx context.Context) (awsinterfaces.EC2Clienter, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return ec2.NewFromConfig(cfg), nil
+}
+
+// NewMockEC2Client creates a mock EC2 client for testing purposes
+func NewMockEC2Client() awsinterfaces.EC2Clienter {
+	return new(awsmocks.MockEC2Clienter)
+}
+
+// GetEC2Client returns either a real or mock EC2 client based on the environment
+func GetEC2Client(ctx context.Context, useMock bool) (awsinterfaces.EC2Clienter, error) {
+	if useMock {
+		return NewMockEC2Client(), nil
+	}
+	return NewEC2Client(ctx)
+}
+
+// ConfigureEC2Client configures the EC2 client with custom options
+func ConfigureEC2Client(client awsinterfaces.EC2Clienter, options ...func(*ec2.Options)) awsinterfaces.EC2Clienter {
+	if realClient, ok := client.(*ec2.Client); ok {
+		return ec2.NewFromConfig(realClient.Config, options...)
+	}
+	return client // Return as-is if it's a mock client
+}
+
+// CreateEC2Instance creates a new EC2 instance
+func CreateEC2Instance(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.RunInstancesInput) (*ec2.RunInstancesOutput, error) {
+	return client.RunInstances(ctx, input)
+}
+
+// DescribeEC2Instances describes EC2 instances
+func DescribeEC2Instances(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	return client.DescribeInstances(ctx, input)
+}
+
+// TerminateEC2Instances terminates EC2 instances
+func TerminateEC2Instances(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error) {
+	return client.TerminateInstances(ctx, input)
+}
+
+// CreateVPC creates a new VPC
+func CreateVPC(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.CreateVpcInput) (*ec2.CreateVpcOutput, error) {
+	return client.CreateVpc(ctx, input)
+}
+
+// CreateSubnet creates a new subnet in a VPC
+func CreateSubnet(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.CreateSubnetInput) (*ec2.CreateSubnetOutput, error) {
+	return client.CreateSubnet(ctx, input)
+}
+
+// CreateInternetGateway creates a new Internet Gateway
+func CreateInternetGateway(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.CreateInternetGatewayInput) (*ec2.CreateInternetGatewayOutput, error) {
+	return client.CreateInternetGateway(ctx, input)
+}
+
+// AttachInternetGateway attaches an Internet Gateway to a VPC
+func AttachInternetGateway(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.AttachInternetGatewayInput) (*ec2.AttachInternetGatewayOutput, error) {
+	return client.AttachInternetGateway(ctx, input)
+}
+
+// CreateRouteTable creates a new route table
+func CreateRouteTable(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.CreateRouteTableInput) (*ec2.CreateRouteTableOutput, error) {
+	return client.CreateRouteTable(ctx, input)
+}
+
+// CreateRoute creates a new route in a route table
+func CreateRoute(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.CreateRouteInput) (*ec2.CreateRouteOutput, error) {
+	return client.CreateRoute(ctx, input)
+}
+
+// AssociateRouteTable associates a subnet with a route table
+func AssociateRouteTable(ctx context.Context, client awsinterfaces.EC2Clienter, input *ec2.AssociateRouteTableInput) (*ec2.AssociateRouteTableOutput, error) {
+	return client.AssociateRouteTable(ctx, input)
 }
 
 // pkg/providers/azure/client.go
