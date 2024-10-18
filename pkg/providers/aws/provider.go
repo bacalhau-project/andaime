@@ -22,7 +22,7 @@ type ConfigInterfacer interface {
 
 type AWSProvider struct {
 	Config    *aws.Config
-	EC2Client EC2Clienter
+	EC2Client awsinterfaces.EC2Clienter
 	Region    string
 }
 
