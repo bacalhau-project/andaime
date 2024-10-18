@@ -35,7 +35,11 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
 
-	if err := awsProvider.CreateDeployment(cmd.Context()); err != nil {
+	instanceType := awsprovider.EC2Instance // Default to EC2 instance
+	if instanceTypeFlag == "Spot" {
+		instanceType = awsprovider.SpotInstance
+	}
+	if err := awsProvider.CreateDeployment(cmd.Context(), instanceType); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}
 
