@@ -75,7 +75,7 @@ func (p *AWSProvider) GetEC2Client() (awsinterfaces.EC2Clienter, error) {
 }
 
 // SetEC2Client sets a new EC2 client
-func (p *AWSProvider) SetEC2Client(client EC2Clienter) {
+func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
 	p.EC2Client = client
 }
 
