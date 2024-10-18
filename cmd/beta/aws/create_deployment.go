@@ -44,5 +44,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	l.Info("AWS deployment created successfully")
+
+	l.Info("AWS deployment created successfully")
 	return nil
 }
