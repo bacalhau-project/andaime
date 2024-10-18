@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
 )
 
@@ -29,7 +30,7 @@ type ConfigInterfacer interface {
 // AWSProvider wraps the AWS deployment functionality
 type AWSProvider struct {
 	Config    *aws.Config
-	EC2Client EC2Clienter
+	EC2Client awsinterfaces.EC2Clienter
 }
 
 var ubuntuAMICache = make(map[string]string)
@@ -45,10 +46,7 @@ func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
-	ec2Client, err := NewEC2Client(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
-	}
+	ec2Client := ec2.NewFromConfig(awsConfig)
 
 	return &AWSProvider{
 		Config:    &awsConfig,
