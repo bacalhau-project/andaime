@@ -83,7 +83,7 @@ type EC2Clienter interface {
 
 // NewAWSProviderFunc is a variable holding the function that instantiates a new AWSProvider.
 // By default, it points to a function that creates a new EC2 client and returns a new AWSProvider instance.
-var NewAWSProviderFunc AWSProviderFunc = func(ctx context.Context) (AWSProviderer, error) {
+var NewAWSProviderFunc AWSProviderFunc = func(ctx context.Context) (awsinterfaces.AWSProviderer, error) {
 	log := logger.Get()
 	client, err := NewEC2Client(ctx)
 	if err != nil {
@@ -98,7 +98,7 @@ var NewAWSProviderFunc AWSProviderFunc = func(ctx context.Context) (AWSProvidere
 	return awsProvider, nil
 }
 
-var MockAWSProviderFunc AWSProviderFunc = func(ctx context.Context) (AWSProviderer, error) {
+var MockAWSProviderFunc AWSProviderFunc = func(ctx context.Context) (awsinterfaces.AWSProviderer, error) {
 	mockAWSProvider := new(MockAWSProvider)
 	mockAWSProvider.On("GetEC2Client").Return(&ec2.Client{}, nil)
 	mockAWSProvider.On("GetConfig").Return(&aws.Config{})
@@ -118,7 +118,7 @@ func (m *MockAWSProvider) GetEC2Client() (EC2Clienter, error) {
 }
 
 // SetEC2Client mocks the SetEC2Client method
-func (m *MockAWSProvider) SetEC2Client(client EC2Clienter) {
+func (m *MockAWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
 	m.EC2Client = client
 }
 
