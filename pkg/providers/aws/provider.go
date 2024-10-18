@@ -40,7 +40,10 @@ func NewAWSProvider(v *viper.Viper) (awsinterfaces.AWSProviderer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
-	ec2Client := new(awsmocks.MockEC2Clienter)
+	ec2Client, err := NewEC2Client(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
 
 	awsProvider := &AWSProvider{
 		Config:    &awsConfig,

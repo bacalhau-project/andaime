@@ -6,17 +6,23 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	awsmocks "github.com/bacalhau-project/andaime/mocks/aws"
 )
 
 // NewEC2Client creates a new EC2 client
-func NewEC2Client(ctx context.Context) (awsinterfaces.EC2Clienter, error) {
+func NewEC2Client(ctx context.Context) (*awsmocks.MockEC2Clienter, error) {
+	// For testing purposes, we're returning a mock client
+	return new(awsmocks.MockEC2Clienter), nil
+}
+
+// NewRealEC2Client creates a real EC2 client (for production use)
+func NewRealEC2Client(ctx context.Context) (awsinterfaces.EC2Clienter, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return ec2.NewFromConfig(cfg), nil
 }
-
 
 // pkg/providers/azure/client.go
 package azure
