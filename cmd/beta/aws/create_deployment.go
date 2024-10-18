@@ -22,7 +22,8 @@ var CreateDeploymentCmd = &cobra.Command{
 }
 
 func init() {
-	CreateDeploymentCmd.Flags().StringVar(&instanceTypeFlag, "instance-type", "EC2", "Type of instance to deploy (EC2 or Spot)")
+	CreateDeploymentCmd.Flags().
+		StringVar(&instanceTypeFlag, "instance-type", "EC2", "Type of instance to deploy (EC2 or Spot)")
 }
 
 //nolint:unused
@@ -34,12 +35,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
 
-	instanceType := aws_provider.EC2Instance
-	if instanceTypeFlag == "Spot" {
-		instanceType = aws_provider.SpotInstance
-	}
-
-	if err := awsProvider.CreateDeployment(cmd.Context(), instanceType); err != nil {
+	if err := awsProvider.CreateDeployment(cmd.Context()); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}
 
