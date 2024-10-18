@@ -10,6 +10,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	aws_data "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
@@ -52,6 +53,11 @@ func NewAWSProvider(v *viper.Viper) (awsinterfaces.AWSProviderer, error) {
 	}
 
 	return awsProvider, nil
+}
+
+// Destroy destroys the AWSProvider instance
+func (p *AWSProvider) Destroy(ctx context.Context) error {
+	return nil
 }
 
 // ConfigWrapper wraps the AWS config to implement ConfigInterface
@@ -117,25 +123,18 @@ func (p *AWSProvider) CreateDeployment(
 	return nil
 }
 
-func (p *AWSProvider) validateRegion(region string) error {
-	if region == "" {
-		return fmt.Errorf("AWS region is not specified in the configuration")
-	}
-	return nil
-}
-
-func (p *AWSProvider) createEC2InstanceInput(imageId *string) *ec2.RunInstancesInput {
+func (p *AWSProvider) createEC2InstanceInput(imageID *string) *ec2.RunInstancesInput {
 	return &ec2.RunInstancesInput{
-		ImageId:      imageId,
+		ImageId:      imageID,
 		InstanceType: types.InstanceTypeT3Micro,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
 	}
 }
 
-func (p *AWSProvider) createSpotInstanceInput(imageId *string) *ec2.RunInstancesInput {
+func (p *AWSProvider) createSpotInstanceInput(imageID *string) *ec2.RunInstancesInput {
 	return &ec2.RunInstancesInput{
-		ImageId:      imageId,
+		ImageId:      imageID,
 		InstanceType: types.InstanceTypeT3Micro,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
@@ -170,8 +169,6 @@ func (p *AWSProvider) ListDeployments(ctx context.Context) ([]*types.Instance, e
 	if err != nil {
 		return nil, err
 	}
-
-	// Add any additional filtering or processing of instances here if needed
 
 	return instances, nil
 }
@@ -276,4 +273,36 @@ func (p *AWSProvider) GetLatestUbuntuImage(
 	}
 
 	if latestImage == nil {
-		return nil, fmt.Errorf("failed to fin
+		return nil, fmt.Errorf("failed to find latest Ubuntu image")
+	}
+
+	cacheLock.Lock()
+	ubuntuAMICache[p.Region] = *latestImage.ImageId
+	cacheLock.Unlock()
+
+	return latestImage, nil
+}
+
+func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (string, error) {
+	input := &ec2.DescribeInstancesInput{
+		InstanceIds: []string{instanceID},
+	}
+	result, err := p.EC2Client.DescribeInstances(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe instances: %w", err)
+	}
+	return *result.Reservations[0].Instances[0].PublicIpAddress, nil
+}
+
+func (p *AWSProvider) ValidateMachineType(
+	ctx context.Context,
+	location, instanceType string,
+) (bool, error) {
+	valid := aws_data.IsValidAWSInstanceType(location, instanceType)
+
+	if !valid {
+		return false, fmt.Errorf("invalid machine type: %s", instanceType)
+	}
+
+	return valid, nil
+}

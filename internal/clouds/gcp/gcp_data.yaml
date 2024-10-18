@@ -292,6 +292,14 @@ locations:
   - c3d-highcpu-60
   - c3d-highcpu-8
   - c3d-highcpu-90
+  - c3d-standard-16
+  - c3d-standard-180
+  - c3d-standard-30
+  - c3d-standard-360
+  - c3d-standard-4
+  - c3d-standard-60
+  - c3d-standard-8
+  - c3d-standard-90
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -611,6 +619,14 @@ locations:
   - c3d-highcpu-60
   - c3d-highcpu-8
   - c3d-highcpu-90
+  - c3d-standard-16
+  - c3d-standard-180
+  - c3d-standard-30
+  - c3d-standard-360
+  - c3d-standard-4
+  - c3d-standard-60
+  - c3d-standard-8
+  - c3d-standard-90
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -2469,6 +2485,27 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-8
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -6789,6 +6826,7 @@ locations:
   - c4-standard-48
   - c4-standard-8
   - c4-standard-96
+  - ct5p-hightpu-4t
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -7459,6 +7497,12 @@ locations:
   - c2d-standard-4
   - c2d-standard-56
   - c2d-standard-8
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - c3d-highcpu-16
   - c3d-highcpu-180
   - c3d-highcpu-30
@@ -8073,6 +8117,27 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-8
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -9666,6 +9731,12 @@ locations:
   - t2d-standard-60
   - t2d-standard-8
   europe-west9-b:
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -10746,6 +10817,11 @@ locations:
   - e2-standard-32
   - e2-standard-4
   - e2-standard-8
+  - m3-megamem-128
+  - m3-megamem-64
+  - m3-ultramem-128
+  - m3-ultramem-32
+  - m3-ultramem-64
   - n2-highcpu-16
   - n2-highcpu-2
   - n2-highcpu-32
@@ -11394,6 +11470,12 @@ locations:
   - c3-highcpu-44
   - c3-highcpu-8
   - c3-highcpu-88
+  - c3-standard-176
+  - c3-standard-22
+  - c3-standard-4
+  - c3-standard-44
+  - c3-standard-8
+  - c3-standard-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -15778,6 +15860,8 @@ locations:
   - t2d-standard-48
   - t2d-standard-60
   - t2d-standard-8
+  - z3-highmem-176
+  - z3-highmem-88
   us-east5-c:
   - c2-standard-16
   - c2-standard-30
@@ -15985,6 +16069,27 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-8
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -16311,6 +16416,27 @@ locations:
   - n2d-standard-8
   - n2d-standard-80
   - n2d-standard-96
+  - n4-highcpu-16
+  - n4-highcpu-2
+  - n4-highcpu-32
+  - n4-highcpu-4
+  - n4-highcpu-48
+  - n4-highcpu-64
+  - n4-highcpu-8
+  - n4-highcpu-80
+  - n4-highmem-16
+  - n4-highmem-2
+  - n4-highmem-32
+  - n4-highmem-4
+  - n4-highmem-8
+  - n4-standard-16
+  - n4-standard-2
+  - n4-standard-32
+  - n4-standard-4
+  - n4-standard-48
+  - n4-standard-64
+  - n4-standard-8
+  - n4-standard-80
   - t2d-standard-1
   - t2d-standard-16
   - t2d-standard-2
@@ -16934,6 +17060,12 @@ locations:
   - c2-standard-4
   - c2-standard-60
   - c2-standard-8
+  - c3-highcpu-176
+  - c3-highcpu-22
+  - c3-highcpu-4
+  - c3-highcpu-44
+  - c3-highcpu-8
+  - c3-highcpu-88
   - e2-highcpu-16
   - e2-highcpu-2
   - e2-highcpu-32
@@ -17941,9 +18073,9 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/centos-cloud/global/licenses/centos-stream-9
   architecture: X86_64
-- name: cos-101-17162-528-57
+- name: cos-101-17162-528-61
   family: cos-101-lts
-  description: 'Google, Container-Optimized OS, 101-17162.528.57 LTS, Kernel: COS-5.15.161
+  description: 'Google, Container-Optimized OS, 101-17162.528.61 LTS, Kernel: COS-5.15.161
     Kubernetes: 1.23.10 Docker: 20.10.27 Family: cos-101-lts'
   diskSizeGb: "10"
   licenses:
@@ -17951,9 +18083,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-105-17412-448-61
+- name: cos-105-17412-448-66
   family: cos-105-lts
-  description: 'Google, Container-Optimized OS, 105-17412.448.61 LTS, Kernel: COS-5.15.163
+  description: 'Google, Container-Optimized OS, 105-17412.448.66 LTS, Kernel: COS-5.15.163
     Kubernetes: 1.25.5 Docker: 23.0.3 Family: cos-105-lts'
   diskSizeGb: "10"
   licenses:
@@ -17961,9 +18093,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-109-17800-309-84
+- name: cos-109-17800-309-88
   family: cos-109-lts
-  description: 'Google, Container-Optimized OS, 109-17800.309.84 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 109-17800.309.88 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.27.3 Docker: 24.0.9 Family: cos-109-lts'
   diskSizeGb: "10"
   licenses:
@@ -17971,9 +18103,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-113-18244-151-96
+- name: cos-113-18244-151-100
   family: cos-113-lts
-  description: 'Google, Container-Optimized OS, 113-18244.151.96 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 113-18244.151.100 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.29.1 Docker: 24.0.9 Family: cos-113-lts'
   diskSizeGb: "10"
   licenses:
@@ -17981,9 +18113,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-117-18613-0-76
+- name: cos-117-18613-0-79
   family: cos-117-lts
-  description: 'Google, Container-Optimized OS, 117-18613.0.76 LTS, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.79 LTS, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-117-lts'
   diskSizeGb: "10"
   licenses:
@@ -18351,9 +18483,9 @@ diskImages:
   licenses:
   - https://www.googleapis.com/compute/v1/projects/ubuntu-os-pro-cloud/global/licenses/ubuntu-pro-fips-1804-lts
   architecture: X86_64
-- name: cos-arm64-101-17162-528-57
+- name: cos-arm64-101-17162-528-61
   family: cos-arm64-101-lts
-  description: 'Google, Container-Optimized OS, 101-17162.528.57 LTS, Kernel: COS-5.15.161
+  description: 'Google, Container-Optimized OS, 101-17162.528.61 LTS, Kernel: COS-5.15.161
     Kubernetes: 1.23.10 Docker: 20.10.27 Family: cos-arm64-101-lts'
   diskSizeGb: "10"
   licenses:
@@ -18361,9 +18493,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-105-17412-448-61
+- name: cos-arm64-105-17412-448-66
   family: cos-arm64-105-lts
-  description: 'Google, Container-Optimized OS, 105-17412.448.61 LTS, Kernel: COS-5.15.163
+  description: 'Google, Container-Optimized OS, 105-17412.448.66 LTS, Kernel: COS-5.15.163
     Kubernetes: 1.25.5 Docker: 23.0.3 Family: cos-arm64-105-lts'
   diskSizeGb: "10"
   licenses:
@@ -18371,9 +18503,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-109-17800-309-84
+- name: cos-arm64-109-17800-309-88
   family: cos-arm64-109-lts
-  description: 'Google, Container-Optimized OS, 109-17800.309.84 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 109-17800.309.88 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.27.3 Docker: 24.0.9 Family: cos-arm64-109-lts'
   diskSizeGb: "10"
   licenses:
@@ -18381,9 +18513,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-113-18244-151-96
+- name: cos-arm64-113-18244-151-100
   family: cos-arm64-113-lts
-  description: 'Google, Container-Optimized OS, 113-18244.151.96 LTS, Kernel: COS-6.1.100
+  description: 'Google, Container-Optimized OS, 113-18244.151.100 LTS, Kernel: COS-6.1.100
     Kubernetes: 1.29.1 Docker: 24.0.9 Family: cos-arm64-113-lts'
   diskSizeGb: "10"
   licenses:
@@ -18391,9 +18523,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-117-18613-0-76
+- name: cos-arm64-117-18613-0-79
   family: cos-arm64-117-lts
-  description: 'Google, Container-Optimized OS, 117-18613.0.76 LTS, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.79 LTS, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-117-lts'
   diskSizeGb: "10"
   licenses:
@@ -18401,9 +18533,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-beta-117-18613-0-76
+- name: cos-arm64-beta-117-18613-0-79
   family: cos-arm64-beta
-  description: 'Google, Container-Optimized OS, 117-18613.0.76 beta, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.79 beta, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-beta'
   diskSizeGb: "10"
   licenses:
@@ -18508,9 +18640,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2016-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2019-dc
   architecture: X86_64
-- name: cos-arm64-dev-121-18699-0-0
+- name: cos-arm64-dev-121-18712-0-0
   family: cos-arm64-dev
-  description: 'Google, Container-Optimized OS, 121-18699.0.0 dev, Kernel: COS-6.6.52
+  description: 'Google, Container-Optimized OS, 121-18712.0.0 dev, Kernel: COS-6.6.54
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-dev'
   diskSizeGb: "10"
   licenses:
@@ -18518,9 +18650,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-arm64-stable-117-18613-0-76
+- name: cos-arm64-stable-117-18613-0-79
   family: cos-arm64-stable
-  description: 'Google, Container-Optimized OS, 117-18613.0.76 stable, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.79 stable, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-arm64-stable'
   diskSizeGb: "10"
   licenses:
@@ -18528,9 +18660,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: ARM64
-- name: cos-beta-117-18613-0-76
+- name: cos-beta-117-18613-0-79
   family: cos-beta
-  description: 'Google, Container-Optimized OS, 117-18613.0.76 beta, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.79 beta, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-beta'
   diskSizeGb: "10"
   licenses:
@@ -18538,9 +18670,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/cos-cloud/global/licenses/cos-pcid
   - https://www.googleapis.com/compute/v1/projects/cos-cloud-shielded/global/licenses/shielded-cos
   architecture: X86_64
-- name: cos-dev-121-18699-0-0
+- name: cos-dev-121-18712-0-0
   family: cos-dev
-  description: 'Google, Container-Optimized OS, 121-18699.0.0 dev, Kernel: COS-6.6.52
+  description: 'Google, Container-Optimized OS, 121-18712.0.0 dev, Kernel: COS-6.6.54
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-dev'
   diskSizeGb: "10"
   licenses:
@@ -18637,9 +18769,9 @@ diskImages:
   - https://www.googleapis.com/compute/v1/projects/windows-sql-cloud/global/licenses/sql-server-2017-enterprise
   - https://www.googleapis.com/compute/v1/projects/windows-cloud/global/licenses/windows-server-2016-dc
   architecture: X86_64
-- name: cos-stable-117-18613-0-76
+- name: cos-stable-117-18613-0-79
   family: cos-stable
-  description: 'Google, Container-Optimized OS, 117-18613.0.76 stable, Kernel: COS-6.6.44
+  description: 'Google, Container-Optimized OS, 117-18613.0.79 stable, Kernel: COS-6.6.44
     Kubernetes: 1.30.3 Docker: 24.0.9 Family: cos-stable'
   diskSizeGb: "10"
   licenses:

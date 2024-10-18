@@ -28,7 +28,9 @@ autocertcachepath
 autorest
 awsconfig
 awserr
+awsinterfaces
 awsprovider
+AWSVM
 azcore
 azidentity
 azurepackage
@@ -55,6 +57,7 @@ circularbuffer
 clientapi
 Clienter
 clienttls
+closedchan
 cloudasset
 cloudassetpb
 cloudbilling
@@ -119,6 +122,7 @@ Fdump
 featureflags
 Fini
 forbidigo
+Funcer
 funcs
 funlen
 gcloud
@@ -242,6 +246,7 @@ orchestratorip
 overaskforbidsfactor
 panicnil
 PBIP
+pdone
 Pollerer
 practise
 predeclared

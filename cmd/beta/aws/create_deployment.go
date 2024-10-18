@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -35,9 +36,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
 
-	instanceType := aws_provider.EC2Instance // Default to EC2 instance
+	instanceType := aws_interfaces.EC2Instance // Default to EC2 instance
 	if instanceTypeFlag == "Spot" {
-		instanceType = aws_provider.SpotInstance
+		instanceType = aws_interfaces.SpotInstance
 	}
 	if err := awsProvider.CreateDeployment(cmd.Context(), instanceType); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)

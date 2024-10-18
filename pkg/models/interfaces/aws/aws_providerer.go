@@ -14,10 +14,13 @@ const (
 )
 
 type AWSProviderer interface {
-	GetEC2Client() (EC2Clienter, error)
-	SetEC2Client(EC2Clienter)
 	CreateDeployment(ctx context.Context, instanceType InstanceType) error
 	ListDeployments(ctx context.Context) ([]*types.Instance, error)
 	TerminateDeployment(ctx context.Context) error
 	GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error)
+	GetEC2Client() (EC2Clienter, error)
+	SetEC2Client(client EC2Clienter)
+	Destroy(ctx context.Context) error
+	GetVMExternalIP(ctx context.Context, instanceID string) (string, error)
+	ValidateMachineType(ctx context.Context, location, instanceType string) (bool, error)
 }

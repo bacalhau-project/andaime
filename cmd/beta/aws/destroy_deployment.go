@@ -29,7 +29,7 @@ var destroyDeploymentCmd = &cobra.Command{
 			return fmt.Errorf("failed to initialize AWS provider: %w", err)
 		}
 
-		err = awsProvider.DestroyDeployment(cmd.Context())
+		err = awsProvider.Destroy(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("failed to destroy deployment: %w", err)
 		}

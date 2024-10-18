@@ -8,7 +8,7 @@ import (
 
 var (
 	goroutineCounter uint64
-	goroutineMap    sync.Map
+	goroutineMap     sync.Map
 )
 
 // RegisterGoroutine registers a new goroutine with a given name and returns a unique ID
