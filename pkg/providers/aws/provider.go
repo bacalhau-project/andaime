@@ -191,7 +191,7 @@ func (p *AWSProvider) terminateInstances(ctx context.Context, instanceIDs []stri
 	return nil
 }
 
-func (p *AWSProvider) DestroyDeployment(ctx context.Context) error {
+func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
 	instances, err := p.describeInstances(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list instances: %w", err)
