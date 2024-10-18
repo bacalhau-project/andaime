@@ -7,20 +7,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 )
 
 // AWSProviderFunc is a function type that returns an AWSProviderInterface
-type AWSProviderFunc func(ctx context.Context) (AWSProviderer, error)
-
-type AWSProviderer interface {
-	GetEC2Client() (EC2Clienter, error)
-	SetEC2Client(EC2Clienter)
-
-	GetLatestUbuntuImage(context.Context, string) (*types.Image, error)
-}
+type AWSProviderFunc func(ctx context.Context) (awsinterfaces.AWSProviderer, error)
 
 type EC2Clienter interface {
 	DescribeImages(
@@ -133,6 +127,21 @@ func (m *MockAWSProvider) GetLatestUbuntuImage(
 	region string,
 ) (*types.Image, error) {
 	return &types.Image{}, nil
+}
+
+func (m *MockAWSProvider) CreateDeployment(ctx context.Context, instanceType awsinterfaces.InstanceType) error {
+	args := m.Called(ctx, instanceType)
+	return args.Error(0)
+}
+
+func (m *MockAWSProvider) ListDeployments(ctx context.Context) ([]*types.Instance, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]*types.Instance), args.Error(1)
+}
+
+func (m *MockAWSProvider) TerminateDeployment(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
 }
 
 type MockEC2Client struct {

@@ -10,24 +10,9 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
-)
-
-type AWSProviderer interface {
-	GetEC2Client() (EC2Clienter, error)
-	SetEC2Client(EC2Clienter)
-	CreateDeployment(ctx context.Context, instanceType InstanceType) error
-	ListDeployments(ctx context.Context) ([]*types.Instance, error)
-	TerminateDeployment(ctx context.Context) error
-	GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error)
-}
-
-type InstanceType string
-
-const (
-	EC2Instance  InstanceType = "EC2"
-	SpotInstance InstanceType = "Spot"
 )
 
 // ConfigInterface defines the interface for configuration operations
@@ -45,7 +30,7 @@ var ubuntuAMICache = make(map[string]string)
 var cacheLock sync.RWMutex
 
 // NewAWSProvider creates a new AWSProvider instance
-func NewAWSProvider(v *viper.Viper) (AWSProviderer, error) {
+func NewAWSProvider(v *viper.Viper) (awsinterfaces.AWSProviderer, error) {
 	ctx := context.Background()
 	region := v.GetString("aws.region")
 	awsConfig, err := awsconfig.LoadDefaultConfig(
