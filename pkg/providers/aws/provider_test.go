@@ -24,7 +24,7 @@ func TestCreateDeployment(t *testing.T) {
 	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)
 
-	err = provider.CreateDeployment(context.Background())
+	err = provider.CreateDeployment(context.Background(), EC2Instance)
 	assert.NoError(t, err)
 }
 
@@ -46,7 +46,7 @@ func TestListInstances(t *testing.T) {
 	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)
 
-	instances, err := provider.ListInstances(context.Background())
+	instances, err := provider.ListDeployments(context.Background())
 	assert.NoError(t, err)
 	assert.NotNil(t, instances)
 }
