@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
 )
 
@@ -25,16 +24,6 @@ const (
 // ConfigInterface defines the interface for configuration operations
 type ConfigInterfacer interface {
 	GetString(key string) string
-}
-
-// AWSProvider wraps the AWS deployment functionality
-type AWSProviderer interface {
-	GetEC2Client() (EC2Clienter, error)
-	SetEC2Client(client EC2Clienter)
-	CreateDeployment(ctx context.Context, instanceType InstanceType) error
-	ListDeployments(ctx context.Context) ([]*types.Instance, error)
-	TerminateDeployment(ctx context.Context) error
-	GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error)
 }
 
 type AWSProvider struct {
