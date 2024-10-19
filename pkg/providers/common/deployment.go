@@ -142,15 +142,18 @@ func PrepareDeployment(
 		)
 	}
 
-	var defaultCountPerZone int
+	var defaultCountPerLocation int
 	var defaultDiskSizeGB int
 
 	if provider == models.DeploymentTypeAzure {
-		defaultCountPerZone = deployment.Azure.DefaultCountPerZone
+		defaultCountPerLocation = deployment.Azure.DefaultCountPerZone
 		defaultDiskSizeGB = int(deployment.Azure.DefaultDiskSizeGB)
 	} else if provider == models.DeploymentTypeGCP {
-		defaultCountPerZone = deployment.GCP.DefaultCountPerZone
+		defaultCountPerLocation = deployment.GCP.DefaultCountPerZone
 		defaultDiskSizeGB = int(deployment.GCP.DefaultDiskSizeGB)
+	} else if provider == models.DeploymentTypeAWS {
+		defaultCountPerLocation = deployment.AWS.DefaultCountPerRegion
+		defaultDiskSizeGB = int(deployment.AWS.DefaultDiskSizeGB)
 	}
 
 	orchestratorMachineName := ""
@@ -176,8 +179,8 @@ func PrepareDeployment(
 				parsedCount, err := strconv.Atoi(countValue)
 				if err != nil {
 					l.Infof("No count found for machine %s, setting to default: %d", machine.Name,
-						defaultCountPerZone)
-					parsedCount = defaultCountPerZone
+						defaultCountPerLocation)
+					parsedCount = defaultCountPerLocation
 				}
 				count = parsedCount
 			default:
@@ -185,8 +188,8 @@ func PrepareDeployment(
 				parsedCount, err := strconv.Atoi(countStr)
 				if err != nil {
 					l.Infof("No count found for machine %s, setting to default: %d", machine.Name,
-						defaultCountPerZone)
-					parsedCount = defaultCountPerZone
+						defaultCountPerLocation)
+					parsedCount = defaultCountPerLocation
 				}
 				count = parsedCount
 			}

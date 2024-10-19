@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
-	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -17,6 +16,8 @@ import (
 func TestNewAWSProvider(t *testing.T) {
 	v := viper.New()
 	v.Set("aws.region", "us-west-2")
+	v.Set("aws.subnet_id", "subnet-1234567890abcdef0")
+	v.Set("aws.vpc_id", "vpc-1234567890abcdef0")
 
 	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)
@@ -54,11 +55,7 @@ func TestCreateDeployment(t *testing.T) {
 		}, nil)
 
 	// Test EC2 instance deployment
-	err := provider.CreateDeployment(ctx, awsinterfaces.EC2Instance)
-	assert.NoError(t, err)
-
-	// Test Spot instance deployment
-	err = provider.CreateDeployment(ctx, awsinterfaces.SpotInstance)
+	err := provider.CreateDeployment(ctx)
 	assert.NoError(t, err)
 
 	mockEC2Client.AssertExpectations(t)
@@ -128,34 +125,28 @@ func TestTerminateDeployment(t *testing.T) {
 }
 
 func TestGetLatestUbuntuImage(t *testing.T) {
-	mockEC2Client := new(mocks.MockEC2Clienter)
-	provider := &AWSProvider{
-		EC2Client: mockEC2Client,
-		Region:    "us-west-2",
-	}
+	v := viper.New()
+	v.Set("aws.region", "us-west-2")
+	v.Set("aws.subnet_id", "subnet-1234567890abcdef0")
+	v.Set("aws.vpc_id", "vpc-1234567890abcdef0")
+
+	provider, err := NewAWSProvider(v)
+	assert.NoError(t, err)
 
 	ctx := context.Background()
-
-	// Mock DescribeImages
-	mockEC2Client.On("DescribeImages", mock.Anything, mock.Anything).
-		Return(&ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:      aws.String("ami-1234567890abcdef0"),
-					CreationDate: aws.String("2024-02-01T00:00:00Z"),
-				},
-			},
-		}, nil)
 
 	image, err := provider.GetLatestUbuntuImage(ctx, "us-west-2")
 	assert.NoError(t, err)
 	assert.NotNil(t, image)
-
-	mockEC2Client.AssertExpectations(t)
 }
 
 func TestValidateMachineType(t *testing.T) {
-	provider, err := NewAWSProvider(viper.New())
+	v := viper.New()
+	v.Set("aws.region", "us-west-2")
+	v.Set("aws.subnet_id", "subnet-1234567890abcdef0")
+	v.Set("aws.vpc_id", "vpc-1234567890abcdef0")
+
+	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)
 
 	ctx := context.Background()

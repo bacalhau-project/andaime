@@ -27,6 +27,7 @@ autocert
 autocertcachepath
 autorest
 awsconfig
+AWSEC
 awserr
 awsinterfaces
 awsprovider
@@ -362,6 +363,7 @@ VMSS
 vnet
 vnets
 VPCCIDR
+VPCID
 Warnf
 webui
 westeurope

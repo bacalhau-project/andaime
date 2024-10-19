@@ -25,17 +25,17 @@ func (_m *MockAWSProviderer) EXPECT() *MockAWSProviderer_Expecter {
 	return &MockAWSProviderer_Expecter{mock: &_m.Mock}
 }
 
-// CreateDeployment provides a mock function with given fields: ctx, instanceType
-func (_m *MockAWSProviderer) CreateDeployment(ctx context.Context, instanceType aws.InstanceType) error {
-	ret := _m.Called(ctx, instanceType)
+// CreateDeployment provides a mock function with given fields: ctx
+func (_m *MockAWSProviderer) CreateDeployment(ctx context.Context) error {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateDeployment")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, aws.InstanceType) error); ok {
-		r0 = rf(ctx, instanceType)
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -50,14 +50,13 @@ type MockAWSProviderer_CreateDeployment_Call struct {
 
 // CreateDeployment is a helper method to define mock.On call
 //   - ctx context.Context
-//   - instanceType aws.InstanceType
-func (_e *MockAWSProviderer_Expecter) CreateDeployment(ctx interface{}, instanceType interface{}) *MockAWSProviderer_CreateDeployment_Call {
-	return &MockAWSProviderer_CreateDeployment_Call{Call: _e.mock.On("CreateDeployment", ctx, instanceType)}
+func (_e *MockAWSProviderer_Expecter) CreateDeployment(ctx interface{}) *MockAWSProviderer_CreateDeployment_Call {
+	return &MockAWSProviderer_CreateDeployment_Call{Call: _e.mock.On("CreateDeployment", ctx)}
 }
 
-func (_c *MockAWSProviderer_CreateDeployment_Call) Run(run func(ctx context.Context, instanceType aws.InstanceType)) *MockAWSProviderer_CreateDeployment_Call {
+func (_c *MockAWSProviderer_CreateDeployment_Call) Run(run func(ctx context.Context)) *MockAWSProviderer_CreateDeployment_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(aws.InstanceType))
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -67,7 +66,7 @@ func (_c *MockAWSProviderer_CreateDeployment_Call) Return(_a0 error) *MockAWSPro
 	return _c
 }
 
-func (_c *MockAWSProviderer_CreateDeployment_Call) RunAndReturn(run func(context.Context, aws.InstanceType) error) *MockAWSProviderer_CreateDeployment_Call {
+func (_c *MockAWSProviderer_CreateDeployment_Call) RunAndReturn(run func(context.Context) error) *MockAWSProviderer_CreateDeployment_Call {
 	_c.Call.Return(run)
 	return _c
 }

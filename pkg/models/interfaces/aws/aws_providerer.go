@@ -6,15 +6,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
-type InstanceType string
-
-const (
-	EC2Instance  InstanceType = "EC2"
-	SpotInstance InstanceType = "Spot"
-)
-
 type AWSProviderer interface {
-	CreateDeployment(ctx context.Context, instanceType InstanceType) error
+	CreateDeployment(ctx context.Context) error
 	ListDeployments(ctx context.Context) ([]*types.Instance, error)
 	TerminateDeployment(ctx context.Context) error
 	GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error)

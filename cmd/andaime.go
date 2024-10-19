@@ -1842,7 +1842,7 @@ func ProcessFlags() {
 }
 
 // Update the andaimeMain function to remove references to the command variable
-func andaimeMain(cmd *cobra.Command, args []string) {
+func andaimeMain(cmd *cobra.Command, _ []string) {
 	fmt.Println("\n== Andaime ==")
 	fmt.Println("=======================")
 	fmt.Println("")

@@ -8,16 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List AWS resources",
-	Long:  `List various AWS resources including deployments.`,
-}
-
-//nolint:gochecknoinits
-func init() {
-	listCmd.AddCommand(listDeploymentsCmd)
-	// Add more 'list' subcommands as needed
+func GetAwsListDeploymentsCmd() *cobra.Command {
+	return listDeploymentsCmd
 }
 
 var listDeploymentsCmd = &cobra.Command{

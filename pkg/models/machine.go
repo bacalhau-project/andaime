@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
@@ -30,6 +31,8 @@ type Machiner interface {
 	SetDiskImageFamily(family string)
 	GetDiskImageURL() string
 	SetDiskImageURL(url string)
+	GetImageID() string
+	SetImageID(id string)
 	GetLocation() string
 	SetLocation(location string) error
 	GetRegion() string
@@ -38,6 +41,10 @@ type Machiner interface {
 	SetPublicIP(ip string)
 	GetPrivateIP() string
 	SetPrivateIP(ip string)
+
+	// AWS Spot Market Options
+	GetSpotMarketOptions() *ec2Types.InstanceMarketOptionsRequest
+	SetSpotMarketOptions(options *ec2Types.InstanceMarketOptionsRequest)
 
 	// SSH related
 	GetSSHUser() string
@@ -122,6 +129,7 @@ type Machine struct {
 	DiskSizeGB      int
 	DiskImageFamily string
 	DiskImageURL    string
+	ImageID         string
 	ElapsedTime     time.Duration
 	Orchestrator    bool
 	OrchestratorIP  string
@@ -165,6 +173,9 @@ type CloudSpecificInfo struct {
 
 	// Both GCP and AWS
 	Region string
+
+	// AWS specific
+	SpotMarketOptions *ec2Types.InstanceMarketOptionsRequest
 }
 
 func NewMachine(
@@ -785,6 +796,28 @@ func (mach *Machine) GetDiskImageFamily() string {
 
 func (mach *Machine) SetDiskImageFamily(family string) {
 	mach.DiskImageFamily = family
+}
+
+func (mach *Machine) GetSpotMarketOptions() *ec2Types.InstanceMarketOptionsRequest {
+	if mach.CloudSpecific == (CloudSpecificInfo{}) {
+		return nil
+	}
+	return mach.CloudSpecific.SpotMarketOptions
+}
+
+func (mach *Machine) SetSpotMarketOptions(options *ec2Types.InstanceMarketOptionsRequest) {
+	if mach.CloudSpecific == (CloudSpecificInfo{}) {
+		mach.CloudSpecific = CloudSpecificInfo{}
+	}
+	mach.CloudSpecific.SpotMarketOptions = options
+}
+
+func (mach *Machine) GetImageID() string {
+	return mach.ImageID
+}
+
+func (mach *Machine) SetImageID(imageID string) {
+	mach.ImageID = imageID
 }
 
 func (mach *Machine) GetDiskSizeGB() int {
