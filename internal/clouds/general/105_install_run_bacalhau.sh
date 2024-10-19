@@ -15,6 +15,7 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
+
 # Source the configuration file
 if [ -f /etc/node-config ]; then
     # shellcheck disable=SC1091
@@ -31,11 +32,28 @@ check_orchestrators() {
     fi
 }
 
+get_current_labels() {
+    local config_json
+    config_json=$(bacalhau config list --output json)
+    if [ -z "$config_json" ]; then
+        log "Error: Failed to get Bacalhau configuration"
+        return 1
+    fi
+
+    local labels
+    labels=$(echo "$config_json" | jq -r '.[] | select(.Key == "Labels") | .Value | to_entries | map("\(.key)=\(.value)") | join(",")')
+    echo "$labels"
+}
+
 start_bacalhau() {
     log "Starting Bacalhau..."
     
-    # Initialize an empty string for labels
-    LABELS=""
+    # Initialize labels with current labels from Bacalhau config
+    LABELS=$(get_current_labels)
+    if [ $? -ne 0 ]; then
+        log "Failed to get current labels. Proceeding with empty labels."
+        LABELS=""
+    fi
 
     # Read each line from node-config
     while IFS= read -r line
@@ -51,11 +69,8 @@ start_bacalhau() {
         var_value=$(echo "$var_value" | tr -d '"')
     
         # Append to LABELS string
-        LABELS="${LABELS}${var_name}=${var_value},"
+        LABELS="${LABELS:+$LABELS,}${var_name}=${var_value}"
     done < /etc/node-config
-
-    # Remove the trailing comma
-    LABELS="${LABELS%,}"
 
     # Print the labels for verification
     echo "Constructed Labels:"
