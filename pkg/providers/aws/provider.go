@@ -4,13 +4,22 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	cf_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/constructs-go/constructs/v10"
+	"github.com/aws/jsii-runtime-go"
+
 	aws_data "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -27,6 +36,10 @@ const (
 	UpdateQueueSize         = 100
 )
 
+type VpcCdkStackProps struct {
+	awscdk.StackProps
+}
+
 type AWSProvider struct {
 	Config          *aws.Config
 	EC2Client       awsinterfaces.EC2Clienter
@@ -40,6 +53,15 @@ type AWSProvider struct {
 var ubuntuAMICache = make(map[string]string)
 var cacheLock sync.RWMutex
 
+// Add this near the top of the file, after the imports
+type AWSConfig struct {
+	StackName              string
+	SubnetMask             int
+	VpcCidr                string
+	MaxAzs                 int
+	CurrentDeploymentStage string
+}
+
 func NewAWSProvider(v *viper.Viper) (awsinterfaces.AWSProviderer, error) {
 	ctx := context.Background()
 	region := v.GetString("aws.region")
@@ -52,26 +74,10 @@ func NewAWSProvider(v *viper.Viper) (awsinterfaces.AWSProviderer, error) {
 		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
 	}
 
-	var subnetID string
-	if v.IsSet("aws.subnet_id") {
-		subnetID = v.GetString("aws.subnet_id")
-	} else {
-		return nil, fmt.Errorf("subnet_id is required for AWS provider")
-	}
-
-	var vpcID string
-	if v.IsSet("aws.vpc_id") {
-		vpcID = v.GetString("aws.vpc_id")
-	} else {
-		return nil, fmt.Errorf("vpc_id is required for AWS provider")
-	}
-
 	awsProvider := &AWSProvider{
 		Config:          &awsConfig,
 		EC2Client:       ec2Client,
 		Region:          region,
-		VPCID:           vpcID,
-		SubnetID:        subnetID,
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
 	}
@@ -138,11 +144,11 @@ func (p *AWSProvider) ProcessMachinesConfig(
 			)
 		}
 
-		spotMarketOptions := &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
+		spotMarketOptions := &ec2_types.InstanceMarketOptionsRequest{
+			MarketType: ec2_types.MarketTypeSpot,
+			SpotOptions: &ec2_types.SpotMarketOptions{
+				InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
+				SpotInstanceType:             ec2_types.SpotInstanceTypeOneTime,
 			},
 		}
 
@@ -208,6 +214,148 @@ func (p *AWSProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 	}
 
 	return resources, nil
+}
+
+func (p *AWSProvider) CreateVPCAndSubnet(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	deployment := m.Deployment
+	if deployment.AWS == nil {
+		return fmt.Errorf("deployment AWS is nil")
+	}
+
+	subnetID := deployment.AWS.SubnetID
+	vpcID := deployment.AWS.VPCID
+
+	if subnetID == "" || vpcID == "" {
+		return fmt.Errorf("VPC ID or Subnet ID is not set")
+	}
+
+	// Get the account ID from environment variables
+	accountID := os.Getenv("AWS_ACCOUNT_ID")
+	if accountID == "" {
+		return fmt.Errorf("environment variable AWS_ACCOUNT_ID is not set")
+	}
+
+	if p.Region == "" {
+		return fmt.Errorf("environment variable AWS_REGION is not set")
+	}
+
+	// Create a new CDK app
+	app := awscdk.NewApp(nil)
+
+	// Create a stack
+	stack := awscdk.NewStack(app, jsii.String(deployment.Name), &awscdk.StackProps{
+		Env: &awscdk.Environment{
+			Account: jsii.String(accountID),
+			Region:  jsii.String(p.Region),
+		},
+	})
+
+	// Create VPC
+	vpc := awsec2.NewVpc(stack, jsii.String("AndaimeVPC"), &awsec2.VpcProps{
+		MaxAzs:      jsii.Number(2),
+		NatGateways: jsii.Number(1),
+		SubnetConfiguration: &[]*awsec2.SubnetConfiguration{
+			{
+				CidrMask:   jsii.Number(24),
+				Name:       jsii.String("Public"),
+				SubnetType: awsec2.SubnetType_PUBLIC,
+			},
+			{
+				CidrMask:   jsii.Number(24),
+				Name:       jsii.String("Private"),
+				SubnetType: awsec2.SubnetType_PRIVATE_WITH_NAT,
+			},
+		},
+	})
+
+	// Output VPC ID and Subnet IDs
+	awscdk.NewCfnOutput(stack, jsii.String("VpcId"), &awscdk.CfnOutputProps{
+		Value:       vpc.VpcId(),
+		Description: jsii.String("VPC ID"),
+	})
+
+	for i, subnet := range *vpc.PublicSubnets() {
+		awscdk.NewCfnOutput(
+			stack,
+			jsii.String(fmt.Sprintf("PublicSubnet%d", i)),
+			&awscdk.CfnOutputProps{
+				Value:       subnet.SubnetId(),
+				Description: jsii.String(fmt.Sprintf("Public Subnet %d ID", i)),
+			},
+		)
+	}
+
+	for i, subnet := range *vpc.PrivateSubnets() {
+		awscdk.NewCfnOutput(
+			stack,
+			jsii.String(fmt.Sprintf("PrivateSubnet%d", i)),
+			&awscdk.CfnOutputProps{
+				Value:       subnet.SubnetId(),
+				Description: jsii.String(fmt.Sprintf("Private Subnet %d ID", i)),
+			},
+		)
+	}
+
+	// Synthesize the stack to a CloudFormation template
+	cloudFormationTemplate := app.Synth(nil).
+		GetStackArtifact(jsii.String(deployment.Name)).
+		Template()
+
+	// Create CloudFormation client
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+	cfnClient := cloudformation.NewFromConfig(cfg)
+
+	// Create the CloudFormation stack
+	stackName := fmt.Sprintf("%s-VPC-Stack", deployment.Name)
+	_, err = cfnClient.CreateStack(ctx, &cloudformation.CreateStackInput{
+		StackName:    aws.String(stackName),
+		TemplateBody: aws.String(cloudFormationTemplate.(string)),
+		Capabilities: []cf_types.Capability{cf_types.CapabilityCapabilityIam},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create CloudFormation stack: %w", err)
+	}
+
+	// Wait for the stack to be created
+	waiter := cloudformation.NewStackCreateCompleteWaiter(cfnClient)
+	maxWaitTime := 30 * time.Minute
+	if err := waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
+		StackName: aws.String(stackName),
+	}, maxWaitTime); err != nil {
+		return fmt.Errorf("failed waiting for stack creation: %w", err)
+	}
+
+	// Describe the stack to get the outputs
+	describeStackOutput, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+		StackName: aws.String(stackName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to describe stack: %w", err)
+	}
+
+	if len(describeStackOutput.Stacks) == 0 {
+		return fmt.Errorf("no stack found with name %s", stackName)
+	}
+
+	// Process the outputs and update the deployment
+	for _, output := range describeStackOutput.Stacks[0].Outputs {
+		switch *output.OutputKey {
+		case "VpcId":
+			deployment.AWS.VPCID = *output.OutputValue
+		case "PublicSubnet0":
+			deployment.AWS.SubnetID = *output.OutputValue
+		}
+	}
+
+	return nil
 }
 
 func (p *AWSProvider) CreateResources(ctx context.Context) error {
@@ -297,21 +445,21 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 
 	return &ec2.RunInstancesInput{
 		ImageId:      aws.String(machine.GetImageID()),
-		InstanceType: types.InstanceType(machine.GetVMSize()),
+		InstanceType: ec2_types.InstanceType(machine.GetVMSize()),
 		MinCount:     aws.Int32(minCount),
 		MaxCount:     aws.Int32(maxCount),
 		SubnetId:     aws.String(subnetID),
-		InstanceMarketOptions: &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
+		InstanceMarketOptions: &ec2_types.InstanceMarketOptionsRequest{
+			MarketType: ec2_types.MarketTypeSpot,
+			SpotOptions: &ec2_types.SpotMarketOptions{
+				InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
+				SpotInstanceType:             ec2_types.SpotInstanceTypeOneTime,
 			},
 		},
-		TagSpecifications: []types.TagSpecification{
+		TagSpecifications: []ec2_types.TagSpecification{
 			{
-				ResourceType: types.ResourceTypeInstance,
-				Tags: []types.Tag{
+				ResourceType: ec2_types.ResourceTypeInstance,
+				Tags: []ec2_types.Tag{
 					{
 						Key:   aws.String("Name"),
 						Value: aws.String(machine.GetName()),
@@ -330,10 +478,10 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 func (p *AWSProvider) createSpotInstanceInput(
 	imageID *string,
 	instanceSize string,
-) *types.InstanceMarketOptionsRequest {
-	return &types.InstanceMarketOptionsRequest{
-		MarketType: types.MarketTypeSpot,
-		SpotOptions: &types.SpotMarketOptions{
+) *ec2_types.InstanceMarketOptionsRequest {
+	return &ec2_types.InstanceMarketOptionsRequest{
+		MarketType: ec2_types.MarketTypeSpot,
+		SpotOptions: &ec2_types.SpotMarketOptions{
 			MaxPrice: aws.String("1.00"),
 		},
 	}
@@ -391,6 +539,10 @@ func (p *AWSProvider) SetEC2Client(client awsinterfaces.EC2Clienter) {
 func (p *AWSProvider) CreateDeployment(
 	ctx context.Context,
 ) error {
+	if err := p.CreateVPCAndSubnet(ctx); err != nil {
+		return fmt.Errorf("failed to create VPC and subnet: %w", err)
+	}
+
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
@@ -419,14 +571,72 @@ func (p *AWSProvider) CreateDeployment(
 	return nil
 }
 
-func (p *AWSProvider) describeInstances(ctx context.Context) ([]*types.Instance, error) {
+func NewVpcStack(
+	scope constructs.Construct,
+	id string,
+	props *VpcCdkStackProps,
+	config *AWSConfig,
+) awscdk.Stack {
+	var sprops awscdk.StackProps
+	if props != nil {
+		sprops = props.StackProps
+	}
+	stack := awscdk.NewStack(scope, &id, &sprops)
+
+	// The code that defines your stack goes here
+	ngwNum := 0
+	subnetConfigs := []*awsec2.SubnetConfiguration{
+		{
+			Name:                jsii.String("PublicSubnet"),
+			MapPublicIpOnLaunch: jsii.Bool(true),
+			SubnetType:          awsec2.SubnetType_PUBLIC,
+			CidrMask:            jsii.Number(float64(config.SubnetMask)),
+		},
+	}
+
+	if config.CurrentDeploymentStage == "PROD" {
+		ngwNum = config.MaxAzs
+		privateSub := &awsec2.SubnetConfiguration{
+			Name:       jsii.String("PrivateSubnet"),
+			SubnetType: awsec2.SubnetType_PRIVATE_WITH_NAT,
+			CidrMask:   jsii.Number(float64(config.SubnetMask)),
+		}
+		subnetConfigs = append(subnetConfigs, privateSub)
+	}
+
+	vpc := awsec2.NewVpc(stack, jsii.String("Vpc"), &awsec2.VpcProps{
+		VpcName:             jsii.String(*stack.StackName() + "-Vpc"),
+		Cidr:                jsii.String(config.VpcCidr),
+		EnableDnsHostnames:  jsii.Bool(true),
+		EnableDnsSupport:    jsii.Bool(true),
+		MaxAzs:              jsii.Number(float64(config.MaxAzs)),
+		NatGateways:         jsii.Number(float64(ngwNum)),
+		SubnetConfiguration: &subnetConfigs,
+	})
+
+	// Tagging subnets
+	// Public subnets
+	for index, subnet := range *vpc.PublicSubnets() {
+		subnetName := *stack.StackName() + "-PublicSubnet0" + strconv.Itoa(index+1)
+		awscdk.Tags_Of(subnet).Add(jsii.String("Name"), jsii.String(subnetName), &awscdk.TagProps{})
+	}
+	// Private subnets
+	for index, subnet := range *vpc.PrivateSubnets() {
+		subnetName := *stack.StackName() + "-PrivateSubnet0" + strconv.Itoa(index+1)
+		awscdk.Tags_Of(subnet).Add(jsii.String("Name"), jsii.String(subnetName), &awscdk.TagProps{})
+	}
+
+	return stack
+}
+
+func (p *AWSProvider) describeInstances(ctx context.Context) ([]*ec2_types.Instance, error) {
 	input := &ec2.DescribeInstancesInput{}
 	result, err := p.EC2Client.DescribeInstances(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe instances: %w", err)
 	}
 
-	var instances []*types.Instance
+	var instances []*ec2_types.Instance
 	for _, reservation := range result.Reservations {
 		for i := range reservation.Instances {
 			instances = append(instances, &reservation.Instances[i])
@@ -436,7 +646,7 @@ func (p *AWSProvider) describeInstances(ctx context.Context) ([]*types.Instance,
 	return instances, nil
 }
 
-func (p *AWSProvider) ListDeployments(ctx context.Context) ([]*types.Instance, error) {
+func (p *AWSProvider) ListDeployments(ctx context.Context) ([]*ec2_types.Instance, error) {
 	instances, err := p.describeInstances(ctx)
 	if err != nil {
 		return nil, err
@@ -481,17 +691,17 @@ func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
 func (p *AWSProvider) GetLatestUbuntuImage(
 	ctx context.Context,
 	region string,
-) (*types.Image, error) {
+) (*ec2_types.Image, error) {
 	cacheLock.RLock()
 	cachedAMI, found := ubuntuAMICache[p.Region]
 	cacheLock.RUnlock()
 
 	if found {
-		return &types.Image{ImageId: aws.String(cachedAMI)}, nil
+		return &ec2_types.Image{ImageId: aws.String(cachedAMI)}, nil
 	}
 
 	input := &ec2.DescribeImagesInput{
-		Filters: []types.Filter{
+		Filters: []ec2_types.Filter{
 			{
 				Name:   aws.String("name"),
 				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"},
@@ -528,7 +738,7 @@ func (p *AWSProvider) GetLatestUbuntuImage(
 		return nil, fmt.Errorf("no Ubuntu images found")
 	}
 
-	var latestImage *types.Image
+	var latestImage *ec2_types.Image
 	var latestTime time.Time
 
 	for _, image := range result.Images {

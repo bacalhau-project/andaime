@@ -154,14 +154,22 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
+	// Create VPC and Subnet
+	if err := createVPCAndSubnet(ctx, awsProvider); err != nil {
+		return err
+	}
+
+	// Create resources
 	if err := createResources(ctx, awsProvider); err != nil {
 		return err
 	}
 
+	// Provision Bacalhau cluster
 	if err := provisionBacalhauCluster(ctx, awsProvider); err != nil {
 		return err
 	}
 
+	// Finalize deployment
 	if err := finalizeDeployment(ctx, awsProvider); err != nil {
 		return err
 	}
@@ -170,6 +178,20 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 	time.Sleep(RetryTimeout)
 	prog.Quit()
 
+	return nil
+}
+
+func createVPCAndSubnet(
+	ctx context.Context,
+	awsProvider *aws_provider.AWSProvider,
+) error {
+	if awsProvider.VPCID == "" || awsProvider.SubnetID == "" {
+		return fmt.Errorf("VPC ID or Subnet ID is not set")
+	}
+
+	if err := awsProvider.CreateVPCAndSubnet(ctx); err != nil {
+		return fmt.Errorf("failed to create VPC and subnet: %w", err)
+	}
 	return nil
 }
 

@@ -16,8 +16,6 @@ import (
 func TestNewAWSProvider(t *testing.T) {
 	v := viper.New()
 	v.Set("aws.region", "us-west-2")
-	v.Set("aws.subnet_id", "subnet-1234567890abcdef0")
-	v.Set("aws.vpc_id", "vpc-1234567890abcdef0")
 
 	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)
@@ -127,8 +125,6 @@ func TestTerminateDeployment(t *testing.T) {
 func TestGetLatestUbuntuImage(t *testing.T) {
 	v := viper.New()
 	v.Set("aws.region", "us-west-2")
-	v.Set("aws.subnet_id", "subnet-1234567890abcdef0")
-	v.Set("aws.vpc_id", "vpc-1234567890abcdef0")
 
 	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)
@@ -143,8 +139,6 @@ func TestGetLatestUbuntuImage(t *testing.T) {
 func TestValidateMachineType(t *testing.T) {
 	v := viper.New()
 	v.Set("aws.region", "us-west-2")
-	v.Set("aws.subnet_id", "subnet-1234567890abcdef0")
-	v.Set("aws.vpc_id", "vpc-1234567890abcdef0")
 
 	provider, err := NewAWSProvider(v)
 	assert.NoError(t, err)

@@ -16,4 +16,5 @@ type AWSProviderer interface {
 	Destroy(ctx context.Context) error
 	GetVMExternalIP(ctx context.Context, instanceID string) (string, error)
 	ValidateMachineType(ctx context.Context, location, instanceType string) (bool, error)
+	CreateVPCAndSubnet(ctx context.Context) error
 }

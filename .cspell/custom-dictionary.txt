@@ -26,6 +26,7 @@ authsecret
 autocert
 autocertcachepath
 autorest
+awscdk
 awsconfig
 AWSEC
 awserr
@@ -191,6 +192,7 @@ jobselectionpolicy
 jobstore
 jobtimeouts
 joho
+jsii
 keyfile
 keyvault
 lipgloss
@@ -300,6 +302,7 @@ Skus
 SNET
 southcentralus
 southeastasia
+sprops
 sqlserver
 sshbehavior
 sshclient
