@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -14,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
+	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -29,6 +29,7 @@ const (
 )
 
 type AWSProvider struct {
+	AccountID            string
 	Config               *aws.Config
 	Region               string
 	ClusterDeployer      common_interface.ClusterDeployerer
@@ -39,12 +40,17 @@ type AWSProvider struct {
 	cloudFormationClient aws_interface.CloudFormationAPIer
 }
 
-var newCloudFormationClient = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
+var NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
 	return cloudformation.NewFromConfig(cfg)
 }
 
-func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
-	region := v.GetString("aws.region")
+func NewAWSProvider(accountID string) (*AWSProvider, error) {
+	region := viper.GetString("aws.region")
+
+	if accountID == "" {
+		return nil, fmt.Errorf("account ID is required")
+	}
+
 	awsConfig, err := awsconfig.LoadDefaultConfig(
 		context.Background(),
 		awsconfig.WithRegion(region),
@@ -54,12 +60,13 @@ func NewAWSProvider(v *viper.Viper) (*AWSProvider, error) {
 	}
 
 	provider := &AWSProvider{
+		AccountID:            accountID,
 		Config:               &awsConfig,
 		Region:               region,
 		ClusterDeployer:      common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:          make(chan display.UpdateAction, UpdateQueueSize),
 		App:                  awscdk.NewApp(nil),
-		cloudFormationClient: newCloudFormationClient(awsConfig),
+		cloudFormationClient: NewCloudFormationClientFunc(awsConfig),
 	}
 
 	return provider, nil
@@ -69,62 +76,15 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) (*models.Deployment
 	return common.PrepareDeployment(ctx, models.DeploymentTypeAWS)
 }
 
+// This updates m.Deployment with machines and returns an error if any
 func (p *AWSProvider) ProcessMachinesConfig(
 	ctx context.Context,
 ) (map[string]models.Machiner, map[string]bool, error) {
-	l := logger.Get()
-	machines := make(map[string]models.Machiner)
-	locations := make(map[string]bool)
-
-	machinesConfig := viper.GetStringMap("machines")
-	if len(machinesConfig) == 0 {
-		return nil, nil, fmt.Errorf("no machines configuration found for provider aws")
+	validateMachineType := func(ctx context.Context, location, machineType string) (bool, error) {
+		return p.ValidateMachineType(ctx, location, machineType)
 	}
 
-	for machineName, machineConfig := range machinesConfig {
-		config, ok := machineConfig.(map[string]interface{})
-		if !ok {
-			return nil, nil, fmt.Errorf("invalid machine configuration for %s", machineName)
-		}
-
-		if provider, ok := config["provider"].(string); !ok || provider != "aws" {
-			continue
-		}
-
-		location, ok := config["location"].(string)
-		if !ok || location == "" {
-			return nil, nil, fmt.Errorf("location is required for AWS machine %s", machineName)
-		}
-
-		instanceType, ok := config["instance_type"].(string)
-		if !ok || instanceType == "" {
-			return nil, nil, fmt.Errorf("instance_type is required for AWS machine %s", machineName)
-		}
-
-		machine, err := models.NewMachine(
-			models.DeploymentTypeAWS,
-			machineName,
-			instanceType,
-			1,
-			models.CloudSpecificInfo{
-				Region: location,
-			},
-		)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create machine: %w", err)
-		}
-
-		machines[machineName] = machine
-		locations[location] = true
-
-		l.Info(fmt.Sprintf("Processed machine configuration for %s: %+v", machineName, machine))
-	}
-
-	if len(machines) == 0 {
-		return nil, nil, fmt.Errorf("no valid AWS machines found in configuration")
-	}
-
-	return machines, locations, nil
+	return common.ProcessMachinesConfig(models.DeploymentTypeAWS, validateMachineType)
 }
 
 func (p *AWSProvider) StartResourcePolling(ctx context.Context) error {
@@ -152,11 +112,11 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 }
 
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
-	cfnClient := newCloudFormationClient(*p.Config)
+	cfnClient := NewCloudFormationClientFunc(*p.Config)
 
 	stackProps := &awscdk.StackProps{
 		Env: &awscdk.Environment{
-			Account: jsii.String(os.Getenv("AWS_ACCOUNT_ID")),
+			Account: jsii.String(p.AccountID),
 			Region:  jsii.String(p.Region),
 		},
 	}
@@ -261,9 +221,22 @@ func (p *AWSProvider) ValidateMachineType(
 	ctx context.Context,
 	location, instanceType string,
 ) (bool, error) {
-	// Implement instance type validation using CDK or AWS SDK
-	// This is a placeholder implementation
-	return true, nil
+	if internal_aws.IsValidAWSInstanceType(location, instanceType) {
+		return true, nil
+	}
+	if location == "" {
+		location = "<NO LOCATION PROVIDED>"
+	}
+
+	if instanceType == "" {
+		instanceType = "<NO INSTANCE TYPE PROVIDED>"
+	}
+
+	return false, fmt.Errorf(
+		"invalid instance (%s) and location (%s) for AWS",
+		instanceType,
+		location,
+	)
 }
 
 func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (string, error) {

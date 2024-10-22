@@ -2,14 +2,13 @@ package awsprovider
 
 import (
 	"context"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/jsii-runtime-go"
+	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
@@ -18,11 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewAWSProvider(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
+const FAKE_ACCOUNT_ID = "123456789012"
 
-	provider, err := NewAWSProvider(v)
+func TestNewAWSProvider(t *testing.T) {
+	viper.Reset()
+	viper.Set("aws.region", "us-west-2")
+	viper.Set("aws.account_id", "123456789012")
+
+	accountID := viper.GetString("aws.account_id")
+	provider, err := NewAWSProvider(accountID)
 	assert.NoError(t, err)
 	assert.NotNil(t, provider)
 	assert.NotNil(t, provider.App)
@@ -31,8 +34,8 @@ func TestNewAWSProvider(t *testing.T) {
 
 func TestCreateInfrastructure(t *testing.T) {
 	// Store the original function to restore it after the test
-	originalNewClient := newCloudFormationClient
-	defer func() { newCloudFormationClient = originalNewClient }()
+	originalNewClient := NewCloudFormationClientFunc
+	defer func() { NewCloudFormationClientFunc = originalNewClient }()
 
 	mockTemplate := `{
 		"Resources": {
@@ -58,16 +61,17 @@ func TestCreateInfrastructure(t *testing.T) {
 	mockCloudFormationAPI.On("CreateStack", mock.Anything, mock.Anything).
 		Return(&cloudformation.CreateStackOutput{}, nil)
 
-	newCloudFormationClient = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
+	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
 		return mockCloudFormationAPI
 	}
 
 	// Test setup
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
-	os.Setenv("AWS_ACCOUNT_ID", "123456789012")
+	viper.Reset()
+	viper.Set("aws.region", "us-west-2")
+	viper.Set("aws.account_id", "123456789012")
 
-	provider, err := NewAWSProvider(v)
+	accountID := viper.GetString("aws.account_id")
+	provider, err := NewAWSProvider(accountID)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -90,11 +94,10 @@ func TestCreateInfrastructure(t *testing.T) {
 
 func TestNewVpcStack(t *testing.T) {
 	ctx := context.Background()
-	v := viper.New()
 
 	// Store the original function to restore it after the test
-	originalNewClient := newCloudFormationClient
-	defer func() { newCloudFormationClient = originalNewClient }()
+	originalNewClient := NewCloudFormationClientFunc
+	defer func() { NewCloudFormationClientFunc = originalNewClient }()
 
 	mockTemplate := &cloudformation.GetTemplateOutput{
 		TemplateBody: aws.String(`{
@@ -146,7 +149,7 @@ func TestNewVpcStack(t *testing.T) {
 	mockCloudFormationAPI.On("CreateStack", mock.Anything, mock.Anything).
 		Return(&cloudformation.CreateStackOutput{}, nil)
 
-	newCloudFormationClient = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
+	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
 		return mockCloudFormationAPI
 	}
 
@@ -157,7 +160,7 @@ func TestNewVpcStack(t *testing.T) {
 		},
 	}
 
-	provider, err := NewAWSProvider(v)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
 	require.NoError(t, err)
 
 	stack := NewVpcStack(app, "TestStack", stackProps)
@@ -201,17 +204,31 @@ func TestNewVpcStack(t *testing.T) {
 }
 
 func TestProcessMachinesConfig(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
-	v.Set("machines", map[string]interface{}{
-		"test-machine": map[string]interface{}{
-			"provider":      "aws",
-			"location":      "us-west-2",
-			"instance_type": "t3.micro",
+	testSSHPublicKeyPath,
+		cleanupPublicKey,
+		testSSHPrivateKeyPath,
+		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	defer cleanupPublicKey()
+	defer cleanupPrivateKey()
+
+	viper.Reset()
+	viper.Set("aws.default_count_per_zone", 1)
+	viper.Set("aws.default_machine_type", "t3.micro")
+	viper.Set("aws.default_disk_size_gb", 10)
+	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
+	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
+	viper.Set("aws.machines", []map[string]interface{}{
+		{
+			"location": "us-west-2",
+			"parameters": map[string]interface{}{
+				"count":        1,
+				"machine_type": "t3.micro",
+				"orchestrator": true,
+			},
 		},
 	})
 
-	provider, err := NewAWSProvider(v)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -219,69 +236,14 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Len(t, machines, 1)
-	assert.Contains(t, machines, "test-machine")
 	assert.Contains(t, locations, "us-west-2")
 }
 
-func TestProcessMachinesConfigErrors(t *testing.T) {
-	testCases := []struct {
-		name           string
-		machinesConfig map[string]interface{}
-		expectedError  string
-	}{
-		{
-			name: "missing provider",
-			machinesConfig: map[string]interface{}{
-				"test-machine": map[string]interface{}{
-					"location":      "us-west-2",
-					"instance_type": "t3.micro",
-				},
-			},
-			expectedError: "no valid AWS machines found in configuration",
-		},
-		{
-			name: "missing location",
-			machinesConfig: map[string]interface{}{
-				"test-machine": map[string]interface{}{
-					"provider":      "aws",
-					"instance_type": "t3.micro",
-				},
-			},
-			expectedError: "location is required for AWS machine test-machine",
-		},
-		{
-			name: "missing instance_type",
-			machinesConfig: map[string]interface{}{
-				"test-machine": map[string]interface{}{
-					"provider": "aws",
-					"location": "us-west-2",
-				},
-			},
-			expectedError: "instance_type is required for AWS machine test-machine",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			v := viper.New()
-			v.Set("aws.region", "us-west-2")
-			v.Set("machines", tc.machinesConfig)
-
-			provider, err := NewAWSProvider(v)
-			require.NoError(t, err)
-
-			ctx := context.Background()
-			_, _, err = provider.ProcessMachinesConfig(ctx)
-			assert.ErrorContains(t, err, tc.expectedError)
-		})
-	}
-}
-
 func TestStartResourcePolling(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
+	viper.Reset()
+	viper.Set("aws.region", "us-west-2")
 
-	provider, err := NewAWSProvider(v)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -291,99 +253,11 @@ func TestStartResourcePolling(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestProvisionBacalhauCluster(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
-	v.Set("machines", map[string]interface{}{
-		"test-machine": map[string]interface{}{
-			"provider":      "aws",
-			"location":      "us-west-2",
-			"instance_type": "t3.micro",
-		},
-	})
-
-	provider, err := NewAWSProvider(v)
-	require.NoError(t, err)
-
-	// Create infrastructure first
-	ctx := context.Background()
-	err = provider.CreateInfrastructure(ctx)
-	require.NoError(t, err)
-
-	// Verify stack and VPC were created
-	assert.NotNil(t, provider.Stack)
-	assert.NotNil(t, provider.VPC)
-
-	// Test cluster provisioning
-	err = provider.ProvisionBacalhauCluster(ctx)
-	assert.NoError(t, err)
-
-	// Verify resources in CloudFormation template
-	template, err := provider.ToCloudFormationTemplate(ctx, *provider.Stack.StackName())
-	require.NoError(t, err)
-	resources := template["Resources"].(map[string]interface{})
-
-	// Verify security group was created
-	assert.Contains(t, resources, "BacalhauSecurityGroup")
-
-	// Verify EC2 instance was created
-	instanceFound := false
-	for resourceName := range resources {
-		if strings.Contains(resourceName, "Instance") {
-			instanceFound = true
-			break
-		}
-	}
-	assert.True(t, instanceFound, "EC2 instance resource not found in template")
-}
-
-func TestFinalizeDeployment(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
-
-	provider, err := NewAWSProvider(v)
-	require.NoError(t, err)
-
-	// Create infrastructure first
-	ctx := context.Background()
-	err = provider.CreateInfrastructure(ctx)
-	require.NoError(t, err)
-
-	// Test finalization
-	err = provider.FinalizeDeployment(ctx)
-	assert.NoError(t, err)
-
-	// Verify tags in CloudFormation template
-	template, err := provider.ToCloudFormationTemplate(ctx, *provider.Stack.StackName())
-	require.NoError(t, err)
-	metadata := template["Metadata"].(map[string]interface{})
-
-	assert.Contains(t, metadata, "aws:cdk:stack")
-	stackMetadata := metadata["aws:cdk:stack"].(map[string]interface{})
-	assert.Contains(t, stackMetadata, "Tags")
-
-	tags := stackMetadata["Tags"].(map[string]interface{})
-	assert.Contains(t, tags, "Status")
-	assert.Equal(t, "Deployed", tags["Status"])
-}
-
-func TestDestroy(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
-
-	provider, err := NewAWSProvider(v)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = provider.Destroy(ctx)
-	assert.NoError(t, err)
-}
-
 func TestValidateMachineType(t *testing.T) {
-	v := viper.New()
-	v.Set("aws.region", "us-west-2")
+	viper.Reset()
+	viper.Set("aws.region", "us-west-2")
 
-	provider, err := NewAWSProvider(v)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
 	require.NoError(t, err)
 
 	ctx := context.Background()

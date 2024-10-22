@@ -188,6 +188,9 @@ func NewMachine(
 	newID := utils.CreateShortID()
 
 	if !IsValidLocation(cloudProvider, location) {
+		if location == "" {
+			location = "<NONE PROVIDED>"
+		}
 		return nil, fmt.Errorf("invalid location for %s: %s", cloudProvider, location)
 	}
 

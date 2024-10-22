@@ -63,7 +63,8 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 }
 
 func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
-	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
+	accountID := viper.GetString("aws.account_id")
+	awsProvider, err := awsprovider.NewAWSProvider(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}

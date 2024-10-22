@@ -272,7 +272,8 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 }
 
 func createAwsProvider() (*awsprovider.AWSProvider, error) {
-	provider, err := awsprovider.NewAWSProvider(viper.GetViper())
+	accountID := viper.GetString("aws.account_id")
+	provider, err := awsprovider.NewAWSProvider(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AWS provider: %w", err)
 	}
