@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/constructs-go/constructs/v10"
+	"github.com/aws/jsii-runtime-go"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -16,10 +20,6 @@ import (
 const (
 	RetryTimeout   = 2 * time.Second
 	DefaultSSHPort = 22
-)
-
-var (
-	instanceTypeFlag string
 )
 
 var createAWSDeploymentCmd = &cobra.Command{
@@ -30,8 +30,6 @@ var createAWSDeploymentCmd = &cobra.Command{
 }
 
 func GetAwsCreateDeploymentCmd() *cobra.Command {
-	createAWSDeploymentCmd.Flags().
-		StringVar(&instanceTypeFlag, "instance-type", "EC2", "Type of instance to deploy (EC2 or Spot)")
 	return createAWSDeploymentCmd
 }
 
@@ -64,17 +62,17 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func initializeAWSProvider() (*aws_provider.AWSProvider, error) {
-	awsProvider, err := aws_provider.NewAWSProvider(viper.GetViper())
+func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
+	awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
-	return awsProvider.(*aws_provider.AWSProvider), nil
+	return awsProvider, nil
 }
 
 func prepareDeployment(
 	ctx context.Context,
-	awsProvider *aws_provider.AWSProvider,
+	awsProvider *awsprovider.AWSProvider,
 ) (*models.Deployment, error) {
 	deployment, err := awsProvider.PrepareDeployment(ctx)
 	if err != nil {
@@ -84,9 +82,7 @@ func prepareDeployment(
 	machines, locations, err := awsProvider.ProcessMachinesConfig(ctx)
 	if err != nil {
 		if err.Error() == "no machines configuration found for provider aws" {
-			fmt.Println(
-				"You can check the instance types available with the AWS CLI or Console.",
-			)
+			fmt.Println("You can check the instance types available in the AWS Console.")
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to process machines config: %w", err)
@@ -97,7 +93,7 @@ func prepareDeployment(
 	return deployment, nil
 }
 
-func startResourcePolling(ctx context.Context, awsProvider *aws_provider.AWSProvider) {
+func startResourcePolling(ctx context.Context, awsProvider *awsprovider.AWSProvider) {
 	l := logger.Get()
 	err := awsProvider.StartResourcePolling(ctx)
 	if err != nil {
@@ -107,7 +103,7 @@ func startResourcePolling(ctx context.Context, awsProvider *aws_provider.AWSProv
 
 func runDeploymentAsync(
 	ctx context.Context,
-	awsProvider *aws_provider.AWSProvider,
+	awsProvider *awsprovider.AWSProvider,
 	cancel context.CancelFunc,
 ) error {
 	l := logger.Get()
@@ -146,7 +142,7 @@ func runDeploymentAsync(
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) error {
+func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
 	m := display.GetGlobalModelFunc()
@@ -154,24 +150,16 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
-	// Create VPC and Subnet
-	if err := createVPCAndSubnet(ctx, awsProvider); err != nil {
-		return err
+	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
+		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
 
-	// Create resources
-	if err := createResources(ctx, awsProvider); err != nil {
-		return err
+	if err := awsProvider.ProvisionBacalhauCluster(ctx); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
 
-	// Provision Bacalhau cluster
-	if err := provisionBacalhauCluster(ctx, awsProvider); err != nil {
-		return err
-	}
-
-	// Finalize deployment
-	if err := finalizeDeployment(ctx, awsProvider); err != nil {
-		return err
+	if err := awsProvider.FinalizeDeployment(ctx); err != nil {
+		return fmt.Errorf("failed to finalize deployment: %w", err)
 	}
 
 	l.Info("Deployment finalized")
@@ -179,90 +167,6 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 	prog.Quit()
 
 	return nil
-}
-
-func createVPCAndSubnet(
-	ctx context.Context,
-	awsProvider *aws_provider.AWSProvider,
-) error {
-	if awsProvider.VPCID == "" || awsProvider.SubnetID == "" {
-		return fmt.Errorf("VPC ID or Subnet ID is not set")
-	}
-
-	if err := awsProvider.CreateVPCAndSubnet(ctx); err != nil {
-		return fmt.Errorf("failed to create VPC and subnet: %w", err)
-	}
-	return nil
-}
-
-func createResources(
-	ctx context.Context,
-	awsProvider *aws_provider.AWSProvider,
-) error {
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("display model or deployment is nil")
-	}
-
-	if err := awsProvider.CreateDeployment(ctx); err != nil {
-		return fmt.Errorf("failed to create resources: %w", err)
-	}
-	for _, machine := range m.Deployment.Machines {
-		updateMachineConfig(m.Deployment, machine.GetName())
-	}
-	return nil
-}
-
-func provisionBacalhauCluster(
-	ctx context.Context,
-	awsProvider *aws_provider.AWSProvider,
-) error {
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("display model or deployment is nil")
-	}
-
-	if err := awsProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
-		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
-	}
-	for _, machine := range m.Deployment.Machines {
-		updateMachineConfig(m.Deployment, machine.GetName())
-	}
-	return nil
-}
-
-func finalizeDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) error {
-	if err := awsProvider.FinalizeDeployment(ctx); err != nil {
-		return fmt.Errorf("failed to finalize deployment: %w", err)
-	}
-	return nil
-}
-
-func writeConfig() {
-	l := logger.Get()
-	configFile := viper.ConfigFileUsed()
-	if configFile != "" {
-		if err := viper.WriteConfigAs(configFile); err != nil {
-			l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
-		} else {
-			l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
-		}
-	}
-}
-
-func updateMachineConfig(deployment *models.Deployment, machineName string) {
-	machine := deployment.GetMachine(machineName)
-	if machine != nil {
-		viper.Set(
-			fmt.Sprintf(
-				"deployments.%s.aws.%s",
-				deployment.UniqueID,
-				machineName,
-			),
-			models.MachineConfigToWrite(machine),
-		)
-		writeConfig()
-	}
 }
 
 func handleDeploymentCompletion(ctx context.Context, m *display.DisplayModel, deploymentErr error) {
@@ -280,4 +184,43 @@ func handleDeploymentCompletion(ctx context.Context, m *display.DisplayModel, de
 		fmt.Println("General (unknown) error running program:")
 		fmt.Println(ctx.Err())
 	}
+}
+
+func writeConfig() {
+	l := logger.Get()
+	configFile := viper.ConfigFileUsed()
+	if configFile != "" {
+		if err := viper.WriteConfigAs(configFile); err != nil {
+			l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
+		} else {
+			l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
+		}
+	}
+}
+
+func NewVpcStack(scope constructs.Construct, id string, props *awscdk.StackProps) awscdk.Stack {
+	stack := awscdk.NewStack(scope, &id, props)
+
+	vpc := awsec2.NewVpc(stack, jsii.String("AndaimeVPC"), &awsec2.VpcProps{
+		MaxAzs: jsii.Number(2),
+		SubnetConfiguration: &[]*awsec2.SubnetConfiguration{
+			{
+				CidrMask:   jsii.Number(24),
+				Name:       jsii.String("Public"),
+				SubnetType: awsec2.SubnetType_PUBLIC,
+			},
+			{
+				CidrMask:   jsii.Number(24),
+				Name:       jsii.String("Private"),
+				SubnetType: awsec2.SubnetType_PRIVATE_WITH_EGRESS,
+			},
+		},
+	})
+
+	awscdk.NewCfnOutput(stack, jsii.String("VpcId"), &awscdk.CfnOutputProps{
+		Value:       vpc.VpcId(),
+		Description: jsii.String("VPC ID"),
+	})
+
+	return stack
 }

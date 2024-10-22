@@ -279,5 +279,5 @@ func createAwsProvider() (*awsprovider.AWSProvider, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("AWS provider is nil after creation")
 	}
-	return provider.(*awsprovider.AWSProvider), nil
+	return provider, nil
 }

@@ -3,6 +3,9 @@ package aws
 import (
 	"context"
 
+	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
@@ -17,4 +20,42 @@ type AWSProviderer interface {
 	GetVMExternalIP(ctx context.Context, instanceID string) (string, error)
 	ValidateMachineType(ctx context.Context, location, instanceType string) (bool, error)
 	CreateVPCAndSubnet(ctx context.Context) error
+}
+
+// CloudFormationAPI represents the AWS CloudFormation operations
+type CloudFormationAPIer interface {
+	GetTemplate(
+		ctx context.Context,
+		params *cloudformation.GetTemplateInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.GetTemplateOutput, error)
+	DescribeStacks(
+		ctx context.Context,
+		params *cloudformation.DescribeStacksInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.DescribeStacksOutput, error)
+	CreateStack(
+		ctx context.Context,
+		params *cloudformation.CreateStackInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.CreateStackOutput, error)
+	DeleteStack(
+		ctx context.Context,
+		params *cloudformation.DeleteStackInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.DeleteStackOutput, error)
+}
+
+// AWSInfraProvider defines the interface for AWS infrastructure operations
+type AWSInfraProviderer interface {
+	CreateVPC(stack awscdk.Stack) awsec2.IVpc
+	NewStack(scope awscdk.App, id string, props *awscdk.StackProps) awscdk.Stack
+	SynthTemplate(app awscdk.App) (string, error)
+	GetCloudFormationClient() CloudFormationAPIer
+}
+
+// CDKStackProvider defines the interface for CDK stack operations
+type CDKStackProviderer interface {
+	NewStack(scope awscdk.App, id string, props *awscdk.StackProps) awscdk.Stack
+	GetTemplate(stack awscdk.Stack) (string, error)
 }

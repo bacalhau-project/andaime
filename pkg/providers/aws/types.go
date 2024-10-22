@@ -5,18 +5,12 @@ import (
 	"context"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	awsinterfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	"github.com/spf13/viper"
 )
 
 const (
 	EC2InstanceType  = "EC2"
 	SpotInstanceType = "Spot"
 )
-
-// AWSProviderFunc is a function type that returns an AWSProviderer
-type AWSProviderFunc func(ctx context.Context) (awsinterfaces.AWSProviderer, error)
 
 type EC2Clienter interface {
 	DescribeImages(
@@ -81,21 +75,4 @@ type EC2Clienter interface {
 		params *ec2.DeleteVpcInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DeleteVpcOutput, error)
-}
-
-// NewAWSProviderFunc is a variable holding the function that instantiates a new AWSProvider.
-// By default, it points to a function that creates a new EC2 client and returns a new AWSProvider instance.
-var NewAWSProviderFunc AWSProviderFunc = func(ctx context.Context) (awsinterfaces.AWSProviderer, error) {
-	log := logger.Get()
-	client, err := NewEC2Client(ctx)
-	if err != nil {
-		return nil, err
-	}
-	awsProvider, err := NewAWSProvider(viper.GetViper())
-	if err != nil {
-		log.Fatalf("Unable to create AWS Provider: %s", err)
-		return nil, err
-	}
-	awsProvider.SetEC2Client(client)
-	return awsProvider, nil
 }
