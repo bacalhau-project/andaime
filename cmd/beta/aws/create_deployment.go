@@ -64,6 +64,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 
 func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
 	accountID := viper.GetString("aws.account_id")
+	if accountID == "" {
+		return nil, fmt.Errorf("AWS account ID is required. You can obtain it by running: aws sts get-caller-identity")
+	}
 	awsProvider, err := awsprovider.NewAWSProvider(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
