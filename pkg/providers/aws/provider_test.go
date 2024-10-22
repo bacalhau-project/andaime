@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/jsii-runtime-go"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
@@ -300,4 +302,43 @@ func TestValidateMachineType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetVMExternalIP(t *testing.T) {
+	// Create a mock EC2 client
+	mockEC2Client := &mocks.MockEC2Clienter{}
+
+	// Set up the expected call to DescribeInstances
+	mockEC2Client.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{"i-1234567890abcdef0"},
+	}).Return(&ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{
+			{
+				Instances: []types.Instance{
+					{
+						InstanceId:      aws.String("i-1234567890abcdef0"),
+						PublicIpAddress: aws.String("203.0.113.1"),
+					},
+				},
+			},
+		},
+	}, nil)
+
+	// Create a provider with the mock EC2 client
+	provider := &AWSProvider{
+		Region: "us-west-2",
+		Config: &aws.Config{},
+	}
+	provider.SetEC2Client(mockEC2Client)
+
+	// Call the method
+	ctx := context.Background()
+	ip, err := provider.GetVMExternalIP(ctx, "i-1234567890abcdef0")
+
+	// Assert the results
+	assert.NoError(t, err)
+	assert.Equal(t, "203.0.113.1", ip)
+
+	// Verify that the mock was called as expected
+	mockEC2Client.AssertExpectations(t)
 }

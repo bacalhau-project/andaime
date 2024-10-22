@@ -11,7 +11,7 @@ import (
 
 type AWSProviderer interface {
 	CreateDeployment(ctx context.Context) error
-	ListDeployments(ctx context.Context) ([]*types.Instance, error)
+	ListDeployments(ctx context.Context) ([]string, error)
 	TerminateDeployment(ctx context.Context) error
 	GetLatestUbuntuImage(ctx context.Context, region string) (*types.Image, error)
 	GetEC2Client() (EC2Clienter, error)
@@ -20,6 +20,7 @@ type AWSProviderer interface {
 	GetVMExternalIP(ctx context.Context, instanceID string) (string, error)
 	ValidateMachineType(ctx context.Context, location, instanceType string) (bool, error)
 	CreateVPCAndSubnet(ctx context.Context) error
+	StartResourcePolling(ctx context.Context) error
 }
 
 // CloudFormationAPI represents the AWS CloudFormation operations

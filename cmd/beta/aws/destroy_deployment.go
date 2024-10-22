@@ -254,13 +254,13 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 
 	fmt.Printf("   Destroying AWS resources\n")
 	if dryRun {
-		fmt.Printf("   -- Dry run: Would destroy AWS stack %s\n", dep.ID)
+		fmt.Printf("   -- Dry run: Would destroy AWS resources for VPC %s\n", dep.ID)
 	} else {
-		err = awsProvider.Destroy(ctx)
+		err = awsProvider.DestroyResources(ctx, dep.ID)
 		if err != nil {
 			return fmt.Errorf("failed to destroy AWS deployment %s: %w", dep.Name, err)
 		}
-		fmt.Printf("   -- Started successfully\n")
+		fmt.Printf("   -- Resources destroyed successfully\n")
 
 		fmt.Printf("   Removing deployment from config\n")
 		if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
