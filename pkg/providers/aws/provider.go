@@ -217,6 +217,10 @@ func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Ensuring AWS environment is bootstrapped")
 
+	// Create a channel to signal completion
+	done := make(chan error)
+	defer close(done)
+
 	// First, let's check if any bootstrap assets exist
 	ssmClient := ssm.NewFromConfig(*p.Config)
 	paramName := "/cdk-bootstrap/hnb659fds/version"
@@ -230,7 +234,8 @@ func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
 		l.Warn("Bootstrap parameter not found, creating new bootstrap stack")
 	} else {
 		l.Info("Bootstrap stack already exists")
-		return nil
+		done <- nil
+		return <-done
 	}
 
 	// Initialize CloudFormation resources
@@ -336,16 +341,16 @@ func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	done := make(chan error)
+	waitDone := make(chan error)
 	go func() {
-		done <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
+		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
 			StackName: aws.String("CDKToolkit"),
 		}, 30*time.Minute)
 	}()
 
 	for {
 		select {
-		case err := <-done:
+		case err := <-waitDone:
 			if err != nil {
 				// Get the stack events to understand what went wrong
 				events, descErr := p.cloudFormationClient.DescribeStackEvents(
@@ -369,7 +374,8 @@ func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
 				return fmt.Errorf("bootstrap stack creation failed: %w", err)
 			}
 			l.Info("Bootstrap stack created successfully")
-			return nil
+			done <- nil
+			return <-done
 		case <-ticker.C:
 			// Log current stack status
 			status, err := p.cloudFormationClient.DescribeStacks(
