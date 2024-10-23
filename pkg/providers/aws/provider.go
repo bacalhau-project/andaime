@@ -4,16 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awskms"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
@@ -48,11 +54,13 @@ var NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormat
 	return cloudformation.NewFromConfig(cfg)
 }
 
-func NewAWSProvider(accountID string) (*AWSProvider, error) {
-	region := viper.GetString("aws.region")
-
+func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 	if accountID == "" {
 		return nil, fmt.Errorf("account ID is required")
+	}
+
+	if region == "" {
+		return nil, fmt.Errorf("region is required")
 	}
 
 	awsConfig, err := awsconfig.LoadDefaultConfig(
@@ -65,8 +73,9 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 
 	provider := &AWSProvider{
 		AccountID:            accountID,
-		Config:               &awsConfig,
 		Region:               region,
+		Config:               &awsConfig,
+		Stack:                nil,
 		ClusterDeployer:      common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:          make(chan display.UpdateAction, UpdateQueueSize),
 		App:                  awscdk.NewApp(nil),
@@ -111,6 +120,10 @@ func (p *AWSProvider) StartResourcePolling(ctx context.Context) error {
 }
 
 func (p *AWSProvider) pollResources(ctx context.Context) error {
+	if p.Stack == nil {
+		return fmt.Errorf("stack is nil")
+	}
+
 	// Create EC2 client
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
 	if err != nil {
@@ -200,6 +213,199 @@ func (p *AWSProvider) updateMachineStatus(machineID string, status models.Machin
 	l.Debug(fmt.Sprintf("Updated status of machine %s to %d", machineID, status))
 }
 
+func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Ensuring AWS environment is bootstrapped")
+
+	// First, let's check if any bootstrap assets exist
+	ssmClient := ssm.NewFromConfig(*p.Config)
+	paramName := "/cdk-bootstrap/hnb659fds/version"
+
+	// Try to get the version parameter
+	_, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
+		Name: aws.String(paramName),
+	})
+
+	if err != nil {
+		l.Warn("Bootstrap parameter not found, creating new bootstrap stack")
+	} else {
+		l.Info("Bootstrap stack already exists")
+		return nil
+	}
+
+	// Initialize CloudFormation resources
+	bootstrapApp := awscdk.NewApp(nil)
+
+	stackProps := &awscdk.StackProps{
+		Env: &awscdk.Environment{
+			Account: jsii.String(p.AccountID),
+			Region:  jsii.String(p.Region),
+		},
+		// Important: Disable the lookup of context values during synthesis
+		Synthesizer: awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
+			GenerateBootstrapVersionRule: jsii.Bool(false),
+		}),
+	}
+
+	bootstrapStack := awscdk.NewStack(bootstrapApp, jsii.String("CDKToolkit"), stackProps)
+
+	// Create KMS key for bootstrap resources
+	key := awskms.NewKey(bootstrapStack, jsii.String("BootstrapKey"), &awskms.KeyProps{
+		Alias:             jsii.String("alias/cdk-hnb659fds-key"),
+		EnableKeyRotation: jsii.Bool(true),
+		RemovalPolicy:     awscdk.RemovalPolicy_RETAIN,
+	})
+
+	// Create staging bucket
+	bucketName := fmt.Sprintf("cdk-%s-assets-%s-%s", "hnb659fds", p.AccountID, p.Region)
+	bucket := awss3.NewBucket(bootstrapStack, jsii.String("StagingBucket"), &awss3.BucketProps{
+		BucketName:        jsii.String(bucketName),
+		Encryption:        awss3.BucketEncryption_KMS,
+		EncryptionKey:     key,
+		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
+		Versioned:         jsii.Bool(true),
+		RemovalPolicy:     awscdk.RemovalPolicy_RETAIN,
+		AutoDeleteObjects: jsii.Bool(false),
+	})
+
+	// Add permissions
+	bucket.AddToResourcePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect: awsiam.Effect_ALLOW,
+		Actions: jsii.Strings(
+			"s3:GetObject",
+			"s3:PutObject",
+			"s3:ListBucket",
+		),
+		Resources: jsii.Strings(
+			*bucket.BucketArn(),
+			*bucket.BucketArn()+"/*",
+		),
+		Principals: &[]awsiam.IPrincipal{
+			awsiam.NewAccountRootPrincipal(),
+		},
+	}))
+
+	// Create SSM parameters
+	awsssm.NewStringParameter(
+		bootstrapStack,
+		jsii.String("VersionParameter"),
+		&awsssm.StringParameterProps{
+			ParameterName: jsii.String("/cdk-bootstrap/hnb659fds/version"),
+			StringValue:   jsii.String("14"),
+			Description: jsii.String(
+				"The version of the CDK bootstrap resources in this environment",
+			),
+		},
+	)
+
+	// Synthesize the template
+	template := bootstrapApp.Synth(nil).GetStackArtifact(jsii.String("CDKToolkit")).Template()
+	templateJSON, err := json.Marshal(template)
+	if err != nil {
+		return fmt.Errorf("failed to marshal bootstrap template: %w", err)
+	}
+
+	l.Info("Creating bootstrap stack...")
+
+	// Create the stack with detailed error handling
+	_, err = p.cloudFormationClient.CreateStack(ctx, &cloudformation.CreateStackInput{
+		StackName:    aws.String("CDKToolkit"),
+		TemplateBody: aws.String(string(templateJSON)),
+		Capabilities: []types.Capability{
+			types.CapabilityCapabilityIam,
+			types.CapabilityCapabilityNamedIam,
+		},
+		OnFailure: types.OnFailureRollback,
+		Tags: []types.Tag{
+			{
+				Key:   aws.String("aws-cdk:bootstrap-role"),
+				Value: aws.String("lookup"),
+			},
+		},
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to create bootstrap stack: %w", err)
+	}
+
+	// Wait for creation to complete with detailed status updates
+	l.Info("Waiting for bootstrap stack creation to complete...")
+	waiter := cloudformation.NewStackCreateCompleteWaiter(p.cloudFormationClient)
+
+	// Add a ticker to log stack events during creation
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	done := make(chan error)
+	go func() {
+		done <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
+			StackName: aws.String("CDKToolkit"),
+		}, 30*time.Minute)
+	}()
+
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				// Get the stack events to understand what went wrong
+				events, descErr := p.cloudFormationClient.DescribeStackEvents(
+					ctx,
+					&cloudformation.DescribeStackEventsInput{
+						StackName: aws.String("CDKToolkit"),
+					},
+				)
+				if descErr == nil && len(events.StackEvents) > 0 {
+					l.Error("Stack creation failed. Recent events:")
+					for i := 0; i < min(5, len(events.StackEvents)); i++ {
+						event := events.StackEvents[i]
+						l.Errorf(
+							"  %s: %s - %s",
+							*event.LogicalResourceId,
+							event.ResourceStatus,
+							*event.ResourceStatusReason,
+						)
+					}
+				}
+				return fmt.Errorf("bootstrap stack creation failed: %w", err)
+			}
+			l.Info("Bootstrap stack created successfully")
+			return nil
+		case <-ticker.C:
+			// Log current stack status
+			status, err := p.cloudFormationClient.DescribeStacks(
+				ctx,
+				&cloudformation.DescribeStacksInput{
+					StackName: aws.String("CDKToolkit"),
+				},
+			)
+			if err == nil && len(status.Stacks) > 0 {
+				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
+			}
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// Add these helper functions to check stack status
+func isStackInRollback(status types.StackStatus) bool {
+	return status == types.StackStatusRollbackComplete ||
+		status == types.StackStatusRollbackInProgress ||
+		status == types.StackStatusUpdateRollbackComplete ||
+		status == types.StackStatusUpdateRollbackInProgress
+}
+
+func isStackFailed(status types.StackStatus) bool {
+	return status == types.StackStatusCreateFailed ||
+		status == types.StackStatusDeleteFailed ||
+		status == types.StackStatusUpdateFailed ||
+		isStackInRollback(status)
+}
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	cfnClient := NewCloudFormationClientFunc(*p.Config)
 
@@ -240,44 +446,75 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	return nil
 }
 
+// Destroy modification to clean up bootstrap resources
 func (p *AWSProvider) Destroy(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting destruction of AWS resources")
 
-	// Create CloudFormation client
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 	cfnClient := cloudformation.NewFromConfig(cfg)
 
-	// Get the stack name
-	stackName := *p.Stack.StackName()
-
-	// Delete the CloudFormation stack
-	_, err = cfnClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName: aws.String(stackName),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to delete CloudFormation stack: %w", err)
+	// Delete the main stack first
+	if p.Stack != nil {
+		stackName := *p.Stack.StackName()
+		if err := p.deleteStack(ctx, cfnClient, stackName); err != nil {
+			return err
+		}
 	}
 
-	// Wait for the stack to be deleted
-	l.Info("Waiting for stack deletion to complete...")
-	waiter := cloudformation.NewStackDeleteCompleteWaiter(cfnClient)
-	maxWaitTime := 30 * time.Minute
-	if err := waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-		StackName: aws.String(stackName),
-	}, maxWaitTime); err != nil {
-		return fmt.Errorf("failed waiting for stack deletion: %w", err)
+	// Delete the bootstrap stack
+	if err := p.deleteStack(ctx, cfnClient, "CDKToolkit"); err != nil {
+		return err
 	}
-
-	l.Info("AWS resources successfully destroyed")
 
 	// Clean up local state
 	p.Stack = nil
 	p.VPC = nil
 
+	return nil
+}
+
+// Helper function to delete a stack and wait for completion
+func (p *AWSProvider) deleteStack(
+	ctx context.Context,
+	cfnClient *cloudformation.Client,
+	stackName string,
+) error {
+	l := logger.Get()
+
+	// Check if stack exists
+	_, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+		StackName: aws.String(stackName),
+	})
+	if err != nil {
+		// If stack doesn't exist, just return
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil
+		}
+		return fmt.Errorf("failed to describe stack %s: %w", stackName, err)
+	}
+
+	// Delete the stack
+	_, err = cfnClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
+		StackName: aws.String(stackName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete stack %s: %w", stackName, err)
+	}
+
+	l.Infof("Waiting for stack %s deletion to complete...", stackName)
+	waiter := cloudformation.NewStackDeleteCompleteWaiter(cfnClient)
+	maxWaitTime := 30 * time.Minute
+	if err := waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
+		StackName: aws.String(stackName),
+	}, maxWaitTime); err != nil {
+		return fmt.Errorf("failed waiting for stack %s deletion: %w", stackName, err)
+	}
+
+	l.Infof("Stack %s successfully destroyed", stackName)
 	return nil
 }
 
