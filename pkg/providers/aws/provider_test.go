@@ -363,9 +363,9 @@ func TestCreateInfrastructure_Failure(t *testing.T) {
 	// Set up DescribeStacks to return a failure status
 	mockCfnClient.On("DescribeStacks", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStacksInput")).
 		Return(&cloudformation.DescribeStacksOutput{
-			Stacks: []cdk_types.Stack{
+			Stacks: []cftypes.Stack{
 				{
-					StackStatus: cdk_types.StackStatusCreateFailed,
+					StackStatus: cftypes.StackStatusCreateFailed,
 				},
 			},
 		}, nil)
@@ -373,10 +373,10 @@ func TestCreateInfrastructure_Failure(t *testing.T) {
 	// Set up DescribeStackEvents for error reporting
 	mockCfnClient.On("DescribeStackEvents", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStackEventsInput")).
 		Return(&cloudformation.DescribeStackEventsOutput{
-			StackEvents: []cdk_types.StackEvent{
+			StackEvents: []cftypes.StackEvent{
 				{
 					LogicalResourceId:    aws.String("TestResource"),
-					ResourceStatus:       cdk_types.ResourceStatusCreateFailed,
+					ResourceStatus:       cftypes.ResourceStatusCreateFailed,
 					ResourceStatusReason: aws.String("Test failure reason"),
 				},
 			},
