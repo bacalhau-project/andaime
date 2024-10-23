@@ -413,6 +413,7 @@ func isStackFailed(status types.StackStatus) bool {
 		isStackInRollback(status)
 }
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
+	l := logger.Get()
 	cfnClient := NewCloudFormationClientFunc(*p.Config)
 
 	stackProps := &awscdk.StackProps{
@@ -434,10 +435,16 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 		return fmt.Errorf("failed to marshal CloudFormation template: %w", err)
 	}
 
+	l.Info("Creating infrastructure stack...")
+
 	// Create the stack using the CloudFormation client
 	_, err = cfnClient.CreateStack(ctx, &cloudformation.CreateStackInput{
 		StackName:    aws.String("AndaimeStack"),
 		TemplateBody: aws.String(string(templateJSON)),
+		Capabilities: []types.Capability{
+			types.CapabilityCapabilityIam,
+			types.CapabilityCapabilityNamedIam,
+		},
 		Tags: []types.Tag{
 			{
 				Key:   aws.String("AndaimeDeployment"),
@@ -449,7 +456,61 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 		return fmt.Errorf("failed to create stack: %w", err)
 	}
 
-	return nil
+	// Wait for creation to complete with detailed status updates
+	l.Info("Waiting for infrastructure stack creation to complete...")
+	waiter := cloudformation.NewStackCreateCompleteWaiter(cfnClient)
+
+	// Add a ticker to log stack events during creation
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	waitDone := make(chan error)
+	go func() {
+		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
+			StackName: aws.String("AndaimeStack"),
+		}, 30*time.Minute)
+	}()
+
+	for {
+		select {
+		case err := <-waitDone:
+			if err != nil {
+				// Get the stack events to understand what went wrong
+				events, descErr := cfnClient.DescribeStackEvents(
+					ctx,
+					&cloudformation.DescribeStackEventsInput{
+						StackName: aws.String("AndaimeStack"),
+					},
+				)
+				if descErr == nil && len(events.StackEvents) > 0 {
+					l.Error("Stack creation failed. Recent events:")
+					for i := 0; i < min(5, len(events.StackEvents)); i++ {
+						event := events.StackEvents[i]
+						l.Errorf(
+							"  %s: %s - %s",
+							*event.LogicalResourceId,
+							event.ResourceStatus,
+							*event.ResourceStatusReason,
+						)
+					}
+				}
+				return fmt.Errorf("infrastructure stack creation failed: %w", err)
+			}
+			l.Info("Infrastructure stack created successfully")
+			return nil
+		case <-ticker.C:
+			// Log current stack status
+			status, err := cfnClient.DescribeStacks(
+				ctx,
+				&cloudformation.DescribeStacksInput{
+					StackName: aws.String("AndaimeStack"),
+				},
+			)
+			if err == nil && len(status.Stacks) > 0 {
+				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
+			}
+		}
+	}
 }
 
 // Destroy modification to clean up bootstrap resources
