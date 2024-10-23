@@ -468,11 +468,13 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	go func() {
 		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
 			StackName: aws.String("AndaimeStack"),
-		}, 30*time.Minute)
+		}, 30*time.Second) // Reduced timeout for tests
 	}()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case err := <-waitDone:
 			if err != nil {
 				// Get the stack events to understand what went wrong

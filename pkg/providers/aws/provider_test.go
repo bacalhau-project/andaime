@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	cftypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	cdk_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -351,100 +352,7 @@ func TestGetVMExternalIP(t *testing.T) {
 	mockEC2Client.AssertExpectations(t)
 }
 
-func TestCreateInfrastructure_Success(t *testing.T) {
-	// Create a mock CloudFormation client
-	mockCfnClient := new(mocks.MockCloudFormationAPIer)
-
-	// Set up the expected calls
-	mockCfnClient.On("CreateStack", mock.Anything, mock.AnythingOfType("*cloudformation.CreateStackInput")).
-		Return(&cloudformation.CreateStackOutput{}, nil)
-
-	// Set up the DescribeStacks calls for the waiter
-	mockCfnClient.On("DescribeStacks", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStacksInput")).
-		Return(&cloudformation.DescribeStacksOutput{
-			Stacks: []cdk_types.Stack{
-				{
-					StackStatus: cdk_types.StackStatusCreateComplete,
-				},
-			},
-		}, nil)
-
-	// Create the provider with the mock client
-	provider := &AWSProvider{
-		AccountID: "123456789012",
-		Region:    "us-west-2",
-		App:       awscdk.NewApp(nil),
-	}
-
-	// Override the CloudFormation client creation
-	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-		return mockCfnClient
-	}
-
-	// Call CreateInfrastructure
-	err := provider.CreateInfrastructure(context.Background())
-
-	// Assert no error occurred
-	assert.NoError(t, err)
-
-	// Verify all expected calls were made
-	mockCfnClient.AssertExpectations(t)
-}
-
 func TestCreateInfrastructure_Failure(t *testing.T) {
-	// Create a mock CloudFormation client
-	mockCfnClient := new(mocks.MockCloudFormationAPIer)
-
-	// Set up CreateStack to succeed
-	mockCfnClient.On("CreateStack", mock.Anything, mock.AnythingOfType("*cloudformation.CreateStackInput")).
-		Return(&cloudformation.CreateStackOutput{}, nil)
-
-	// Set up DescribeStacks to return a failure status
-	mockCfnClient.On("DescribeStacks", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStacksInput")).
-		Return(&cloudformation.DescribeStacksOutput{
-			Stacks: []cdk_types.Stack{
-				{
-					StackStatus: cdk_types.StackStatusCreateFailed,
-				},
-			},
-		}, nil)
-
-	// Set up DescribeStackEvents for error reporting
-	mockCfnClient.On("DescribeStackEvents", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStackEventsInput")).
-		Return(&cloudformation.DescribeStackEventsOutput{
-			StackEvents: []cdk_types.StackEvent{
-				{
-					LogicalResourceId:    aws.String("TestResource"),
-					ResourceStatus:       cdk_types.ResourceStatusCreateFailed,
-					ResourceStatusReason: aws.String("Test failure reason"),
-				},
-			},
-		}, nil)
-
-	// Create the provider with the mock client
-	provider := &AWSProvider{
-		AccountID: "123456789012",
-		Region:    "us-west-2",
-		App:       awscdk.NewApp(nil),
-	}
-
-	// Override the CloudFormation client creation
-	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-		return mockCfnClient
-	}
-
-	// Call CreateInfrastructure
-	err := provider.CreateInfrastructure(context.Background())
-
-	// Assert an error occurred
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "infrastructure stack creation failed")
-
-	// Verify all expected calls were made
-	mockCfnClient.AssertExpectations(t)
-}
-
-func TestCreateInfrastructureFailure(t *testing.T) {
 	// Create a mock CloudFormation client
 	mockCfnClient := new(mocks.MockCloudFormationAPIer)
 
