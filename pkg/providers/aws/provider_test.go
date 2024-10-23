@@ -20,18 +20,20 @@ import (
 )
 
 const FAKE_ACCOUNT_ID = "123456789012"
+const FAKE_REGION = "burkina-faso-1"
 
 func TestNewAWSProvider(t *testing.T) {
 	viper.Reset()
-	viper.Set("aws.region", "us-west-2")
-	viper.Set("aws.account_id", "123456789012")
+	viper.Set("aws.region", FAKE_REGION)
+	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
 
 	accountID := viper.GetString("aws.account_id")
-	provider, err := NewAWSProvider(accountID)
+	region := viper.GetString("aws.region")
+	provider, err := NewAWSProvider(accountID, region)
 	assert.NoError(t, err)
 	assert.NotNil(t, provider)
 	assert.NotNil(t, provider.App)
-	assert.Equal(t, "us-west-2", provider.Region)
+	assert.Equal(t, region, provider.Region)
 }
 
 func TestCreateInfrastructure(t *testing.T) {
@@ -73,7 +75,8 @@ func TestCreateInfrastructure(t *testing.T) {
 	viper.Set("aws.account_id", "123456789012")
 
 	accountID := viper.GetString("aws.account_id")
-	provider, err := NewAWSProvider(accountID)
+	region := viper.GetString("aws.region")
+	provider, err := NewAWSProvider(accountID, region)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -162,7 +165,7 @@ func TestNewVpcStack(t *testing.T) {
 		},
 	}
 
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
 
 	stack := NewVpcStack(app, "TestStack", stackProps)
@@ -230,7 +233,7 @@ func TestProcessMachinesConfig(t *testing.T) {
 		},
 	})
 
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -243,9 +246,10 @@ func TestProcessMachinesConfig(t *testing.T) {
 
 func TestStartResourcePolling(t *testing.T) {
 	viper.Reset()
-	viper.Set("aws.region", "us-west-2")
+	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
+	viper.Set("aws.region", FAKE_REGION)
 
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -257,9 +261,10 @@ func TestStartResourcePolling(t *testing.T) {
 
 func TestValidateMachineType(t *testing.T) {
 	viper.Reset()
-	viper.Set("aws.region", "us-west-2")
+	viper.Set("aws.region", FAKE_REGION)
+	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
 
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
 
 	ctx := context.Background()
