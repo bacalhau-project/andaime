@@ -7,6 +7,7 @@ import (
 	"time"
 
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
+	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
@@ -68,9 +69,14 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	viper.Set("gcp.default_disk_size_gb", 30)
 
 	s.mockGCPClient = new(gcp_mocks.MockGCPClienter)
-	s.provider = &gcp.GCPProvider{
-		Client: s.mockGCPClient,
+	gcp.NewGCPClientFunc = func(ctx context.Context, organizationID string) (gcp_interface.GCPClienter, func(), error) {
+		return s.mockGCPClient, func() {}, nil
 	}
+
+	s.provider, err = gcp.NewGCPProviderFunc(context.Background(), "test-org-id", "test-billing-id")
+	s.Require().NoError(err)
+
+	s.provider.SetGCPClient(s.mockGCPClient)
 
 	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeGCP)
 

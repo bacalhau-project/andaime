@@ -8,6 +8,8 @@ import (
 func FakeGCPIPAddress() *computepb.Address {
 	return &computepb.Address{
 		Address: proto.String("251.200.100.100"),
+		Name:    proto.String("test-ip-address"),
+		Status:  proto.String("RESERVED"),
 	}
 }
 

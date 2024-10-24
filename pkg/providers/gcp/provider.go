@@ -106,11 +106,6 @@ func NewGCPProvider(
 		return nil, fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
-	// Ensure projectID is set
-	if gcpProvider.ProjectID == "" {
-		return nil, fmt.Errorf("projectID is not set in the GCP provider")
-	}
-
 	return gcpProvider, nil
 }
 
@@ -672,6 +667,7 @@ func (p *GCPProvider) allocateIPWithRetries(
 	vmName, region string,
 ) (*computepb.Address, error) {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	config := DefaultIPAllocationConfig
 
 	var lastErr error
@@ -683,8 +679,8 @@ func (p *GCPProvider) allocateIPWithRetries(
 		}
 
 		// Ensure projectID is set
-		if p.ProjectID == "" {
-			return nil, fmt.Errorf("projectID is not set in the GCP provider")
+		if m.Deployment.GetProjectID() == "" {
+			return nil, fmt.Errorf("projectID is not set in the deployment")
 		}
 
 		// Try to allocate a new IP
@@ -712,6 +708,10 @@ func (p *GCPProvider) tryAllocateIP(
 	vmName, region string,
 ) (*computepb.Address, error) {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m.Deployment.GetProjectID() == "" {
+		return nil, fmt.Errorf("projectID is not set in the deployment")
+	}
 
 	// First try to find an available IP in the project
 	availableIP, err := p.findAvailableIP(ctx, region)
@@ -730,7 +730,7 @@ func (p *GCPProvider) tryAllocateIP(
 		AddressType: &addressType,
 	}
 
-	addr, err := p.GetGCPClient().CreateIP(ctx, p.ProjectID, region, address)
+	addr, err := p.GetGCPClient().CreateIP(ctx, m.Deployment.GetProjectID(), region, address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reserve IP address: %w", err)
 	}
@@ -744,9 +744,13 @@ func (p *GCPProvider) findAvailableIP(
 	region string,
 ) (*computepb.Address, error) {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m.Deployment.GetProjectID() == "" {
+		return nil, fmt.Errorf("projectID is not set in the deployment")
+	}
 
 	// List all addresses in the region
-	addressList, err := p.GetGCPClient().ListAddresses(ctx, p.ProjectID, region)
+	addressList, err := p.GetGCPClient().ListAddresses(ctx, m.Deployment.GetProjectID(), region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list IP addresses: %w", err)
 	}
@@ -764,17 +768,18 @@ func (p *GCPProvider) findAvailableIP(
 
 func (p *GCPProvider) releaseIP(ctx context.Context, ip, region string) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	l.Infof("Attempting to release IP %s in region %s", ip, region)
 
 	// Find the address resource by IP
-	addressList, err := p.GetGCPClient().ListAddresses(ctx, p.ProjectID, region)
+	addressList, err := p.GetGCPClient().ListAddresses(ctx, m.Deployment.GetProjectID(), region)
 	if err != nil {
 		return fmt.Errorf("failed to list IP addresses: %w", err)
 	}
 
 	for _, addr := range addressList {
 		if *addr.Address == ip {
-			err := p.GetGCPClient().DeleteIP(ctx, p.ProjectID, region, *addr.Name)
+			err := p.GetGCPClient().DeleteIP(ctx, m.Deployment.GetProjectID(), region, *addr.Name)
 			if err != nil {
 				return fmt.Errorf("failed to delete IP address: %w", err)
 			}

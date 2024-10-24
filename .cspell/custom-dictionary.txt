@@ -134,6 +134,7 @@ Funcer
 funcs
 funlen
 gcloud
+GCPIP
 gcppackage
 gcpuser
 GCPVM

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/spf13/cobra"
@@ -324,6 +325,8 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					mock.Anything,
 				).Return(nil)
 				mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything).Return(nil)
+				mockGCPClient.On("ListAddresses", mock.Anything, mock.Anything, mock.Anything).
+					Return([]*computepb.Address{testdata.FakeGCPIPAddress()}, nil)
 				mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).
 					Return(nil)
 				mockGCPClient.On("CreateFirewallRules",
@@ -331,6 +334,7 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					mock.Anything,
 				).Return(nil)
 				mockGCPClient.On("CreateVM",
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
