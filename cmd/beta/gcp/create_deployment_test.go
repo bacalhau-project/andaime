@@ -96,6 +96,9 @@ func (suite *CmdBetaGCPCreateDeploymentSuite) SetupTest() {
 	suite.Require().NoError(err)
 	suite.Require().NotNil(suite.gcpProvider)
 	suite.gcpProvider.SetGCPClient(suite.mockGCPClient)
+
+	// Ensure ProjectID is set
+	suite.gcpProvider.ProjectID = viper.GetString("gcp.project_id")
 }
 
 func (suite *CmdBetaGCPCreateDeploymentSuite) setupViper() {
