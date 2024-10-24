@@ -599,12 +599,23 @@ func (p *GCPProvider) CreateVM(
 		return "", "", fmt.Errorf("global model or deployment is nil")
 	}
 
+	// Get the machine from the deployment
+	machine := m.Deployment.Machines[vmName]
+	if machine == nil {
+		return "", "", fmt.Errorf("machine %s not found in deployment", vmName)
+	}
+
 	instance, err := p.GetGCPClient().
-		CreateVM(ctx, m.Deployment.GetProjectID(), m.Deployment.Machines[vmName])
+		CreateVM(ctx, m.Deployment.GetProjectID(), machine)
 	if err != nil {
 		l.Errorf("Failed to create VM %s: %v", vmName, err)
-		m.Deployment.Machines[vmName].SetFailed(true)
-		return "", "", fmt.Errorf("failed to create VM: %w", err)
+		machine.SetFailed(true)
+		if machine.IsOrchestrator() {
+			// If this is the orchestrator, fail the entire deployment
+			return "", "", fmt.Errorf("failed to create orchestrator VM: %w", err)
+		}
+		// For worker nodes, just mark as failed but don't stop deployment
+		return "", "", nil
 	}
 
 	var publicIP string
