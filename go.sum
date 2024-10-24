@@ -56,8 +56,6 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2/go.mod h1:wP83
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/Masterminds/semver/v3 v3.2.1 h1:RN9w6+7QoMeJVGyfmbcgs28Br8cvmnucEXnY0rYXWg0=
 github.com/Masterminds/semver/v3 v3.2.1/go.mod h1:qvl/7zhW3nngYb5+80sSMF+FG2BjYrf8m9wsX0PNOMQ=
-github.com/aws/aws-cdk-go/awscdk/v2 v2.162.1 h1:8aVWfNc0ZFBr+aw1or8O1C6tVUjJx4gR9szqoK+L/Bw=
-github.com/aws/aws-cdk-go/awscdk/v2 v2.162.1/go.mod h1:yYaymWYxyViLcsF3+rX8gq8MBkViop4q392HsOuAi9M=
 github.com/aws/aws-cdk-go/awscdk/v2 v2.163.0 h1:gDrgRgMjeIzUFaNtm4FgWJds8+3jdqd8TUX5naidFaE=
 github.com/aws/aws-cdk-go/awscdk/v2 v2.163.0/go.mod h1:yYaymWYxyViLcsF3+rX8gq8MBkViop4q392HsOuAi9M=
 github.com/aws/aws-sdk-go v1.55.5 h1:KKUZBfBoyqy5d3swXyiC7Q76ic40rYcbqH7qjh59kzU=
@@ -84,14 +82,10 @@ github.com/aws/aws-sdk-go-v2/service/cloudformation v1.55.3 h1:b7i7TR+aETt1NDTDV
 github.com/aws/aws-sdk-go-v2/service/cloudformation v1.55.3/go.mod h1:C5vVI6+Bu1ZRLiKeO+dQPKYTg5kxD8IdmixnN1W/srI=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.177.0 h1:LAdDRIj5BEZM9fLDTUWUyPzWvv5A++nCEps/RGmZNOo=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.177.0/go.mod h1:ISODge3zgdwOEa4Ou6WM9PKbxJWJ15DYKnr2bfmCAIA=
-github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.4 h1:KypMCbLPPHEmf9DgMGw51jMj77VfGPAN2Kv4cfhlfgI=
-github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.4/go.mod h1:Vz1JQXliGcQktFTN/LN6uGppAIRoLBR2bMvIMP0gOjc=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.0 h1:TToQNkvGguu209puTojY/ozlqy2d/SFNcoLIqTFi42g=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.0/go.mod h1:0jp+ltwkf+SwG2fm/PKo8t4y8pJSgOCO4D8Lz3k0aHQ=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.2 h1:4FMHqLfk0efmTqhXVRL5xYRqlEBNBiRI7N6w4jsEdd4=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.2/go.mod h1:LWoqeWlK9OZeJxsROW2RqrSPvQHKTpp69r/iDjwsSaw=
-github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.18 h1:tJ5RnkHCiSH0jyd6gROjlJtNwov0eGYNz8s8nFcR0jQ=
-github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.18/go.mod h1:++NHzT+nAF7ZPrHPsA+ENvsXkOO8wEu+C6RXltAG4/c=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.2 h1:s7NA1SOw8q/5c0wr8477yOPp0z+uBaXBnLE0XYb0POA=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.2/go.mod h1:fnjjWyAW/Pj5HYOxl9LJqWtEwS7W2qgcRLWP+uWbss0=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.2 h1:t7iUP9+4wdc5lt3E41huP+GvQZJD38WLsgVp4iOtAjg=

@@ -60,7 +60,10 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	}
 
 	// Create orchestrator first
-	l.Infof("Creating orchestrator instance %s in zone %s", orchestratorMachine.GetName(), orchestratorMachine.GetLocation())
+	l.Infof("Creating orchestrator instance %s in zone %s",
+		orchestratorMachine.GetName(),
+		orchestratorMachine.GetLocation(),
+	)
 	m.UpdateStatus(models.NewDisplayStatusWithText(
 		orchestratorMachine.GetName(),
 		models.GCPResourceTypeInstance,
@@ -73,7 +76,11 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 		orchestratorMachine.GetName(),
 	)
 	if err != nil {
-		l.Errorf("Failed to create orchestrator instance %s: %v", orchestratorMachine.GetName(), err)
+		l.Errorf(
+			"Failed to create orchestrator instance %s: %v",
+			orchestratorMachine.GetName(),
+			err,
+		)
 		orchestratorMachine.SetMachineResourceState(
 			models.GCPResourceTypeInstance.ResourceString,
 			models.ResourceStateFailed,
@@ -83,6 +90,51 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 
 	orchestratorMachine.SetPublicIP(publicIP)
 	orchestratorMachine.SetPrivateIP(privateIP)
+
+	sshConfig, err := sshutils.NewSSHConfigFunc(
+		orchestratorMachine.GetPublicIP(),
+		orchestratorMachine.GetSSHPort(),
+		orchestratorMachine.GetSSHUser(),
+		orchestratorMachine.GetSSHPrivateKeyPath(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %w", err)
+	}
+	orchestratorMachine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateUpdating)
+	m.UpdateStatus(models.NewDisplayStatusWithText(
+		orchestratorMachine.GetName(),
+		models.GCPResourceTypeInstance,
+		models.ResourceStatePending,
+		"Provisioning SSH",
+	))
+
+	if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
+		l.Errorf("Failed to provision SSH: %v", err)
+		orchestratorMachine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
+		m.UpdateStatus(models.NewDisplayStatusWithText(
+			orchestratorMachine.GetName(),
+			models.GCPResourceTypeInstance,
+			models.ResourceStateFailed,
+			"SSH Provisioning Failed",
+		))
+
+		return fmt.Errorf("failed to provision SSH: %w", err)
+	}
+
+	orchestratorMachine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
+	m.UpdateStatus(models.NewDisplayStatusWithText(
+		orchestratorMachine.GetName(),
+		models.GCPResourceTypeInstance,
+		models.ResourceStateRunning,
+		"SSH Provisioned",
+	))
+
+	orchestratorMachine.SetMachineResourceState(
+		models.GCPResourceTypeInstance.ResourceString,
+		models.ResourceStateRunning,
+	)
+
+	l.Infof("Orchestrator %s created successfully", orchestratorMachine.GetName())
 
 	// Now create the worker nodes in parallel
 	var instanceEg errgroup.Group

@@ -86,6 +86,10 @@ type Machiner interface {
 	GetServices() map[string]ServiceType
 	GetServiceState(serviceName string) ServiceState
 	SetServiceState(serviceName string, state ServiceState)
+	SSHEnabled() bool
+	DockerEnabled() bool
+	BacalhauEnabled() bool
+	CustomScriptEnabled() bool
 	EnsureMachineServices() error
 	ServicesComplete() (int, int)
 

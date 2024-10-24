@@ -22,6 +22,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.31
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.177.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.0
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.55.2
 	github.com/aws/constructs-go/constructs/v10 v10.4.2
 	github.com/aws/jsii-runtime-go v1.103.1
 	github.com/briandowns/spinner v1.23.1
@@ -63,8 +65,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.55.2 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cdklabs/awscdk-asset-awscli-go/awscliv1/v2 v2.2.202 // indirect
 	github.com/cdklabs/awscdk-asset-kubectl-go/kubectlv20/v2 v2.1.2 // indirect
@@ -123,7 +123,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.30.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.30.5
 	github.com/aws/smithy-go v1.22.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect

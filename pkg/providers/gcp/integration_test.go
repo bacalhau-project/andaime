@@ -358,18 +358,13 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	}
 
 	for _, machine := range m.Deployment.Machines {
-		s.Equal(models.ServiceStateSucceeded, machine.GetServiceState(models.ServiceTypeSSH.Name))
-		s.Equal(
-			models.ServiceStateSucceeded,
-			machine.GetServiceState(models.ServiceTypeDocker.Name),
-		)
-		s.Equal(
-			models.ServiceStateSucceeded,
-			machine.GetServiceState(models.ServiceTypeBacalhau.Name),
-		)
-		s.Equal(
-			models.ServiceStateSucceeded,
-			machine.GetServiceState(models.ServiceTypeScript.Name),
+		s.True(machine.SSHEnabled(), "SSH should be enabled for %s", machine.GetName())
+		s.True(machine.DockerEnabled(), "Docker should be enabled for %s", machine.GetName())
+		s.True(machine.BacalhauEnabled(), "Bacalhau should be enabled for %s", machine.GetName())
+		s.True(
+			machine.CustomScriptEnabled(),
+			"Custom script should be enabled for %s",
+			machine.GetName(),
 		)
 	}
 

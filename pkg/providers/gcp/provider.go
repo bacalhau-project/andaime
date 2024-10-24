@@ -588,7 +588,7 @@ func (p *GCPProvider) CheckPermissions(ctx context.Context) error {
 	return p.GetGCPClient().CheckPermissions(ctx)
 }
 
-// Creates the VM and returns the public and private IP addresses, and a boolean indicating if the VM should be removed from active machines
+// Creates the VM and returns the public and private IP addresses, and an error (or nil)
 func (p *GCPProvider) CreateVM(
 	ctx context.Context,
 	vmName string,
@@ -600,7 +600,7 @@ func (p *GCPProvider) CreateVM(
 	}
 
 	// Get the machine from the deployment
-	machine := m.Deployment.Machines[vmName]
+	machine := m.Deployment.GetMachine(vmName)
 	if machine == nil {
 		return "", "", fmt.Errorf("machine %s not found in deployment", vmName)
 	}

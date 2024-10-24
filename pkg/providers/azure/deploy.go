@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	internal_azure "github.com/bacalhau-project/andaime/internal/clouds/azure"
@@ -18,17 +17,6 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
-
-var (
-	loggerOnce sync.Once
-	log        *logger.Logger
-)
-
-func init() {
-	loggerOnce.Do(func() {
-		log = logger.Get()
-	})
-}
 
 const ipRetries = 3
 const timeBetweenIPRetries = 10 * time.Second
@@ -227,7 +215,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 			l.Infof("Starting deployment for location %s", location)
 
 			if len(machines) == 0 {
-				log.Errorf("No machines to deploy in location %s", location)
+				l.Errorf("No machines to deploy in location %s", location)
 				return fmt.Errorf("no machines to deploy in location %s", location)
 			}
 
@@ -236,7 +224,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 			}
 
 			for _, machine := range machines {
-				log.Infof("Deploying machine %s in location %s", machine.GetName(), location)
+				l.Infof("Deploying machine %s in location %s", machine.GetName(), location)
 
 				m.UpdateStatus(
 					models.NewDisplayVMStatus(
@@ -330,7 +318,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 						err,
 					)
 				}
-				log.Infof(
+				l.Infof(
 					"Successfully deployed machine %s in location %s",
 					machine.GetName(),
 					location,
@@ -346,17 +334,17 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
 			}
 
-			log.Infof("Successfully deployed all machines in location %s", location)
+			l.Infof("Successfully deployed all machines in location %s", location)
 			return nil
 		})
 	}
 
 	if err := errgroup.Wait(); err != nil {
-		log.Errorf("Deployment failed: %v", err)
+		l.Errorf("Deployment failed: %v", err)
 		return fmt.Errorf("deployment failed: %w", err)
 	}
 
-	log.Info("ARM template deployment completed successfully")
+	l.Info("ARM template deployment completed successfully")
 	return nil
 }
 
