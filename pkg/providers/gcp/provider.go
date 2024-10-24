@@ -588,20 +588,22 @@ func (p *GCPProvider) CheckPermissions(ctx context.Context) error {
 	return p.GetGCPClient().CheckPermissions(ctx)
 }
 
-// Creates the VM and returns the public and private IP addresses
+// Creates the VM and returns the public and private IP addresses, and a boolean indicating if the VM should be removed from active machines
 func (p *GCPProvider) CreateVM(
 	ctx context.Context,
 	vmName string,
-) (string, string, error) {
+) (string, string, bool, error) {
+	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
-		return "", "", fmt.Errorf("global model or deployment is nil")
+		return "", "", true, fmt.Errorf("global model or deployment is nil")
 	}
 
 	instance, err := p.GetGCPClient().
 		CreateVM(ctx, m.Deployment.GetProjectID(), m.Deployment.Machines[vmName])
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create VM: %w", err)
+		l.Errorf("Failed to create VM %s: %v", vmName, err)
+		return "", "", true, fmt.Errorf("failed to create VM: %w", err)
 	}
 
 	var publicIP string
@@ -610,14 +612,16 @@ func (p *GCPProvider) CreateVM(
 	if len(instance.NetworkInterfaces) > 0 && len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
 		publicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 	} else {
-		return "", "", fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
+		l.Errorf("No access configs found for instance %s - could not get public IP", vmName)
+		return "", "", true, fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
 	}
 
 	if len(instance.NetworkInterfaces) > 0 && instance.NetworkInterfaces[0].NetworkIP != nil {
 		privateIP = *instance.NetworkInterfaces[0].NetworkIP
 	} else {
-		return "", "", fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
+		l.Errorf("No network interface found for instance %s - could not get private IP", vmName)
+		return "", "", true, fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
 	}
 
-	return publicIP, privateIP, nil
+	return publicIP, privateIP, false, nil
 }

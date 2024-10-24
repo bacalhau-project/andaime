@@ -229,12 +229,46 @@ func createResources(
 	gcpProvider *gcp_provider.GCPProvider,
 	m *display.DisplayModel,
 ) error {
-	if err := gcpProvider.CreateResources(ctx); err != nil {
-		return fmt.Errorf("failed to create resources: %w", err)
+	l := logger.Get()
+	var failedMachines []string
+
+	// Create a map to track which machines are active
+	activeMachines := make(map[string]bool)
+	for name := range m.Deployment.Machines {
+		activeMachines[name] = true
 	}
-	for _, machine := range m.Deployment.Machines {
-		updateMachineConfig(m.Deployment, machine.GetName())
+
+	// Try to create each machine
+	for name, machine := range m.Deployment.Machines {
+		publicIP, privateIP, shouldRemove, err := gcpProvider.CreateVM(ctx, name)
+		if err != nil {
+			l.Errorf("Failed to create machine %s: %v", name, err)
+			if shouldRemove {
+				delete(activeMachines, name)
+				failedMachines = append(failedMachines, name)
+			}
+			continue
+		}
+
+		// Update machine IPs if creation was successful
+		machine.SetPublicIP(publicIP)
+		machine.SetPrivateIP(privateIP)
+		updateMachineConfig(m.Deployment, name)
 	}
+
+	// If all machines failed, return an error
+	if len(activeMachines) == 0 {
+		return fmt.Errorf("failed to create any machines. Failed machines: %v", failedMachines)
+	}
+
+	// Update the deployment to only include active machines
+	for name := range m.Deployment.Machines {
+		if !activeMachines[name] {
+			l.Warnf("Removing failed machine %s from active deployment", name)
+			delete(m.Deployment.Machines, name)
+		}
+	}
+
 	return nil
 }
 
