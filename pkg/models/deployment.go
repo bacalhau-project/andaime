@@ -147,6 +147,12 @@ func NewDeployment() (*Deployment, error) {
 
 		deployment.SetProjectID(projectID)
 	}
+
+	// Ensure projectID is set
+	if deployment.GCP.ProjectID == "" {
+		return nil, fmt.Errorf("projectID is not set in the GCP deployment")
+	}
+
 	return deployment, nil
 }
 

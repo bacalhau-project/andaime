@@ -106,6 +106,11 @@ func NewGCPProvider(
 		return nil, fmt.Errorf("failed to initialize GCP provider: %w", err)
 	}
 
+	// Ensure projectID is set
+	if gcpProvider.ProjectID == "" {
+		return nil, fmt.Errorf("projectID is not set in the GCP provider")
+	}
+
 	return gcpProvider, nil
 }
 
@@ -675,6 +680,11 @@ func (p *GCPProvider) allocateIPWithRetries(
 			l.Infof("Retrying IP allocation for VM %s (attempt %d/%d)",
 				vmName, attempt+1, config.MaxRetries)
 			time.Sleep(config.RetryInterval)
+		}
+
+		// Ensure projectID is set
+		if p.ProjectID == "" {
+			return nil, fmt.Errorf("projectID is not set in the GCP provider")
 		}
 
 		// Try to allocate a new IP
