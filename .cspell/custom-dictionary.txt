@@ -26,9 +26,17 @@ authsecret
 autocert
 autocertcachepath
 autorest
+awscdk
 awsconfig
+AWSEC
 awserr
+awsiam
+awsinterfaces
+awskms
 awsprovider
+awss
+awsssm
+AWSVM
 azcore
 azidentity
 azurepackage
@@ -44,6 +52,7 @@ bodyclose
 briandowns
 bubbletea
 BUHJ
+burkina
 cafile
 cenkalti
 centralus
@@ -55,6 +64,7 @@ circularbuffer
 clientapi
 Clienter
 clienttls
+closedchan
 cloudasset
 cloudassetpb
 cloudbilling
@@ -114,11 +124,13 @@ exportloopref
 externalverifierhook
 Failf
 failureinjectionconfig
+faso
 Fatalf
 Fdump
 featureflags
 Fini
 forbidigo
+Funcer
 funcs
 funlen
 gcloud
@@ -186,6 +198,7 @@ jobselectionpolicy
 jobstore
 jobtimeouts
 joho
+jsii
 keyfile
 keyvault
 lipgloss
@@ -242,6 +255,7 @@ orchestratorip
 overaskforbidsfactor
 panicnil
 PBIP
+pdone
 Pollerer
 practise
 predeclared
@@ -294,6 +308,7 @@ Skus
 SNET
 southcentralus
 southeastasia
+sprops
 sqlserver
 sshbehavior
 sshclient
@@ -357,6 +372,7 @@ VMSS
 vnet
 vnets
 VPCCIDR
+VPCID
 Warnf
 webui
 westeurope

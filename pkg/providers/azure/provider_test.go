@@ -26,8 +26,8 @@ func TestPkgProviderAzureProviderTestSuite(t *testing.T) {
 }
 
 func (s *PkgProviderAzureProviderTestSuite) SetupTest() {
-	s.testConfig = viper.New()
-	s.testConfig.Set("azure.subscription_id", "test-subscription-id")
+	viper.Reset()
+	viper.Set("azure.subscription_id", "test-subscription-id")
 
 	s.localModel = &display.DisplayModel{}
 	origGetGlobalModel := display.GetGlobalModelFunc

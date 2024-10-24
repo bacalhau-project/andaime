@@ -8,7 +8,7 @@ import (
 )
 
 type GlobalProgammer interface {
-	InitProgram(m *DisplayModel)
+	InitProgram(m *DisplayModel) error
 	GetProgram() *GlobalProgram
 	Quit()
 	Run() (tea.Model, error)
@@ -39,9 +39,10 @@ func GetGlobalProgram() GlobalProgammer {
 }
 
 // InitProgram initializes the tea.Program
-func (gp *GlobalProgram) InitProgram(m *DisplayModel) {
+func (gp *GlobalProgram) InitProgram(m *DisplayModel) error {
 	gp.Program = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	SetGlobalModel(m)
+	return nil
 }
 
 // GetProgram returns the tea.Program instance

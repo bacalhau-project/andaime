@@ -1,9 +1,9 @@
 package gcp
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
+	"github.com/spf13/cobra"
 )
 
 var checkPermissionsCmd = &cobra.Command{

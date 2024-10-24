@@ -1,16 +1,51 @@
 package aws
 
 import (
+	"sync"
+
+	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
+var once sync.Once
 var AwsCmd = &cobra.Command{
 	Use:   "aws",
 	Short: "AWS-related commands",
 	Long:  `Commands for interacting with AWS resources.`,
 }
 
-func SetupAWSCommands(rootCmd *cobra.Command) {
-	// Add AWS-specific commands to rootCmd
-	// This function would be called from the main setup in cmd/root.go
+// GetAwsDiagnosticsCmd returns the diagnostics command
+func GetAwsDiagnosticsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "diagnostics",
+		Short: "Print AWS configuration diagnostics",
+		Long:  `Prints detailed information about AWS configuration, credentials, and permissions.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			accountID := viper.GetString("aws.account_id")
+			region := viper.GetString("aws.region")
+			awsProvider, err := awsprovider.NewAWSProvider(accountID, region)
+			if err != nil {
+				return err
+			}
+
+			return awsProvider.PrintDiagnostics(cmd.Context())
+		},
+	}
+
+	return cmd
+}
+
+func GetAwsCmd() *cobra.Command {
+	InitializeCommands()
+	return AwsCmd
+}
+
+func InitializeCommands() {
+	once.Do(func() {
+		AwsCmd.AddCommand(GetAwsListDeploymentsCmd())
+		AwsCmd.AddCommand(GetAwsCreateDeploymentCmd())
+		AwsCmd.AddCommand(GetAwsDestroyCmd())
+		AwsCmd.AddCommand(GetAwsDiagnosticsCmd())
+	})
 }

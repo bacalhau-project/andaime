@@ -75,6 +75,7 @@ type Deployment struct {
 	DeploymentType         DeploymentType
 	Azure                  *AzureConfig
 	GCP                    *GCPConfig
+	AWS                    *AWSConfig
 	Machines               map[string]Machiner
 	UniqueID               string
 	StartTime              time.Time
@@ -120,6 +121,7 @@ func NewDeployment() (*Deployment, error) {
 		UniqueID:               uniqueID,
 		Azure:                  &AzureConfig{},
 		GCP:                    &GCPConfig{},
+		AWS:                    &AWSConfig{},
 		Tags:                   make(map[string]string),
 		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
 	}
@@ -175,6 +177,12 @@ func (d *Deployment) UpdateViperConfig() error {
 			"deployments.%s.gcp.%s",
 			d.UniqueID,
 			d.GCP.ProjectID,
+		)
+	} else if d.DeploymentType == DeploymentTypeAWS {
+		deploymentPath = fmt.Sprintf(
+			"deployments.%s.aws.%s",
+			d.UniqueID,
+			d.AWS.Region,
 		)
 	}
 	viperMachines := make(map[string]map[string]interface{})
@@ -319,4 +327,14 @@ type GCPConfig struct {
 	ProjectServiceAccounts map[string]ServiceAccountInfo
 	Tags                   map[string]string
 	DefaultCountPerZone    int
+}
+
+type AWSConfig struct {
+	Region                string
+	VPCID                 string
+	SubnetID              string
+	DefaultRegion         string
+	DefaultMachineType    string
+	DefaultDiskSizeGB     int32
+	DefaultCountPerRegion int
 }

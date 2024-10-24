@@ -6,7 +6,9 @@ Chat_*
 
 .aider*
 
+# Environment files
 .env
+.env.local
 
 vendor/**
 

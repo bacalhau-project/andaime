@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/briandowns/spinner"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -314,6 +315,7 @@ func getAWSVMSizes(region string) ([]string, error) {
 }
 
 func getUbuntuAMI(region string) (string, error) {
+	l := logger.Get()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -322,6 +324,7 @@ func getUbuntuAMI(region string) (string, error) {
 		region,
 	)
 
+	l.Debugf("Running command: %s", command)
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	output, err := cmd.CombinedOutput()
 
@@ -330,6 +333,9 @@ func getUbuntuAMI(region string) (string, error) {
 	}
 
 	if err != nil {
+		if strings.Contains(string(output), "AuthFailure") {
+			return "", fmt.Errorf("authentication failed for region %s, skipping", region)
+		}
 		return "", fmt.Errorf(
 			"failed to get Ubuntu AMI for region %s: %v\nCommand output: %s",
 			region,

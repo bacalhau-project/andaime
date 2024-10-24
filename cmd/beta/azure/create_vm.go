@@ -26,7 +26,7 @@ func GetAzureCreateVMCmd() *cobra.Command {
 
 func createVM(cmd *cobra.Command, args []string) error {
 	// Create a new Viper instance for this command
-	viper := viper.New()
+	viper.Reset()
 
 	// Set default values
 	viper.SetDefault("general.project_prefix", "andaime-single-vm")

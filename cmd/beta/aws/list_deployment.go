@@ -8,16 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List AWS resources",
-	Long:  `List various AWS resources including deployments.`,
-}
-
-//nolint:gochecknoinits
-func init() {
-	listCmd.AddCommand(listDeploymentsCmd)
-	// Add more 'list' subcommands as needed
+func GetAwsListDeploymentsCmd() *cobra.Command {
+	return listDeploymentsCmd
 }
 
 var listDeploymentsCmd = &cobra.Command{
@@ -25,7 +17,9 @@ var listDeploymentsCmd = &cobra.Command{
 	Short: "List deployments in AWS",
 	Long:  `List all deployments in AWS using the configuration specified in the config file.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		awsProvider, err := awsprovider.NewAWSProvider(viper.GetViper())
+		accountID := viper.GetString("aws.account_id")
+		region := viper.GetString("aws.region")
+		awsProvider, err := awsprovider.NewAWSProvider(accountID, region)
 		if err != nil {
 			return fmt.Errorf("failed to initialize AWS provider: %w", err)
 		}
