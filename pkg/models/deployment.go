@@ -114,7 +114,6 @@ func NewDeployment() (*Deployment, error) {
 		projectPrefix = "andaime"
 	}
 	uniqueID := fmt.Sprintf("u%s", time.Now().Format("0601021504"))
-	projectID := projectPrefix + "-" + uniqueID
 	deployment := &Deployment{
 		StartTime:              time.Now(),
 		Machines:               make(map[string]Machiner), // Change *Machine to Machiner
@@ -145,12 +144,7 @@ func NewDeployment() (*Deployment, error) {
 
 		l.Debugf("Ensuring project: %s", uniqueProjectID)
 
-		deployment.SetProjectID(projectID)
-	}
-
-	// Ensure projectID is set
-	if deployment.GCP.ProjectID == "" {
-		return nil, fmt.Errorf("projectID is not set in the GCP deployment")
+		deployment.SetProjectID(uniqueProjectID)
 	}
 
 	return deployment, nil
