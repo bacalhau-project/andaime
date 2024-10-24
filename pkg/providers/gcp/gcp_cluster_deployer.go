@@ -46,8 +46,51 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 		return fmt.Errorf("failed to create firewall rules: %v", err)
 	}
 
+	// First create the orchestrator
+	var orchestratorMachine models.Machiner
+	for _, machine := range m.Deployment.Machines {
+		if machine.IsOrchestrator() {
+			orchestratorMachine = machine
+			break
+		}
+	}
+
+	if orchestratorMachine == nil {
+		return fmt.Errorf("no orchestrator machine configured")
+	}
+
+	// Create orchestrator first
+	l.Infof("Creating orchestrator instance %s in zone %s", orchestratorMachine.GetName(), orchestratorMachine.GetLocation())
+	m.UpdateStatus(models.NewDisplayStatusWithText(
+		orchestratorMachine.GetName(),
+		models.GCPResourceTypeInstance,
+		models.ResourceStatePending,
+		"Creating Orchestrator VM",
+	))
+
+	publicIP, privateIP, err := p.CreateVM(
+		ctx,
+		orchestratorMachine.GetName(),
+	)
+	if err != nil {
+		l.Errorf("Failed to create orchestrator instance %s: %v", orchestratorMachine.GetName(), err)
+		orchestratorMachine.SetMachineResourceState(
+			models.GCPResourceTypeInstance.ResourceString,
+			models.ResourceStateFailed,
+		)
+		return fmt.Errorf("failed to create orchestrator: %w", err)
+	}
+
+	orchestratorMachine.SetPublicIP(publicIP)
+	orchestratorMachine.SetPrivateIP(privateIP)
+
+	// Now create the worker nodes in parallel
 	var instanceEg errgroup.Group
 	for _, machine := range m.Deployment.Machines {
+		if machine.IsOrchestrator() {
+			continue
+		}
+		machine := machine // Create new variable for goroutine
 		instanceEg.Go(func() error {
 			l.Infof("Creating instance %s in zone %s", machine.GetName(), machine.GetLocation())
 			m.UpdateStatus(models.NewDisplayStatusWithText(
@@ -67,7 +110,9 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 					models.GCPResourceTypeInstance.ResourceString,
 					models.ResourceStateFailed,
 				)
-				return err
+				machine.SetFailed(true)
+				// Don't return error for worker nodes
+				return nil
 			}
 
 			machine.SetPublicIP(publicIP)
