@@ -33,6 +33,11 @@ type GCPClienter interface {
 		ctx context.Context,
 		projectID string,
 	) ([]*assetpb.Asset, error)
+	ListAddresses(
+		ctx context.Context,
+		projectID string,
+		region string,
+	) ([]*computepb.Address, error)
 	StartResourcePolling(ctx context.Context) error
 
 	CheckAuthentication(ctx context.Context) error
@@ -44,19 +49,21 @@ type GCPClienter interface {
 		ctx context.Context,
 		projectID string,
 		location string,
+		address *computepb.Address,
+	) (*computepb.Address, error)
+	DeleteIP(
+		ctx context.Context,
+		projectID string,
+		location string,
 		addressName string,
-	) (string, error)
+	) error
 	// CreateStorageBucket(ctx context.Context, bucketName string) error
 	CreateVM(
 		ctx context.Context,
 		projectID string,
 		machine models.Machiner,
+		ip *computepb.Address,
 	) (*computepb.Instance, error)
-	// WaitForOperation(
-	// 	ctx context.Context,
-	// 	projectID string,
-	// 	op *computepb.Operation,
-	// ) error
 	SetBillingAccount(
 		ctx context.Context,
 		projectID string,

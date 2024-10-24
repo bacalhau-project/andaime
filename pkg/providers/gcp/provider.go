@@ -4,12 +4,14 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/asset/apiv1/assetpb"
+	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/cenkalti/backoff/v4"
@@ -588,54 +590,206 @@ func (p *GCPProvider) CheckPermissions(ctx context.Context) error {
 	return p.GetGCPClient().CheckPermissions(ctx)
 }
 
-// Creates the VM and returns the public and private IP addresses, and an error (or nil)
-func (p *GCPProvider) CreateVM(
+func (p *GCPProvider) CreateAndConfigureVM(
 	ctx context.Context,
-	vmName string,
-) (string, string, error) {
+	machine models.Machiner,
+) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return "", "", fmt.Errorf("global model or deployment is nil")
-	}
 
-	// Get the machine from the deployment
-	machine := m.Deployment.GetMachine(vmName)
-	if machine == nil {
-		return "", "", fmt.Errorf("machine %s not found in deployment", vmName)
-	}
+	l.Infof("Starting VM creation process for %s in zone %s",
+		machine.GetName(), machine.GetLocation())
 
-	instance, err := p.GetGCPClient().
-		CreateVM(ctx, m.Deployment.GetProjectID(), machine)
+	m.UpdateStatus(models.NewDisplayStatusWithText(
+		machine.GetName(),
+		models.GCPResourceTypeInstance,
+		models.ResourceStatePending,
+		"Creating VM",
+	))
+
+	// Get region from zone
+	region := extractRegionFromZone(machine.GetLocation())
+	l.Infof("Determined region %s for VM %s", region, machine.GetName())
+
+	// Attempt IP allocation with retries
+	publicIP, err := p.allocateIPWithRetries(ctx, machine.GetName(), region)
 	if err != nil {
-		l.Errorf("Failed to create VM %s: %v", vmName, err)
-		machine.SetFailed(true)
-		if machine.IsOrchestrator() {
-			// If this is the orchestrator, fail the entire deployment
-			return "", "", fmt.Errorf("failed to create orchestrator VM: %w", err)
+		return fmt.Errorf("failed to allocate IP for VM %s: %w", machine.GetName(), err)
+	}
+	l.Infof("Successfully allocated IP %s for VM %s", publicIP, machine.GetName())
+
+	// Create the VM instance
+	instance, err := p.GetGCPClient().CreateVM(ctx, p.ProjectID, machine, publicIP)
+	if err != nil {
+		// Attempt to release the IP if VM creation fails
+		if releaseErr := p.releaseIP(ctx, *publicIP.Address, region); releaseErr != nil {
+			l.Warnf("Failed to release IP %s after VM creation failure: %v", publicIP, releaseErr)
 		}
-		// For worker nodes, just mark as failed but don't stop deployment
-		return "", "", nil
+		return fmt.Errorf("failed to create VM instance: %w", err)
 	}
 
-	var publicIP string
-	var privateIP string
+	var publicIPAddress string
+	var privateIPAddress string
 
+	// This may be repetitive, but it's a sanity check by pulling the IP from the instance
 	if len(instance.NetworkInterfaces) > 0 && len(instance.NetworkInterfaces[0].AccessConfigs) > 0 {
-		publicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+		publicIPAddress = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 	} else {
-		l.Errorf("No access configs found for instance %s - could not get public IP", vmName)
-		m.Deployment.Machines[vmName].SetFailed(true)
-		return "", "", fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
+		l.Errorf("No access configs found for instance %s - could not get public IP", machine.GetName())
+		m.Deployment.Machines[machine.GetName()].SetFailed(true)
+		return fmt.Errorf("no access configs found for instance %s - could not get public IP", machine.GetName())
 	}
 
 	if len(instance.NetworkInterfaces) > 0 && instance.NetworkInterfaces[0].NetworkIP != nil {
-		privateIP = *instance.NetworkInterfaces[0].NetworkIP
+		privateIPAddress = *instance.NetworkInterfaces[0].NetworkIP
 	} else {
-		l.Errorf("No network interface found for instance %s - could not get private IP", vmName)
-		m.Deployment.Machines[vmName].SetFailed(true)
-		return "", "", fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
+		l.Errorf("No network interface found for instance %s - could not get private IP", machine.GetName())
+		m.Deployment.Machines[machine.GetName()].SetFailed(true)
+		return fmt.Errorf("no network interface found for instance %s - could not get private IP", machine.GetName())
 	}
 
-	return publicIP, privateIP, nil
+	if err != nil {
+		l.Warnf("Failed to get private IP for VM %s: %v", machine.GetName(), err)
+		// Continue anyway as this is not critical
+	}
+
+	machine.SetPublicIP(publicIPAddress)
+	machine.SetPrivateIP(privateIPAddress)
+
+	l.Infof("Successfully configured VM %s with public IP %s and private IP %s",
+		machine.GetName(), publicIPAddress, privateIPAddress)
+
+	return nil
+}
+
+func (p *GCPProvider) allocateIPWithRetries(
+	ctx context.Context,
+	vmName, region string,
+) (*computepb.Address, error) {
+	l := logger.Get()
+	config := DefaultIPAllocationConfig
+
+	var lastErr error
+	for attempt := 0; attempt < config.MaxRetries; attempt++ {
+		if attempt > 0 {
+			l.Infof("Retrying IP allocation for VM %s (attempt %d/%d)",
+				vmName, attempt+1, config.MaxRetries)
+			time.Sleep(config.RetryInterval)
+		}
+
+		// Try to allocate a new IP
+		ip, err := p.tryAllocateIP(ctx, vmName, region)
+		if err == nil {
+			return ip, nil
+		}
+
+		lastErr = err
+		l.Warnf("IP allocation attempt %d failed for VM %s: %v",
+			attempt+1, vmName, err)
+
+		// If context is canceled, stop retrying
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("context canceled during IP allocation: %w", ctx.Err())
+		}
+	}
+
+	return nil, fmt.Errorf("failed to allocate IP after %d attempts: %w",
+		config.MaxRetries, lastErr)
+}
+
+func (p *GCPProvider) tryAllocateIP(
+	ctx context.Context,
+	vmName, region string,
+) (*computepb.Address, error) {
+	l := logger.Get()
+
+	// First try to find an available IP in the project
+	availableIP, err := p.findAvailableIP(ctx, region)
+	if err == nil {
+		l.Infof("Found available IP %s for VM %s", availableIP, vmName)
+		return availableIP, nil
+	}
+	l.Infof("No available IPs found for VM %s, attempting to reserve new IP", vmName)
+
+	// If no available IPs, create a new one
+	ipName := fmt.Sprintf("%s-ip-%s", vmName, randomString(6))
+	addressType := computepb.Address_EXTERNAL.String()
+
+	address := &computepb.Address{
+		Name:        &ipName,
+		AddressType: &addressType,
+	}
+
+	addr, err := p.GetGCPClient().CreateIP(ctx, p.ProjectID, region, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reserve IP address: %w", err)
+	}
+
+	l.Infof("Successfully reserved new IP %s for VM %s", *addr.Address, vmName)
+	return addr, nil
+}
+
+func (p *GCPProvider) findAvailableIP(
+	ctx context.Context,
+	region string,
+) (*computepb.Address, error) {
+	l := logger.Get()
+
+	// List all addresses in the region
+	addressList, err := p.GetGCPClient().ListAddresses(ctx, p.ProjectID, region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list IP addresses: %w", err)
+	}
+
+	// Find an unassigned address
+	for _, addr := range addressList {
+		if *addr.Status == "RESERVED" && addr.Users == nil {
+			l.Infof("Found unused IP address: %s", *addr.Address)
+			return addr, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no available IP addresses found")
+}
+
+func (p *GCPProvider) releaseIP(ctx context.Context, ip, region string) error {
+	l := logger.Get()
+	l.Infof("Attempting to release IP %s in region %s", ip, region)
+
+	// Find the address resource by IP
+	addressList, err := p.GetGCPClient().ListAddresses(ctx, p.ProjectID, region)
+	if err != nil {
+		return fmt.Errorf("failed to list IP addresses: %w", err)
+	}
+
+	for _, addr := range addressList {
+		if *addr.Address == ip {
+			err := p.GetGCPClient().DeleteIP(ctx, p.ProjectID, region, *addr.Name)
+			if err != nil {
+				return fmt.Errorf("failed to delete IP address: %w", err)
+			}
+			l.Infof("Successfully released IP %s", ip)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("IP address %s not found", ip)
+}
+
+func extractRegionFromZone(zone string) string {
+	// Zones typically look like "us-central1-a", we want "us-central1"
+	parts := strings.Split(zone, "-")
+	if len(parts) < 3 {
+		return zone // Return original if format is unexpected
+	}
+	return strings.Join(parts[:len(parts)-1], "-")
+}
+
+func randomString(n int) string {
+	const letterBytes = "abcdefghijklmnopqrstuvwxyz"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
 }

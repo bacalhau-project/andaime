@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
@@ -87,12 +88,15 @@ func (s *PkgProvidersGCPIntegrationTest) TearDownSuite() {
 func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 	s.mockGCPClient.On("EnsureProject", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return("test-project-id", nil)
+	s.mockGCPClient.On("ListAddresses", mock.Anything, mock.Anything, mock.Anything).
+		Return([]*computepb.Address{}, nil)
 	s.mockGCPClient.On("EnableAPI", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateResources", mock.Anything).Return(nil)
 	s.mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything).Return(nil)
-	s.mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPIPAddress(), nil)
 	s.mockGCPClient.On("CreateFirewallRules", mock.Anything, mock.Anything).Return(nil)
-	s.mockGCPClient.On("CreateVM", mock.Anything, mock.Anything, mock.Anything).
+	s.mockGCPClient.On("CreateVM", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeGCPInstance(), nil)
 	s.mockGCPClient.On("GetInstance", mock.Anything, mock.Anything, mock.Anything).
 		Return(testdata.FakeGCPInstance(), nil)

@@ -5,6 +5,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func FakeGCPIPAddress() *computepb.Address {
+	return &computepb.Address{
+		Address: proto.String("251.200.100.100"),
+	}
+}
+
 // FakeGCPInstance returns a fake GCP Instance for testing
 func FakeGCPInstance() *computepb.Instance {
 	return &computepb.Instance{

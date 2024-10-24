@@ -119,7 +119,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 	m.Deployment.SetMachines(map[string]models.Machiner{
 		vmName: machine,
 	})
-	publicIPAddress, _, err := gcpProvider.CreateVM(ctx, vmName)
+	err = gcpProvider.CreateAndConfigureVM(ctx, machine)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
@@ -130,7 +130,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("VM created successfully: %s (External IP: %s)\n", vmName, publicIPAddress)
+	fmt.Printf("VM created successfully: %s - %s\n", vmName, machine.GetPublicIP())
 	return nil
 }
 

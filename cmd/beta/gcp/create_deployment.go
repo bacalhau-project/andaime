@@ -240,15 +240,13 @@ func createResources(
 
 	// Try to create each machine
 	for name, machine := range m.Deployment.Machines {
-		publicIP, privateIP, err := gcpProvider.CreateVM(ctx, name)
+		err := gcpProvider.CreateAndConfigureVM(ctx, machine)
 		if err != nil {
 			l.Errorf("Failed to create machine %s: %v", name, err)
 			continue
 		}
 
 		// Update machine IPs if creation was successful
-		machine.SetPublicIP(publicIP)
-		machine.SetPrivateIP(privateIP)
 		updateMachineConfig(m.Deployment, name)
 	}
 

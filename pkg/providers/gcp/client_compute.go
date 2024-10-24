@@ -14,6 +14,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
+	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -161,18 +162,23 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 func (c *LiveGCPClient) CreateIP(
 	ctx context.Context,
 	projectID, region string,
-	addressName string,
-) (string, error) {
+	address *computepb.Address,
+) (*computepb.Address, error) {
 	if region == "" {
-		return "", fmt.Errorf("region is not set")
+		return nil, fmt.Errorf("region is not set")
 	}
 
 	if projectID == "" {
-		return "", fmt.Errorf("projectID is not set")
+		return nil, fmt.Errorf("projectID is not set")
 	}
 
-	if addressName == "" {
-		return "", fmt.Errorf("addressName is not set")
+	if address.Name == nil {
+		return nil, fmt.Errorf("addressName is not set")
+	}
+	addressName := *address.Name
+
+	if address.AddressType == nil {
+		return nil, fmt.Errorf("addressType is not set")
 	}
 
 	// Insert the address
@@ -181,67 +187,86 @@ func (c *LiveGCPClient) CreateIP(
 		Region:  region,
 		AddressResource: &computepb.Address{
 			Name:        to.Ptr(addressName),
-			AddressType: to.Ptr("EXTERNAL"),
+			AddressType: address.AddressType,
 			Region:      to.Ptr(region),
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to reserve IP address: %v", err)
+		return nil, fmt.Errorf("failed to reserve IP address: %v", err)
 	}
 
 	err = op.Wait(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to reserve IP address: %v", err)
+		return nil, fmt.Errorf("failed to reserve IP address: %v", err)
 	}
 
-	return addressName, nil
+	return c.addressesClient.Get(ctx, &computepb.GetAddressRequest{
+		Project: projectID,
+		Region:  region,
+		Address: addressName,
+	})
+}
+
+func (c *LiveGCPClient) DeleteIP(
+	ctx context.Context,
+	projectID, region, addressName string,
+) error {
+	op, err := c.addressesClient.Delete(ctx, &computepb.DeleteAddressRequest{
+		Project: projectID,
+		Region:  region,
+		Address: addressName,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start deleting IP address: %v", err)
+	}
+
+	err = op.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for IP address deletion: %v", err)
+	}
+
+	return nil
+}
+
+func (c *LiveGCPClient) ListAddresses(
+	ctx context.Context,
+	projectID, region string,
+) ([]*computepb.Address, error) {
+	ipAddressIterator := c.addressesClient.List(ctx, &computepb.ListAddressesRequest{
+		Project: projectID,
+		Region:  region,
+	})
+
+	var addresses []*computepb.Address
+	var err error
+	for {
+		var address *computepb.Address
+		address, err = ipAddressIterator.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to list IP addresses: %v", err)
+		}
+		addresses = append(addresses, address)
+	}
+
+	return addresses, err
 }
 
 func (c *LiveGCPClient) CreateVM(
 	ctx context.Context,
 	projectID string,
 	machine models.Machiner,
+	ip *computepb.Address,
 ) (*computepb.Instance, error) {
-	publicIPName, err := c.CreateIP(
-		ctx,
-		projectID,
-		machine.GetRegion(),
-		fmt.Sprintf("%s-ip", machine.GetName()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create IP: %w", err)
-	}
-
-	// Create a 1 minute backoff for the IP creation
-	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 1 * time.Minute
-
-	var ip *computepb.Address
-
-	operation := func() error {
-		ip, err = c.addressesClient.Get(ctx, &computepb.GetAddressRequest{
-			Project: projectID,
-			Region:  machine.GetRegion(),
-			Address: publicIPName,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get IP address: %w", err)
-		}
-		return nil
-	}
-
-	err = backoff.Retry(operation, b)
-	if err != nil {
-		return nil, fmt.Errorf("failed to reserve IP address: %w", err)
-	}
-
 	// Validate input and prerequisites
 	if err := c.validateCreateVMInput(ctx, projectID, machine); err != nil {
 		return nil, fmt.Errorf("input validation failed: %w", err)
 	}
 
 	// Prepare VM configuration
-	instance, err := c.prepareVMInstance(ctx, projectID, machine, *ip.Address)
+	instance, err := c.prepareVMInstance(ctx, projectID, machine, ip)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare VM instance: %w", err)
 	}
@@ -306,7 +331,7 @@ func (c *LiveGCPClient) prepareVMInstance(
 	ctx context.Context,
 	projectID string,
 	machine models.Machiner,
-	publicIP string,
+	ip *computepb.Address,
 ) (*computepb.Instance, error) {
 	networkName := "default"
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
@@ -357,7 +382,7 @@ func (c *LiveGCPClient) prepareVMInstance(
 					{
 						Type:  to.Ptr("ONE_TO_ONE_NAT"),
 						Name:  to.Ptr("External NAT"),
-						NatIP: to.Ptr(publicIP),
+						NatIP: ip.Address,
 					},
 				},
 			},
