@@ -27,6 +27,8 @@ type Machiner interface {
 	GetVMSize() string
 	GetDiskSizeGB() int
 	SetDiskSizeGB(size int)
+	IsFailed() bool
+	SetFailed(bool)
 	GetDiskImageFamily() string
 	SetDiskImageFamily(family string)
 	GetDiskImageURL() string
@@ -124,6 +126,7 @@ type Machine struct {
 	PublicIP      string
 	PrivateIP     string
 	StartTime     time.Time
+	Failed        bool
 
 	VMSize          string
 	DiskSizeGB      int
@@ -687,6 +690,14 @@ func (mach *Machine) GetName() string {
 
 func (mach *Machine) SetName(name string) {
 	mach.Name = name
+}
+
+func (mach *Machine) IsFailed() bool {
+	return mach.Failed
+}
+
+func (mach *Machine) SetFailed(failed bool) {
+	mach.Failed = failed
 }
 
 func (mach *Machine) GetType() ResourceType {
