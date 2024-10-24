@@ -592,18 +592,18 @@ func (p *GCPProvider) CheckPermissions(ctx context.Context) error {
 func (p *GCPProvider) CreateVM(
 	ctx context.Context,
 	vmName string,
-) (string, string, bool, error) {
+) (string, string, error) {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
-		return "", "", true, fmt.Errorf("global model or deployment is nil")
+		return "", "", fmt.Errorf("global model or deployment is nil")
 	}
 
 	instance, err := p.GetGCPClient().
 		CreateVM(ctx, m.Deployment.GetProjectID(), m.Deployment.Machines[vmName])
 	if err != nil {
 		l.Errorf("Failed to create VM %s: %v", vmName, err)
-		return "", "", true, fmt.Errorf("failed to create VM: %w", err)
+		return "", "", fmt.Errorf("failed to create VM: %w", err)
 	}
 
 	var publicIP string
@@ -613,15 +613,15 @@ func (p *GCPProvider) CreateVM(
 		publicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 	} else {
 		l.Errorf("No access configs found for instance %s - could not get public IP", vmName)
-		return "", "", true, fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
+		return "", "", fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
 	}
 
 	if len(instance.NetworkInterfaces) > 0 && instance.NetworkInterfaces[0].NetworkIP != nil {
 		privateIP = *instance.NetworkInterfaces[0].NetworkIP
 	} else {
 		l.Errorf("No network interface found for instance %s - could not get private IP", vmName)
-		return "", "", true, fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
+		return "", "", fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
 	}
 
-	return publicIP, privateIP, false, nil
+	return publicIP, privateIP, nil
 }
