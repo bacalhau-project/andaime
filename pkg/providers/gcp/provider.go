@@ -603,6 +603,7 @@ func (p *GCPProvider) CreateVM(
 		CreateVM(ctx, m.Deployment.GetProjectID(), m.Deployment.Machines[vmName])
 	if err != nil {
 		l.Errorf("Failed to create VM %s: %v", vmName, err)
+		m.Deployment.Machines[vmName].SetFailed(true)
 		return "", "", fmt.Errorf("failed to create VM: %w", err)
 	}
 
@@ -613,6 +614,7 @@ func (p *GCPProvider) CreateVM(
 		publicIP = *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 	} else {
 		l.Errorf("No access configs found for instance %s - could not get public IP", vmName)
+		m.Deployment.Machines[vmName].SetFailed(true)
 		return "", "", fmt.Errorf("no access configs found for instance %s - could not get public IP", vmName)
 	}
 
@@ -620,6 +622,7 @@ func (p *GCPProvider) CreateVM(
 		privateIP = *instance.NetworkInterfaces[0].NetworkIP
 	} else {
 		l.Errorf("No network interface found for instance %s - could not get private IP", vmName)
+		m.Deployment.Machines[vmName].SetFailed(true)
 		return "", "", fmt.Errorf("no network interface found for instance %s - could not get private IP", vmName)
 	}
 

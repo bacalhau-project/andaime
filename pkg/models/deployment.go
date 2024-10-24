@@ -201,7 +201,7 @@ func (d *Deployment) UpdateViperConfig() error {
 func (d *Deployment) GetMachine(name string) Machiner {
 	d.deploymentMutex.RLock()
 	defer d.deploymentMutex.RUnlock()
-	if machine, ok := d.Machines[name]; ok {
+	if machine, ok := d.Machines[name]; ok && !machine.IsFailed() {
 		return machine
 	}
 	return nil
@@ -241,7 +241,9 @@ func (d *Deployment) GetMachines() map[string]Machiner {
 	defer d.deploymentMutex.RUnlock()
 	machines := make(map[string]Machiner)
 	for name, machine := range d.Machines {
-		machines[name] = machine
+		if !machine.IsFailed() {
+			machines[name] = machine
+		}
 	}
 	return machines
 }
