@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -13,6 +14,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,6 +36,11 @@ func GetAwsCreateDeploymentCmd() *cobra.Command {
 }
 
 func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
+	// Load .env file at the beginning
+	if err := godotenv.Load(); err != nil {
+		logger.Get().Warn(fmt.Sprintf("Error loading .env file: %v", err))
+	}
+
 	ctx := cmd.Context()
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
@@ -51,23 +58,51 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
-	prog.InitProgram(m)
+
+	// Add error handling for TTY initialization
+	if err := prog.InitProgram(m); err != nil {
+		// Log the TTY error but don't fail the deployment
+		logger.Get().
+			Warn(fmt.Sprintf("Failed to initialize display: %v. Continuing without interactive display.", err))
+	}
 
 	go startResourcePolling(ctx, awsProvider)
 
 	deploymentErr := runDeploymentAsync(ctx, awsProvider, cancel)
 
+	// Only cancel if there's an actual deployment error
+	if deploymentErr != nil {
+		cancel()
+	}
+
 	handleDeploymentCompletion(ctx, m, deploymentErr)
 
-	return nil
+	return deploymentErr
 }
 
 func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
-	accountID := viper.GetString("aws.account_id")
+	// Try environment variables first, then fall back to viper config
+	accountID := os.Getenv("AWS_ACCOUNT_ID")
 	if accountID == "" {
-		return nil, fmt.Errorf("AWS account ID is required. You can obtain it by running: aws sts get-caller-identity")
+		accountID = viper.GetString("aws.account_id")
 	}
-	awsProvider, err := awsprovider.NewAWSProvider(accountID)
+	if accountID == "" {
+		return nil, fmt.Errorf(
+			"AWS account ID is required. Set AWS_ACCOUNT_ID in .env file or aws.account_id in config",
+		)
+	}
+
+	region := os.Getenv("AWS_DEFAULT_REGION")
+	if region == "" {
+		region = viper.GetString("aws.region")
+	}
+	if region == "" {
+		return nil, fmt.Errorf(
+			"AWS region is required. Set AWS_DEFAULT_REGION in .env file or aws.region in config",
+		)
+	}
+
+	awsProvider, err := awsprovider.NewAWSProvider(accountID, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
@@ -130,17 +165,22 @@ func runDeploymentAsync(
 		}
 	}()
 
-	_, err := prog.Run()
-	if err != nil {
-		l.Error(fmt.Sprintf("Error running program: %v", err))
-		cancel()
+	// Only try to run the display if we have a program
+	if prog != nil {
+		_, err := prog.Run()
+		if err != nil {
+			// Log the error but don't fail the deployment
+			l.Warn(fmt.Sprintf("Display error: %v. Continuing without interactive display.", err))
+		}
 	}
 
 	select {
 	case <-deploymentDone:
 	case <-ctx.Done():
-		l.Debug("Context cancelled, waiting for deployment to finish")
-		<-deploymentDone
+		if ctx.Err() != context.Canceled {
+			l.Debug("Context cancelled, waiting for deployment to finish")
+			<-deploymentDone
+		}
 	}
 
 	return deploymentErr
@@ -152,6 +192,10 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("display model or deployment is nil")
+	}
+
+	if err := awsProvider.BootstrapEnvironment(ctx); err != nil {
+		return fmt.Errorf("failed to bootstrap environment: %w", err)
 	}
 
 	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
@@ -176,7 +220,10 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 func handleDeploymentCompletion(ctx context.Context, m *display.DisplayModel, deploymentErr error) {
 	writeConfig()
 
-	fmt.Println(m.RenderFinalTable())
+	// Only try to render the final table if we have a display model
+	if m != nil {
+		fmt.Println(m.RenderFinalTable())
+	}
 
 	if deploymentErr != nil {
 		fmt.Println("Deployment failed, but configuration was written to file.")
@@ -184,7 +231,7 @@ func handleDeploymentCompletion(ctx context.Context, m *display.DisplayModel, de
 		fmt.Println(deploymentErr)
 	}
 
-	if ctx.Err() != nil {
+	if ctx.Err() != nil && ctx.Err() != context.Canceled {
 		fmt.Println("General (unknown) error running program:")
 		fmt.Println(ctx.Err())
 	}

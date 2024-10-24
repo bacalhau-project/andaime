@@ -35,16 +35,31 @@ type CloudFormationAPIer interface {
 		params *cloudformation.DescribeStacksInput,
 		opts ...func(*cloudformation.Options),
 	) (*cloudformation.DescribeStacksOutput, error)
+	DescribeStackEvents(
+		ctx context.Context,
+		params *cloudformation.DescribeStackEventsInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.DescribeStackEventsOutput, error)
 	CreateStack(
 		ctx context.Context,
 		params *cloudformation.CreateStackInput,
 		opts ...func(*cloudformation.Options),
 	) (*cloudformation.CreateStackOutput, error)
+	UpdateStack(
+		ctx context.Context,
+		params *cloudformation.UpdateStackInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.UpdateStackOutput, error)
 	DeleteStack(
 		ctx context.Context,
 		params *cloudformation.DeleteStackInput,
 		opts ...func(*cloudformation.Options),
 	) (*cloudformation.DeleteStackOutput, error)
+	ListStacks(
+		ctx context.Context,
+		params *cloudformation.ListStacksInput,
+		opts ...func(*cloudformation.Options),
+	) (*cloudformation.ListStacksOutput, error)
 }
 
 // AWSInfraProvider defines the interface for AWS infrastructure operations

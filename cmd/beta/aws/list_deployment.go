@@ -18,7 +18,8 @@ var listDeploymentsCmd = &cobra.Command{
 	Long:  `List all deployments in AWS using the configuration specified in the config file.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		accountID := viper.GetString("aws.account_id")
-		awsProvider, err := awsprovider.NewAWSProvider(accountID)
+		region := viper.GetString("aws.region")
+		awsProvider, err := awsprovider.NewAWSProvider(accountID, region)
 		if err != nil {
 			return fmt.Errorf("failed to initialize AWS provider: %w", err)
 		}

@@ -171,6 +171,80 @@ func (_c *MockCloudFormationAPIer_DeleteStack_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// DescribeStackEvents provides a mock function with given fields: ctx, params, opts
+func (_m *MockCloudFormationAPIer) DescribeStackEvents(ctx context.Context, params *cloudformation.DescribeStackEventsInput, opts ...func(*cloudformation.Options)) (*cloudformation.DescribeStackEventsOutput, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeStackEvents")
+	}
+
+	var r0 *cloudformation.DescribeStackEventsOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *cloudformation.DescribeStackEventsInput, ...func(*cloudformation.Options)) (*cloudformation.DescribeStackEventsOutput, error)); ok {
+		return rf(ctx, params, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *cloudformation.DescribeStackEventsInput, ...func(*cloudformation.Options)) *cloudformation.DescribeStackEventsOutput); ok {
+		r0 = rf(ctx, params, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*cloudformation.DescribeStackEventsOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *cloudformation.DescribeStackEventsInput, ...func(*cloudformation.Options)) error); ok {
+		r1 = rf(ctx, params, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockCloudFormationAPIer_DescribeStackEvents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeStackEvents'
+type MockCloudFormationAPIer_DescribeStackEvents_Call struct {
+	*mock.Call
+}
+
+// DescribeStackEvents is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *cloudformation.DescribeStackEventsInput
+//   - opts ...func(*cloudformation.Options)
+func (_e *MockCloudFormationAPIer_Expecter) DescribeStackEvents(ctx interface{}, params interface{}, opts ...interface{}) *MockCloudFormationAPIer_DescribeStackEvents_Call {
+	return &MockCloudFormationAPIer_DescribeStackEvents_Call{Call: _e.mock.On("DescribeStackEvents",
+		append([]interface{}{ctx, params}, opts...)...)}
+}
+
+func (_c *MockCloudFormationAPIer_DescribeStackEvents_Call) Run(run func(ctx context.Context, params *cloudformation.DescribeStackEventsInput, opts ...func(*cloudformation.Options))) *MockCloudFormationAPIer_DescribeStackEvents_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*cloudformation.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*cloudformation.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*cloudformation.DescribeStackEventsInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockCloudFormationAPIer_DescribeStackEvents_Call) Return(_a0 *cloudformation.DescribeStackEventsOutput, _a1 error) *MockCloudFormationAPIer_DescribeStackEvents_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockCloudFormationAPIer_DescribeStackEvents_Call) RunAndReturn(run func(context.Context, *cloudformation.DescribeStackEventsInput, ...func(*cloudformation.Options)) (*cloudformation.DescribeStackEventsOutput, error)) *MockCloudFormationAPIer_DescribeStackEvents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DescribeStacks provides a mock function with given fields: ctx, params, opts
 func (_m *MockCloudFormationAPIer) DescribeStacks(ctx context.Context, params *cloudformation.DescribeStacksInput, opts ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error) {
 	_va := make([]interface{}, len(opts))
@@ -315,6 +389,154 @@ func (_c *MockCloudFormationAPIer_GetTemplate_Call) Return(_a0 *cloudformation.G
 }
 
 func (_c *MockCloudFormationAPIer_GetTemplate_Call) RunAndReturn(run func(context.Context, *cloudformation.GetTemplateInput, ...func(*cloudformation.Options)) (*cloudformation.GetTemplateOutput, error)) *MockCloudFormationAPIer_GetTemplate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListStacks provides a mock function with given fields: ctx, params, opts
+func (_m *MockCloudFormationAPIer) ListStacks(ctx context.Context, params *cloudformation.ListStacksInput, opts ...func(*cloudformation.Options)) (*cloudformation.ListStacksOutput, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListStacks")
+	}
+
+	var r0 *cloudformation.ListStacksOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *cloudformation.ListStacksInput, ...func(*cloudformation.Options)) (*cloudformation.ListStacksOutput, error)); ok {
+		return rf(ctx, params, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *cloudformation.ListStacksInput, ...func(*cloudformation.Options)) *cloudformation.ListStacksOutput); ok {
+		r0 = rf(ctx, params, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*cloudformation.ListStacksOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *cloudformation.ListStacksInput, ...func(*cloudformation.Options)) error); ok {
+		r1 = rf(ctx, params, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockCloudFormationAPIer_ListStacks_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListStacks'
+type MockCloudFormationAPIer_ListStacks_Call struct {
+	*mock.Call
+}
+
+// ListStacks is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *cloudformation.ListStacksInput
+//   - opts ...func(*cloudformation.Options)
+func (_e *MockCloudFormationAPIer_Expecter) ListStacks(ctx interface{}, params interface{}, opts ...interface{}) *MockCloudFormationAPIer_ListStacks_Call {
+	return &MockCloudFormationAPIer_ListStacks_Call{Call: _e.mock.On("ListStacks",
+		append([]interface{}{ctx, params}, opts...)...)}
+}
+
+func (_c *MockCloudFormationAPIer_ListStacks_Call) Run(run func(ctx context.Context, params *cloudformation.ListStacksInput, opts ...func(*cloudformation.Options))) *MockCloudFormationAPIer_ListStacks_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*cloudformation.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*cloudformation.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*cloudformation.ListStacksInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockCloudFormationAPIer_ListStacks_Call) Return(_a0 *cloudformation.ListStacksOutput, _a1 error) *MockCloudFormationAPIer_ListStacks_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockCloudFormationAPIer_ListStacks_Call) RunAndReturn(run func(context.Context, *cloudformation.ListStacksInput, ...func(*cloudformation.Options)) (*cloudformation.ListStacksOutput, error)) *MockCloudFormationAPIer_ListStacks_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateStack provides a mock function with given fields: ctx, params, opts
+func (_m *MockCloudFormationAPIer) UpdateStack(ctx context.Context, params *cloudformation.UpdateStackInput, opts ...func(*cloudformation.Options)) (*cloudformation.UpdateStackOutput, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateStack")
+	}
+
+	var r0 *cloudformation.UpdateStackOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *cloudformation.UpdateStackInput, ...func(*cloudformation.Options)) (*cloudformation.UpdateStackOutput, error)); ok {
+		return rf(ctx, params, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *cloudformation.UpdateStackInput, ...func(*cloudformation.Options)) *cloudformation.UpdateStackOutput); ok {
+		r0 = rf(ctx, params, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*cloudformation.UpdateStackOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *cloudformation.UpdateStackInput, ...func(*cloudformation.Options)) error); ok {
+		r1 = rf(ctx, params, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockCloudFormationAPIer_UpdateStack_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateStack'
+type MockCloudFormationAPIer_UpdateStack_Call struct {
+	*mock.Call
+}
+
+// UpdateStack is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *cloudformation.UpdateStackInput
+//   - opts ...func(*cloudformation.Options)
+func (_e *MockCloudFormationAPIer_Expecter) UpdateStack(ctx interface{}, params interface{}, opts ...interface{}) *MockCloudFormationAPIer_UpdateStack_Call {
+	return &MockCloudFormationAPIer_UpdateStack_Call{Call: _e.mock.On("UpdateStack",
+		append([]interface{}{ctx, params}, opts...)...)}
+}
+
+func (_c *MockCloudFormationAPIer_UpdateStack_Call) Run(run func(ctx context.Context, params *cloudformation.UpdateStackInput, opts ...func(*cloudformation.Options))) *MockCloudFormationAPIer_UpdateStack_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*cloudformation.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*cloudformation.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*cloudformation.UpdateStackInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockCloudFormationAPIer_UpdateStack_Call) Return(_a0 *cloudformation.UpdateStackOutput, _a1 error) *MockCloudFormationAPIer_UpdateStack_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockCloudFormationAPIer_UpdateStack_Call) RunAndReturn(run func(context.Context, *cloudformation.UpdateStackInput, ...func(*cloudformation.Options)) (*cloudformation.UpdateStackOutput, error)) *MockCloudFormationAPIer_UpdateStack_Call {
 	_c.Call.Return(run)
 	return _c
 }

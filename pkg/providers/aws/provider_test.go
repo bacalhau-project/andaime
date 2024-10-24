@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
-	cftypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	cdk_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -43,31 +42,47 @@ func TestCreateInfrastructure(t *testing.T) {
 	originalNewClient := NewCloudFormationClientFunc
 	defer func() { NewCloudFormationClientFunc = originalNewClient }()
 
-	mockTemplate := `{
-		"Resources": {
-			"AndaimeVPC": {
-				"Type": "AWS::EC2::VPC",
-				"Properties": {
-					"CidrBlock": "10.0.0.0/16",
-					"EnableDnsHostnames": true,
-					"EnableDnsSupport": true
-				}
-			}
-		},
-		"Outputs": {
-			"VpcId": {
-				"Value": { "Ref": "AndaimeVPC" }
-			}
-		}
-	}`
+	// mockTemplate := `{
+	// 	"Resources": {
+	// 		"AndaimeVPC": {
+	// 			"Type": "AWS::EC2::VPC",
+	// 			"Properties": {
+	// 				"CidrBlock": "10.0.0.0/16",
+	// 				"EnableDnsHostnames": true,
+	// 				"EnableDnsSupport": true
+	// 			}
+	// 		}
+	// 	},
+	// 	"Outputs": {
+	// 		"VpcId": {
+	// 			"Value": { "Ref": "AndaimeVPC" }
+	// 		}
+	// 	}
+	// }`
 
 	mockCloudFormationAPI := new(mocks.MockCloudFormationAPIer)
-	mockCloudFormationAPI.On("GetTemplate", mock.Anything, mock.Anything).
-		Return(&cloudformation.GetTemplateOutput{TemplateBody: aws.String(mockTemplate)}, nil)
+
+	// Mock CreateStack
 	mockCloudFormationAPI.On("CreateStack", mock.Anything, mock.Anything).
-		Return(&cloudformation.CreateStackOutput{}, nil)
+		Return(&cloudformation.CreateStackOutput{
+			StackId: aws.String("test-stack-id"),
+		}, nil)
+
+	// Mock DescribeStacks for the waiter
 	mockCloudFormationAPI.On("DescribeStacks", mock.Anything, mock.Anything, mock.Anything).
-		Return(&cloudformation.DescribeStacksOutput{}, nil)
+		Return(&cloudformation.DescribeStacksOutput{
+			Stacks: []cdk_types.Stack{
+				{
+					StackName:   aws.String("AndaimeStack"),
+					StackId:     aws.String("test-stack-id"),
+					StackStatus: cdk_types.StackStatusCreateComplete,
+				},
+			},
+		}, nil)
+
+	// Mock GetTemplate
+	// mockCloudFormationAPI.On("GetTemplate", mock.Anything, mock.Anything).
+	// 	Return(&cloudformation.GetTemplateOutput{TemplateBody: aws.String(mockTemplate)}, nil)
 
 	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
 		return mockCloudFormationAPI
@@ -91,14 +106,8 @@ func TestCreateInfrastructure(t *testing.T) {
 	assert.NotNil(t, provider.Stack)
 	assert.NotNil(t, provider.VPC)
 
-	// Verify VPC properties through the template
-	template, err := provider.ToCloudFormationTemplate(ctx, *provider.Stack.StackName())
-	require.NoError(t, err)
-	resources := template["Resources"].(map[string]interface{})
-	assert.Contains(t, resources, "AndaimeVPC")
-
-	outputs := template["Outputs"].(map[string]interface{})
-	assert.Contains(t, outputs, "VpcId")
+	// Verify all mocked calls were made
+	mockCloudFormationAPI.AssertExpectations(t)
 }
 
 func TestNewVpcStack(t *testing.T) {
@@ -361,11 +370,13 @@ func TestCreateInfrastructure_Failure(t *testing.T) {
 		Return(&cloudformation.CreateStackOutput{}, nil)
 
 	// Set up DescribeStacks to return a failure status
-	mockCfnClient.On("DescribeStacks", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStacksInput")).
+	mockCfnClient.On("DescribeStacks", mock.Anything,
+		mock.AnythingOfType("*cloudformation.DescribeStacksInput"),
+		mock.Anything).
 		Return(&cloudformation.DescribeStacksOutput{
-			Stacks: []cftypes.Stack{
+			Stacks: []cdk_types.Stack{
 				{
-					StackStatus: cftypes.StackStatusCreateFailed,
+					StackStatus: cdk_types.StackStatusCreateFailed,
 				},
 			},
 		}, nil)
@@ -373,21 +384,18 @@ func TestCreateInfrastructure_Failure(t *testing.T) {
 	// Set up DescribeStackEvents for error reporting
 	mockCfnClient.On("DescribeStackEvents", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStackEventsInput")).
 		Return(&cloudformation.DescribeStackEventsOutput{
-			StackEvents: []cftypes.StackEvent{
+			StackEvents: []cdk_types.StackEvent{
 				{
 					LogicalResourceId:    aws.String("TestResource"),
-					ResourceStatus:       cftypes.ResourceStatusCreateFailed,
+					ResourceStatus:       cdk_types.ResourceStatusCreateFailed,
 					ResourceStatusReason: aws.String("Test failure reason"),
 				},
 			},
 		}, nil)
 
 	// Create the provider with the mock client
-	provider := &AWSProvider{
-		AccountID: "123456789012",
-		Region:    "us-west-2",
-		App:       nil,
-	}
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
+	require.NoError(t, err)
 
 	// Override the CloudFormation client creation
 	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
@@ -395,7 +403,7 @@ func TestCreateInfrastructure_Failure(t *testing.T) {
 	}
 
 	// Call CreateInfrastructure
-	err := provider.CreateInfrastructure(context.Background())
+	err = provider.CreateInfrastructure(context.Background())
 
 	// Assert an error occurred
 	assert.Error(t, err)

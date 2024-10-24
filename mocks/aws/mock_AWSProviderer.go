@@ -337,23 +337,23 @@ func (_c *MockAWSProviderer_GetVMExternalIP_Call) RunAndReturn(run func(context.
 }
 
 // ListDeployments provides a mock function with given fields: ctx
-func (_m *MockAWSProviderer) ListDeployments(ctx context.Context) ([]*types.Instance, error) {
+func (_m *MockAWSProviderer) ListDeployments(ctx context.Context) ([]string, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListDeployments")
 	}
 
-	var r0 []*types.Instance
+	var r0 []string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) ([]*types.Instance, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) ([]string, error)); ok {
 		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) []*types.Instance); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) []string); ok {
 		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*types.Instance)
+			r0 = ret.Get(0).([]string)
 		}
 	}
 
@@ -384,12 +384,12 @@ func (_c *MockAWSProviderer_ListDeployments_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *MockAWSProviderer_ListDeployments_Call) Return(_a0 []*types.Instance, _a1 error) *MockAWSProviderer_ListDeployments_Call {
+func (_c *MockAWSProviderer_ListDeployments_Call) Return(_a0 []string, _a1 error) *MockAWSProviderer_ListDeployments_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockAWSProviderer_ListDeployments_Call) RunAndReturn(run func(context.Context) ([]*types.Instance, error)) *MockAWSProviderer_ListDeployments_Call {
+func (_c *MockAWSProviderer_ListDeployments_Call) RunAndReturn(run func(context.Context) ([]string, error)) *MockAWSProviderer_ListDeployments_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -423,6 +423,52 @@ func (_c *MockAWSProviderer_SetEC2Client_Call) Return() *MockAWSProviderer_SetEC
 }
 
 func (_c *MockAWSProviderer_SetEC2Client_Call) RunAndReturn(run func(aws.EC2Clienter)) *MockAWSProviderer_SetEC2Client_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// StartResourcePolling provides a mock function with given fields: ctx
+func (_m *MockAWSProviderer) StartResourcePolling(ctx context.Context) error {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StartResourcePolling")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockAWSProviderer_StartResourcePolling_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StartResourcePolling'
+type MockAWSProviderer_StartResourcePolling_Call struct {
+	*mock.Call
+}
+
+// StartResourcePolling is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockAWSProviderer_Expecter) StartResourcePolling(ctx interface{}) *MockAWSProviderer_StartResourcePolling_Call {
+	return &MockAWSProviderer_StartResourcePolling_Call{Call: _e.mock.On("StartResourcePolling", ctx)}
+}
+
+func (_c *MockAWSProviderer_StartResourcePolling_Call) Run(run func(ctx context.Context)) *MockAWSProviderer_StartResourcePolling_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *MockAWSProviderer_StartResourcePolling_Call) Return(_a0 error) *MockAWSProviderer_StartResourcePolling_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockAWSProviderer_StartResourcePolling_Call) RunAndReturn(run func(context.Context) error) *MockAWSProviderer_StartResourcePolling_Call {
 	_c.Call.Return(run)
 	return _c
 }

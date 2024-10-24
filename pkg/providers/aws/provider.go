@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -35,6 +36,8 @@ import (
 const (
 	ResourcePollingInterval = 10 * time.Second
 	UpdateQueueSize         = 100
+	DefaultStackTimeout     = 30 * time.Minute
+	TestStackTimeout        = 30 * time.Second
 )
 
 type AWSProvider struct {
@@ -460,6 +463,12 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l.Info("Waiting for infrastructure stack creation to complete...")
 	waiter := cloudformation.NewStackCreateCompleteWaiter(cfnClient)
 
+	// Use shorter timeout for tests
+	timeout := DefaultStackTimeout
+	if strings.HasSuffix(os.Args[0], ".test") {
+		timeout = TestStackTimeout
+	}
+
 	// Add a ticker to log stack events during creation
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -468,7 +477,7 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	go func() {
 		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
 			StackName: aws.String("AndaimeStack"),
-		}, 30*time.Second) // Reduced timeout for tests
+		}, timeout)
 	}()
 
 	for {
@@ -502,12 +511,9 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			// Log current stack status
-			status, err := cfnClient.DescribeStacks(
-				ctx,
-				&cloudformation.DescribeStacksInput{
-					StackName: aws.String("AndaimeStack"),
-				},
-			)
+			status, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+				StackName: aws.String("AndaimeStack"),
+			})
 			if err == nil && len(status.Stacks) > 0 {
 				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
 			}

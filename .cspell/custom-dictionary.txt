@@ -30,8 +30,12 @@ awscdk
 awsconfig
 AWSEC
 awserr
+awsiam
 awsinterfaces
+awskms
 awsprovider
+awss
+awsssm
 AWSVM
 azcore
 azidentity
@@ -48,6 +52,7 @@ bodyclose
 briandowns
 bubbletea
 BUHJ
+burkina
 cafile
 cenkalti
 centralus
@@ -119,6 +124,7 @@ exportloopref
 externalverifierhook
 Failf
 failureinjectionconfig
+faso
 Fatalf
 Fdump
 featureflags
