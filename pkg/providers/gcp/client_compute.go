@@ -79,9 +79,10 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Creating firewall rules in project: %s", projectID)
 
-	allowedPorts := viper.GetIntSlice("gcp.allowed_ports")
-	if len(allowedPorts) == 0 {
-		return fmt.Errorf("no allowed ports specified in the configuration")
+	// Required ports for Bacalhau and SSH
+	allowedPorts := []int{22, 1234, 1235, 4222}
+	if extraPorts := viper.GetIntSlice("gcp.allowed_ports"); len(extraPorts) > 0 {
+		allowedPorts = append(allowedPorts, extraPorts...)
 	}
 
 	networkName = "default"
