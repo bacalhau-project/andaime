@@ -74,7 +74,9 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 			return fmt.Errorf("failed to wait for network creation: %v", err)
 		}
 
-		l.Infof("VPC network %s created successfully", networkName)
+		l.Infof("VPC network %s created successfully. Waiting 10 seconds for network propagation...", networkName)
+		time.Sleep(10 * time.Second)
+		l.Infof("Network propagation wait complete for %s", networkName)
 		return nil
 	}
 
@@ -110,7 +112,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	l.Debugf("Creating firewall rules in project: %s", projectID)
+	l.Infof("Creating firewall rules in project: %s for network: %s", projectID, networkName)
 
 	// Add any extra ports from config
 	ports := make([]struct {
@@ -141,6 +143,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				portInfo.Port,
 				portInfo.Protocol,
 			)
+			l.Infof("Creating firewall rule: %s for port %d (%s)", ruleName, portInfo.Port, portInfo.Description)
 
 			for _, machine := range m.Deployment.GetMachines() {
 				m.UpdateStatus(models.NewDisplayStatusWithText(
@@ -197,7 +200,18 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				})
 				if err != nil {
 					if strings.Contains(err.Error(), "already exists") {
-						l.Debugf("Firewall rule %s already exists, skipping creation", ruleName)
+						l.Infof("Firewall rule %s already exists, verifying configuration...", ruleName)
+						// Verify existing rule
+						existingRule, getErr := c.firewallsClient.Get(ctx, &computepb.GetFirewallRequest{
+							Project:  projectID,
+							Firewall: ruleName,
+						})
+						if getErr != nil {
+							l.Warnf("Failed to verify existing firewall rule %s: %v", ruleName, getErr)
+						} else {
+							l.Infof("Verified existing firewall rule %s - Direction: %s, Port: %d", 
+								ruleName, *existingRule.Direction, portInfo.Port)
+						}
 						return nil
 					}
 					if strings.Contains(err.Error(), "Compute Engine API has not been used") {
