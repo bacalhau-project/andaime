@@ -204,10 +204,42 @@ func (m *Machine) UpdateResourceStatus(resource string, complete bool, err error
 3. Check network connectivity issues
 4. Verify resource completion accuracy
 
-## 9. Success Criteria
+## 9. Known Issues Investigation
+
+### 9.1 Orchestrator Node Provisioning Order
+1. Problem: Orchestrator node not being provisioned first
+2. Impact: May cause worker nodes to fail initial connection
+3. Investigation Steps:
+   - Review resource creation ordering in CreateAndConfigureVM
+   - Check dependency tracking between nodes
+   - Verify orchestrator flag setting timing
+   - Analyze machine creation parallelization
+4. Potential Solutions:
+   - Add explicit orchestrator-first ordering
+   - Implement resource dependencies
+   - Add pre-creation validation
+   - Update machine creation flow
+
+### 9.2 SSH Service Status Display
+1. Problem: SSH service status not showing as enabled
+2. Impact: Unclear service readiness state
+3. Investigation Steps:
+   - Review SSH service state tracking
+   - Check status update propagation
+   - Verify display model updates
+   - Analyze service validation logic
+4. Potential Solutions:
+   - Add explicit SSH service checks
+   - Improve status propagation
+   - Update display model handling
+   - Enhance service validation
+
+## 10. Success Criteria
 
 1. Deployment time reduced by 50%
 2. Display updates limited to 500ms intervals
 3. All required ports properly configured
 4. Resource completion tracking accurate
 5. Network connectivity verified
+6. Orchestrator node provisioned first
+7. SSH service status correctly displayed
