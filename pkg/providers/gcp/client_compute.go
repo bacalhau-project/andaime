@@ -74,11 +74,15 @@ var requiredPorts = []struct {
 	Port        int
 	Protocol    string
 	Description string
+	Priority    int
 }{
-	{22, "tcp", "SSH"},
-	{1234, "tcp", "Bacalhau API"},
-	{1235, "tcp", "Bacalhau P2P"},
-	{4222, "tcp", "NATS"},
+	{22, "tcp", "SSH", 1000},
+	{1234, "tcp", "Bacalhau API", 1001},
+	{1235, "tcp", "Bacalhau P2P", 1002},
+	{4222, "tcp", "NATS", 1003},
+	{80, "tcp", "HTTP", 1004},
+	{443, "tcp", "HTTPS", 1005},
+	{8080, "tcp", "HTTP Alt", 1006},
 }
 
 func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName string) error {
@@ -138,7 +142,10 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 							Ports:      []string{strconv.Itoa(portInfo.Port)},
 						},
 					},
-					Direction: to.Ptr(direction),
+					Direction:    to.Ptr(direction),
+					Priority:     to.Ptr(int32(portInfo.Priority)),
+					Description: to.Ptr(fmt.Sprintf("%s port %d (%s)", direction, portInfo.Port, portInfo.Description)),
+					TargetTags:  []string{"andaime-node"},
 				}
 
 				// Set appropriate ranges based on direction
