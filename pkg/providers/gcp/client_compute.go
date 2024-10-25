@@ -198,7 +198,6 @@ func (c *LiveGCPClient) CreateIP(
 			Network:     to.Ptr(networkSelfLink),
 			Subnetwork:  to.Ptr(subnetworkSelfLink),
 			NetworkTier: to.Ptr("PREMIUM"),
-			Purpose:     to.Ptr("GCE_ENDPOINT"),
 		},
 	})
 	if err != nil {
