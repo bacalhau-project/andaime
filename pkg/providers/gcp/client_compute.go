@@ -183,7 +183,11 @@ func (c *LiveGCPClient) CreateIP(
 		return nil, fmt.Errorf("addressType is not set")
 	}
 
-	// Insert the address
+	networkName := "default"
+	networkSelfLink := fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)
+	subnetworkSelfLink := fmt.Sprintf("projects/%s/regions/%s/subnetworks/%s", projectID, region, networkName)
+
+	// Insert the address with network configuration
 	op, err := c.addressesClient.Insert(ctx, &computepb.InsertAddressRequest{
 		Project: projectID,
 		Region:  region,
@@ -191,6 +195,10 @@ func (c *LiveGCPClient) CreateIP(
 			Name:        to.Ptr(addressName),
 			AddressType: address.AddressType,
 			Region:      to.Ptr(region),
+			Network:     to.Ptr(networkSelfLink),
+			Subnetwork:  to.Ptr(subnetworkSelfLink),
+			NetworkTier: to.Ptr("PREMIUM"),
+			Purpose:     to.Ptr("GCE_ENDPOINT"),
 		},
 	})
 	if err != nil {
