@@ -264,37 +264,62 @@ func createResources(
 		return fmt.Errorf("display model or deployment is nil")
 	}
 
-	var failedMachines []string
-
-	// Create a map to track which machines are active
-	activeMachines := make(map[string]bool)
-	for name := range m.Deployment.GetMachines() {
-		activeMachines[name] = true
+	// Find orchestrator machine first
+	var orchestratorMachine models.Machiner
+	for _, machine := range m.Deployment.GetMachines() {
+		if machine.IsOrchestrator() {
+			orchestratorMachine = machine
+			break
+		}
 	}
 
-	// Try to create each machine
+	if orchestratorMachine == nil {
+		return fmt.Errorf("no orchestrator machine found in deployment")
+	}
+
+	// Create orchestrator first
+	l.Info("Creating orchestrator VM...")
+	if err := gcpProvider.CreateAndConfigureVM(ctx, orchestratorMachine); err != nil {
+		return fmt.Errorf("failed to create orchestrator VM: %w", err)
+	}
+	updateMachineConfig(m.Deployment, orchestratorMachine.GetName())
+
+	// Create worker VMs in parallel
+	type result struct {
+		name string
+		err  error
+	}
+	resultChan := make(chan result)
+	activeWorkers := 0
+
+	// Launch worker creation in parallel
 	for name, machine := range m.Deployment.GetMachines() {
-		err := gcpProvider.CreateAndConfigureVM(ctx, machine)
-		if err != nil {
-			l.Errorf("Failed to create machine %s: %v", name, err)
+		if machine.IsOrchestrator() {
 			continue
 		}
-
-		// Update machine IPs if creation was successful
-		updateMachineConfig(m.Deployment, name)
+		activeWorkers++
+		go func(name string, machine models.Machiner) {
+			err := gcpProvider.CreateAndConfigureVM(ctx, machine)
+			resultChan <- result{name: name, err: err}
+		}(name, machine)
 	}
 
-	// If all machines failed, return an error
-	if len(activeMachines) == 0 {
-		return fmt.Errorf("failed to create any machines. Failed machines: %v", failedMachines)
-	}
-
-	// Update the deployment to only include active machines
-	for name := range m.Deployment.GetMachines() {
-		if !activeMachines[name] {
-			l.Warnf("Removing failed machine %s from active deployment", name)
-			delete(m.Deployment.Machines, name)
+	// Collect results
+	failedMachines := []string{}
+	for i := 0; i < activeWorkers; i++ {
+		res := <-resultChan
+		if res.err != nil {
+			l.Errorf("Failed to create worker VM %s: %v", res.name, res.err)
+			failedMachines = append(failedMachines, res.name)
+			delete(m.Deployment.Machines, res.name)
+		} else {
+			updateMachineConfig(m.Deployment, res.name)
 		}
+	}
+
+	// Check if we have at least one worker
+	if len(m.Deployment.GetMachines()) < 2 {
+		return fmt.Errorf("deployment requires at least one worker VM, failed machines: %v", failedMachines)
 	}
 
 	return nil
