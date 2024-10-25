@@ -19,14 +19,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string) error {
+func (c *LiveGCPClient) CreateVPCNetwork(
+	ctx context.Context,
+	projectID string,
+	networkName string,
+) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.GetProjectID()
 	if projectID == "" {
 		return fmt.Errorf("project ID is not set")
 	}
@@ -96,14 +99,17 @@ var requiredPorts = []struct {
 	{4222, "tcp", "NATS", 1003},
 }
 
-func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName string) error {
+func (c *LiveGCPClient) CreateFirewallRules(
+	ctx context.Context,
+	projectID string,
+	networkName string,
+) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Creating firewall rules in project: %s", projectID)
 
 	// Add any extra ports from config
@@ -589,6 +595,7 @@ func (c *LiveGCPClient) CheckFirewallRuleExists(
 
 func (c *LiveGCPClient) ValidateMachineType(
 	ctx context.Context,
+	projectID string,
 	machineType, location string,
 ) (bool, error) {
 	l := logger.Get()
@@ -596,7 +603,6 @@ func (c *LiveGCPClient) ValidateMachineType(
 	if m == nil || m.Deployment == nil {
 		return false, fmt.Errorf("global model or deployment is nil")
 	}
-	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Validating machine type %s in location %s", machineType, location)
 
 	req := &computepb.GetMachineTypeRequest{
