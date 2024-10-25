@@ -80,9 +80,6 @@ var requiredPorts = []struct {
 	{1234, "tcp", "Bacalhau API", 1001},
 	{1235, "tcp", "Bacalhau P2P", 1002},
 	{4222, "tcp", "NATS", 1003},
-	{80, "tcp", "HTTP", 1004},
-	{443, "tcp", "HTTPS", 1005},
-	{8080, "tcp", "HTTP Alt", 1006},
 }
 
 func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName string) error {
@@ -100,30 +97,42 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 		Port        int
 		Protocol    string
 		Description string
+		Priority    int
 	}, len(requiredPorts))
 	copy(ports, requiredPorts)
-	
+
 	if extraPorts := viper.GetIntSlice("gcp.allowed_ports"); len(extraPorts) > 0 {
 		for _, port := range extraPorts {
 			ports = append(ports, struct {
 				Port        int
 				Protocol    string
 				Description string
-			}{port, "tcp", "Custom"})
+				Priority    int
+			}{port, "tcp", "Custom", 1004})
 		}
 	}
 
 	// Create both ingress and egress rules for each port
 	for _, portInfo := range ports {
 		for _, direction := range []string{"INGRESS", "EGRESS"} {
-			ruleName := fmt.Sprintf("default-%s-%d-%s", strings.ToLower(direction), portInfo.Port, portInfo.Protocol)
-			
+			ruleName := fmt.Sprintf(
+				"default-%s-%d-%s",
+				strings.ToLower(direction),
+				portInfo.Port,
+				portInfo.Protocol,
+			)
+
 			for _, machine := range m.Deployment.GetMachines() {
 				m.UpdateStatus(models.NewDisplayStatusWithText(
 					machine.GetName(),
 					models.GCPResourceTypeFirewall,
 					models.ResourceStatePending,
-					fmt.Sprintf("Creating %s FW rule for %s port %d", direction, portInfo.Description, portInfo.Port),
+					fmt.Sprintf(
+						"Creating %s FW rule for %s port %d",
+						direction,
+						portInfo.Description,
+						portInfo.Port,
+					),
 				))
 			}
 
@@ -142,10 +151,17 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 							Ports:      []string{strconv.Itoa(portInfo.Port)},
 						},
 					},
-					Direction:    to.Ptr(direction),
-					Priority:     to.Ptr(int32(portInfo.Priority)),
-					Description: to.Ptr(fmt.Sprintf("%s port %d (%s)", direction, portInfo.Port, portInfo.Description)),
-					TargetTags:  []string{"andaime-node"},
+					Direction: to.Ptr(direction),
+					Priority:  to.Ptr(int32(portInfo.Priority)),
+					Description: to.Ptr(
+						fmt.Sprintf(
+							"%s port %d (%s)",
+							direction,
+							portInfo.Port,
+							portInfo.Description,
+						),
+					),
+					TargetTags: []string{"andaime-node"},
 				}
 
 				// Set appropriate ranges based on direction
@@ -190,7 +206,12 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 					machine.GetName(),
 					models.GCPResourceTypeFirewall,
 					models.ResourceStateRunning,
-					fmt.Sprintf("Created or verified %s FW rule for %s port %d", direction, portInfo.Description, portInfo.Port),
+					fmt.Sprintf(
+						"Created or verified %s FW rule for %s port %d",
+						direction,
+						portInfo.Description,
+						portInfo.Port,
+					),
 				))
 			}
 		}
