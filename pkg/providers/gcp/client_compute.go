@@ -470,10 +470,16 @@ func (c *LiveGCPClient) validateZone(ctx context.Context, projectID, zone string
 		return fmt.Errorf("zone cannot be empty")
 	}
 
-	// Ensure zone follows GCP format (e.g., us-central1-a)
+	// Ensure zone follows GCP format (e.g., us-central1-a or europe-west12-a)
 	parts := strings.Split(zone, "-")
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return fmt.Errorf("invalid zone format %q - expected format: region-zone (e.g., us-central1-a)", zone)
+	}
+
+	// The last part should be a single letter
+	lastPart := parts[len(parts)-1]
+	if len(lastPart) != 1 || !strings.Contains("abcdefghijklmnopqrstuvwxyz", strings.ToLower(lastPart)) {
+		return fmt.Errorf("invalid zone format %q: zone suffix must be a single letter (a-z)", zone)
 	}
 
 	// Validate zone exists in GCP
