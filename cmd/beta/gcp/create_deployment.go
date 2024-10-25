@@ -238,13 +238,46 @@ func provisionNetwork(
 	gcpProvider *gcp_provider.GCPProvider,
 ) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
 	networkName := fmt.Sprintf("%s-net", gcpProvider.ProjectID)
+	l.Infof("Creating VPC network: %s", networkName)
+
+	for _, machine := range m.Deployment.GetMachines() {
+		m.UpdateStatus(models.NewDisplayStatusWithText(
+			machine.GetName(),
+			models.GCPResourceTypeNetwork,
+			models.ResourceStatePending,
+			fmt.Sprintf("Creating VPC network %s", networkName),
+		))
+	}
 
 	if err := gcpProvider.CreateVPCNetwork(ctx, networkName); err != nil {
 		l.Error(fmt.Sprintf("Failed to create VPC network: %v", err))
+		for _, machine := range m.Deployment.GetMachines() {
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.GetName(),
+				models.GCPResourceTypeNetwork,
+				models.ResourceStateFailed,
+				fmt.Sprintf("Failed to create VPC network: %v", err),
+			))
+		}
 		return fmt.Errorf("failed to create VPC network: %w", err)
 	}
 
+	for _, machine := range m.Deployment.GetMachines() {
+		m.UpdateStatus(models.NewDisplayStatusWithText(
+			machine.GetName(),
+			models.GCPResourceTypeNetwork,
+			models.ResourceStateSucceeded,
+			fmt.Sprintf("Created VPC network %s", networkName),
+		))
+	}
+
+	l.Info("Creating firewall rules...")
 	if err := gcpProvider.CreateFirewallRules(ctx, networkName); err != nil {
 		l.Error(fmt.Sprintf("Failed to create firewall rules: %v", err))
 		return fmt.Errorf("failed to create firewall rules: %w", err)

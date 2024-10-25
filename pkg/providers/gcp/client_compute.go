@@ -27,10 +27,28 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 	}
 
 	projectID := m.Deployment.GetProjectID()
+	if projectID == "" {
+		return fmt.Errorf("project ID is not set")
+	}
+
 	b := backoff.NewExponentialBackOff()
 	b.MaxElapsedTime = 5 * time.Minute
 
 	operation := func() error {
+		// First check if network exists
+		_, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+			Project: projectID,
+			Network: networkName,
+		})
+		if err == nil {
+			l.Debugf("Network %s already exists, skipping creation", networkName)
+			return nil
+		}
+		if !isNotFoundError(err) {
+			return fmt.Errorf("failed to check network existence: %v", err)
+		}
+
+		// Create the network if it doesn't exist
 		network := &computepb.Network{
 			Name:                  &networkName,
 			AutoCreateSubnetworks: to.Ptr(true),
@@ -44,10 +62,6 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 			NetworkResource: network,
 		})
 		if err != nil {
-			if strings.Contains(err.Error(), "already exists") {
-				l.Debugf("Network %s already exists, skipping creation", networkName)
-				return backoff.Permanent(nil)
-			}
 			return fmt.Errorf("failed to create network: %v", err)
 		}
 
@@ -57,6 +71,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 			return fmt.Errorf("failed to wait for network creation: %v", err)
 		}
 
+		l.Infof("VPC network %s created successfully", networkName)
 		return nil
 	}
 
@@ -65,7 +80,6 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 		return fmt.Errorf("failed to create VPC network after retries: %v", err)
 	}
 
-	l.Infof("VPC network %s created successfully", networkName)
 	return nil
 }
 
