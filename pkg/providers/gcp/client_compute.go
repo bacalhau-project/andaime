@@ -69,6 +69,18 @@ func (c *LiveGCPClient) CreateVPCNetwork(ctx context.Context, networkName string
 	return nil
 }
 
+// Required ports and their descriptions
+var requiredPorts = []struct {
+	Port        int
+	Protocol    string
+	Description string
+}{
+	{22, "tcp", "SSH"},
+	{1234, "tcp", "Bacalhau API"},
+	{1235, "tcp", "Bacalhau P2P"},
+	{4222, "tcp", "NATS"},
+}
+
 func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName string) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
@@ -79,80 +91,101 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	projectID := m.Deployment.GetProjectID()
 	l.Debugf("Creating firewall rules in project: %s", projectID)
 
-	// Required ports for Bacalhau and SSH
-	allowedPorts := []int{22, 1234, 1235, 4222}
+	// Add any extra ports from config
+	ports := make([]struct {
+		Port        int
+		Protocol    string
+		Description string
+	}, len(requiredPorts))
+	copy(ports, requiredPorts)
+	
 	if extraPorts := viper.GetIntSlice("gcp.allowed_ports"); len(extraPorts) > 0 {
-		allowedPorts = append(allowedPorts, extraPorts...)
+		for _, port := range extraPorts {
+			ports = append(ports, struct {
+				Port        int
+				Protocol    string
+				Description string
+			}{port, "tcp", "Custom"})
+		}
 	}
 
-	for _, port := range allowedPorts {
-		for _, machine := range m.Deployment.GetMachines() {
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				machine.GetName(),
-				models.GCPResourceTypeFirewall,
-				models.ResourceStatePending,
-				fmt.Sprintf("Creating FW for port %d", port),
-			))
-		}
+	// Create both ingress and egress rules for each port
+	for _, portInfo := range ports {
+		for _, direction := range []string{"INGRESS", "EGRESS"} {
+			ruleName := fmt.Sprintf("default-%s-%d-%s", strings.ToLower(direction), portInfo.Port, portInfo.Protocol)
+			
+			for _, machine := range m.Deployment.GetMachines() {
+				m.UpdateStatus(models.NewDisplayStatusWithText(
+					machine.GetName(),
+					models.GCPResourceTypeFirewall,
+					models.ResourceStatePending,
+					fmt.Sprintf("Creating %s FW rule for %s port %d", direction, portInfo.Description, portInfo.Port),
+				))
+			}
 
-		ruleName := fmt.Sprintf("default-allow-%d", port)
+			b := backoff.NewExponentialBackOff()
+			b.MaxElapsedTime = 10 * time.Second
 
-		b := backoff.NewExponentialBackOff()
-		b.MaxElapsedTime = 10 * time.Second
-
-		operation := func() error {
-			firewallRule := &computepb.Firewall{
-				Name: &ruleName,
-				Network: to.Ptr(
-					fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName),
-				),
-				Allowed: []*computepb.Allowed{
-					{
-						IPProtocol: to.Ptr("tcp"),
-						Ports:      []string{strconv.Itoa(port)},
+			operation := func() error {
+				firewallRule := &computepb.Firewall{
+					Name: &ruleName,
+					Network: to.Ptr(
+						fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName),
+					),
+					Allowed: []*computepb.Allowed{
+						{
+							IPProtocol: to.Ptr(portInfo.Protocol),
+							Ports:      []string{strconv.Itoa(portInfo.Port)},
+						},
 					},
-				},
-				SourceRanges: []string{"0.0.0.0/0"},
-				Direction:    to.Ptr("INGRESS"),
+					Direction: to.Ptr(direction),
+				}
+
+				// Set appropriate ranges based on direction
+				if direction == "INGRESS" {
+					firewallRule.SourceRanges = []string{"0.0.0.0/0"}
+				} else {
+					firewallRule.DestinationRanges = []string{"0.0.0.0/0"}
+				}
+
+				_, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
+					Project:          projectID,
+					FirewallResource: firewallRule,
+				})
+				if err != nil {
+					if strings.Contains(err.Error(), "already exists") {
+						l.Debugf("Firewall rule %s already exists, skipping creation", ruleName)
+						return nil
+					}
+					if strings.Contains(err.Error(), "Compute Engine API has not been used") {
+						l.Debugf("Compute Engine API is not yet active. Retrying... (FW Rules)")
+						return err
+					}
+					return backoff.Permanent(fmt.Errorf("failed to create firewall rule: %v", err))
+				}
+
+				return nil
 			}
 
-			_, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
-				Project:          projectID,
-				FirewallResource: firewallRule,
-			})
+			err := backoff.Retry(operation, b)
 			if err != nil {
-				if strings.Contains(err.Error(), "already exists") {
-					l.Debugf("Firewall rule %s already exists, skipping creation", ruleName)
-					return nil
-				}
-				if strings.Contains(err.Error(), "Compute Engine API has not been used") {
-					l.Debugf("Compute Engine API is not yet active. Retrying... (FW Rules)")
-					return err
-				}
-				return backoff.Permanent(fmt.Errorf("failed to create firewall rule: %v", err))
+				l.Errorf("Failed to create firewall rule %s after retries: %v", ruleName, err)
+				return fmt.Errorf(
+					"failed to create firewall rule %s after retries: %v",
+					ruleName,
+					err,
+				)
 			}
+			l.Infof("Firewall rule %s created or verified", ruleName)
 
-			return nil
-		}
-
-		err := backoff.Retry(operation, b)
-		if err != nil {
-			l.Errorf("Failed to create firewall rule for port %d after retries: %v", port, err)
-			return fmt.Errorf(
-				"failed to create firewall rule for port %d after retries: %v",
-				port,
-				err,
-			)
-		}
-		l.Infof("Firewall rule created or already exists for port %d", port)
-
-		for _, machine := range m.Deployment.GetMachines() {
-			m.UpdateStatus(models.NewDisplayStatusWithText(
-				machine.GetName(),
-				models.GCPResourceTypeFirewall,
-				models.ResourceStateRunning,
-				fmt.Sprintf("Created or verified FW Rule for port %d", port),
-			))
+			for _, machine := range m.Deployment.GetMachines() {
+				m.UpdateStatus(models.NewDisplayStatusWithText(
+					machine.GetName(),
+					models.GCPResourceTypeFirewall,
+					models.ResourceStateRunning,
+					fmt.Sprintf("Created or verified %s FW rule for %s port %d", direction, portInfo.Description, portInfo.Port),
+				))
+			}
 		}
 	}
 
