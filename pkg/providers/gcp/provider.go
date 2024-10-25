@@ -74,6 +74,7 @@ func GetRequiredAPIs() []string {
 // GCPProvider implements the Providerer interface for GCP
 type GCPProvider struct {
 	ProjectID           string
+	NetworkName         string
 	OrganizationID      string
 	BillingAccountID    string
 	Client              gcp_interface.GCPClienter
@@ -561,15 +562,22 @@ func (p *GCPProvider) EnsureVPCNetwork(
 	ctx context.Context,
 	vpcNetworkName string,
 ) error {
-	return p.GetGCPClient().EnsureVPCNetwork(ctx, vpcNetworkName)
+	return p.GetGCPClient().EnsureVPCNetwork(ctx, p.ProjectID, vpcNetworkName)
 }
 
 // EnsureFirewallRules ensures that firewall rules are set for a network
 func (p *GCPProvider) EnsureFirewallRules(
 	ctx context.Context,
+	projectID string,
 	networkName string,
+	allowedPorts []int,
 ) error {
-	return p.GetGCPClient().EnsureFirewallRules(ctx, networkName)
+	return p.GetGCPClient().EnsureFirewallRules(
+		ctx,
+		projectID,
+		networkName,
+		allowedPorts,
+	)
 }
 
 // GetClusterDeployer returns the current ClusterDeployer
@@ -616,7 +624,13 @@ func (p *GCPProvider) CreateAndConfigureVM(
 	l.Infof("Successfully allocated IP %s for VM %s", publicIP, machine.GetName())
 
 	// Create the VM instance
-	instance, err := p.GetGCPClient().CreateVM(ctx, p.ProjectID, machine, publicIP)
+	instance, err := p.GetGCPClient().CreateVM(
+		ctx,
+		p.ProjectID,
+		machine,
+		publicIP,
+		p.NetworkName,
+	)
 	if err != nil {
 		// Attempt to release the IP if VM creation fails
 		if releaseErr := p.releaseIP(ctx, *publicIP.Address, region); releaseErr != nil {

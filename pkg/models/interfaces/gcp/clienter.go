@@ -63,6 +63,7 @@ type GCPClienter interface {
 		projectID string,
 		machine models.Machiner,
 		ip *computepb.Address,
+		networkName string,
 	) (*computepb.Instance, error)
 	SetBillingAccount(
 		ctx context.Context,
@@ -93,8 +94,13 @@ type GCPClienter interface {
 		projectID, ruleName string,
 	) error
 	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
-	EnsureVPCNetwork(ctx context.Context, networkName string) error
-	EnsureFirewallRules(ctx context.Context, networkName string) error
+	EnsureVPCNetwork(ctx context.Context, projectID, networkName string) error
+	EnsureFirewallRules(
+		ctx context.Context,
+		projectID string,
+		networkName string,
+		allowedPorts []int,
+	) error
 	// EnsureStorageBucket(ctx context.Context, location, bucketName string) error
 	ProjectExists(ctx context.Context, projectID string) (bool, error)
 

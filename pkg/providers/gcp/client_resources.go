@@ -163,7 +163,11 @@ func (c *LiveGCPClient) UpdateResourceState(
 	return fmt.Errorf("resource %s not found in any machine", resourceName)
 }
 
-func (c *LiveGCPClient) EnsureFirewallRules(ctx context.Context, networkName string) error {
+func (c *LiveGCPClient) EnsureFirewallRules(
+	ctx context.Context,
+	projectID, networkName string,
+	allowedPorts []int,
+) error {
 	l := logger.Get()
 	l.Debugf("Ensuring firewall rules for network %s", networkName)
 
@@ -172,12 +176,12 @@ func (c *LiveGCPClient) EnsureFirewallRules(ctx context.Context, networkName str
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	network, err := c.getOrCreateNetwork(ctx, m.Deployment.GetProjectID(), networkName)
+	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
 		return fmt.Errorf("failed to get or create network: %v", err)
 	}
 
-	for i, port := range m.Deployment.AllowedPorts {
+	for i, port := range allowedPorts {
 		firewallRuleName := fmt.Sprintf("allow-%d", port)
 		firewallRule := &computepb.Firewall{
 			Name:    to.Ptr(firewallRuleName),

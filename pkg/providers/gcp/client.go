@@ -30,7 +30,6 @@ import (
 const (
 	maxBackOffTime     = 5 * time.Minute
 	serviceAccountName = "andaime-sa"
-	networkName        = "andaime-network"
 )
 
 type LiveGCPClient struct {
@@ -320,7 +319,7 @@ func (c *LiveGCPClient) TestServiceUsageAPI(ctx context.Context, projectID strin
 	l.Infof("Successfully tested Service Usage API for project %s", projectID)
 	return nil
 }
-func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID string) error {
+func (c *LiveGCPClient) EnsureVPCNetwork(ctx context.Context, projectID, networkName string) error {
 	l := logger.Get()
 	l.Infof("Ensuring VPC network %s exists in project %s", networkName, projectID)
 
@@ -436,27 +435,4 @@ systemctl enable docker
 	return script
 }
 
-// func (c *LiveGCPClient) WaitForOperation(
-// 	ctx context.Context,
-// 	projectID string,
-// 	op *computepb.Operation,
-// ) error {
-// 	for {
-// 		result, err := c.operationsClient.Wait(ctx, &computepb.WaitGlobalOperationRequest{
-// 			Project:   projectID,
-// 			Operation: *op.Name,
-// 		})
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		if *result.Status == computepb.Operation_DONE {
-// 			if result.Error != nil {
-// 				return fmt.Errorf("operation failed: %v", result.Error)
-// 			}
-// 			return nil
-// 		}
-
-// 		time.Sleep(5 * time.Second)
-// 	}
-// }
+var _ gcp_interface.GCPClienter = &LiveGCPClient{}

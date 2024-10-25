@@ -337,9 +337,9 @@ func (_c *MockGCPClienter_CreateServiceAccount_Call) RunAndReturn(run func(conte
 	return _c
 }
 
-// CreateVM provides a mock function with given fields: ctx, projectID, machine, ip
-func (_m *MockGCPClienter) CreateVM(ctx context.Context, projectID string, machine models.Machiner, ip *computepb.Address) (*computepb.Instance, error) {
-	ret := _m.Called(ctx, projectID, machine, ip)
+// CreateVM provides a mock function with given fields: ctx, projectID, machine, ip, networkName
+func (_m *MockGCPClienter) CreateVM(ctx context.Context, projectID string, machine models.Machiner, ip *computepb.Address, networkName string) (*computepb.Instance, error) {
+	ret := _m.Called(ctx, projectID, machine, ip, networkName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateVM")
@@ -347,19 +347,19 @@ func (_m *MockGCPClienter) CreateVM(ctx context.Context, projectID string, machi
 
 	var r0 *computepb.Instance
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, models.Machiner, *computepb.Address) (*computepb.Instance, error)); ok {
-		return rf(ctx, projectID, machine, ip)
+	if rf, ok := ret.Get(0).(func(context.Context, string, models.Machiner, *computepb.Address, string) (*computepb.Instance, error)); ok {
+		return rf(ctx, projectID, machine, ip, networkName)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, models.Machiner, *computepb.Address) *computepb.Instance); ok {
-		r0 = rf(ctx, projectID, machine, ip)
+	if rf, ok := ret.Get(0).(func(context.Context, string, models.Machiner, *computepb.Address, string) *computepb.Instance); ok {
+		r0 = rf(ctx, projectID, machine, ip, networkName)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*computepb.Instance)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, models.Machiner, *computepb.Address) error); ok {
-		r1 = rf(ctx, projectID, machine, ip)
+	if rf, ok := ret.Get(1).(func(context.Context, string, models.Machiner, *computepb.Address, string) error); ok {
+		r1 = rf(ctx, projectID, machine, ip, networkName)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -377,13 +377,14 @@ type MockGCPClienter_CreateVM_Call struct {
 //   - projectID string
 //   - machine models.Machiner
 //   - ip *computepb.Address
-func (_e *MockGCPClienter_Expecter) CreateVM(ctx interface{}, projectID interface{}, machine interface{}, ip interface{}) *MockGCPClienter_CreateVM_Call {
-	return &MockGCPClienter_CreateVM_Call{Call: _e.mock.On("CreateVM", ctx, projectID, machine, ip)}
+//   - networkName string
+func (_e *MockGCPClienter_Expecter) CreateVM(ctx interface{}, projectID interface{}, machine interface{}, ip interface{}, networkName interface{}) *MockGCPClienter_CreateVM_Call {
+	return &MockGCPClienter_CreateVM_Call{Call: _e.mock.On("CreateVM", ctx, projectID, machine, ip, networkName)}
 }
 
-func (_c *MockGCPClienter_CreateVM_Call) Run(run func(ctx context.Context, projectID string, machine models.Machiner, ip *computepb.Address)) *MockGCPClienter_CreateVM_Call {
+func (_c *MockGCPClienter_CreateVM_Call) Run(run func(ctx context.Context, projectID string, machine models.Machiner, ip *computepb.Address, networkName string)) *MockGCPClienter_CreateVM_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(models.Machiner), args[3].(*computepb.Address))
+		run(args[0].(context.Context), args[1].(string), args[2].(models.Machiner), args[3].(*computepb.Address), args[4].(string))
 	})
 	return _c
 }
@@ -393,7 +394,7 @@ func (_c *MockGCPClienter_CreateVM_Call) Return(_a0 *computepb.Instance, _a1 err
 	return _c
 }
 
-func (_c *MockGCPClienter_CreateVM_Call) RunAndReturn(run func(context.Context, string, models.Machiner, *computepb.Address) (*computepb.Instance, error)) *MockGCPClienter_CreateVM_Call {
+func (_c *MockGCPClienter_CreateVM_Call) RunAndReturn(run func(context.Context, string, models.Machiner, *computepb.Address, string) (*computepb.Instance, error)) *MockGCPClienter_CreateVM_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -589,17 +590,17 @@ func (_c *MockGCPClienter_EnableAPI_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
-// EnsureFirewallRules provides a mock function with given fields: ctx, networkName
-func (_m *MockGCPClienter) EnsureFirewallRules(ctx context.Context, networkName string) error {
-	ret := _m.Called(ctx, networkName)
+// EnsureFirewallRules provides a mock function with given fields: ctx, projectID, networkName, allowedPorts
+func (_m *MockGCPClienter) EnsureFirewallRules(ctx context.Context, projectID string, networkName string, allowedPorts []int) error {
+	ret := _m.Called(ctx, projectID, networkName, allowedPorts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnsureFirewallRules")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, networkName)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, []int) error); ok {
+		r0 = rf(ctx, projectID, networkName, allowedPorts)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -614,14 +615,16 @@ type MockGCPClienter_EnsureFirewallRules_Call struct {
 
 // EnsureFirewallRules is a helper method to define mock.On call
 //   - ctx context.Context
+//   - projectID string
 //   - networkName string
-func (_e *MockGCPClienter_Expecter) EnsureFirewallRules(ctx interface{}, networkName interface{}) *MockGCPClienter_EnsureFirewallRules_Call {
-	return &MockGCPClienter_EnsureFirewallRules_Call{Call: _e.mock.On("EnsureFirewallRules", ctx, networkName)}
+//   - allowedPorts []int
+func (_e *MockGCPClienter_Expecter) EnsureFirewallRules(ctx interface{}, projectID interface{}, networkName interface{}, allowedPorts interface{}) *MockGCPClienter_EnsureFirewallRules_Call {
+	return &MockGCPClienter_EnsureFirewallRules_Call{Call: _e.mock.On("EnsureFirewallRules", ctx, projectID, networkName, allowedPorts)}
 }
 
-func (_c *MockGCPClienter_EnsureFirewallRules_Call) Run(run func(ctx context.Context, networkName string)) *MockGCPClienter_EnsureFirewallRules_Call {
+func (_c *MockGCPClienter_EnsureFirewallRules_Call) Run(run func(ctx context.Context, projectID string, networkName string, allowedPorts []int)) *MockGCPClienter_EnsureFirewallRules_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].([]int))
 	})
 	return _c
 }
@@ -631,7 +634,7 @@ func (_c *MockGCPClienter_EnsureFirewallRules_Call) Return(_a0 error) *MockGCPCl
 	return _c
 }
 
-func (_c *MockGCPClienter_EnsureFirewallRules_Call) RunAndReturn(run func(context.Context, string) error) *MockGCPClienter_EnsureFirewallRules_Call {
+func (_c *MockGCPClienter_EnsureFirewallRules_Call) RunAndReturn(run func(context.Context, string, string, []int) error) *MockGCPClienter_EnsureFirewallRules_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -695,17 +698,17 @@ func (_c *MockGCPClienter_EnsureProject_Call) RunAndReturn(run func(context.Cont
 	return _c
 }
 
-// EnsureVPCNetwork provides a mock function with given fields: ctx, networkName
-func (_m *MockGCPClienter) EnsureVPCNetwork(ctx context.Context, networkName string) error {
-	ret := _m.Called(ctx, networkName)
+// EnsureVPCNetwork provides a mock function with given fields: ctx, projectID, networkName
+func (_m *MockGCPClienter) EnsureVPCNetwork(ctx context.Context, projectID string, networkName string) error {
+	ret := _m.Called(ctx, projectID, networkName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnsureVPCNetwork")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, networkName)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, projectID, networkName)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -720,14 +723,15 @@ type MockGCPClienter_EnsureVPCNetwork_Call struct {
 
 // EnsureVPCNetwork is a helper method to define mock.On call
 //   - ctx context.Context
+//   - projectID string
 //   - networkName string
-func (_e *MockGCPClienter_Expecter) EnsureVPCNetwork(ctx interface{}, networkName interface{}) *MockGCPClienter_EnsureVPCNetwork_Call {
-	return &MockGCPClienter_EnsureVPCNetwork_Call{Call: _e.mock.On("EnsureVPCNetwork", ctx, networkName)}
+func (_e *MockGCPClienter_Expecter) EnsureVPCNetwork(ctx interface{}, projectID interface{}, networkName interface{}) *MockGCPClienter_EnsureVPCNetwork_Call {
+	return &MockGCPClienter_EnsureVPCNetwork_Call{Call: _e.mock.On("EnsureVPCNetwork", ctx, projectID, networkName)}
 }
 
-func (_c *MockGCPClienter_EnsureVPCNetwork_Call) Run(run func(ctx context.Context, networkName string)) *MockGCPClienter_EnsureVPCNetwork_Call {
+func (_c *MockGCPClienter_EnsureVPCNetwork_Call) Run(run func(ctx context.Context, projectID string, networkName string)) *MockGCPClienter_EnsureVPCNetwork_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -737,7 +741,7 @@ func (_c *MockGCPClienter_EnsureVPCNetwork_Call) Return(_a0 error) *MockGCPClien
 	return _c
 }
 
-func (_c *MockGCPClienter_EnsureVPCNetwork_Call) RunAndReturn(run func(context.Context, string) error) *MockGCPClienter_EnsureVPCNetwork_Call {
+func (_c *MockGCPClienter_EnsureVPCNetwork_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_EnsureVPCNetwork_Call {
 	_c.Call.Return(run)
 	return _c
 }

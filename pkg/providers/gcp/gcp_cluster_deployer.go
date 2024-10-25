@@ -81,14 +81,20 @@ func (p *GCPProvider) initializeProject(ctx context.Context) error {
 		return fmt.Errorf("failed to enable required APIs: %w", err)
 	}
 
+	p.NetworkName = p.ProjectID + "-net"
+
 	return nil
 }
 
 func (p *GCPProvider) setupNetworking(ctx context.Context) error {
 	var eg errgroup.Group
 
+	if p.NetworkName == "" {
+		return fmt.Errorf("network name is not set")
+	}
+
 	eg.Go(func() error {
-		return p.CreateVPCNetwork(ctx, "default")
+		return p.CreateVPCNetwork(ctx, p.NetworkName)
 	})
 
 	if err := eg.Wait(); err != nil {
@@ -97,7 +103,7 @@ func (p *GCPProvider) setupNetworking(ctx context.Context) error {
 
 	eg = errgroup.Group{}
 	eg.Go(func() error {
-		return p.CreateFirewallRules(ctx, "default")
+		return p.CreateFirewallRules(ctx, p.NetworkName)
 	})
 
 	if err := eg.Wait(); err != nil {

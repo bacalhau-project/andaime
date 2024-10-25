@@ -85,8 +85,6 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 		allowedPorts = append(allowedPorts, extraPorts...)
 	}
 
-	networkName = "default"
-
 	for _, port := range allowedPorts {
 		for _, machine := range m.Deployment.GetMachines() {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
@@ -183,10 +181,6 @@ func (c *LiveGCPClient) CreateIP(
 		return nil, fmt.Errorf("addressType is not set")
 	}
 
-	networkName := "default"
-	networkSelfLink := fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)
-	subnetworkSelfLink := fmt.Sprintf("projects/%s/regions/%s/subnetworks/%s", projectID, region, networkName)
-
 	// Insert the address with network configuration
 	op, err := c.addressesClient.Insert(ctx, &computepb.InsertAddressRequest{
 		Project: projectID,
@@ -195,8 +189,6 @@ func (c *LiveGCPClient) CreateIP(
 			Name:        to.Ptr(addressName),
 			AddressType: address.AddressType,
 			Region:      to.Ptr(region),
-			Network:     to.Ptr(networkSelfLink),
-			Subnetwork:  to.Ptr(subnetworkSelfLink),
 			NetworkTier: to.Ptr("PREMIUM"),
 		},
 	})
@@ -268,6 +260,7 @@ func (c *LiveGCPClient) CreateVM(
 	projectID string,
 	machine models.Machiner,
 	ip *computepb.Address,
+	networkName string,
 ) (*computepb.Instance, error) {
 	// Validate input and prerequisites
 	if err := c.validateCreateVMInput(ctx, projectID, machine); err != nil {
@@ -275,7 +268,7 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Prepare VM configuration
-	instance, err := c.prepareVMInstance(ctx, projectID, machine, ip)
+	instance, err := c.prepareVMInstance(ctx, projectID, machine, ip, networkName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare VM instance: %w", err)
 	}
@@ -345,6 +338,7 @@ func (c *LiveGCPClient) prepareVMInstance(
 	projectID string,
 	machine models.Machiner,
 	ip *computepb.Address,
+	networkName string,
 ) (*computepb.Instance, error) {
 	l := logger.Get()
 	l.Debugf("Preparing VM instance %s in project %s", machine.GetName(), projectID)
@@ -353,7 +347,6 @@ func (c *LiveGCPClient) prepareVMInstance(
 		return nil, fmt.Errorf("projectID is not set in prepareVMInstance")
 	}
 
-	networkName := "default"
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get or create network: %w", err)
@@ -449,11 +442,6 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	})
 	if err == nil {
 		return network, nil
-	}
-
-	// If it's the default network and we couldn't get it, there's a problem
-	if networkName == "default" {
-		return nil, fmt.Errorf("default network not found in project %s: %v", projectID, err)
 	}
 
 	// For non-default networks, create if not found

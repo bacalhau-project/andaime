@@ -186,11 +186,15 @@ func runDeployment(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	}
 	l.Info("Required APIs enabled successfully")
 
-	if err := createResources(ctx, gcpProvider, m); err != nil {
+	if err := provisionNetwork(ctx, gcpProvider); err != nil {
 		return err
 	}
 
-	if err := provisionBacalhauCluster(ctx, gcpProvider, m); err != nil {
+	if err := createResources(ctx, gcpProvider); err != nil {
+		return err
+	}
+
+	if err := provisionBacalhauCluster(ctx, gcpProvider); err != nil {
 		return err
 	}
 
@@ -229,12 +233,37 @@ func enableRequiredAPIs(ctx context.Context, gcpProvider *gcp_provider.GCPProvid
 	return nil
 }
 
+func provisionNetwork(
+	ctx context.Context,
+	gcpProvider *gcp_provider.GCPProvider,
+) error {
+	l := logger.Get()
+	networkName := fmt.Sprintf("%s-net", gcpProvider.ProjectID)
+
+	if err := gcpProvider.CreateVPCNetwork(ctx, networkName); err != nil {
+		l.Error(fmt.Sprintf("Failed to create VPC network: %v", err))
+		return fmt.Errorf("failed to create VPC network: %w", err)
+	}
+
+	if err := gcpProvider.CreateFirewallRules(ctx, networkName); err != nil {
+		l.Error(fmt.Sprintf("Failed to create firewall rules: %v", err))
+		return fmt.Errorf("failed to create firewall rules: %w", err)
+	}
+
+	gcpProvider.NetworkName = networkName
+	return nil
+}
+
 func createResources(
 	ctx context.Context,
 	gcpProvider *gcp_provider.GCPProvider,
-	m *display.DisplayModel,
 ) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
 	var failedMachines []string
 
 	// Create a map to track which machines are active
@@ -274,8 +303,12 @@ func createResources(
 func provisionBacalhauCluster(
 	ctx context.Context,
 	gcpProvider *gcp_provider.GCPProvider,
-	m *display.DisplayModel,
 ) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
 	if err := gcpProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
