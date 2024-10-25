@@ -67,7 +67,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 }
 
 func (c *LiveGCPClient) allMachinesComplete(m *display.DisplayModel) bool {
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if !machine.IsComplete() {
 			return false
 		}
@@ -130,7 +130,7 @@ func (c *LiveGCPClient) UpdateResourceState(
 	}
 
 	foundResource := false
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if strings.Contains(strings.ToLower(resourceName), strings.ToLower(machine.GetName())) {
 			if machine.GetMachineResourceState(resourceType) < state {
 				machine.SetMachineResourceState(resourceType, state)
@@ -171,9 +171,8 @@ func (c *LiveGCPClient) EnsureFirewallRules(ctx context.Context, networkName str
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
-	projectID := m.Deployment.GetProjectID()
 
-	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
+	network, err := c.getOrCreateNetwork(ctx, m.Deployment.GetProjectID(), networkName)
 	if err != nil {
 		return fmt.Errorf("failed to get or create network: %v", err)
 	}
@@ -190,11 +189,11 @@ func (c *LiveGCPClient) EnsureFirewallRules(ctx context.Context, networkName str
 				},
 			},
 			Direction: to.Ptr("INGRESS"),
-			Priority:  to.Ptr(int32(1000 + i)),
+			Priority:  to.Ptr(int32(1000 + i)), //nolint:gosec,mnd
 		}
 
 		req := &computepb.InsertFirewallRequest{
-			Project:          projectID,
+			Project:          m.Deployment.GetProjectID(),
 			FirewallResource: firewallRule,
 		}
 

@@ -170,7 +170,7 @@ func (m *DisplayModel) getSortedMachineSlice() []struct {
 		Location string
 		Name     string
 	}{}
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if machine.GetName() != "" {
 			machineSlice = append(machineSlice, struct {
 				Location string

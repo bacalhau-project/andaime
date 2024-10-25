@@ -52,7 +52,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 
 	// Create worker nodes in parallel
 	var instanceEg errgroup.Group
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if machine.IsOrchestrator() {
 			continue
 		}

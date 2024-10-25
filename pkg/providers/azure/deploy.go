@@ -88,8 +88,8 @@ func (p *AzureProvider) PrepareResourceGroup(
 	resourceGroupLocation := m.Deployment.Azure.ResourceGroupLocation
 	// If ResourceGroupLocation is not set, use the first location from the Machines
 	if resourceGroupLocation == "" {
-		if len(m.Deployment.Machines) > 0 {
-			for _, machine := range m.Deployment.Machines {
+		if len(m.Deployment.GetMachines()) > 0 {
+			for _, machine := range m.Deployment.GetMachines() {
 				// Break over the first machine
 				resourceGroupLocation = machine.GetLocation()
 				break
@@ -109,7 +109,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 		m.Deployment.Azure.ResourceGroupLocation,
 	)
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		m.UpdateStatus(
 			models.NewDisplayVMStatus(
 				machine.GetName(),
@@ -145,7 +145,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 		make(map[string]models.Machiner),
 	)
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		m.UpdateStatus(
 			models.NewDisplayStatus(
 				machine.GetName(),
@@ -170,7 +170,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 	l.Info("Deploying ARM template")
 	m := display.GetGlobalModelFunc()
 
-	if len(m.Deployment.Machines) == 0 {
+	if len(m.Deployment.GetMachines()) == 0 {
 		return fmt.Errorf("no machines provided")
 	}
 
@@ -184,7 +184,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 
 	// Group machines by location
 	machinesByLocation := make(map[string][]models.Machiner)
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		machinesByLocation[machine.GetLocation()] = append(
 			machinesByLocation[machine.GetLocation()],
 			machine,
@@ -780,7 +780,7 @@ func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 	l := logger.Get()
 	var workerMachines []models.Machiner
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if !machine.IsOrchestrator() {
 			workerMachines = append(workerMachines, machine)
 		}

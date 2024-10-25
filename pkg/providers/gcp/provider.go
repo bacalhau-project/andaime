@@ -134,7 +134,7 @@ func (p *GCPProvider) EnsureProject(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		machine.SetMachineResourceState(
 			models.GCPResourceTypeProject.ResourceString,
 			models.ResourceStatePending,
@@ -143,9 +143,9 @@ func (p *GCPProvider) EnsureProject(
 
 	// Create the project
 	createdProjectID, err := p.GetGCPClient().
-		EnsureProject(ctx, p.OrganizationID, m.Deployment.GetProjectID(), p.BillingAccountID)
+		EnsureProject(ctx, p.OrganizationID, p.ProjectID, p.BillingAccountID)
 	if err != nil {
-		for _, machine := range m.Deployment.Machines {
+		for _, machine := range m.Deployment.GetMachines() {
 			machine.SetMachineResourceState(
 				models.GCPResourceTypeProject.ResourceString,
 				models.ResourceStateFailed,
@@ -154,7 +154,7 @@ func (p *GCPProvider) EnsureProject(
 		return err
 	}
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		machine.SetMachineResourceState(
 			models.GCPResourceTypeProject.ResourceString,
 			models.ResourceStateSucceeded,
@@ -301,19 +301,17 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
-
-	projectID := m.Deployment.GetProjectID()
-	if projectID == "" {
+	if p.ProjectID == "" {
 		return fmt.Errorf("project ID is not set in the deployment")
 	}
 
-	l.Info(fmt.Sprintf("Enabling required APIs for project %s", projectID))
+	l.Info(fmt.Sprintf("Enabling required APIs for project %s", p.ProjectID))
 
 	var apiEg errgroup.Group
 	for _, api := range GetRequiredAPIs() {
 		api := api
 		apiEg.Go(func() error {
-			for _, machine := range m.Deployment.Machines {
+			for _, machine := range m.Deployment.GetMachines() {
 				machine.SetMachineResourceState(api, models.ResourceStatePending)
 			}
 
@@ -322,7 +320,7 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 			b.MaxElapsedTime = 5 * time.Minute
 
 			err := backoff.Retry(func() error {
-				err := p.GetGCPClient().EnableAPI(ctx, projectID, api)
+				err := p.GetGCPClient().EnableAPI(ctx, p.ProjectID, api)
 				if err != nil {
 					l.Warn(fmt.Sprintf("Failed to enable API %s, retrying: %v", api, err))
 					return err
@@ -331,13 +329,13 @@ func (p *GCPProvider) EnableRequiredAPIs(ctx context.Context) error {
 			}, b)
 
 			if err != nil {
-				for _, machine := range m.Deployment.Machines {
+				for _, machine := range m.Deployment.GetMachines() {
 					machine.SetMachineResourceState(api, models.ResourceStateFailed)
 				}
 				return fmt.Errorf("failed to enable API %s after retries: %v", api, err)
 			}
 
-			for _, machine := range m.Deployment.Machines {
+			for _, machine := range m.Deployment.GetMachines() {
 				machine.SetMachineResourceState(api, models.ResourceStateSucceeded)
 			}
 			l.Info(fmt.Sprintf("Successfully enabled API: %s", api))
@@ -361,15 +359,14 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	projectID := m.Deployment.GetProjectID()
-	if projectID == "" {
+	if p.ProjectID == "" {
 		return fmt.Errorf("project ID is not set in the deployment")
 	}
 
-	l.Infof("Checking API status: %s for project: %s", apiName, projectID)
+	l.Infof("Checking API status: %s for project: %s", apiName, p.ProjectID)
 
 	// First, check if the API is already enabled
-	enabled, err := p.GetGCPClient().IsAPIEnabled(ctx, projectID, apiName)
+	enabled, err := p.GetGCPClient().IsAPIEnabled(ctx, p.ProjectID, apiName)
 	if err != nil {
 		l.Warnf("Failed to check API status: %v", err)
 		return fmt.Errorf("failed to check API status: %v", err)
@@ -378,9 +375,9 @@ func (p *GCPProvider) EnableAPI(ctx context.Context, apiName string) error {
 		return nil
 	}
 
-	l.Infof("Attempting to enable API: %s for project: %s", apiName, projectID)
+	l.Infof("Attempting to enable API: %s for project: %s", apiName, p.ProjectID)
 
-	err = p.GetGCPClient().EnableAPI(ctx, projectID, apiName)
+	err = p.GetGCPClient().EnableAPI(ctx, p.ProjectID, apiName)
 	if err != nil {
 		if strings.Contains(err.Error(), "permission denied") {
 			l.Warnf(
@@ -405,9 +402,9 @@ func (p *GCPProvider) CreateVPCNetwork(
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
-	l.Infof("Creating VPC network %s in project %s", networkName, m.Deployment.GetProjectID())
+	l.Infof("Creating VPC network %s in project %s", networkName, p.ProjectID)
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.GetName(),
@@ -426,7 +423,7 @@ func (p *GCPProvider) CreateVPCNetwork(
 		return fmt.Errorf("failed to create VPC network: %v", err)
 	}
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		m.UpdateStatus(
 			models.NewDisplayStatusWithText(
 				machine.GetName(),
@@ -481,12 +478,12 @@ func (p *GCPProvider) SetBillingAccount(
 	l.Infof(
 		"Setting billing account to %s for project %s",
 		m.Deployment.GCP.BillingAccountID,
-		m.Deployment.GetProjectID(),
+		p.ProjectID,
 	)
 
 	return p.GetGCPClient().SetBillingAccount(
 		ctx,
-		m.Deployment.GetProjectID(),
+		p.ProjectID,
 		billingAccountID,
 	)
 }
@@ -667,7 +664,6 @@ func (p *GCPProvider) allocateIPWithRetries(
 	vmName, region string,
 ) (*computepb.Address, error) {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
 	config := DefaultIPAllocationConfig
 
 	var lastErr error
@@ -679,8 +675,8 @@ func (p *GCPProvider) allocateIPWithRetries(
 		}
 
 		// Ensure projectID is set
-		if m.Deployment.GetProjectID() == "" {
-			return nil, fmt.Errorf("projectID is not set in the deployment")
+		if p.ProjectID == "" {
+			return nil, fmt.Errorf("projectID is not set in allocateIPWithRetries")
 		}
 
 		// Try to allocate a new IP
@@ -708,9 +704,8 @@ func (p *GCPProvider) tryAllocateIP(
 	vmName, region string,
 ) (*computepb.Address, error) {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-	if m.Deployment.GetProjectID() == "" {
-		return nil, fmt.Errorf("projectID is not set in the deployment")
+	if p.ProjectID == "" {
+		return nil, fmt.Errorf("projectID is not set in tryAllocateIP")
 	}
 
 	// First try to find an available IP in the project
@@ -730,7 +725,7 @@ func (p *GCPProvider) tryAllocateIP(
 		AddressType: &addressType,
 	}
 
-	addr, err := p.GetGCPClient().CreateIP(ctx, m.Deployment.GetProjectID(), region, address)
+	addr, err := p.GetGCPClient().CreateIP(ctx, p.ProjectID, region, address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reserve IP address: %w", err)
 	}
@@ -744,13 +739,12 @@ func (p *GCPProvider) findAvailableIP(
 	region string,
 ) (*computepb.Address, error) {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
-	if m.Deployment.GetProjectID() == "" {
-		return nil, fmt.Errorf("projectID is not set in the deployment")
+	if p.ProjectID == "" {
+		return nil, fmt.Errorf("projectID is not set in findAvailableIP")
 	}
 
 	// List all addresses in the region
-	addressList, err := p.GetGCPClient().ListAddresses(ctx, m.Deployment.GetProjectID(), region)
+	addressList, err := p.GetGCPClient().ListAddresses(ctx, p.ProjectID, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list IP addresses: %w", err)
 	}
@@ -768,18 +762,17 @@ func (p *GCPProvider) findAvailableIP(
 
 func (p *GCPProvider) releaseIP(ctx context.Context, ip, region string) error {
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
 	l.Infof("Attempting to release IP %s in region %s", ip, region)
 
 	// Find the address resource by IP
-	addressList, err := p.GetGCPClient().ListAddresses(ctx, m.Deployment.GetProjectID(), region)
+	addressList, err := p.GetGCPClient().ListAddresses(ctx, p.ProjectID, region)
 	if err != nil {
 		return fmt.Errorf("failed to list IP addresses: %w", err)
 	}
 
 	for _, addr := range addressList {
 		if *addr.Address == ip {
-			err := p.GetGCPClient().DeleteIP(ctx, m.Deployment.GetProjectID(), region, *addr.Name)
+			err := p.GetGCPClient().DeleteIP(ctx, p.ProjectID, region, *addr.Name)
 			if err != nil {
 				return fmt.Errorf("failed to delete IP address: %w", err)
 			}

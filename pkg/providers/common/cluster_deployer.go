@@ -694,7 +694,7 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 
 	for {
 		allReady := true
-		for _, machine := range m.Deployment.Machines {
+		for _, machine := range m.Deployment.GetMachines() {
 			if machine.GetMachineResourceState(resourceType) != state {
 				allReady = false
 				break

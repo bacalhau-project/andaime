@@ -89,7 +89,7 @@ func runTestDisplay() error {
 		for {
 			select {
 			case <-wordTicker.C:
-				for _, machine := range m.Deployment.Machines {
+				for _, machine := range m.Deployment.GetMachines() {
 					rawStatus := getRandomWords(RandomWordsCount)
 					statusMessage := ""
 					if len(rawStatus) > statusLength {

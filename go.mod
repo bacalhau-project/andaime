@@ -16,12 +16,16 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph v0.9.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription v1.2.0
+	github.com/aws/aws-cdk-go/awscdk/v2 v2.164.0
+	github.com/aws/aws-sdk-go v1.55.5
 	github.com/aws/aws-sdk-go-v2 v1.32.2
 	github.com/aws/aws-sdk-go-v2/config v1.27.31
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.177.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.0
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.55.2
+	github.com/aws/constructs-go/constructs/v10 v10.4.2
+	github.com/aws/jsii-runtime-go v1.103.1
 	github.com/briandowns/spinner v1.23.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/charmbracelet/bubbles v0.19.0

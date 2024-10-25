@@ -74,6 +74,7 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	}
 
 	s.provider, err = gcp.NewGCPProviderFunc(context.Background(), "test-org-id", "test-billing-id")
+	s.provider.ProjectID = "test-project-id"
 	s.Require().NoError(err)
 
 	s.provider.SetGCPClient(s.mockGCPClient)
@@ -360,14 +361,14 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	err = s.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	s.Require().NoError(err)
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if !machine.IsOrchestrator() {
 			err := s.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.GetName())
 			s.Require().NoError(err)
 		}
 	}
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		s.True(machine.SSHEnabled(), "SSH should be enabled for %s", machine.GetName())
 		s.True(machine.DockerEnabled(), "Docker should be enabled for %s", machine.GetName())
 		s.True(machine.BacalhauEnabled(), "Bacalhau should be enabled for %s", machine.GetName())

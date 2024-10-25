@@ -231,7 +231,7 @@ func createResources(
 	if err := azureProvider.CreateResources(ctx); err != nil {
 		return fmt.Errorf("failed to create resources: %w", err)
 	}
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		updateMachineConfig(m.Deployment, machine.GetName())
 	}
 	return nil
@@ -245,7 +245,7 @@ func provisionBacalhauCluster(
 	if err := azureProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		updateMachineConfig(m.Deployment, machine.GetName())
 	}
 	return nil

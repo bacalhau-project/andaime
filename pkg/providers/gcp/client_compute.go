@@ -9,6 +9,7 @@ import (
 
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -86,7 +87,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 	networkName = "default"
 
 	for _, port := range allowedPorts {
-		for _, machine := range m.Deployment.Machines {
+		for _, machine := range m.Deployment.GetMachines() {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
 				models.GCPResourceTypeFirewall,
@@ -146,7 +147,7 @@ func (c *LiveGCPClient) CreateFirewallRules(ctx context.Context, networkName str
 		}
 		l.Infof("Firewall rule created or already exists for port %d", port)
 
-		for _, machine := range m.Deployment.Machines {
+		for _, machine := range m.Deployment.GetMachines() {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
 				models.GCPResourceTypeFirewall,
@@ -169,7 +170,7 @@ func (c *LiveGCPClient) CreateIP(
 	}
 
 	if projectID == "" {
-		return nil, fmt.Errorf("projectID is not set")
+		return nil, fmt.Errorf("projectID is not set in CreateIP")
 	}
 
 	if address.Name == nil {
@@ -192,12 +193,12 @@ func (c *LiveGCPClient) CreateIP(
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to reserve IP address: %v", err)
+		return nil, fmt.Errorf("failed to start reserving IP address: %v", err)
 	}
 
 	err = op.Wait(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reserve IP address: %v", err)
+		return nil, fmt.Errorf("operation to reserve IP address failed: %v", err)
 	}
 
 	return c.addressesClient.Get(ctx, &computepb.GetAddressRequest{
@@ -304,7 +305,11 @@ func (c *LiveGCPClient) validateCreateVMInput(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	if err := c.validateZone(ctx, projectID, machine.GetLocation()); err != nil {
+	if projectID == "" {
+		return fmt.Errorf("projectID is not set in validateCreateVMInput")
+	}
+
+	if err := c.validateZone(projectID, machine.GetLocation()); err != nil {
 		return fmt.Errorf("invalid zone: %w", err)
 	}
 
@@ -333,6 +338,13 @@ func (c *LiveGCPClient) prepareVMInstance(
 	machine models.Machiner,
 	ip *computepb.Address,
 ) (*computepb.Instance, error) {
+	l := logger.Get()
+	l.Debugf("Preparing VM instance %s in project %s", machine.GetName(), projectID)
+
+	if projectID == "" {
+		return nil, fmt.Errorf("projectID is not set in prepareVMInstance")
+	}
+
 	networkName := "default"
 	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
 	if err != nil {
@@ -415,6 +427,13 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	ctx context.Context,
 	projectID, networkName string,
 ) (*computepb.Network, error) {
+	l := logger.Get()
+	l.Debugf("Getting or creating network %s in project %s", networkName, projectID)
+
+	if projectID == "" {
+		return nil, fmt.Errorf("projectID is not set in getOrCreateNetwork")
+	}
+
 	// Always try to get the network first
 	network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 		Project: projectID,
@@ -461,46 +480,13 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 	})
 }
 
-func (c *LiveGCPClient) validateZone(ctx context.Context, projectID, zone string) error {
+func (c *LiveGCPClient) validateZone(projectID, zone string) error {
 	l := logger.Get()
 	l.Debugf("Validating zone: %s in project: %s", zone, projectID)
 
-	// Basic format validation
-	if zone == "" {
-		return fmt.Errorf("zone cannot be empty")
-	}
-
-	// Ensure zone follows GCP format (e.g., us-central1-a or europe-west12-a)
-	parts := strings.Split(zone, "-")
-	if len(parts) < 3 {
-		return fmt.Errorf("invalid zone format %q - expected format: region-zone (e.g., us-central1-a)", zone)
-	}
-
-	// The last part should be a single letter
-	lastPart := parts[len(parts)-1]
-	if len(lastPart) != 1 || !strings.Contains("abcdefghijklmnopqrstuvwxyz", strings.ToLower(lastPart)) {
-		return fmt.Errorf("invalid zone format %q: zone suffix must be a single letter (a-z)", zone)
-	}
-
-	// Validate zone exists in GCP
-	req := &computepb.GetZoneRequest{
-		Project: projectID,
-		Zone:    zone,
-	}
-
-	gotZone, err := c.zonesClient.Get(ctx, req)
-	if err != nil {
-		if strings.Contains(err.Error(), "Invalid value") {
-			return fmt.Errorf("invalid zone %q: zone does not exist in project %s", zone, projectID)
-		}
-		if strings.Contains(err.Error(), "Invalid resource") {
-			return fmt.Errorf("invalid zone format %q: must be in format 'region-number-letter' (e.g., us-central1-a)", zone)
-		}
-		return fmt.Errorf("failed to validate zone %q: %v", zone, err)
-	}
-
-	if gotZone.Name == nil || *gotZone.Name != zone {
-		return fmt.Errorf("zone %q exists but returned unexpected name: %v", zone, gotZone.Name)
+	isValid := internal_gcp.IsValidGCPLocation(zone)
+	if !isValid {
+		return fmt.Errorf("zone %s is not valid", zone)
 	}
 
 	l.Debugf("Successfully validated zone %s", zone)

@@ -357,14 +357,14 @@ func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
 	err = s.provider.GetClusterDeployer().ProvisionOrchestrator(ctx, "orchestrator")
 	s.Require().NoError(err)
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if !machine.IsOrchestrator() {
 			err := s.provider.GetClusterDeployer().ProvisionWorker(ctx, machine.GetName())
 			s.Require().NoError(err)
 		}
 	}
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		s.Equal(models.ServiceStateSucceeded, machine.GetServiceState(models.ServiceTypeSSH.Name))
 		s.Equal(
 			models.ServiceStateSucceeded,

@@ -82,7 +82,7 @@ func TestDisplayLayout(t *testing.T) {
 	}
 
 	i := 0
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		for _, resource := range machine.GetMachineResources() {
 			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
 		}
@@ -205,7 +205,7 @@ func TestProgressBar(t *testing.T) {
 		StatusMessage: "test",
 		Orchestrator:  true,
 	})
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		for _, resource := range machine.GetMachineResources() {
 			machine.SetMachineResourceState(resource.ResourceName, models.ResourceStateSucceeded)
 		}

@@ -351,7 +351,7 @@ func (p *AzureProvider) StartResourcePolling(ctx context.Context) error {
 				)
 
 				// Just for visual, set all the machines to complete
-				for _, machine := range m.Deployment.Machines {
+				for _, machine := range m.Deployment.GetMachines() {
 					allMachineResources := machine.GetMachineResources()
 					for _, resource := range allMachineResources {
 						machine.SetMachineResourceState(
@@ -389,7 +389,7 @@ func (p *AzureProvider) logDeploymentStatus() {
 	)
 	writeToDebugLog(fmt.Sprintf("Total Machines: %d", len(m.Deployment.Machines)))
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		writeToDebugLog(
 			fmt.Sprintf(
 				"Machine Name: %s, PublicIP: %s, PrivateIP: %s",
@@ -471,7 +471,7 @@ func (p *AzureProvider) CancelAllDeployments(ctx context.Context) {
 	l.Info("Cancelling all deployments")
 	writeToDebugLog("Cancelling all deployments")
 
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if !machine.IsComplete() {
 			machine.SetComplete()
 		}
@@ -486,7 +486,7 @@ func (p *AzureProvider) CancelAllDeployments(ctx context.Context) {
 // AllMachinesComplete checks if all machines in the deployment are marked as complete.
 func (p *AzureProvider) AllMachinesComplete() bool {
 	m := display.GetGlobalModelFunc()
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		if !machine.IsComplete() {
 			return false
 		}

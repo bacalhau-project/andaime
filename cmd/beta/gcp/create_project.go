@@ -60,7 +60,7 @@ func createProject(ctx context.Context) error {
 	fmt.Printf("Project ensured successfully: %s\n", m.Deployment.GetProjectID())
 
 	// Update status of all machines with the project being created
-	for i := range m.Deployment.Machines {
+	for i := range m.Deployment.GetMachines() {
 		m.Deployment.GetMachine(i).SetStatusMessage(
 			fmt.Sprintf(
 				"Associated with project: %s",

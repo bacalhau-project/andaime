@@ -355,7 +355,7 @@ func (m *DisplayModel) getSuccessfulOperationsCount() int {
 func (m *DisplayModel) getFailedOperationsCount() int {
 	count := 0
 	// TODO: Implement
-	// for _, machine := range m.Deployment.Machines {
+	// for _, machine := range m.Deployment.GetMachines() {
 	// 	if machine.GetStatus() == models.MachineStatusFailed {
 	// 		count++
 	// 	}

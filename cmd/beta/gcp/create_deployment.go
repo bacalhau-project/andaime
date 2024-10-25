@@ -45,9 +45,14 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	gcpProvider.ProjectID = deployment.GetProjectID()
+
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
-	prog.InitProgram(m)
+	err = prog.InitProgram(m)
+	if err != nil {
+		return err
+	}
 
 	go startResourcePolling(ctx, gcpProvider)
 
@@ -234,12 +239,12 @@ func createResources(
 
 	// Create a map to track which machines are active
 	activeMachines := make(map[string]bool)
-	for name := range m.Deployment.Machines {
+	for name := range m.Deployment.GetMachines() {
 		activeMachines[name] = true
 	}
 
 	// Try to create each machine
-	for name, machine := range m.Deployment.Machines {
+	for name, machine := range m.Deployment.GetMachines() {
 		err := gcpProvider.CreateAndConfigureVM(ctx, machine)
 		if err != nil {
 			l.Errorf("Failed to create machine %s: %v", name, err)
@@ -256,7 +261,7 @@ func createResources(
 	}
 
 	// Update the deployment to only include active machines
-	for name := range m.Deployment.Machines {
+	for name := range m.Deployment.GetMachines() {
 		if !activeMachines[name] {
 			l.Warnf("Removing failed machine %s from active deployment", name)
 			delete(m.Deployment.Machines, name)
@@ -274,7 +279,7 @@ func provisionBacalhauCluster(
 	if err := gcpProvider.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}
-	for _, machine := range m.Deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
 		updateMachineConfig(m.Deployment, machine.GetName())
 	}
