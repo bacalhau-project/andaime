@@ -463,20 +463,42 @@ func (c *LiveGCPClient) getOrCreateNetwork(
 
 func (c *LiveGCPClient) validateZone(ctx context.Context, projectID, zone string) error {
 	l := logger.Get()
-	l.Debugf("Validating zone: %s", zone)
+	l.Debugf("Validating zone: %s in project: %s", zone, projectID)
 
-	gotZone, err := c.zonesClient.Get(ctx, &computepb.GetZoneRequest{
+	// Basic format validation
+	if zone == "" {
+		return fmt.Errorf("zone cannot be empty")
+	}
+
+	// Ensure zone follows GCP format (e.g., us-central1-a)
+	parts := strings.Split(zone, "-")
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid zone format %q - expected format: region-zone (e.g., us-central1-a)", zone)
+	}
+
+	// Validate zone exists in GCP
+	req := &computepb.GetZoneRequest{
 		Project: projectID,
 		Zone:    zone,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get zone: %v", err)
-	}
-	if gotZone.Name != nil && *gotZone.Name == zone {
-		return nil
 	}
 
-	return fmt.Errorf("zone %s not found", zone)
+	gotZone, err := c.zonesClient.Get(ctx, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "Invalid value") {
+			return fmt.Errorf("invalid zone %q: zone does not exist in project %s", zone, projectID)
+		}
+		if strings.Contains(err.Error(), "Invalid resource") {
+			return fmt.Errorf("invalid zone format %q: must be in format 'region-number-letter' (e.g., us-central1-a)", zone)
+		}
+		return fmt.Errorf("failed to validate zone %q: %v", zone, err)
+	}
+
+	if gotZone.Name == nil || *gotZone.Name != zone {
+		return fmt.Errorf("zone %q exists but returned unexpected name: %v", zone, gotZone.Name)
+	}
+
+	l.Debugf("Successfully validated zone %s", zone)
+	return nil
 }
 
 func (c *LiveGCPClient) CheckFirewallRuleExists(
