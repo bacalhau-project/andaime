@@ -472,6 +472,9 @@ func (c *LiveGCPClient) prepareVMInstance(
 			machine.GetLocation(),
 			machine.GetVMSize(),
 		)),
+		Tags: &computepb.Tags{
+			Items: []string{"andaime-node"},
+		},
 		Disks: []*computepb.AttachedDisk{
 			{
 				AutoDelete: to.Ptr(true),
@@ -485,7 +488,7 @@ func (c *LiveGCPClient) prepareVMInstance(
 		},
 		NetworkInterfaces: []*computepb.NetworkInterface{
 			{
-				Network: network.SelfLink,
+				Network: proto.String(fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)),
 				AccessConfigs: []*computepb.AccessConfig{
 					{
 						Type:  to.Ptr("ONE_TO_ONE_NAT"),
