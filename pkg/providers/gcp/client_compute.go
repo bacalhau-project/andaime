@@ -88,6 +88,50 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 		return fmt.Errorf("failed to create VPC network after retries: %v", err)
 	}
 
+	// Create deny rules for all other traffic
+	for _, denyPort := range denyAllPorts {
+		ruleName := fmt.Sprintf("deny-%s", denyPort.Protocol)
+		firewallRule := &computepb.Firewall{
+			Name: &ruleName,
+			Network: to.Ptr(
+				fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName),
+			),
+			Denied: []*computepb.Denied{
+				{
+					IPProtocol: to.Ptr(denyPort.Protocol),
+				},
+			},
+			Direction: to.Ptr("INGRESS"),
+			Priority:  to.Ptr(denyPort.Priority),
+			Description: to.Ptr(
+				fmt.Sprintf("Deny all %s traffic", denyPort.Protocol),
+			),
+			TargetTags: []string{"andaime-node"},
+		}
+
+		_, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
+			Project:          projectID,
+			FirewallResource: firewallRule,
+		})
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("failed to create deny firewall rule: %v", err)
+		}
+	}
+
+	// Mark firewall resource as complete for all VMs
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		for _, machine := range m.Deployment.GetMachines() {
+			machine.SetMachineResourceState("compute.googleapis.com/Firewall", models.ResourceStateSucceeded)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.GetName(),
+				models.GCPResourceTypeFirewall,
+				models.ResourceStateSucceeded,
+				"Firewall rules configured",
+			))
+		}
+	}
+
 	return nil
 }
 
@@ -99,9 +143,20 @@ var requiredPorts = []struct {
 	Priority    int32
 }{
 	{22, "tcp", "SSH", 1000},
-	{1234, "tcp", "Bacalhau API", 1001},
+	{1234, "tcp", "Bacalhau API", 1001}, 
 	{1235, "tcp", "Bacalhau P2P", 1002},
 	{4222, "tcp", "NATS", 1003},
+}
+
+// Explicitly deny all other traffic
+var denyAllPorts = []struct {
+	Protocol    string
+	Description string
+	Priority    int32
+}{
+	{"icmp", "Block ICMP", 2000},
+	{"tcp", "Block internal TCP", 2001},
+	{"udp", "Block UDP", 2002},
 }
 
 func (c *LiveGCPClient) CreateFirewallRules(
@@ -140,8 +195,9 @@ func (c *LiveGCPClient) CreateFirewallRules(
 	// Create both ingress and egress rules for each port
 	for _, portInfo := range ports {
 		for _, direction := range []string{"INGRESS", "EGRESS"} {
+			// Create allow rule for required port
 			ruleName := fmt.Sprintf(
-				"default-%s-%d-%s",
+				"allow-%s-%d-%s",
 				strings.ToLower(direction),
 				portInfo.Port,
 				portInfo.Protocol,
