@@ -35,7 +35,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 	}
 
 	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 5 * time.Minute
+	b.MaxElapsedTime = 5 * time.Minute //nolint:mnd
 
 	operation := func() error {
 		// First check if network exists
@@ -74,8 +74,11 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 			return fmt.Errorf("failed to wait for network creation: %v", err)
 		}
 
-		l.Infof("VPC network %s created successfully. Waiting 10 seconds for network propagation...", networkName)
-		time.Sleep(10 * time.Second)
+		l.Infof(
+			"VPC network %s created successfully. Waiting 10 seconds for network propagation...",
+			networkName,
+		)
+		time.Sleep(10 * time.Second) //nolint:mnd
 		l.Infof("Network propagation wait complete for %s", networkName)
 		return nil
 	}
@@ -93,7 +96,7 @@ var requiredPorts = []struct {
 	Port        int
 	Protocol    string
 	Description string
-	Priority    int
+	Priority    int32
 }{
 	{22, "tcp", "SSH", 1000},
 	{1234, "tcp", "Bacalhau API", 1001},
@@ -119,7 +122,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 		Port        int
 		Protocol    string
 		Description string
-		Priority    int
+		Priority    int32
 	}, len(requiredPorts))
 	copy(ports, requiredPorts)
 
@@ -129,7 +132,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				Port        int
 				Protocol    string
 				Description string
-				Priority    int
+				Priority    int32
 			}{port, "tcp", "Custom", 1004})
 		}
 	}
@@ -143,7 +146,12 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				portInfo.Port,
 				portInfo.Protocol,
 			)
-			l.Infof("Creating firewall rule: %s for port %d (%s)", ruleName, portInfo.Port, portInfo.Description)
+			l.Infof(
+				"Creating firewall rule: %s for port %d (%s)",
+				ruleName,
+				portInfo.Port,
+				portInfo.Description,
+			)
 
 			for _, machine := range m.Deployment.GetMachines() {
 				m.UpdateStatus(models.NewDisplayStatusWithText(
@@ -160,7 +168,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 			}
 
 			b := backoff.NewExponentialBackOff()
-			b.MaxElapsedTime = 10 * time.Second
+			b.MaxElapsedTime = 10 * time.Second //nolint:mnd
 
 			operation := func() error {
 				firewallRule := &computepb.Firewall{
@@ -175,7 +183,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 						},
 					},
 					Direction: to.Ptr(direction),
-					Priority:  to.Ptr(int32(portInfo.Priority)),
+					Priority:  to.Ptr(portInfo.Priority),
 					Description: to.Ptr(
 						fmt.Sprintf(
 							"%s port %d (%s)",
@@ -200,16 +208,26 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				})
 				if err != nil {
 					if strings.Contains(err.Error(), "already exists") {
-						l.Infof("Firewall rule %s already exists, verifying configuration...", ruleName)
+						l.Infof(
+							"Firewall rule %s already exists, verifying configuration...",
+							ruleName,
+						)
 						// Verify existing rule
-						existingRule, getErr := c.firewallsClient.Get(ctx, &computepb.GetFirewallRequest{
-							Project:  projectID,
-							Firewall: ruleName,
-						})
+						existingRule, getErr := c.firewallsClient.Get(
+							ctx,
+							&computepb.GetFirewallRequest{
+								Project:  projectID,
+								Firewall: ruleName,
+							},
+						)
 						if getErr != nil {
-							l.Warnf("Failed to verify existing firewall rule %s: %v", ruleName, getErr)
+							l.Warnf(
+								"Failed to verify existing firewall rule %s: %v",
+								ruleName,
+								getErr,
+							)
 						} else {
-							l.Infof("Verified existing firewall rule %s - Direction: %s, Port: %d", 
+							l.Infof("Verified existing firewall rule %s - Direction: %s, Port: %d",
 								ruleName, *existingRule.Direction, portInfo.Port)
 						}
 						return nil
@@ -392,7 +410,7 @@ func (c *LiveGCPClient) CreateVM(
 }
 
 func (c *LiveGCPClient) validateCreateVMInput(
-	ctx context.Context,
+	_ context.Context,
 	projectID string,
 	machine models.Machiner,
 ) error {
@@ -429,7 +447,7 @@ func (c *LiveGCPClient) validateCreateVMInput(
 }
 
 func (c *LiveGCPClient) prepareVMInstance(
-	ctx context.Context,
+	_ context.Context,
 	projectID string,
 	machine models.Machiner,
 	ip *computepb.Address,
@@ -440,11 +458,6 @@ func (c *LiveGCPClient) prepareVMInstance(
 
 	if projectID == "" {
 		return nil, fmt.Errorf("projectID is not set in prepareVMInstance")
-	}
-
-	network, err := c.getOrCreateNetwork(ctx, projectID, networkName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get or create network: %w", err)
 	}
 
 	// Get the SSH public and private keys
@@ -488,7 +501,9 @@ func (c *LiveGCPClient) prepareVMInstance(
 		},
 		NetworkInterfaces: []*computepb.NetworkInterface{
 			{
-				Network: proto.String(fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)),
+				Network: proto.String(
+					fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName),
+				),
 				AccessConfigs: []*computepb.AccessConfig{
 					{
 						Type:  to.Ptr("ONE_TO_ONE_NAT"),
