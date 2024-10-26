@@ -5,13 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bacalhau-project/andaime/internal/testutil"
 	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -39,17 +37,15 @@ func (suite *GCPProgressTestSuite) SetupTest() {
 
 	// Create test machine
 	machine := &models.Machine{
-		ID:         "test-machine",
-		Name:       "test-machine",
-		Location:   "us-central1-a",
-		VMSize:     "n1-standard-2",
-		SSHPort:    22,
-		SSHUser:    "test-user",
-		Resources:  make(map[string]models.MachineResource),
-		Services:   make(map[string]models.ServiceState),
-		StartTime:  time.Now(),
-		PublicIP:   "1.2.3.4",
-		PrivateIP:  "10.0.0.2",
+		ID:        "test-machine",
+		Name:      "test-machine",
+		Location:  "us-central1-a",
+		VMSize:    "n1-standard-2",
+		SSHPort:   22,
+		SSHUser:   "test-user",
+		StartTime: time.Now(),
+		PublicIP:  "1.2.3.4",
+		PrivateIP: "10.0.0.2",
 	}
 	deployment.Machines = map[string]models.Machiner{
 		machine.Name: machine,
@@ -92,12 +88,12 @@ func (suite *GCPProgressTestSuite) TestProgressBarAndServiceCompletion() {
 	// Simulate resource updates
 	resourceStates := map[string]models.MachineResourceState{
 		models.GCPResourceTypeProject.ResourceString:        models.ResourceStateSucceeded,
-		models.GCPResourceTypeVPC.ResourceString:           models.ResourceStateSucceeded,
-		models.GCPResourceTypeFirewall.ResourceString:      models.ResourceStateSucceeded,
-		models.GCPResourceTypeInstance.ResourceString:      models.ResourceStateSucceeded,
-		models.GCPResourceTypeDisk.ResourceString:          models.ResourceStateSucceeded,
+		models.GCPResourceTypeVPC.ResourceString:            models.ResourceStateSucceeded,
+		models.GCPResourceTypeFirewall.ResourceString:       models.ResourceStateSucceeded,
+		models.GCPResourceTypeInstance.ResourceString:       models.ResourceStateSucceeded,
+		models.GCPResourceTypeDisk.ResourceString:           models.ResourceStateSucceeded,
 		models.GCPResourceTypeServiceAccount.ResourceString: models.ResourceStateSucceeded,
-		models.GCPResourceTypeIAMPolicy.ResourceString:     models.ResourceStateSucceeded,
+		models.GCPResourceTypeIAMPolicy.ResourceString:      models.ResourceStateSucceeded,
 	}
 
 	// Update each resource and verify progress
