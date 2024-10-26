@@ -80,12 +80,23 @@ func (suite *GCPProgressTestSuite) TestProgressBarAndServiceCompletion() {
 	machine := m.Deployment.GetMachine("test-machine")
 	suite.Require().NotNil(machine)
 
+	// Initialize RequiredGCPResources
+	models.RequiredGCPResources = []models.ResourceType{
+		models.GCPResourceTypeProject,
+		models.GCPResourceTypeVPC,
+		models.GCPResourceTypeFirewall,
+		models.GCPResourceTypeInstance,
+		models.GCPResourceTypeDisk,
+		models.GCPResourceTypeServiceAccount,
+		models.GCPResourceTypeIAMPolicy,
+	}
+
 	// Initialize resource states
 	for _, resource := range models.RequiredGCPResources {
 		machine.SetMachineResourceState(resource.ResourceString, models.ResourceStateNotStarted)
 	}
 
-	// Test initial state
+	// Test initial state 
 	progress, total := machine.ResourcesComplete()
 	suite.Equal(0, progress)
 	suite.Equal(len(models.RequiredGCPResources), total)
