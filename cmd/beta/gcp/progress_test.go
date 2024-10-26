@@ -80,36 +80,37 @@ func (suite *GCPProgressTestSuite) TestProgressBarAndServiceCompletion() {
 	machine := m.Deployment.GetMachine("test-machine")
 	suite.Require().NotNil(machine)
 
-	// Initialize RequiredGCPResources
-	models.RequiredGCPResources = []models.ResourceType{
-		models.GCPResourceTypeProject,
-		models.GCPResourceTypeVPC,
-		models.GCPResourceTypeFirewall,
-		models.GCPResourceTypeInstance,
-		models.GCPResourceTypeDisk,
-		models.GCPResourceTypeServiceAccount,
-		models.GCPResourceTypeIAMPolicy,
+	// Initialize RequiredGCPResources with all resource types we want to track
+	requiredResources := []models.ResourceType{
+		{ResourceString: "cloudresourcemanager.googleapis.com/Project", ShortResourceName: "Project"},
+		{ResourceString: "compute.googleapis.com/Network", ShortResourceName: "VPC"},
+		{ResourceString: "compute.googleapis.com/Firewall", ShortResourceName: "Firewall"},
+		{ResourceString: "compute.googleapis.com/Instance", ShortResourceName: "Instance"},
+		{ResourceString: "compute.googleapis.com/Disk", ShortResourceName: "Disk"},
+		{ResourceString: "iam.googleapis.com/ServiceAccount", ShortResourceName: "ServiceAccount"},
+		{ResourceString: "cloudresourcemanager.googleapis.com/IAMPolicy", ShortResourceName: "IAMPolicy"},
 	}
+	models.RequiredGCPResources = requiredResources
 
 	// Initialize resource states
-	for _, resource := range models.RequiredGCPResources {
+	for _, resource := range requiredResources {
 		machine.SetMachineResourceState(resource.ResourceString, models.ResourceStateNotStarted)
 	}
 
-	// Test initial state 
+	// Test initial state
 	progress, total := machine.ResourcesComplete()
 	suite.Equal(0, progress)
 	suite.Equal(len(models.RequiredGCPResources), total)
 
 	// Simulate resource updates
 	resourceStates := map[string]models.MachineResourceState{
-		models.GCPResourceTypeProject.ResourceString:        models.ResourceStateSucceeded,
-		models.GCPResourceTypeVPC.ResourceString:            models.ResourceStateSucceeded,
-		models.GCPResourceTypeFirewall.ResourceString:       models.ResourceStateSucceeded,
-		models.GCPResourceTypeInstance.ResourceString:       models.ResourceStateSucceeded,
-		models.GCPResourceTypeDisk.ResourceString:           models.ResourceStateSucceeded,
-		models.GCPResourceTypeServiceAccount.ResourceString: models.ResourceStateSucceeded,
-		models.GCPResourceTypeIAMPolicy.ResourceString:      models.ResourceStateSucceeded,
+		"cloudresourcemanager.googleapis.com/Project":        models.ResourceStateSucceeded,
+		"compute.googleapis.com/Network":                     models.ResourceStateSucceeded,
+		"compute.googleapis.com/Firewall":                    models.ResourceStateSucceeded,
+		"compute.googleapis.com/Instance":                    models.ResourceStateSucceeded,
+		"compute.googleapis.com/Disk":                        models.ResourceStateSucceeded,
+		"iam.googleapis.com/ServiceAccount":                  models.ResourceStateSucceeded,
+		"cloudresourcemanager.googleapis.com/IAMPolicy":      models.ResourceStateSucceeded,
 	}
 
 	// Update each resource and verify progress
