@@ -85,13 +85,14 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 ) ([]*assetpb.Asset, error) {
 	resources := []*assetpb.Asset{}
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 
 	assetTypes := []string{
-		"compute.googleapis.com/instance",
-		"compute.googleapis.com/disk",
-		"compute.googleapis.com/image",
-		"compute.googleapis.com/network",
-		"compute.googleapis.com/firewall",
+		"cloudresourcemanager.googleapis.com/Project",
+		"compute.googleapis.com/Network",
+		"compute.googleapis.com/Firewall",
+		"compute.googleapis.com/Instance",
+		"compute.googleapis.com/Disk",
 	}
 
 	req := &assetpb.SearchAllResourcesRequest{
@@ -133,35 +134,57 @@ func (c *LiveGCPClient) UpdateResourceState(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	foundResource := false
+	// Handle project-level resources
+	if strings.Contains(resourceType, "Project") {
+		for _, machine := range m.Deployment.GetMachines() {
+			machine.SetMachineResourceState(resourceType, state)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.GetName(),
+				models.GetGCPResourceType(resourceType),
+				state,
+				"Project infrastructure ready",
+			))
+		}
+		return nil
+	}
+
+	// Handle network-level resources
+	if strings.Contains(resourceType, "Network") || strings.Contains(resourceType, "Firewall") {
+		for _, machine := range m.Deployment.GetMachines() {
+			machine.SetMachineResourceState(resourceType, state)
+			m.UpdateStatus(models.NewDisplayStatusWithText(
+				machine.GetName(),
+				models.GetGCPResourceType(resourceType),
+				state,
+				fmt.Sprintf("%s configured", resourceType),
+			))
+		}
+		return nil
+	}
+
+	// Handle instance-specific resources
 	for _, machine := range m.Deployment.GetMachines() {
 		if strings.Contains(strings.ToLower(resourceName), strings.ToLower(machine.GetName())) {
 			if machine.GetMachineResourceState(resourceType) < state {
 				machine.SetMachineResourceState(resourceType, state)
+				var msg string
+				switch {
+				case strings.Contains(resourceType, "Instance"):
+					msg = "VM instance ready"
+				case strings.Contains(resourceType, "Disk"):
+					msg = "Disk attached and configured"
+				default:
+					msg = fmt.Sprintf("%s deployed", resourceType)
+				}
 				m.UpdateStatus(models.NewDisplayStatusWithText(
 					machine.GetName(),
 					models.GetGCPResourceType(resourceType),
 					state,
-					resourceType+" deployed.",
+					msg,
 				))
 			}
 			return nil
-		} else if strings.Contains(strings.ToLower(resourceName), "/global/") {
-			foundResource = true
-			if machine.GetMachineResourceState(resourceType) < state {
-				machine.SetMachineResourceState(resourceType, state)
-				m.UpdateStatus(models.NewDisplayStatusWithText(
-					machine.GetName(),
-					models.GetGCPResourceType(resourceType),
-					state,
-					resourceType+" deployed.",
-				))
-			}
 		}
-	}
-
-	if foundResource {
-		return nil
 	}
 
 	return fmt.Errorf("resource %s not found in any machine", resourceName)
