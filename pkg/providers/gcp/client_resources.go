@@ -8,14 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
-
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"google.golang.org/api/iterator"
 )
 
