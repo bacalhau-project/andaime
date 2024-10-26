@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
+
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -170,6 +172,27 @@ func (c *LiveGCPClient) UpdateResourceState(
 				switch {
 				case strings.Contains(resourceType, "Instance"):
 					msg = "VM instance ready"
+					// Start SSH service state tracking when instance is ready
+					machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateUpdating)
+					sshConfig, err := sshutils.NewSSHConfigFunc(
+						machine.GetPublicIP(),
+						machine.GetSSHPort(),
+						machine.GetSSHUser(),
+						machine.GetSSHPrivateKeyPath(),
+					)
+					if err != nil {
+						l.Errorf("Failed to create SSH config for machine %s: %v", machine.GetName(), err)
+						machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
+					} else {
+						// Test SSH connectivity
+						err = sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout())
+						if err != nil {
+							l.Errorf("Failed to connect to machine %s via SSH: %v", machine.GetName(), err)
+							machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
+						} else {
+							machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
+						}
+					}
 				case strings.Contains(resourceType, "Disk"):
 					msg = "Disk attached and configured"
 				default:
