@@ -85,7 +85,6 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 ) ([]*assetpb.Asset, error) {
 	resources := []*assetpb.Asset{}
 	l := logger.Get()
-	m := display.GetGlobalModelFunc()
 
 	assetTypes := []string{
 		"cloudresourcemanager.googleapis.com/Project",
