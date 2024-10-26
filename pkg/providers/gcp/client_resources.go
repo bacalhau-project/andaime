@@ -46,7 +46,11 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 
 			allResourcesProvisioned := true
 			for _, resource := range resources {
-				if err := c.UpdateResourceState(resource.GetName(), resource.GetAssetType(), models.ResourceStateSucceeded); err != nil {
+				if err := c.UpdateResourceState(
+					resource.GetName(),
+					resource.GetAssetType(),
+					models.ResourceStateSucceeded,
+				); err != nil {
 					l.Errorf("Failed to update resource state: %v", err)
 					allResourcesProvisioned = false
 				}
@@ -113,7 +117,7 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 		resources = append(resources, resourceAsset)
 	}
 
-	if rand.Int31n(100) < 10 {
+	if rand.Int31n(100) < 10 { //nolint:gosec,mnd
 		l.Debugf("Found %d resources", len(resources))
 	}
 
@@ -197,7 +201,7 @@ func (c *LiveGCPClient) EnsureFirewallRules(
 		}
 
 		req := &computepb.InsertFirewallRequest{
-			Project:          m.Deployment.GetProjectID(),
+			Project:          projectID,
 			FirewallResource: firewallRule,
 		}
 
