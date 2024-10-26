@@ -88,41 +88,14 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 		return fmt.Errorf("failed to create VPC network after retries: %v", err)
 	}
 
-	// Create deny rules for all other traffic
-	for _, denyPort := range denyAllPorts {
-		ruleName := fmt.Sprintf("deny-%s", denyPort.Protocol)
-		firewallRule := &computepb.Firewall{
-			Name: &ruleName,
-			Network: to.Ptr(
-				fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName),
-			),
-			Denied: []*computepb.Denied{
-				{
-					IPProtocol: to.Ptr(denyPort.Protocol),
-				},
-			},
-			Direction: to.Ptr("INGRESS"),
-			Priority:  to.Ptr(denyPort.Priority),
-			Description: to.Ptr(
-				fmt.Sprintf("Deny all %s traffic", denyPort.Protocol),
-			),
-			TargetTags: []string{"andaime-node"},
-		}
-
-		_, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
-			Project:          projectID,
-			FirewallResource: firewallRule,
-		})
-		if err != nil && !strings.Contains(err.Error(), "already exists") {
-			return fmt.Errorf("failed to create deny firewall rule: %v", err)
-		}
-	}
-
 	// Mark firewall resource as complete for all VMs
 	model := display.GetGlobalModelFunc()
 	if model != nil && model.Deployment != nil {
 		for _, machine := range model.Deployment.GetMachines() {
-			machine.SetMachineResourceState("compute.googleapis.com/Firewall", models.ResourceStateSucceeded)
+			machine.SetMachineResourceState(
+				"compute.googleapis.com/Firewall",
+				models.ResourceStateSucceeded,
+			)
 			model.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
 				models.GCPResourceTypeFirewall,
@@ -135,7 +108,64 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 	return nil
 }
 
-// Required ports and their descriptions
+// Add this function to first cleanup default rules
+func (c *LiveGCPClient) CleanupFirewallRules(
+	ctx context.Context,
+	projectID string,
+	networkName string,
+) error {
+	l := logger.Get()
+	l.Infof(
+		"Cleaning up default firewall rules in project: %s for network: %s",
+		projectID,
+		networkName,
+	)
+
+	// List existing firewall rules
+	req := &computepb.ListFirewallsRequest{
+		Project: projectID,
+		Filter: to.Ptr(
+			fmt.Sprintf(`network="projects/%s/global/networks/%s"`, projectID, networkName),
+		),
+	}
+
+	it := c.firewallsClient.List(ctx, req)
+	for {
+		rule, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to list firewall rules: %v", err)
+		}
+
+		// Skip SSH rule (port 22)
+		if rule.Allowed != nil && len(rule.Allowed) > 0 {
+			for _, allowed := range rule.Allowed {
+				if allowed.Ports != nil && len(allowed.Ports) > 0 {
+					if allowed.Ports[0] == "22" {
+						l.Infof("Keeping SSH firewall rule: %s", *rule.Name)
+						continue
+					}
+				}
+			}
+		}
+
+		// Delete non-SSH rule
+		l.Infof("Deleting firewall rule: %s", *rule.Name)
+		_, err = c.firewallsClient.Delete(ctx, &computepb.DeleteFirewallRequest{
+			Project:  projectID,
+			Firewall: *rule.Name,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete firewall rule %s: %v", *rule.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// Update the required ports to include our specific needs
 var requiredPorts = []struct {
 	Port        int
 	Protocol    string
@@ -143,20 +173,9 @@ var requiredPorts = []struct {
 	Priority    int32
 }{
 	{22, "tcp", "SSH", 1000},
-	{1234, "tcp", "Bacalhau API", 1001}, 
-	{1235, "tcp", "Bacalhau P2P", 1002},
+	{1234, "tcp", "Custom Port 1234", 1001},
+	{1235, "tcp", "Custom Port 1235", 1002},
 	{4222, "tcp", "NATS", 1003},
-}
-
-// Explicitly deny all other traffic
-var denyAllPorts = []struct {
-	Protocol    string
-	Description string
-	Priority    int32
-}{
-	{"icmp", "Block ICMP", 2000},
-	{"tcp", "Block internal TCP", 2001},
-	{"udp", "Block UDP", 2002},
 }
 
 func (c *LiveGCPClient) CreateFirewallRules(
@@ -170,8 +189,16 @@ func (c *LiveGCPClient) CreateFirewallRules(
 		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	l.Infof("Creating firewall rules in project: %s for network: %s", projectID, networkName)
+	l.Infof(
+		"Creating firewall rules in project: %s for network: %s",
+		projectID,
+		networkName,
+	)
 
+	// First cleanup existing rules
+	if err := c.CleanupFirewallRules(ctx, projectID, networkName); err != nil {
+		return fmt.Errorf("failed to cleanup existing firewall rules: %v", err)
+	}
 	// Add any extra ports from config
 	ports := make([]struct {
 		Port        int

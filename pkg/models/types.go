@@ -247,13 +247,19 @@ func CreateStateMessage(
 	// 	)
 	// }
 
-	statusString := fmt.Sprintf(
-		"%s %s - %s %s",
-		resource.ShortResourceName,
-		stateEmoji,
-		resourceName,
-		resourceStageString,
-	)
+	var statusString string
+	if resource.ShortResourceName == "Instance" {
+		statusString = fmt.Sprintf("%s %s %s", stateEmoji, resourceName, resourceStageString)
+	} else {
+		statusString = fmt.Sprintf(
+			"%s %s - %s %s",
+			resource.ShortResourceName,
+			stateEmoji,
+			resourceName,
+			resourceStageString,
+		)
+	}
+
 	return statusString
 }
 
