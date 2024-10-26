@@ -46,7 +46,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 	}
 
 	// Create orchestrator first - this must succeed
-	if err := p.provisionMachine(ctx, orchestratorMachine, true); err != nil {
+	if err := p.provisionMachine(ctx, orchestratorMachine); err != nil {
 		return fmt.Errorf("failed to create orchestrator: %w", err)
 	}
 
@@ -59,7 +59,7 @@ func (p *GCPProvider) CreateResources(ctx context.Context) error {
 		machine := machine // Create new variable for goroutine
 		instanceEg.Go(func() error {
 			// Worker failures are logged but don't stop deployment
-			if err := p.provisionMachine(ctx, machine, false); err != nil {
+			if err := p.provisionMachine(ctx, machine); err != nil {
 				l.Errorf("Failed to provision worker %s: %v", machine.GetName(), err)
 				machine.SetFailed(true)
 			}
@@ -125,7 +125,6 @@ func findOrchestratorMachine(machines map[string]models.Machiner) models.Machine
 func (p *GCPProvider) provisionMachine(
 	ctx context.Context,
 	machine models.Machiner,
-	isOrchestrator bool,
 ) error {
 	l := logger.Get()
 

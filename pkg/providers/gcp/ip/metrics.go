@@ -7,14 +7,14 @@ import (
 
 // IPAllocationMetrics tracks metrics for IP allocation attempts
 type IPAllocationMetrics struct {
-	mu            sync.RWMutex
-	AttemptCount  int
-	FailureCount  int
-	LatencyMs     float64
-	ErrorTypes    map[string]int
-	RegionStats   map[string]*RegionMetrics
-	StartTime     time.Time
-	LastAttempt   time.Time
+	mu           sync.RWMutex
+	AttemptCount int
+	FailureCount int
+	LatencyMs    float64
+	ErrorTypes   map[string]int
+	RegionStats  map[string]*RegionMetrics
+	StartTime    time.Time
+	LastAttempt  time.Time
 }
 
 // RegionMetrics tracks per-region allocation metrics
@@ -40,10 +40,10 @@ func NewIPAllocationMetrics() *IPAllocationMetrics {
 func (m *IPAllocationMetrics) RecordAttempt(region string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.AttemptCount++
 	m.LastAttempt = time.Now()
-	
+
 	if _, exists := m.RegionStats[region]; !exists {
 		m.RegionStats[region] = &RegionMetrics{}
 	}
@@ -54,14 +54,16 @@ func (m *IPAllocationMetrics) RecordAttempt(region string) {
 func (m *IPAllocationMetrics) RecordError(region, errorType string, latencyMs float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.FailureCount++
 	m.ErrorTypes[errorType]++
 	m.LatencyMs = (m.LatencyMs*float64(m.AttemptCount-1) + latencyMs) / float64(m.AttemptCount)
-	
+
 	if stats, exists := m.RegionStats[region]; exists {
 		stats.Failures++
-		stats.AvgLatencyMs = (stats.AvgLatencyMs*float64(stats.Attempts-1) + latencyMs) / float64(stats.Attempts)
+		stats.AvgLatencyMs = (stats.AvgLatencyMs*float64(stats.Attempts-1) + latencyMs) / float64(
+			stats.Attempts,
+		)
 		stats.LastErrorTime = time.Now()
 	}
 }
@@ -70,7 +72,7 @@ func (m *IPAllocationMetrics) RecordError(region, errorType string, latencyMs fl
 func (m *IPAllocationMetrics) UpdateQuota(region string, used, limit int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if _, exists := m.RegionStats[region]; !exists {
 		m.RegionStats[region] = &RegionMetrics{}
 	}

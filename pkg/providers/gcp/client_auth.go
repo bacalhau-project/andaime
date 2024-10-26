@@ -15,7 +15,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (c *LiveGCPClient) CheckAuthentication(ctx context.Context) error {
+func (c *LiveGCPClient) CheckAuthentication(
+	ctx context.Context,
+	projectID string,
+) error {
 	rmService, err := cloudresourcemanager.NewService(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create Resource Manager client: %v", err)
@@ -29,7 +32,10 @@ func (c *LiveGCPClient) CheckAuthentication(ctx context.Context) error {
 	return nil
 }
 
-func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
+func (c *LiveGCPClient) CheckPermissions(
+	ctx context.Context,
+	projectID string,
+) error {
 	l := logger.Get()
 	l.Debug("Checking GCP permissions")
 
@@ -37,7 +43,6 @@ func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
 	}
-	projectID := m.Deployment.GetProjectID()
 	if projectID == "" {
 		return fmt.Errorf("project ID is empty")
 	}
@@ -80,15 +85,14 @@ func (c *LiveGCPClient) CheckPermissions(ctx context.Context) error {
 	return nil
 }
 
-func (c *LiveGCPClient) CheckSpecificPermission(ctx context.Context, permission string) error {
+func (c *LiveGCPClient) CheckSpecificPermission(
+	ctx context.Context,
+	permission string,
+	projectID string,
+) error {
 	l := logger.Get()
 	l.Debugf("Checking specific permission: %s", permission)
 
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("global model or deployment is nil")
-	}
-	projectID := m.Deployment.GetProjectID()
 	if projectID == "" {
 		return fmt.Errorf("project ID is empty")
 	}
@@ -182,6 +186,7 @@ func (c *LiveGCPClient) checkCredentials(ctx context.Context) error {
 	return nil
 }
 
+//nolint:gosec
 const credentialsNotSetError = `
 GOOGLE_APPLICATION_CREDENTIALS is not set. Please set up your credentials using the following steps:
 1. Install the gcloud CLI if you haven't already: https://cloud.google.com/sdk/docs/install

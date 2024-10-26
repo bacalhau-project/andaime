@@ -21,10 +21,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
-var (
-	configFileName = "config.yaml"
-)
-
 type ConfigDeployment struct {
 	Name         string
 	Type         models.DeploymentType
@@ -75,7 +71,7 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return destroyDeployment(selected, flags.dryRun)
+	return destroyDeployment(cmd.Context(), selected, flags.dryRun)
 }
 
 func parseFlags(cmd *cobra.Command) (struct {
@@ -189,7 +185,7 @@ func destroyAllDeployments(ctx context.Context, deployments []ConfigDeployment, 
 	for _, dep := range deployments {
 		dep := dep // https://golang.org/doc/faq#closures_and_goroutines
 		g.Go(func() error {
-			err := destroyDeployment(dep, dryRun)
+			err := destroyDeployment(ctx, dep, dryRun)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -320,11 +316,9 @@ func selectDeploymentInteractively(deployments []ConfigDeployment) (ConfigDeploy
 	return selected, nil
 }
 
-func destroyDeployment(dep ConfigDeployment, dryRun bool) error {
+func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) error {
 	logger := logger.Get()
 	logger.Infof("Starting destruction of %s (%s) - %s", dep.Name, dep.Type, dep.ID)
-
-	ctx := context.Background()
 
 	return destroyGCPDeployment(ctx, dep, dryRun)
 }
@@ -341,7 +335,7 @@ func destroyGCPDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool
 	} else {
 		err = retry(func() error {
 			return gcpProvider.DestroyProject(ctx, dep.ID)
-		}, 3, time.Second)
+		}, 3, time.Second) //nolint:mnd
 
 		if err != nil {
 			if strings.Contains(err.Error(), "Project not found") {

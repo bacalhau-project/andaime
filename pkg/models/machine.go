@@ -336,7 +336,8 @@ func (mach *Machine) SetComplete() {
 func (mach *Machine) IsComplete() bool {
 	resourcesComplete := mach.resourcesComplete()
 	servicesComplete := mach.servicesComplete()
-	return resourcesComplete && servicesComplete
+	bothTrue := resourcesComplete && servicesComplete
+	return bothTrue
 }
 
 func (mach *Machine) SetCustomScriptExecuted(executed bool) {
@@ -432,11 +433,16 @@ func (mach *Machine) countCompletedResources() (int, int) {
 	l := logger.Get()
 	completedResources := 0
 
-	requiredResources := []ResourceType{}
+	var requiredResources []ResourceType
 	if mach.CloudProvider == DeploymentTypeAzure {
 		requiredResources = RequiredAzureResources
 	} else if mach.CloudProvider == DeploymentTypeGCP {
 		requiredResources = RequiredGCPResources
+	} else if mach.CloudProvider == DeploymentTypeAWS {
+		requiredResources = RequiredAWSResources
+	} else {
+		l.Errorf("Unknown cloud provider: %s", mach.CloudProvider)
+		return 0, 0
 	}
 
 	for _, requiredResource := range requiredResources {

@@ -25,7 +25,7 @@ func (c *LiveGCPClient) enableRequiredAPIs(ctx context.Context, projectID string
 
 	// Create error group for concurrent API enablement
 	g, ctx := errgroup.WithContext(ctx)
-	
+
 	// Process APIs in batches of 3 to avoid rate limiting
 	batchSize := 3
 	for i := 0; i < len(requiredAPIs); i += batchSize {
@@ -33,7 +33,7 @@ func (c *LiveGCPClient) enableRequiredAPIs(ctx context.Context, projectID string
 		if end > len(requiredAPIs) {
 			end = len(requiredAPIs)
 		}
-		
+
 		// Create closure for batch
 		batch := requiredAPIs[i:end]
 		g.Go(func() error {

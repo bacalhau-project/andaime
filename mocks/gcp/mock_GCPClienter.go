@@ -30,17 +30,17 @@ func (_m *MockGCPClienter) EXPECT() *MockGCPClienter_Expecter {
 	return &MockGCPClienter_Expecter{mock: &_m.Mock}
 }
 
-// CheckAuthentication provides a mock function with given fields: ctx
-func (_m *MockGCPClienter) CheckAuthentication(ctx context.Context) error {
-	ret := _m.Called(ctx)
+// CheckAuthentication provides a mock function with given fields: ctx, projectID
+func (_m *MockGCPClienter) CheckAuthentication(ctx context.Context, projectID string) error {
+	ret := _m.Called(ctx, projectID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CheckAuthentication")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, projectID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -55,13 +55,14 @@ type MockGCPClienter_CheckAuthentication_Call struct {
 
 // CheckAuthentication is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockGCPClienter_Expecter) CheckAuthentication(ctx interface{}) *MockGCPClienter_CheckAuthentication_Call {
-	return &MockGCPClienter_CheckAuthentication_Call{Call: _e.mock.On("CheckAuthentication", ctx)}
+//   - projectID string
+func (_e *MockGCPClienter_Expecter) CheckAuthentication(ctx interface{}, projectID interface{}) *MockGCPClienter_CheckAuthentication_Call {
+	return &MockGCPClienter_CheckAuthentication_Call{Call: _e.mock.On("CheckAuthentication", ctx, projectID)}
 }
 
-func (_c *MockGCPClienter_CheckAuthentication_Call) Run(run func(ctx context.Context)) *MockGCPClienter_CheckAuthentication_Call {
+func (_c *MockGCPClienter_CheckAuthentication_Call) Run(run func(ctx context.Context, projectID string)) *MockGCPClienter_CheckAuthentication_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -71,7 +72,7 @@ func (_c *MockGCPClienter_CheckAuthentication_Call) Return(_a0 error) *MockGCPCl
 	return _c
 }
 
-func (_c *MockGCPClienter_CheckAuthentication_Call) RunAndReturn(run func(context.Context) error) *MockGCPClienter_CheckAuthentication_Call {
+func (_c *MockGCPClienter_CheckAuthentication_Call) RunAndReturn(run func(context.Context, string) error) *MockGCPClienter_CheckAuthentication_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -124,17 +125,17 @@ func (_c *MockGCPClienter_CheckFirewallRuleExists_Call) RunAndReturn(run func(co
 	return _c
 }
 
-// CheckPermissions provides a mock function with given fields: ctx
-func (_m *MockGCPClienter) CheckPermissions(ctx context.Context) error {
-	ret := _m.Called(ctx)
+// CheckPermissions provides a mock function with given fields: ctx, projectID
+func (_m *MockGCPClienter) CheckPermissions(ctx context.Context, projectID string) error {
+	ret := _m.Called(ctx, projectID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CheckPermissions")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, projectID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -149,13 +150,14 @@ type MockGCPClienter_CheckPermissions_Call struct {
 
 // CheckPermissions is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockGCPClienter_Expecter) CheckPermissions(ctx interface{}) *MockGCPClienter_CheckPermissions_Call {
-	return &MockGCPClienter_CheckPermissions_Call{Call: _e.mock.On("CheckPermissions", ctx)}
+//   - projectID string
+func (_e *MockGCPClienter_Expecter) CheckPermissions(ctx interface{}, projectID interface{}) *MockGCPClienter_CheckPermissions_Call {
+	return &MockGCPClienter_CheckPermissions_Call{Call: _e.mock.On("CheckPermissions", ctx, projectID)}
 }
 
-func (_c *MockGCPClienter_CheckPermissions_Call) Run(run func(ctx context.Context)) *MockGCPClienter_CheckPermissions_Call {
+func (_c *MockGCPClienter_CheckPermissions_Call) Run(run func(ctx context.Context, projectID string)) *MockGCPClienter_CheckPermissions_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -165,22 +167,22 @@ func (_c *MockGCPClienter_CheckPermissions_Call) Return(_a0 error) *MockGCPClien
 	return _c
 }
 
-func (_c *MockGCPClienter_CheckPermissions_Call) RunAndReturn(run func(context.Context) error) *MockGCPClienter_CheckPermissions_Call {
+func (_c *MockGCPClienter_CheckPermissions_Call) RunAndReturn(run func(context.Context, string) error) *MockGCPClienter_CheckPermissions_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// CreateFirewallRules provides a mock function with given fields: ctx, networkName
-func (_m *MockGCPClienter) CreateFirewallRules(ctx context.Context, networkName string) error {
-	ret := _m.Called(ctx, networkName)
+// CreateFirewallRules provides a mock function with given fields: ctx, projectID, networkName
+func (_m *MockGCPClienter) CreateFirewallRules(ctx context.Context, projectID string, networkName string) error {
+	ret := _m.Called(ctx, projectID, networkName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateFirewallRules")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, networkName)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, projectID, networkName)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -195,14 +197,15 @@ type MockGCPClienter_CreateFirewallRules_Call struct {
 
 // CreateFirewallRules is a helper method to define mock.On call
 //   - ctx context.Context
+//   - projectID string
 //   - networkName string
-func (_e *MockGCPClienter_Expecter) CreateFirewallRules(ctx interface{}, networkName interface{}) *MockGCPClienter_CreateFirewallRules_Call {
-	return &MockGCPClienter_CreateFirewallRules_Call{Call: _e.mock.On("CreateFirewallRules", ctx, networkName)}
+func (_e *MockGCPClienter_Expecter) CreateFirewallRules(ctx interface{}, projectID interface{}, networkName interface{}) *MockGCPClienter_CreateFirewallRules_Call {
+	return &MockGCPClienter_CreateFirewallRules_Call{Call: _e.mock.On("CreateFirewallRules", ctx, projectID, networkName)}
 }
 
-func (_c *MockGCPClienter_CreateFirewallRules_Call) Run(run func(ctx context.Context, networkName string)) *MockGCPClienter_CreateFirewallRules_Call {
+func (_c *MockGCPClienter_CreateFirewallRules_Call) Run(run func(ctx context.Context, projectID string, networkName string)) *MockGCPClienter_CreateFirewallRules_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -212,7 +215,7 @@ func (_c *MockGCPClienter_CreateFirewallRules_Call) Return(_a0 error) *MockGCPCl
 	return _c
 }
 
-func (_c *MockGCPClienter_CreateFirewallRules_Call) RunAndReturn(run func(context.Context, string) error) *MockGCPClienter_CreateFirewallRules_Call {
+func (_c *MockGCPClienter_CreateFirewallRules_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_CreateFirewallRules_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -399,17 +402,17 @@ func (_c *MockGCPClienter_CreateVM_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
-// CreateVPCNetwork provides a mock function with given fields: ctx, networkName
-func (_m *MockGCPClienter) CreateVPCNetwork(ctx context.Context, networkName string) error {
-	ret := _m.Called(ctx, networkName)
+// CreateVPCNetwork provides a mock function with given fields: ctx, projectID, networkName
+func (_m *MockGCPClienter) CreateVPCNetwork(ctx context.Context, projectID string, networkName string) error {
+	ret := _m.Called(ctx, projectID, networkName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateVPCNetwork")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, networkName)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, projectID, networkName)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -424,14 +427,15 @@ type MockGCPClienter_CreateVPCNetwork_Call struct {
 
 // CreateVPCNetwork is a helper method to define mock.On call
 //   - ctx context.Context
+//   - projectID string
 //   - networkName string
-func (_e *MockGCPClienter_Expecter) CreateVPCNetwork(ctx interface{}, networkName interface{}) *MockGCPClienter_CreateVPCNetwork_Call {
-	return &MockGCPClienter_CreateVPCNetwork_Call{Call: _e.mock.On("CreateVPCNetwork", ctx, networkName)}
+func (_e *MockGCPClienter_Expecter) CreateVPCNetwork(ctx interface{}, projectID interface{}, networkName interface{}) *MockGCPClienter_CreateVPCNetwork_Call {
+	return &MockGCPClienter_CreateVPCNetwork_Call{Call: _e.mock.On("CreateVPCNetwork", ctx, projectID, networkName)}
 }
 
-func (_c *MockGCPClienter_CreateVPCNetwork_Call) Run(run func(ctx context.Context, networkName string)) *MockGCPClienter_CreateVPCNetwork_Call {
+func (_c *MockGCPClienter_CreateVPCNetwork_Call) Run(run func(ctx context.Context, projectID string, networkName string)) *MockGCPClienter_CreateVPCNetwork_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -441,7 +445,7 @@ func (_c *MockGCPClienter_CreateVPCNetwork_Call) Return(_a0 error) *MockGCPClien
 	return _c
 }
 
-func (_c *MockGCPClienter_CreateVPCNetwork_Call) RunAndReturn(run func(context.Context, string) error) *MockGCPClienter_CreateVPCNetwork_Call {
+func (_c *MockGCPClienter_CreateVPCNetwork_Call) RunAndReturn(run func(context.Context, string, string) error) *MockGCPClienter_CreateVPCNetwork_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1385,9 +1389,9 @@ func (_c *MockGCPClienter_StartResourcePolling_Call) RunAndReturn(run func(conte
 	return _c
 }
 
-// ValidateMachineType provides a mock function with given fields: ctx, machineType, location
-func (_m *MockGCPClienter) ValidateMachineType(ctx context.Context, machineType string, location string) (bool, error) {
-	ret := _m.Called(ctx, machineType, location)
+// ValidateMachineType provides a mock function with given fields: ctx, projectID, machineType, location
+func (_m *MockGCPClienter) ValidateMachineType(ctx context.Context, projectID string, machineType string, location string) (bool, error) {
+	ret := _m.Called(ctx, projectID, machineType, location)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateMachineType")
@@ -1395,17 +1399,17 @@ func (_m *MockGCPClienter) ValidateMachineType(ctx context.Context, machineType 
 
 	var r0 bool
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
-		return rf(ctx, machineType, location)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (bool, error)); ok {
+		return rf(ctx, projectID, machineType, location)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
-		r0 = rf(ctx, machineType, location)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) bool); ok {
+		r0 = rf(ctx, projectID, machineType, location)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, machineType, location)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = rf(ctx, projectID, machineType, location)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1420,15 +1424,16 @@ type MockGCPClienter_ValidateMachineType_Call struct {
 
 // ValidateMachineType is a helper method to define mock.On call
 //   - ctx context.Context
+//   - projectID string
 //   - machineType string
 //   - location string
-func (_e *MockGCPClienter_Expecter) ValidateMachineType(ctx interface{}, machineType interface{}, location interface{}) *MockGCPClienter_ValidateMachineType_Call {
-	return &MockGCPClienter_ValidateMachineType_Call{Call: _e.mock.On("ValidateMachineType", ctx, machineType, location)}
+func (_e *MockGCPClienter_Expecter) ValidateMachineType(ctx interface{}, projectID interface{}, machineType interface{}, location interface{}) *MockGCPClienter_ValidateMachineType_Call {
+	return &MockGCPClienter_ValidateMachineType_Call{Call: _e.mock.On("ValidateMachineType", ctx, projectID, machineType, location)}
 }
 
-func (_c *MockGCPClienter_ValidateMachineType_Call) Run(run func(ctx context.Context, machineType string, location string)) *MockGCPClienter_ValidateMachineType_Call {
+func (_c *MockGCPClienter_ValidateMachineType_Call) Run(run func(ctx context.Context, projectID string, machineType string, location string)) *MockGCPClienter_ValidateMachineType_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -1438,7 +1443,7 @@ func (_c *MockGCPClienter_ValidateMachineType_Call) Return(_a0 bool, _a1 error) 
 	return _c
 }
 
-func (_c *MockGCPClienter_ValidateMachineType_Call) RunAndReturn(run func(context.Context, string, string) (bool, error)) *MockGCPClienter_ValidateMachineType_Call {
+func (_c *MockGCPClienter_ValidateMachineType_Call) RunAndReturn(run func(context.Context, string, string, string) (bool, error)) *MockGCPClienter_ValidateMachineType_Call {
 	_c.Call.Return(run)
 	return _c
 }

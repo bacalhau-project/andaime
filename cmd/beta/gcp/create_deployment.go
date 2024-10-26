@@ -221,18 +221,6 @@ func ensureProject(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) e
 	return nil
 }
 
-func enableRequiredAPIs(ctx context.Context, gcpProvider *gcp_provider.GCPProvider) error {
-	l := logger.Get()
-	l.Debug("Enabling required APIs")
-	if err := gcpProvider.EnableRequiredAPIs(ctx); err != nil {
-		l.Error(fmt.Sprintf("Failed to enable required APIs: %v", err))
-		return fmt.Errorf("failed to enable required APIs: %w", err)
-	}
-	l.Debug("Required APIs enabled successfully")
-	writeConfig()
-	return nil
-}
-
 func provisionNetwork(
 	ctx context.Context,
 	gcpProvider *gcp_provider.GCPProvider,
@@ -249,7 +237,7 @@ func provisionNetwork(
 	for _, machine := range m.Deployment.GetMachines() {
 		m.UpdateStatus(models.NewDisplayStatusWithText(
 			machine.GetName(),
-			models.GCPResourceTypeNetwork,
+			models.GCPResourceTypeVPC,
 			models.ResourceStatePending,
 			fmt.Sprintf("Creating VPC network %s", networkName),
 		))
@@ -260,7 +248,7 @@ func provisionNetwork(
 		for _, machine := range m.Deployment.GetMachines() {
 			m.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
-				models.GCPResourceTypeNetwork,
+				models.GCPResourceTypeVPC,
 				models.ResourceStateFailed,
 				fmt.Sprintf("Failed to create VPC network: %v", err),
 			))
@@ -271,7 +259,7 @@ func provisionNetwork(
 	for _, machine := range m.Deployment.GetMachines() {
 		m.UpdateStatus(models.NewDisplayStatusWithText(
 			machine.GetName(),
-			models.GCPResourceTypeNetwork,
+			models.GCPResourceTypeVPC,
 			models.ResourceStateSucceeded,
 			fmt.Sprintf("Created VPC network %s", networkName),
 		))
@@ -351,8 +339,11 @@ func createResources(
 	}
 
 	// Check if we have at least one worker
-	if len(m.Deployment.GetMachines()) < 2 {
-		return fmt.Errorf("deployment requires at least one worker VM, failed machines: %v", failedMachines)
+	if len(m.Deployment.GetMachines()) < 2 { //nolint:mnd
+		return fmt.Errorf(
+			"deployment requires at least one worker VM, failed machines: %v",
+			failedMachines,
+		)
 	}
 
 	return nil

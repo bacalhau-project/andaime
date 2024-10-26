@@ -40,11 +40,15 @@ type GCPClienter interface {
 	) ([]*computepb.Address, error)
 	StartResourcePolling(ctx context.Context) error
 
-	CheckAuthentication(ctx context.Context) error
-	CheckPermissions(ctx context.Context) error
+	CheckAuthentication(ctx context.Context, projectID string) error
+	CheckPermissions(ctx context.Context, projectID string) error
 	EnableAPI(ctx context.Context, projectID, apiName string) error
-	CreateVPCNetwork(ctx context.Context, networkName string) error
-	CreateFirewallRules(ctx context.Context, networkName string) error
+	CreateVPCNetwork(ctx context.Context, projectID string, networkName string) error
+	CreateFirewallRules(
+		ctx context.Context,
+		projectID string,
+		networkName string,
+	) error
 	CreateIP(
 		ctx context.Context,
 		projectID string,
@@ -93,7 +97,11 @@ type GCPClienter interface {
 		ctx context.Context,
 		projectID, ruleName string,
 	) error
-	ValidateMachineType(ctx context.Context, machineType, location string) (bool, error)
+	ValidateMachineType(
+		ctx context.Context,
+		projectID string,
+		machineType, location string,
+	) (bool, error)
 	EnsureVPCNetwork(ctx context.Context, projectID, networkName string) error
 	EnsureFirewallRules(
 		ctx context.Context,

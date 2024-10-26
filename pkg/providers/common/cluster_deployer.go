@@ -250,16 +250,8 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
 	}
 
-	l := logger.Get()
-	l.Infof("Starting SSH provisioning for machine %s at IP %s:%d", 
+	l.Infof("Starting SSH provisioning for machine %s at IP %s:%d",
 		machine.GetName(), machine.GetPublicIP(), machine.GetSSHPort())
-
-	// Test SSH port before proceeding
-	if err := sshConfig.TestConnection(ctx); err != nil {
-		l.Errorf("SSH port test failed for %s: %v", machine.GetName(), err)
-		return fmt.Errorf("SSH port test failed: %w", err)
-	}
-	l.Infof("SSH port test successful for machine %s", machine.GetName())
 
 	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
 		l.Errorf("Machine provisioning failed for %s: %v", machine.GetName(), err)

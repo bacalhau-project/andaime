@@ -123,7 +123,8 @@ func createVM(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {
 			return fmt.Errorf(
-				"invalid zone '%s'. Please use a valid zone. You can list all available zones using the following command:\n\tgcloud compute zones list",
+				`invalid zone '%s'. Please use a valid zone. You can list all available zones using the following command:
+				\tgcloud compute zones list`,
 				zone,
 			)
 		}
@@ -137,7 +138,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 func getRegionFromZone(zone string) string {
 	// GCP zones are typically in the format of <region>-<zone>, e.g., us-central1-a
 	parts := strings.Split(zone, "-")
-	if len(parts) < 2 {
+	if len(parts) < 2 { //nolint:mnd
 		return ""
 	}
 	return strings.Join(parts[:len(parts)-1], "-")

@@ -61,9 +61,9 @@ type model struct {
 
 func initialModel(resources []*assetpb.Asset) model {
 	columns := []table.Column{
-		{Title: "Type", Width: 30},
-		{Title: "Name", Width: 50},
-		{Title: "State", Width: 20},
+		{Title: "Type", Width: 30},  //nolint:mnd
+		{Title: "Name", Width: 50},  //nolint:mnd
+		{Title: "State", Width: 20}, //nolint:mnd
 	}
 
 	rows := make([]table.Row, 0, len(resources))

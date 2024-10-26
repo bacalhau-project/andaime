@@ -220,14 +220,6 @@ func (c *LiveGCPClient) GetParentString() string {
 	return c.parentString
 }
 
-func cleanup(clients []interface{}) {
-	for _, client := range clients {
-		if c, ok := client.(interface{ Close() error }); ok {
-			c.Close()
-		}
-	}
-}
-
 func isNotFoundError(err error) bool {
 	return status.Code(err) == codes.NotFound ||
 		status.Code(err) == codes.Unknown ||

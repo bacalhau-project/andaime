@@ -15,17 +15,22 @@ type QuotaDetails struct {
 
 // IPAllocationError wraps errors from IP allocation attempts
 type IPAllocationError struct {
-	Operation   string
-	Region      string
-	Attempt     int
-	StatusCode  int
-	QuotaInfo   *QuotaDetails
-	Err         error
-	Timestamp   time.Time
+	Operation  string
+	Region     string
+	Attempt    int
+	StatusCode int
+	QuotaInfo  *QuotaDetails
+	Err        error
+	Timestamp  time.Time
 }
 
 func (e *IPAllocationError) Error() string {
-	base := fmt.Sprintf("IP allocation failed in %s (attempt %d): %s", e.Region, e.Attempt, e.Operation)
+	base := fmt.Sprintf(
+		"IP allocation failed in %s (attempt %d): %s",
+		e.Region,
+		e.Attempt,
+		e.Operation,
+	)
 	if e.QuotaInfo != nil {
 		base += fmt.Sprintf(" [Quota: %d/%d]", e.QuotaInfo.Used, e.QuotaInfo.Limit)
 	}

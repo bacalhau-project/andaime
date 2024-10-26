@@ -207,7 +207,7 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil || m.Deployment.GCP == nil ||
-		m.Deployment.GCP.ProjectID == "" {
+		p.ProjectID == "" {
 		l.Debug("Project ID not set yet, skipping resource polling")
 		return nil, nil
 	}
@@ -238,6 +238,7 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 
 // StartResourcePolling starts polling resources for updates
 func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
+	l := logger.Get()
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
@@ -257,16 +258,20 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 			}
 		}
 
-		ticker := time.NewTicker(10 * time.Second) // Poll every 10 seconds
+		ticker := time.NewTicker(10 * time.Second) //nolint:mnd
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				_, err := p.PollResources(ctx)
+				allResources, err := p.PollResources(ctx)
 				if err != nil {
 					errChan <- fmt.Errorf("failed to poll resources: %w", err)
+				}
+
+				for _, resource := range allResources {
+					l.Infof("Polled resource: %v", resource)
 				}
 			}
 		}
@@ -291,7 +296,7 @@ func (p *GCPProvider) ListAllAssetsInProject(
 
 // CheckAuthentication verifies GCP authentication
 func (p *GCPProvider) CheckAuthentication(ctx context.Context) error {
-	return p.GetGCPClient().CheckAuthentication(ctx)
+	return p.GetGCPClient().CheckAuthentication(ctx, p.ProjectID)
 }
 
 // EnableRequiredAPIs enables all required GCP APIs for the project
@@ -418,7 +423,7 @@ func (p *GCPProvider) CreateVPCNetwork(
 
 	// Execute the operation with backoff
 	l.Infof("Attempting to create VPC network %s...", networkName)
-	err := p.GetGCPClient().CreateVPCNetwork(ctx, networkName)
+	err := p.GetGCPClient().CreateVPCNetwork(ctx, p.ProjectID, networkName)
 	if err != nil {
 		l.Errorf("Failed to create VPC network after multiple attempts: %v", err)
 		return fmt.Errorf("failed to create VPC network: %v", err)
@@ -447,7 +452,7 @@ func (p *GCPProvider) CreateFirewallRules(
 	l := logger.Get()
 	l.Infof("Creating firewall rules for network: %s", networkName)
 
-	err := p.GetGCPClient().CreateFirewallRules(ctx, networkName)
+	err := p.GetGCPClient().CreateFirewallRules(ctx, p.ProjectID, networkName)
 	if err != nil {
 		return fmt.Errorf("failed to create firewall rules: %v", err)
 	}
@@ -592,7 +597,7 @@ func (p *GCPProvider) SetClusterDeployer(deployer common_interface.ClusterDeploy
 
 // CheckPermissions checks the current user's permissions
 func (p *GCPProvider) CheckPermissions(ctx context.Context) error {
-	return p.GetGCPClient().CheckPermissions(ctx)
+	return p.GetGCPClient().CheckPermissions(ctx, p.ProjectID)
 }
 
 func (p *GCPProvider) CreateAndConfigureVM(
@@ -657,11 +662,6 @@ func (p *GCPProvider) CreateAndConfigureVM(
 		l.Errorf("No network interface found for instance %s - could not get private IP", machine.GetName())
 		m.Deployment.Machines[machine.GetName()].SetFailed(true)
 		return fmt.Errorf("no network interface found for instance %s - could not get private IP", machine.GetName())
-	}
-
-	if err != nil {
-		l.Warnf("Failed to get private IP for VM %s: %v", machine.GetName(), err)
-		// Continue anyway as this is not critical
 	}
 
 	machine.SetPublicIP(publicIPAddress)

@@ -324,7 +324,11 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					mock.Anything,
 					mock.Anything,
 				).Return(nil)
-				mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything).Return(nil)
+				mockGCPClient.On("CreateVPCNetwork",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(nil)
 				mockGCPClient.On("ListAddresses", mock.Anything, mock.Anything, mock.Anything).
 					Return([]*computepb.Address{testdata.FakeGCPIPAddress()}, nil)
 				mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).
@@ -332,8 +336,10 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockGCPClient.On("CreateFirewallRules",
 					mock.Anything,
 					mock.Anything,
+					mock.Anything,
 				).Return(nil)
 				mockGCPClient.On("CreateVM",
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
