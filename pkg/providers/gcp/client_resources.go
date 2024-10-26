@@ -48,6 +48,7 @@ func (c *LiveGCPClient) StartResourcePolling(ctx context.Context) error {
 			allResourcesProvisioned := true
 			for _, resource := range resources {
 				if err := c.UpdateResourceState(
+					ctx,
 					resource.GetName(),
 					resource.GetAssetType(),
 					models.ResourceStateSucceeded,
@@ -182,8 +183,15 @@ func (c *LiveGCPClient) UpdateResourceState(
 						machine.GetSSHPrivateKeyPath(),
 					)
 					if err != nil {
-						l.Errorf("Failed to create SSH config for machine %s: %v", machine.GetName(), err)
-						machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
+						l.Errorf(
+							"Failed to create SSH config for machine %s: %v",
+							machine.GetName(),
+							err,
+						)
+						machine.SetServiceState(
+							models.ServiceTypeSSH.Name,
+							models.ServiceStateFailed,
+						)
 					} else {
 						// Test SSH connectivity
 						err = sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout())
