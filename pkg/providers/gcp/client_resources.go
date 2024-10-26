@@ -127,9 +127,11 @@ func (c *LiveGCPClient) ListAllAssetsInProject(
 }
 
 func (c *LiveGCPClient) UpdateResourceState(
+	ctx context.Context,
 	resourceName, resourceType string,
 	state models.MachineResourceState,
 ) error {
+	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
