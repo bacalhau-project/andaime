@@ -12,6 +12,8 @@ var RequiredGCPResources = []ResourceType{
 	GCPResourceTypeFirewall,
 	GCPResourceTypeInstance,
 	GCPResourceTypeDisk,
+	GCPResourceTypeServiceAccount,
+	GCPResourceTypeIAMPolicy,
 }
 
 var GCPResourceTypeProject = ResourceType{
@@ -39,6 +41,16 @@ var GCPResourceTypeDisk = ResourceType{
 	ShortResourceName: "DISK",
 }
 
+var GCPResourceTypeServiceAccount = ResourceType{
+	ResourceString:    "iam.googleapis.com/ServiceAccount", 
+	ShortResourceName: "SA  ",
+}
+
+var GCPResourceTypeIAMPolicy = ResourceType{
+	ResourceString:    "cloudresourcemanager.googleapis.com/IAMPolicy",
+	ShortResourceName: "IAM ",
+}
+
 func GetGCPResourceType(resource string) ResourceType {
 	for _, r := range GetAllGCPResources() {
 		if strings.EqualFold(r.ResourceString, resource) {
@@ -55,6 +67,8 @@ func GetAllGCPResources() []ResourceType {
 		GCPResourceTypeFirewall,
 		GCPResourceTypeInstance,
 		GCPResourceTypeDisk,
+		GCPResourceTypeServiceAccount,
+		GCPResourceTypeIAMPolicy,
 	}
 }
 

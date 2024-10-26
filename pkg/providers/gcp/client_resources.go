@@ -200,6 +200,13 @@ func (c *LiveGCPClient) UpdateResourceState(
 							machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
 						} else {
 							machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
+							// Update display status to show SSH is ready
+							m.UpdateStatus(models.NewDisplayStatusWithText(
+								machine.GetName(),
+								models.GetGCPResourceType(resourceType),
+								state,
+								"SSH connection established",
+							))
 						}
 					}
 				case strings.Contains(resourceType, "Disk"):
