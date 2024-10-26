@@ -119,11 +119,11 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 	}
 
 	// Mark firewall resource as complete for all VMs
-	m := display.GetGlobalModelFunc()
-	if m != nil && m.Deployment != nil {
-		for _, machine := range m.Deployment.GetMachines() {
+	model := display.GetGlobalModelFunc()
+	if model != nil && model.Deployment != nil {
+		for _, machine := range model.Deployment.GetMachines() {
 			machine.SetMachineResourceState("compute.googleapis.com/Firewall", models.ResourceStateSucceeded)
-			m.UpdateStatus(models.NewDisplayStatusWithText(
+			model.UpdateStatus(models.NewDisplayStatusWithText(
 				machine.GetName(),
 				models.GCPResourceTypeFirewall,
 				models.ResourceStateSucceeded,
