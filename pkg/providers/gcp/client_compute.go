@@ -366,7 +366,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 					return fmt.Errorf("failed waiting for firewall rule creation: %w", err)
 				}
 				// Wait for the firewall rule operation to complete
-				if err := op.Wait(ctx); err != nil {
+				if err = op.Wait(ctx); err != nil {
 					if strings.Contains(err.Error(), "not ready") {
 						l.Debugf("Network %s still being configured, will retry...", networkName)
 						return err
