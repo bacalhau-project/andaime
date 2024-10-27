@@ -218,6 +218,56 @@ func (c *LiveGCPClient) CreateFirewallRules(
 	if err := c.CleanupFirewallRules(ctx, projectID, networkName); err != nil {
 		return fmt.Errorf("failed to cleanup existing firewall rules: %v", err)
 	}
+
+	// Setup backoff for firewall operations
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 5 * time.Minute
+	b.InitialInterval = 10 * time.Second
+	b.MaxInterval = 30 * time.Second
+	b.Multiplier = 1.5
+	b.RandomizationFactor = 0.3
+
+	// Wait for firewall rules to be ready
+	operation := func() error {
+		rules, err := c.firewallsClient.List(ctx, &computepb.ListFirewallsRequest{
+			Project: projectID,
+			Filter: proto.String(fmt.Sprintf(
+				`network="projects/%s/global/networks/%s"`,
+				projectID,
+				networkName,
+			)),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list firewall rules: %v", err)
+		}
+
+		var foundRules []*computepb.Firewall
+		for {
+			rule, err := rules.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("error iterating firewall rules: %v", err)
+			}
+			foundRules = append(foundRules, rule)
+		}
+
+		// Check if all expected rules are present and ready
+		for _, rule := range foundRules {
+			if rule.Name == nil || rule.Network == nil {
+				return fmt.Errorf("firewall rule missing required fields")
+			}
+			l.Debugf("Found firewall rule: %s for network: %s", *rule.Name, *rule.Network)
+		}
+
+		return nil
+	}
+
+	// Wait for firewall rules to be ready
+	if err := backoff.Retry(operation, b); err != nil {
+		return fmt.Errorf("failed waiting for firewall rules to be ready: %v", err)
+	}
 	// Add any extra ports from config
 	ports := make([]struct {
 		Port        int
