@@ -212,20 +212,49 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 		return nil, nil
 	}
 
-	// Check if the project exists
-	projectExists, err := p.GetGCPClient().ProjectExists(ctx, m.Deployment.GCP.ProjectID)
-	if err != nil {
-		l.Errorf("Failed to check if project exists: %v", err)
-		return nil, err
-	}
-	if !projectExists {
-		l.Debugf("Project %s does not exist, skipping resource polling", m.Deployment.GCP.ProjectID)
-		return nil, nil
+	// Use backoff for retrying the polling operation
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 30 * time.Second
+	b.InitialInterval = 1 * time.Second
+	b.MaxInterval = 5 * time.Second
+	b.Multiplier = 2
+	b.RandomizationFactor = 0.1
+
+	var resources []*assetpb.Asset
+	operation := func() error {
+		// Check if the project exists
+		projectExists, err := p.GetGCPClient().ProjectExists(ctx, m.Deployment.GCP.ProjectID)
+		if err != nil {
+			if strings.Contains(err.Error(), "connection refused") ||
+				strings.Contains(err.Error(), "deadline exceeded") ||
+				strings.Contains(err.Error(), "connection reset") {
+				l.Warnf("Temporary network error checking project: %v, retrying...", err)
+				return err // Retryable error
+			}
+			return backoff.Permanent(fmt.Errorf("failed to check if project exists: %w", err))
+		}
+		if !projectExists {
+			l.Debugf("Project %s does not exist, skipping resource polling", m.Deployment.GCP.ProjectID)
+			return nil
+		}
+
+		// List all assets
+		resources, err = p.GetGCPClient().ListAllAssetsInProject(ctx, m.Deployment.GCP.ProjectID)
+		if err != nil {
+			if strings.Contains(err.Error(), "connection refused") ||
+				strings.Contains(err.Error(), "deadline exceeded") ||
+				strings.Contains(err.Error(), "connection reset") {
+				l.Warnf("Temporary network error polling resources: %v, retrying...", err)
+				return err // Retryable error
+			}
+			return backoff.Permanent(fmt.Errorf("failed to poll resources: %w", err))
+		}
+		return nil
 	}
 
-	resources, err := p.GetGCPClient().ListAllAssetsInProject(ctx, m.Deployment.GCP.ProjectID)
+	err := backoff.Retry(operation, b)
 	if err != nil {
-		l.Errorf("Failed to poll resources: %v", err)
+		l.Errorf("Failed to poll resources after retries: %v", err)
 		return nil, err
 	}
 
@@ -241,24 +270,34 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
+		l := logger.Get()
 
-		// Wait for the project ID to be set
-		for {
+		// Wait for the project ID to be set with backoff
+		b := backoff.NewExponentialBackOff()
+		b.MaxElapsedTime = 5 * time.Minute
+		b.InitialInterval = 1 * time.Second
+		b.MaxInterval = 10 * time.Second
+
+		err := backoff.Retry(func() error {
 			if m := display.GetGlobalModelFunc(); m != nil && m.Deployment != nil &&
 				m.Deployment.GCP != nil &&
 				m.Deployment.GCP.ProjectID != "" {
-				break
+				return nil
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(1 * time.Second):
-				// Wait and check again
-			}
+			return fmt.Errorf("waiting for project ID")
+		}, b)
+
+		if err != nil {
+			errChan <- fmt.Errorf("timeout waiting for project ID: %w", err)
+			return
 		}
 
 		ticker := time.NewTicker(10 * time.Second) //nolint:mnd
 		defer ticker.Stop()
+
+		consecutiveErrors := 0
+		maxConsecutiveErrors := 5
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -266,12 +305,22 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 			case <-ticker.C:
 				_, err := p.PollResources(ctx)
 				if err != nil {
-					errChan <- fmt.Errorf("failed to poll resources: %w", err)
-				}
+					consecutiveErrors++
+					l.Warnf("Poll error (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err)
+					
+					if consecutiveErrors >= maxConsecutiveErrors {
+						errChan <- fmt.Errorf("polling failed after %d consecutive errors: %w", 
+							maxConsecutiveErrors, err)
+						return
+					}
 
-				// for _, resource := range allResources {
-				// 	l.Infof("Polled resource: %v", resource)
-				// }
+					// Increase polling interval temporarily after errors
+					ticker.Reset(30 * time.Second)
+				} else {
+					consecutiveErrors = 0
+					// Reset polling interval on success
+					ticker.Reset(10 * time.Second)
+				}
 			}
 		}
 	}()
