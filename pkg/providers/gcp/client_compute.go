@@ -35,9 +35,27 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 	}
 
 	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 5 * time.Minute //nolint:mnd
+	// Allow up to 5 minutes for network/firewall operations
+	b.MaxElapsedTime = 5 * time.Minute
+	// Start retrying after 10 seconds
+	b.InitialInterval = 10 * time.Second
+	// Cap retry interval at 30 seconds
+	b.MaxInterval = 30 * time.Second
 
 	operation := func() error {
+		// Verify network exists and is ready before attempting firewall changes
+		network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+			Project: projectID,
+			Network: networkName,
+		})
+		if err != nil {
+			l.Debugf("Network %s not found: %v", networkName, err)
+			return fmt.Errorf("network not found: %w", err)
+		}
+		if network.SelfLink == nil || *network.SelfLink == "" {
+			l.Debugf("Network %s not fully provisioned yet", networkName)
+			return fmt.Errorf("network %s not fully provisioned yet", networkName)
+		}
 		// First check if network exists
 		_, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 			Project: projectID,
@@ -298,6 +316,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 					firewallRule.DestinationRanges = []string{"0.0.0.0/0"}
 				}
 
+				// Attempt to create the firewall rule
 				op, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
 					Project:          projectID,
 					FirewallResource: firewallRule,
