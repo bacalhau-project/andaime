@@ -34,71 +34,72 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 		return fmt.Errorf("project ID is not set")
 	}
 
+	// First check if network already exists
+	network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+		Project: projectID,
+		Network: networkName,
+	})
+	if err == nil && network != nil && network.SelfLink != nil && *network.SelfLink != "" {
+		l.Infof("Network %s already exists and is ready", networkName)
+		return nil
+	}
+	if err != nil && !isNotFoundError(err) {
+		return fmt.Errorf("failed to check network existence: %v", err)
+	}
+
+	// Network doesn't exist or isn't ready, create/wait for it
 	b := backoff.NewExponentialBackOff()
-	// Allow up to 5 minutes for network/firewall operations
-	b.MaxElapsedTime = 5 * time.Minute
-	// Start retrying after 10 seconds
-	b.InitialInterval = 10 * time.Second
-	// Cap retry interval at 30 seconds
-	b.MaxInterval = 30 * time.Second
+	b.MaxElapsedTime = 10 * time.Minute    // Double the timeout
+	b.InitialInterval = 20 * time.Second    // Start with longer initial wait
+	b.MaxInterval = 60 * time.Second        // Allow longer between retries
+	b.Multiplier = 1.5                      // Slower backoff growth
+	b.RandomizationFactor = 0.3             // Add some jitter
 
 	operation := func() error {
-		// Verify network exists and is ready before attempting firewall changes
+
+		// Try to get existing network first
 		network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 			Project: projectID,
 			Network: networkName,
 		})
-		if err != nil {
-			l.Debugf("Network %s not found: %v", networkName, err)
-			return fmt.Errorf("network not found: %w", err)
-		}
-		if network.SelfLink == nil || *network.SelfLink == "" {
-			l.Debugf("Network %s not fully provisioned yet", networkName)
-			return fmt.Errorf("network %s not fully provisioned yet", networkName)
-		}
-		// First check if network exists
-		_, err = c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
-			Project: projectID,
-			Network: networkName,
-		})
-		if err == nil {
-			l.Debugf("Network %s already exists, skipping creation", networkName)
+		if err == nil && network != nil && network.SelfLink != nil && *network.SelfLink != "" {
+			l.Infof("Network %s exists and is ready", networkName)
 			return nil
 		}
-		if !isNotFoundError(err) {
-			return fmt.Errorf("failed to check network existence: %v", err)
+		
+		// Create if doesn't exist or isn't ready
+		if err == nil || isNotFoundError(err) {
+			networkResource := &computepb.Network{
+				Name:                  &networkName,
+				AutoCreateSubnetworks: to.Ptr(true),
+				RoutingConfig: &computepb.NetworkRoutingConfig{
+					RoutingMode: to.Ptr("GLOBAL"),
+				},
+			}
+
+			op, err := c.networksClient.Insert(ctx, &computepb.InsertNetworkRequest{
+				Project:         projectID,
+				NetworkResource: networkResource,
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "alreadyExists") {
+					l.Debugf("Network %s already exists, waiting for it to be ready", networkName)
+					return fmt.Errorf("waiting for network to be ready")
+				}
+				return fmt.Errorf("failed to create network: %v", err)
+			}
+
+			// Wait for the create operation
+			err = op.Wait(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to wait for network creation: %v", err)
+			}
+
+			l.Infof("VPC network %s created, waiting for it to be ready...", networkName)
+			return fmt.Errorf("waiting for network to be ready")
 		}
 
-		// Create the network if it doesn't exist
-		network = &computepb.Network{
-			Name:                  &networkName,
-			AutoCreateSubnetworks: to.Ptr(true),
-			RoutingConfig: &computepb.NetworkRoutingConfig{
-				RoutingMode: to.Ptr("GLOBAL"),
-			},
-		}
-
-		op, err := c.networksClient.Insert(ctx, &computepb.InsertNetworkRequest{
-			Project:         projectID,
-			NetworkResource: network,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create network: %v", err)
-		}
-
-		// Wait for the operation to complete
-		err = op.Wait(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to wait for network creation: %v", err)
-		}
-
-		l.Infof(
-			"VPC network %s created successfully. Waiting 10 seconds for network propagation...",
-			networkName,
-		)
-		time.Sleep(10 * time.Second) //nolint:mnd
-		l.Infof("Network propagation wait complete for %s", networkName)
-		return nil
+		return fmt.Errorf("failed to check/create network: %v", err)
 	}
 
 	err := backoff.Retry(operation, b)
