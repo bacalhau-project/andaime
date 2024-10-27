@@ -807,10 +807,16 @@ func (mach *Machine) SetStatusMessage(message string) {
 }
 
 func (mach *Machine) GetStartTime() time.Time {
+	if mach.StartTime.IsZero() {
+		return time.Now()
+	}
 	return mach.StartTime
 }
 
 func (mach *Machine) GetDeploymentEndTime() time.Time {
+	if mach.DeploymentEndTime.IsZero() {
+		return time.Now()
+	}
 	return mach.DeploymentEndTime
 }
 

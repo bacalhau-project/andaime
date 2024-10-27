@@ -195,6 +195,9 @@ func (m *DisplayModel) getSortedMachineSlice() []struct {
 
 // getMachineRowData prepares the data for a machine row
 func (m *DisplayModel) getMachineRowData(machine models.Machiner) []string {
+	if machine.GetStartTime().IsZero() {
+		machine.SetStartTime(time.Now())
+	}
 	elapsedTime := time.Since(machine.GetStartTime()).Truncate(TickerInterval)
 	progress, total := machine.ResourcesComplete()
 	progressBar := renderProgressBar(

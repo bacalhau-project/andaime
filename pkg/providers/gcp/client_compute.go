@@ -57,7 +57,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 			return fmt.Errorf("network %s not fully provisioned yet", networkName)
 		}
 		// First check if network exists
-		_, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+		_, err = c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 			Project: projectID,
 			Network: networkName,
 		})
@@ -70,7 +70,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 		}
 
 		// Create the network if it doesn't exist
-		network := &computepb.Network{
+		network = &computepb.Network{
 			Name:                  &networkName,
 			AutoCreateSubnetworks: to.Ptr(true),
 			RoutingConfig: &computepb.NetworkRoutingConfig{
@@ -322,7 +322,8 @@ func (c *LiveGCPClient) CreateFirewallRules(
 					FirewallResource: firewallRule,
 				})
 				if err != nil {
-					if strings.Contains(err.Error(), "The resource 'projects") && strings.Contains(err.Error(), "is not ready") {
+					if strings.Contains(err.Error(), "The resource 'projects") &&
+						strings.Contains(err.Error(), "is not ready") {
 						l.Debugf("Network %s is not ready yet, will retry...", networkName)
 						return err
 					} else if strings.Contains(err.Error(), "already exists") {
