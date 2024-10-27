@@ -323,7 +323,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				})
 				if err != nil {
 					if strings.Contains(err.Error(), "The resource 'projects") && strings.Contains(err.Error(), "is not ready") {
-						l.Infof("Network %s is not ready yet, retrying...", networkName)
+						l.Debugf("Network %s is not ready yet, will retry...", networkName)
 						return err
 					} else if strings.Contains(err.Error(), "already exists") {
 						l.Infof(
