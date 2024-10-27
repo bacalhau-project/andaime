@@ -238,7 +238,6 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 
 // StartResourcePolling starts polling resources for updates
 func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
-	l := logger.Get()
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
@@ -265,14 +264,14 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				allResources, err := p.PollResources(ctx)
+				_, err := p.PollResources(ctx)
 				if err != nil {
 					errChan <- fmt.Errorf("failed to poll resources: %w", err)
 				}
 
-				for _, resource := range allResources {
-					l.Infof("Polled resource: %v", resource)
-				}
+				// for _, resource := range allResources {
+				// 	l.Infof("Polled resource: %v", resource)
+				// }
 			}
 		}
 	}()
