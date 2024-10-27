@@ -251,9 +251,22 @@ func (c *LiveGCPClient) CreateFirewallRules(
 			}
 
 			b := backoff.NewExponentialBackOff()
-			b.MaxElapsedTime = 10 * time.Second //nolint:mnd
+			b.MaxElapsedTime = 5 * time.Minute
+			b.InitialInterval = 10 * time.Second
+			b.MaxInterval = 30 * time.Second
 
 			operation := func() error {
+				// Check if network is ready first
+				network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
+					Project: projectID,
+					Network: networkName,
+				})
+				if err != nil {
+					return fmt.Errorf("network not found: %w", err)
+				}
+				if network.SelfLink == nil || *network.SelfLink == "" {
+					return fmt.Errorf("network not fully provisioned yet")
+				}
 				firewallRule := &computepb.Firewall{
 					Name: &ruleName,
 					Network: to.Ptr(
@@ -285,12 +298,15 @@ func (c *LiveGCPClient) CreateFirewallRules(
 					firewallRule.DestinationRanges = []string{"0.0.0.0/0"}
 				}
 
-				_, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
+				op, err := c.firewallsClient.Insert(ctx, &computepb.InsertFirewallRequest{
 					Project:          projectID,
 					FirewallResource: firewallRule,
 				})
 				if err != nil {
-					if strings.Contains(err.Error(), "already exists") {
+					if strings.Contains(err.Error(), "The resource 'projects") && strings.Contains(err.Error(), "is not ready") {
+						l.Infof("Network %s is not ready yet, retrying...", networkName)
+						return err
+					} else if strings.Contains(err.Error(), "already exists") {
 						l.Infof(
 							"Firewall rule %s already exists, verifying configuration...",
 							ruleName,
@@ -322,6 +338,14 @@ func (c *LiveGCPClient) CreateFirewallRules(
 					return backoff.Permanent(fmt.Errorf("failed to create firewall rule: %v", err))
 				}
 
+				// Wait for the operation to complete
+				if err := op.Wait(ctx); err != nil {
+					if strings.Contains(err.Error(), "not ready") {
+						l.Infof("Network %s is still being configured, retrying...", networkName)
+						return err
+					}
+					return fmt.Errorf("failed waiting for firewall rule creation: %w", err)
+				}
 				return nil
 			}
 
