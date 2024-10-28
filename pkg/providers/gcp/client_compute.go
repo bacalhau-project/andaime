@@ -585,6 +585,17 @@ func (c *LiveGCPClient) CreateVM(
 		return nil, fmt.Errorf("failed to wait for instance creation: %w", err)
 	}
 
+	// Update resource states for the VM
+	machine.SetMachineResourceState("compute.googleapis.com/Instance", models.ResourceStateSucceeded)
+	machine.SetMachineResourceState("compute.googleapis.com/Network", models.ResourceStateSucceeded)
+	machine.SetMachineResourceState("compute.googleapis.com/Disk", models.ResourceStateSucceeded)
+	machine.SetMachineResourceState("compute.googleapis.com/IP", models.ResourceStateSucceeded)
+
+	// Once we have an IP and the instance is running, SSH should be available
+	if ip != nil && ip.Address != nil {
+		machine.SetServiceState("SSH", models.ServiceStateSucceeded)
+	}
+
 	// Retrieve and return the created instance
 	return c.computeClient.Get(ctx, &computepb.GetInstanceRequest{
 		Project:  projectID,

@@ -277,13 +277,17 @@ func (m *DisplayModel) updateOrchestratorStatus(
 }
 
 func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models.DisplayStatus) {
-	if newStatus.SSH != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState(
+	machine := m.Deployment.Machines[machineName]
+	if machine == nil {
+		return
+	}
+
+	// Update SSH state if we have a public IP and the VM is running
+	if machine.GetPublicIP() != "" && 
+		machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded {
+		machine.SetServiceState(
 			models.ServiceTypeSSH.Name,
-		) < newStatus.SSH {
-		m.Deployment.Machines[machineName].SetServiceState(
-			models.ServiceTypeSSH.Name,
-			newStatus.SSH,
+			models.ServiceStateSucceeded,
 		)
 	}
 	if newStatus.Docker != models.ServiceStateUnknown &&
