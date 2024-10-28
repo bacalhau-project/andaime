@@ -49,11 +49,11 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 
 	// Network doesn't exist or isn't ready, create/wait for it
 	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 10 * time.Minute    // Double the timeout
-	b.InitialInterval = 20 * time.Second    // Start with longer initial wait
-	b.MaxInterval = 60 * time.Second        // Allow longer between retries
-	b.Multiplier = 1.5                      // Slower backoff growth
-	b.RandomizationFactor = 0.3             // Add some jitter
+	b.MaxElapsedTime = 10 * time.Minute  // Double the timeout
+	b.InitialInterval = 20 * time.Second // Start with longer initial wait
+	b.MaxInterval = 60 * time.Second     // Allow longer between retries
+	b.Multiplier = 1.5                   // Slower backoff growth
+	b.RandomizationFactor = 0.3          // Add some jitter
 
 	operation := func() error {
 
@@ -66,7 +66,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 			l.Infof("Network %s exists and is ready", networkName)
 			return nil
 		}
-		
+
 		// Create if doesn't exist or isn't ready
 		if err == nil || isNotFoundError(err) {
 			networkResource := &computepb.Network{
@@ -102,7 +102,7 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 		return fmt.Errorf("failed to check/create network: %v", err)
 	}
 
-	err := backoff.Retry(operation, b)
+	err = backoff.Retry(operation, b)
 	if err != nil {
 		return fmt.Errorf("failed to create VPC network after retries: %v", err)
 	}
@@ -229,7 +229,7 @@ func (c *LiveGCPClient) CreateFirewallRules(
 
 	// Wait for firewall rules to be ready
 	operation := func() error {
-		rules, err := c.firewallsClient.List(ctx, &computepb.ListFirewallsRequest{
+		firewallIterator := c.firewallsClient.List(ctx, &computepb.ListFirewallsRequest{
 			Project: projectID,
 			Filter: proto.String(fmt.Sprintf(
 				`network="projects/%s/global/networks/%s"`,
@@ -237,13 +237,10 @@ func (c *LiveGCPClient) CreateFirewallRules(
 				networkName,
 			)),
 		})
-		if err != nil {
-			return fmt.Errorf("failed to list firewall rules: %v", err)
-		}
 
 		var foundRules []*computepb.Firewall
 		for {
-			rule, err := rules.Next()
+			rule, err := firewallIterator.Next()
 			if err == iterator.Done {
 				break
 			}
