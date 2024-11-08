@@ -46,9 +46,7 @@ type AWSProvider struct {
 	Region               string
 	ClusterDeployer      common_interface.ClusterDeployerer
 	UpdateQueue          chan display.UpdateAction
-	App                  awscdk.App
-	Stack                awscdk.Stack
-	VPC                  awsec2.IVpc
+	VPCID                string
 	cloudFormationClient aws_interface.CloudFormationAPIer
 	EC2Client            aws_interface.EC2Clienter
 }
@@ -417,108 +415,15 @@ func isStackFailed(status types.StackStatus) bool {
 }
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l := logger.Get()
-	cfnClient := NewCloudFormationClientFunc(*p.Config)
+	l.Info("Creating AWS infrastructure...")
 
-	stackProps := &awscdk.StackProps{
-		Env: &awscdk.Environment{
-			Account: jsii.String(p.AccountID),
-			Region:  jsii.String(p.Region),
-		},
+	// Create VPC and networking components
+	if err := p.CreateVPC(ctx); err != nil {
+		return fmt.Errorf("failed to create VPC: %w", err)
 	}
 
-	p.Stack = NewVpcStack(p.App, "AndaimeStack", stackProps)
-	p.VPC = p.Stack.Node().FindChild(jsii.String("AndaimeVPC")).(awsec2.IVpc)
-
-	// Get the template
-	template := p.App.Synth(nil).GetStackArtifact(jsii.String("AndaimeStack")).Template()
-
-	// Marshal the template to JSON
-	templateJSON, err := json.Marshal(template)
-	if err != nil {
-		return fmt.Errorf("failed to marshal CloudFormation template: %w", err)
-	}
-
-	l.Info("Creating infrastructure stack...")
-
-	// Create the stack using the CloudFormation client
-	_, err = cfnClient.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:    aws.String("AndaimeStack"),
-		TemplateBody: aws.String(string(templateJSON)),
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityIam,
-			types.CapabilityCapabilityNamedIam,
-		},
-		Tags: []types.Tag{
-			{
-				Key:   aws.String("AndaimeDeployment"),
-				Value: aws.String("true"),
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create stack: %w", err)
-	}
-
-	// Wait for creation to complete with detailed status updates
-	l.Info("Waiting for infrastructure stack creation to complete...")
-	waiter := cloudformation.NewStackCreateCompleteWaiter(cfnClient)
-
-	// Use shorter timeout for tests
-	timeout := DefaultStackTimeout
-	if strings.HasSuffix(os.Args[0], ".test") {
-		timeout = TestStackTimeout
-	}
-
-	// Add a ticker to log stack events during creation
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	waitDone := make(chan error)
-	go func() {
-		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-			StackName: aws.String("AndaimeStack"),
-		}, timeout)
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-waitDone:
-			if err != nil {
-				// Get the stack events to understand what went wrong
-				events, descErr := cfnClient.DescribeStackEvents(
-					ctx,
-					&cloudformation.DescribeStackEventsInput{
-						StackName: aws.String("AndaimeStack"),
-					},
-				)
-				if descErr == nil && len(events.StackEvents) > 0 {
-					l.Error("Stack creation failed. Recent events:")
-					for i := 0; i < min(5, len(events.StackEvents)); i++ {
-						event := events.StackEvents[i]
-						l.Errorf(
-							"  %s: %s - %s",
-							*event.LogicalResourceId,
-							event.ResourceStatus,
-							*event.ResourceStatusReason,
-						)
-					}
-				}
-				return fmt.Errorf("infrastructure stack creation failed: %w", err)
-			}
-			l.Info("Infrastructure stack created successfully")
-			return nil
-		case <-ticker.C:
-			// Log current stack status
-			status, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
-				StackName: aws.String("AndaimeStack"),
-			})
-			if err == nil && len(status.Stacks) > 0 {
-				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
-			}
-		}
-	}
+	l.Info("Infrastructure created successfully")
+	return nil
 }
 
 // Destroy modification to clean up bootstrap resources
@@ -601,54 +506,6 @@ func (p *AWSProvider) SetClusterDeployer(deployer common_interface.ClusterDeploy
 	p.ClusterDeployer = deployer
 }
 
-func NewVpcStack(scope constructs.Construct, id string, props *awscdk.StackProps) awscdk.Stack {
-	stack := awscdk.NewStack(scope, &id, props)
-
-	vpc := awsec2.NewVpc(stack, jsii.String("AndaimeVPC"), &awsec2.VpcProps{
-		MaxAzs: jsii.Number(2),
-		SubnetConfiguration: &[]*awsec2.SubnetConfiguration{
-			{
-				CidrMask:   jsii.Number(24),
-				Name:       jsii.String("Public"),
-				SubnetType: awsec2.SubnetType_PUBLIC,
-			},
-			{
-				CidrMask:   jsii.Number(24),
-				Name:       jsii.String("Private"),
-				SubnetType: awsec2.SubnetType_PRIVATE_WITH_EGRESS,
-			},
-		},
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("VpcId"), &awscdk.CfnOutputProps{
-		Value:       vpc.VpcId(),
-		Description: jsii.String("VPC ID"),
-	})
-
-	for i, subnet := range *vpc.PublicSubnets() {
-		awscdk.NewCfnOutput(
-			stack,
-			jsii.String(fmt.Sprintf("PublicSubnet%d", i)),
-			&awscdk.CfnOutputProps{
-				Value:       subnet.SubnetId(),
-				Description: jsii.String(fmt.Sprintf("Public Subnet %d ID", i)),
-			},
-		)
-	}
-
-	for i, subnet := range *vpc.PrivateSubnets() {
-		awscdk.NewCfnOutput(
-			stack,
-			jsii.String(fmt.Sprintf("PrivateSubnet%d", i)),
-			&awscdk.CfnOutputProps{
-				Value:       subnet.SubnetId(),
-				Description: jsii.String(fmt.Sprintf("Private Subnet %d ID", i)),
-			},
-		)
-	}
-
-	return stack
-}
 
 func (p *AWSProvider) ValidateMachineType(
 	ctx context.Context,
