@@ -20,10 +20,10 @@
 
 ## Phase 2: Implementation
 
-### 3. Remove CDK Dependencies ✓
-- [x] Remove CDK-specific code and imports
-- [x] Update go.mod to remove CDK dependencies
-- [x] Clean up CDK-related configuration files
+### 3. Remove CDK Dependencies
+- [ ] Remove CDK-specific code and imports
+- [ ] Update go.mod to remove CDK dependencies
+- [ ] Clean up CDK-related configuration files
 
 ### 4. Implement Direct Resource Creation
 
@@ -92,7 +92,7 @@
 - [x] Document required AWS SDK calls
 
 ### Phase 2: Implementation
-- [x] Remove CDK packages
+- [ ] Remove CDK packages
 - [ ] Implement VPC creation
 - [ ] Implement EC2 provisioning
 - [ ] Add resource management
