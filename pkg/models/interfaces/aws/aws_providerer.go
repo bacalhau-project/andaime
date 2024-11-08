@@ -3,8 +3,6 @@ package aws
 import (
 	"context"
 
-	"github.com/aws/aws-cdk-go/awscdk/v2"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
@@ -64,14 +62,6 @@ type CloudFormationAPIer interface {
 
 // AWSInfraProvider defines the interface for AWS infrastructure operations
 type AWSInfraProviderer interface {
-	CreateVPC(stack awscdk.Stack) awsec2.IVpc
-	NewStack(scope awscdk.App, id string, props *awscdk.StackProps) awscdk.Stack
-	SynthTemplate(app awscdk.App) (string, error)
+	CreateVPC(ctx context.Context) error
 	GetCloudFormationClient() CloudFormationAPIer
-}
-
-// CDKStackProvider defines the interface for CDK stack operations
-type CDKStackProviderer interface {
-	NewStack(scope awscdk.App, id string, props *awscdk.StackProps) awscdk.Stack
-	GetTemplate(stack awscdk.Stack) (string, error)
 }
