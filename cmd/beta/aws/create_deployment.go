@@ -6,10 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-cdk-go/awscdk/v2"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
-	"github.com/aws/constructs-go/constructs/v10"
-	"github.com/aws/jsii-runtime-go"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -249,29 +245,3 @@ func writeConfig() {
 	}
 }
 
-func NewVpcStack(scope constructs.Construct, id string, props *awscdk.StackProps) awscdk.Stack {
-	stack := awscdk.NewStack(scope, &id, props)
-
-	vpc := awsec2.NewVpc(stack, jsii.String("AndaimeVPC"), &awsec2.VpcProps{
-		MaxAzs: jsii.Number(2),
-		SubnetConfiguration: &[]*awsec2.SubnetConfiguration{
-			{
-				CidrMask:   jsii.Number(24),
-				Name:       jsii.String("Public"),
-				SubnetType: awsec2.SubnetType_PUBLIC,
-			},
-			{
-				CidrMask:   jsii.Number(24),
-				Name:       jsii.String("Private"),
-				SubnetType: awsec2.SubnetType_PRIVATE_WITH_EGRESS,
-			},
-		},
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("VpcId"), &awscdk.CfnOutputProps{
-		Value:       vpc.VpcId(),
-		Description: jsii.String("VPC ID"),
-	})
-
-	return stack
-}
