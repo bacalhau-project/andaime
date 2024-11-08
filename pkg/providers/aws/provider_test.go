@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	cdk_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
