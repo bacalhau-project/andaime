@@ -33,7 +33,6 @@ func TestNewAWSProvider(t *testing.T) {
 	provider, err := NewAWSProvider(accountID, region)
 	assert.NoError(t, err)
 	assert.NotNil(t, provider)
-	assert.NotNil(t, provider.App)
 	assert.Equal(t, region, provider.Region)
 }
 
@@ -110,115 +109,67 @@ func TestCreateInfrastructure(t *testing.T) {
 	mockCloudFormationAPI.AssertExpectations(t)
 }
 
-func TestNewVpcStack(t *testing.T) {
-	ctx := context.Background()
-
-	// Store the original function to restore it after the test
-	originalNewClient := NewCloudFormationClientFunc
-	defer func() { NewCloudFormationClientFunc = originalNewClient }()
-
-	mockTemplate := &cloudformation.GetTemplateOutput{
-		TemplateBody: aws.String(`{
-						"Resources": {
-							"AndaimeVPC": {
-								"Type": "AWS::EC2::VPC",
-								"Properties": {
-									"CidrBlock": "10.0.0.0/16",
-									"EnableDnsHostnames": true,
-									"EnableDnsSupport": true
-								}
-							},
-							"AndaimeVPCPublicSubnet1": {
-								"Type": "AWS::EC2::Subnet",
-								"Properties": {
-									"VpcId": { "Ref": "AndaimeVPC" },
-									"AvailabilityZone": "us-west-2a",
-									"CidrBlock": "10.0.0.0/24",
-									"MapPublicIpOnLaunch": true
-								}
-							},
-							"AndaimeVPCPrivateSubnet1": {
-								"Type": "AWS::EC2::Subnet",
-								"Properties": {
-									"VpcId": { "Ref": "AndaimeVPC" },
-									"AvailabilityZone": "us-west-2a",
-									"CidrBlock": "10.0.1.0/24",
-									"MapPublicIpOnLaunch": false
-								}
-							}
-						},
-						"Outputs": {
-							"VpcId": {
-								"Value": { "Ref": "AndaimeVPC" }
-							},
-							"PublicSubnet1Id": {
-								"Value": { "Ref": "AndaimeVPCPublicSubnet1" }
-							},
-							"PrivateSubnet1Id": {
-								"Value": { "Ref": "AndaimeVPCPrivateSubnet1" }
-							}
-						}
-					}`),
-	}
-
-	mockCloudFormationAPI := new(mocks.MockCloudFormationAPIer)
-	mockCloudFormationAPI.On("GetTemplate", mock.Anything, mock.Anything).
-		Return(mockTemplate, nil)
-	mockCloudFormationAPI.On("CreateStack", mock.Anything, mock.Anything).
-		Return(&cloudformation.CreateStackOutput{}, nil)
-
-	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-		return mockCloudFormationAPI
-	}
-
-	app := awscdk.NewApp(nil)
-	stackProps := &awscdk.StackProps{
-		Env: &awscdk.Environment{
-			Region: jsii.String("us-west-2"),
-		},
-	}
-
+func TestCreateVPC(t *testing.T) {
 	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
 
-	stack := NewVpcStack(app, "TestStack", stackProps)
-	assert.NotNil(t, stack)
+	mockEC2Client := new(mocks.MockEC2Clienter)
+	
+	// Mock VPC creation
+	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).
+		Return(&ec2.CreateVpcOutput{
+			Vpc: &types.Vpc{
+				VpcId: aws.String("vpc-12345"),
+			},
+		}, nil)
 
-	provider.Stack = stack
+	// Mock subnet creation
+	mockEC2Client.On("CreateSubnet", mock.Anything, mock.Anything).
+		Return(&ec2.CreateSubnetOutput{
+			Subnet: &types.Subnet{
+				SubnetId: aws.String("subnet-12345"),
+			},
+		}, nil)
 
-	// Verify the VPC was created with correct configuration
-	template, err := provider.ToCloudFormationTemplate(ctx, *provider.Stack.StackName())
-	require.NoError(t, err)
-	resources := template["Resources"].(map[string]interface{})
+	// Mock internet gateway creation
+	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.Anything).
+		Return(&ec2.CreateInternetGatewayOutput{
+			InternetGateway: &types.InternetGateway{
+				InternetGatewayId: aws.String("igw-12345"),
+			},
+		}, nil)
 
-	// Verify VPC configuration
-	assert.Contains(t, resources, "AndaimeVPC")
-	vpcResource := resources["AndaimeVPC"].(map[string]interface{})
-	assert.Equal(t, "AWS::EC2::VPC", vpcResource["Type"])
+	// Mock route table creation
+	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.Anything).
+		Return(&ec2.CreateRouteTableOutput{
+			RouteTable: &types.RouteTable{
+				RouteTableId: aws.String("rtb-12345"),
+			},
+		}, nil)
 
-	// Verify subnet configuration
-	assert.Contains(t, resources, "AndaimeVPCPublicSubnet1")
-	assert.Contains(t, resources, "AndaimeVPCPrivateSubnet1")
+	// Mock other necessary EC2 calls
+	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.Anything).
+		Return(&ec2.AttachInternetGatewayOutput{}, nil)
+	mockEC2Client.On("CreateRoute", mock.Anything, mock.Anything).
+		Return(&ec2.CreateRouteOutput{}, nil)
+	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.Anything).
+		Return(&ec2.AssociateRouteTableOutput{}, nil)
+	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeAvailabilityZonesOutput{
+			AvailabilityZones: []types.AvailabilityZone{
+				{
+					ZoneName: aws.String("us-west-2a"),
+				},
+			},
+		}, nil)
 
-	publicSubnet := resources["AndaimeVPCPublicSubnet1"].(map[string]interface{})
-	assert.Equal(t, "AWS::EC2::Subnet", publicSubnet["Type"])
-	assert.True(
-		t,
-		publicSubnet["Properties"].(map[string]interface{})["MapPublicIpOnLaunch"].(bool),
-	)
+	provider.SetEC2Client(mockEC2Client)
 
-	privateSubnet := resources["AndaimeVPCPrivateSubnet1"].(map[string]interface{})
-	assert.Equal(t, "AWS::EC2::Subnet", privateSubnet["Type"])
-	assert.False(
-		t,
-		privateSubnet["Properties"].(map[string]interface{})["MapPublicIpOnLaunch"].(bool),
-	)
+	err = provider.CreateVPC(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "vpc-12345", provider.VPCID)
 
-	// Verify outputs
-	outputs := template["Outputs"].(map[string]interface{})
-	assert.Contains(t, outputs, "VpcId")
-	assert.Contains(t, outputs, "PublicSubnet1Id")
-	assert.Contains(t, outputs, "PrivateSubnet1Id")
+	mockEC2Client.AssertExpectations(t)
 }
 
 func TestProcessMachinesConfig(t *testing.T) {
