@@ -70,10 +70,8 @@ func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 		AccountID:            accountID,
 		Region:               region,
 		Config:               &awsConfig,
-		Stack:                nil,
 		ClusterDeployer:      common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:          make(chan display.UpdateAction, UpdateQueueSize),
-		App:                  awscdk.NewApp(nil),
 		cloudFormationClient: NewCloudFormationClientFunc(awsConfig),
 	}
 
@@ -115,10 +113,6 @@ func (p *AWSProvider) StartResourcePolling(ctx context.Context) error {
 }
 
 func (p *AWSProvider) pollResources(ctx context.Context) error {
-	if p.Stack == nil {
-		return fmt.Errorf("stack is nil")
-	}
-
 	// Create EC2 client
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
 	if err != nil {
@@ -209,181 +203,8 @@ func (p *AWSProvider) updateMachineStatus(machineID string, status models.Machin
 }
 
 func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Ensuring AWS environment is bootstrapped")
-
-	// Create a channel to signal completion
-	done := make(chan error)
-	defer close(done)
-
-	// First, let's check if any bootstrap assets exist
-	ssmClient := ssm.NewFromConfig(*p.Config)
-	paramName := "/cdk-bootstrap/hnb659fds/version"
-
-	// Try to get the version parameter
-	_, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
-		Name: aws.String(paramName),
-	})
-
-	if err != nil {
-		l.Warn("Bootstrap parameter not found, creating new bootstrap stack")
-	} else {
-		l.Info("Bootstrap stack already exists")
-		done <- nil
-		return <-done
-	}
-
-	// Initialize CloudFormation resources
-	bootstrapApp := awscdk.NewApp(nil)
-
-	stackProps := &awscdk.StackProps{
-		Env: &awscdk.Environment{
-			Account: jsii.String(p.AccountID),
-			Region:  jsii.String(p.Region),
-		},
-		// Important: Disable the lookup of context values during synthesis
-		Synthesizer: awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
-			GenerateBootstrapVersionRule: jsii.Bool(false),
-		}),
-	}
-
-	bootstrapStack := awscdk.NewStack(bootstrapApp, jsii.String("CDKToolkit"), stackProps)
-
-	// Create KMS key for bootstrap resources
-	key := awskms.NewKey(bootstrapStack, jsii.String("BootstrapKey"), &awskms.KeyProps{
-		Alias:             jsii.String("alias/cdk-hnb659fds-key"),
-		EnableKeyRotation: jsii.Bool(true),
-		RemovalPolicy:     awscdk.RemovalPolicy_RETAIN,
-	})
-
-	// Create staging bucket
-	bucketName := fmt.Sprintf("cdk-%s-assets-%s-%s", "hnb659fds", p.AccountID, p.Region)
-	bucket := awss3.NewBucket(bootstrapStack, jsii.String("StagingBucket"), &awss3.BucketProps{
-		BucketName:        jsii.String(bucketName),
-		Encryption:        awss3.BucketEncryption_KMS,
-		EncryptionKey:     key,
-		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
-		Versioned:         jsii.Bool(true),
-		RemovalPolicy:     awscdk.RemovalPolicy_RETAIN,
-		AutoDeleteObjects: jsii.Bool(false),
-	})
-
-	// Add permissions
-	bucket.AddToResourcePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
-		Effect: awsiam.Effect_ALLOW,
-		Actions: jsii.Strings(
-			"s3:GetObject",
-			"s3:PutObject",
-			"s3:ListBucket",
-		),
-		Resources: jsii.Strings(
-			*bucket.BucketArn(),
-			*bucket.BucketArn()+"/*",
-		),
-		Principals: &[]awsiam.IPrincipal{
-			awsiam.NewAccountRootPrincipal(),
-		},
-	}))
-
-	// Create SSM parameters
-	awsssm.NewStringParameter(
-		bootstrapStack,
-		jsii.String("VersionParameter"),
-		&awsssm.StringParameterProps{
-			ParameterName: jsii.String("/cdk-bootstrap/hnb659fds/version"),
-			StringValue:   jsii.String("14"),
-			Description: jsii.String(
-				"The version of the CDK bootstrap resources in this environment",
-			),
-		},
-	)
-
-	// Synthesize the template
-	template := bootstrapApp.Synth(nil).GetStackArtifact(jsii.String("CDKToolkit")).Template()
-	templateJSON, err := json.Marshal(template)
-	if err != nil {
-		return fmt.Errorf("failed to marshal bootstrap template: %w", err)
-	}
-
-	l.Info("Creating bootstrap stack...")
-
-	// Create the stack with detailed error handling
-	_, err = p.cloudFormationClient.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:    aws.String("CDKToolkit"),
-		TemplateBody: aws.String(string(templateJSON)),
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityIam,
-			types.CapabilityCapabilityNamedIam,
-		},
-		OnFailure: types.OnFailureRollback,
-		Tags: []types.Tag{
-			{
-				Key:   aws.String("aws-cdk:bootstrap-role"),
-				Value: aws.String("lookup"),
-			},
-		},
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to create bootstrap stack: %w", err)
-	}
-
-	// Wait for creation to complete with detailed status updates
-	l.Info("Waiting for bootstrap stack creation to complete...")
-	waiter := cloudformation.NewStackCreateCompleteWaiter(p.cloudFormationClient)
-
-	// Add a ticker to log stack events during creation
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	waitDone := make(chan error)
-	go func() {
-		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-			StackName: aws.String("CDKToolkit"),
-		}, 30*time.Minute)
-	}()
-
-	for {
-		select {
-		case err := <-waitDone:
-			if err != nil {
-				// Get the stack events to understand what went wrong
-				events, descErr := p.cloudFormationClient.DescribeStackEvents(
-					ctx,
-					&cloudformation.DescribeStackEventsInput{
-						StackName: aws.String("CDKToolkit"),
-					},
-				)
-				if descErr == nil && len(events.StackEvents) > 0 {
-					l.Error("Stack creation failed. Recent events:")
-					for i := 0; i < min(5, len(events.StackEvents)); i++ {
-						event := events.StackEvents[i]
-						l.Errorf(
-							"  %s: %s - %s",
-							*event.LogicalResourceId,
-							event.ResourceStatus,
-							*event.ResourceStatusReason,
-						)
-					}
-				}
-				return fmt.Errorf("bootstrap stack creation failed: %w", err)
-			}
-			l.Info("Bootstrap stack created successfully")
-			done <- nil
-			return <-done
-		case <-ticker.C:
-			// Log current stack status
-			status, err := p.cloudFormationClient.DescribeStacks(
-				ctx,
-				&cloudformation.DescribeStacksInput{
-					StackName: aws.String("CDKToolkit"),
-				},
-			)
-			if err == nil && len(status.Stacks) > 0 {
-				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
-			}
-		}
-	}
+	// No bootstrapping needed anymore since we're not using CDK
+	return nil
 }
 
 func min(a, b int) int {
