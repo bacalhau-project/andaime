@@ -125,7 +125,7 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 		Filters: []ec2_types.Filter{
 			{
 				Name:   aws.String("tag:AndaimeDeployment"),
-				Values: []string{*p.Stack.StackName()},
+				Values: []string{"AndaimeDeployment"},
 			},
 		},
 	}
