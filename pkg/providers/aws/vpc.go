@@ -115,7 +115,7 @@ func (p *AWSProvider) CreateVPC(ctx context.Context) error {
 
 	_, err = p.EC2Client.AttachInternetGateway(ctx, &ec2.AttachInternetGatewayInput{
 		InternetGatewayId: igw.InternetGateway.InternetGatewayId,
-		VpcId:            aws.String(p.VPCID),
+		VpcId:             aws.String(p.VPCID),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to attach internet gateway: %w", err)
@@ -146,7 +146,7 @@ func (p *AWSProvider) CreateVPC(ctx context.Context) error {
 	_, err = p.EC2Client.CreateRoute(ctx, &ec2.CreateRouteInput{
 		RouteTableId:         routeTable.RouteTable.RouteTableId,
 		DestinationCidrBlock: aws.String("0.0.0.0/0"),
-		GatewayId:           igw.InternetGateway.InternetGatewayId,
+		GatewayId:            igw.InternetGateway.InternetGatewayId,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create route: %w", err)
