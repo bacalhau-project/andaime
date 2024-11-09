@@ -137,4 +137,13 @@ func (c *LiveEC2Client) AssociateRouteTable(
 	return c.client.AssociateRouteTable(ctx, input, options...)
 }
 
+// DescribeAvailabilityZones describes availability zones
+func (c *LiveEC2Client) DescribeAvailabilityZones(
+	ctx context.Context,
+	input *ec2.DescribeAvailabilityZonesInput,
+	options ...func(*ec2.Options),
+) (*ec2.DescribeAvailabilityZonesOutput, error) {
+	return c.client.DescribeAvailabilityZones(ctx, input, options...)
+}
+
 var _ awsinterfaces.EC2Clienter = &LiveEC2Client{}
