@@ -100,8 +100,7 @@ func TestCreateInfrastructure(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the infrastructure was created
-	assert.NotNil(t, provider.Stack)
-	assert.NotNil(t, provider.VPC)
+	assert.NotEmpty(t, provider.VPCID)
 
 	// Verify all mocked calls were made
 	mockCloudFormationAPI.AssertExpectations(t)

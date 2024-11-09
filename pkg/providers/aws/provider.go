@@ -39,7 +39,6 @@ type AWSProvider struct {
 	VPCID                string
 	cloudFormationClient aws_interface.CloudFormationAPIer
 	EC2Client            aws_interface.EC2Clienter
-	stackName            string
 }
 
 var NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
@@ -249,20 +248,10 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 	}
 	cfnClient := cloudformation.NewFromConfig(cfg)
 
-	// Delete the main stack first
-	if p.stackName != "" {
-		if err := p.deleteStack(ctx, cfnClient, p.stackName); err != nil {
-			return err
-		}
-	}
-
-	// Delete the bootstrap stack
+	// Delete the bootstrap stack if it exists
 	if err := p.deleteStack(ctx, cfnClient, "CDKToolkit"); err != nil {
 		return err
 	}
-
-	// Clean up local state
-	p.stackName = ""
 
 	return nil
 }
