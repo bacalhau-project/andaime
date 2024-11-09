@@ -88,7 +88,7 @@ func (p *AWSProvider) CreateVPC(ctx context.Context) error {
 		},
 	}
 
-	privateSubnet, err := p.EC2Client.CreateSubnet(ctx, createPrivateSubnetInput)
+	_, err = p.EC2Client.CreateSubnet(ctx, createPrivateSubnetInput)
 	if err != nil {
 		return fmt.Errorf("failed to create private subnet: %w", err)
 	}

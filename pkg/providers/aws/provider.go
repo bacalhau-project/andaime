@@ -411,10 +411,6 @@ func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting termination of AWS deployment")
 
-	if p.Stack == nil {
-		return fmt.Errorf("no active stack found for termination")
-	}
-
 	// Create CloudFormation client
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
 	if err != nil {
@@ -422,37 +418,11 @@ func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
 	}
 	cfnClient := cloudformation.NewFromConfig(cfg)
 
-	// Get the stack name
-	stackName := *p.Stack.StackName()
-
-	// Delete the CloudFormation stack
-	_, err = cfnClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName: aws.String(stackName),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to initiate stack deletion: %w", err)
-	}
-
-	l.Infof("Initiated deletion of stack: %s", stackName)
-
-	// Wait for the stack to be deleted
-	l.Info("Waiting for stack deletion to complete...")
-	waiter := cloudformation.NewStackDeleteCompleteWaiter(cfnClient)
-	maxWaitTime := 30 * time.Minute
-	if err := waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-		StackName: aws.String(stackName),
-	}, maxWaitTime); err != nil {
-		return fmt.Errorf("error waiting for stack deletion: %w", err)
-	}
-
-	l.Info("Stack deletion completed successfully")
-
 	// Clean up local state
-	p.Stack = nil
-	p.VPC = nil
+	p.VPCID = ""
 
 	// Remove the deployment from the configuration
-	if err := p.removeDeploymentFromConfig(stackName); err != nil {
+	if err := p.removeDeploymentFromConfig(""); err != nil {
 		l.Warnf("Failed to remove deployment from config: %v", err)
 	}
 
