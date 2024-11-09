@@ -217,6 +217,21 @@ func isStackFailed(status types.StackStatus) bool {
 		status == types.StackStatusUpdateFailed ||
 		isStackInRollback(status)
 }
+// CreateInfrastructure creates the necessary AWS infrastructure including VPC, subnets,
+// internet gateway, and routing tables. This is the main entry point for setting up
+// the AWS networking infrastructure required for the deployment.
+//
+// The function performs the following steps:
+// 1. Creates a VPC with CIDR block 10.0.0.0/16
+// 2. Creates public and private subnets
+// 3. Sets up an internet gateway
+// 4. Configures routing tables for internet access
+//
+// Parameters:
+//   - ctx: Context for timeout and cancellation
+//
+// Returns:
+//   - error: Returns an error if any step of the infrastructure creation fails
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating AWS infrastructure...")
