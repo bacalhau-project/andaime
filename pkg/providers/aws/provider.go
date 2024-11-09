@@ -2,7 +2,6 @@ package awsprovider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -39,7 +38,6 @@ type AWSProvider struct {
 	VPCID           string
 	EC2Client       aws_interface.EC2Clienter
 }
-
 
 func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 	if accountID == "" {
@@ -403,7 +401,7 @@ func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
-	cfnClient := cloudformation.NewFromConfig(cfg)
+	p.CloudFormationClient = cloudformation.NewFromConfig(cfg)
 
 	// Clean up local state
 	p.VPCID = ""
@@ -441,7 +439,6 @@ func (p *AWSProvider) removeDeploymentFromConfig(stackName string) error {
 	}
 	return nil
 }
-
 
 func (p *AWSProvider) ProvisionBacalhauCluster(ctx context.Context) error {
 	if err := p.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
