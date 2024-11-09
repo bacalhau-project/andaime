@@ -90,12 +90,6 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 	// Check if we can access necessary services
 	l.Info("\nService Access Check:")
 
-	// Check CloudFormation
-	_, err = p.CloudFormationClient.ListStacks(ctx, &cloudformation.ListStacksInput{})
-	l.Infof("  CloudFormation Access: %v", err == nil)
-	if err != nil {
-		l.Errorf("    Error: %v", err)
-	}
 
 	// Check S3
 	s3Client := s3.NewFromConfig(*p.Config)

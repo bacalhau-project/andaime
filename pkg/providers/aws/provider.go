@@ -237,16 +237,8 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting destruction of AWS resources")
 
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-	cfnClient := cloudformation.NewFromConfig(cfg)
-
-	// Delete the bootstrap stack if it exists
-	if err := p.deleteStack(ctx, cfnClient, "CDKToolkit"); err != nil {
-		return err
-	}
+	// Clean up local state
+	p.VPCID = ""
 
 	return nil
 }
