@@ -442,30 +442,6 @@ func (p *AWSProvider) removeDeploymentFromConfig(stackName string) error {
 	return nil
 }
 
-func (p *AWSProvider) ToCloudFormationTemplate(
-	ctx context.Context,
-	stackName string,
-) (map[string]interface{}, error) {
-	svc := p.cloudFormationClient
-
-	// Get the template from CloudFormation
-	input := &cloudformation.GetTemplateInput{
-		StackName: aws.String(stackName),
-	}
-	result, err := svc.GetTemplate(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get cloudformation template: %w", err)
-	}
-
-	// Deserialize the template body from JSON to map[string]interface{}
-	var template map[string]interface{}
-	err = json.Unmarshal([]byte(*result.TemplateBody), &template)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal template body: %w", err)
-	}
-
-	return template, nil
-}
 
 func (p *AWSProvider) ProvisionBacalhauCluster(ctx context.Context) error {
 	if err := p.GetClusterDeployer().ProvisionBacalhauCluster(ctx); err != nil {
