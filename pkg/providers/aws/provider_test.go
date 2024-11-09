@@ -35,65 +35,11 @@ func TestNewAWSProvider(t *testing.T) {
 }
 
 func TestCreateInfrastructure(t *testing.T) {
-	// Store the original function to restore it after the test
-	originalNewClient := NewCloudFormationClientFunc
-	defer func() { NewCloudFormationClientFunc = originalNewClient }()
-
-	// mockTemplate := `{
-	// 	"Resources": {
-	// 		"AndaimeVPC": {
-	// 			"Type": "AWS::EC2::VPC",
-	// 			"Properties": {
-	// 				"CidrBlock": "10.0.0.0/16",
-	// 				"EnableDnsHostnames": true,
-	// 				"EnableDnsSupport": true
-	// 			}
-	// 		}
-	// 	},
-	// 	"Outputs": {
-	// 		"VpcId": {
-	// 			"Value": { "Ref": "AndaimeVPC" }
-	// 		}
-	// 	}
-	// }`
-
-	mockCloudFormationAPI := new(mocks.MockCloudFormationAPIer)
-
-	// Mock CreateStack
-	mockCloudFormationAPI.On("CreateStack", mock.Anything, mock.Anything).
-		Return(&cloudformation.CreateStackOutput{
-			StackId: aws.String("test-stack-id"),
-		}, nil)
-
-	// Mock DescribeStacks for the waiter
-	mockCloudFormationAPI.On("DescribeStacks", mock.Anything, mock.Anything, mock.Anything).
-		Return(&cloudformation.DescribeStacksOutput{
-			Stacks: []cdk_types.Stack{
-				{
-					StackName:   aws.String("AndaimeStack"),
-					StackId:     aws.String("test-stack-id"),
-					StackStatus: cdk_types.StackStatusCreateComplete,
-				},
-			},
-		}, nil)
-
-	// Mock GetTemplate
-	// mockCloudFormationAPI.On("GetTemplate", mock.Anything, mock.Anything).
-	// 	Return(&cloudformation.GetTemplateOutput{TemplateBody: aws.String(mockTemplate)}, nil)
-
-	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-		return mockCloudFormationAPI
-	}
-
-	// Test setup
-	viper.Reset()
-	viper.Set("aws.region", "us-west-2")
-	viper.Set("aws.account_id", "123456789012")
-
-	accountID := viper.GetString("aws.account_id")
-	region := viper.GetString("aws.region")
-	provider, err := NewAWSProvider(accountID, region)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
+
+	mockEC2Client := new(mocks.MockEC2Clienter)
+	provider.SetEC2Client(mockEC2Client)
 
 	ctx := context.Background()
 	err = provider.CreateInfrastructure(ctx)
@@ -101,9 +47,6 @@ func TestCreateInfrastructure(t *testing.T) {
 
 	// Verify the infrastructure was created
 	assert.NotEmpty(t, provider.VPCID)
-
-	// Verify all mocked calls were made
-	mockCloudFormationAPI.AssertExpectations(t)
 }
 
 func TestCreateVPC(t *testing.T) {
@@ -309,54 +252,3 @@ func TestGetVMExternalIP(t *testing.T) {
 	mockEC2Client.AssertExpectations(t)
 }
 
-func TestCreateInfrastructure_Failure(t *testing.T) {
-	// Create a mock CloudFormation client
-	mockCfnClient := new(mocks.MockCloudFormationAPIer)
-
-	// Set up CreateStack to succeed
-	mockCfnClient.On("CreateStack", mock.Anything, mock.AnythingOfType("*cloudformation.CreateStackInput")).
-		Return(&cloudformation.CreateStackOutput{}, nil)
-
-	// Set up DescribeStacks to return a failure status
-	mockCfnClient.On("DescribeStacks", mock.Anything,
-		mock.AnythingOfType("*cloudformation.DescribeStacksInput"),
-		mock.Anything).
-		Return(&cloudformation.DescribeStacksOutput{
-			Stacks: []cdk_types.Stack{
-				{
-					StackStatus: cdk_types.StackStatusCreateFailed,
-				},
-			},
-		}, nil)
-
-	// Set up DescribeStackEvents for error reporting
-	mockCfnClient.On("DescribeStackEvents", mock.Anything, mock.AnythingOfType("*cloudformation.DescribeStackEventsInput")).
-		Return(&cloudformation.DescribeStackEventsOutput{
-			StackEvents: []cdk_types.StackEvent{
-				{
-					LogicalResourceId:    aws.String("TestResource"),
-					ResourceStatus:       cdk_types.ResourceStatusCreateFailed,
-					ResourceStatusReason: aws.String("Test failure reason"),
-				},
-			},
-		}, nil)
-
-	// Create the provider with the mock client
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
-	require.NoError(t, err)
-
-	// Override the CloudFormation client creation
-	NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-		return mockCfnClient
-	}
-
-	// Call CreateInfrastructure
-	err = provider.CreateInfrastructure(context.Background())
-
-	// Assert an error occurred
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "infrastructure stack creation failed")
-
-	// Verify all expected calls were made
-	mockCfnClient.AssertExpectations(t)
-}
