@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -55,16 +56,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	// Ensure EC2 client is initialized
 	if awsProvider.EC2Client == nil {
 		ec2Client := ec2.NewFromConfig(*awsProvider.Config)
-		awsProvider.SetEC2Client(&awsprovider.LiveEC2Client{client: ec2Client})
-	}
-
-	// Ensure EC2 client is initialized
-	if awsProvider.EC2Client == nil {
-		ec2Client, err := NewEC2Client(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to initialize EC2 client: %w", err)
-		}
-		awsProvider.SetEC2Client(ec2Client)
+		awsProvider.SetEC2Client(&awsprovider.LiveEC2Client{Client: ec2Client})
 	}
 
 	m := display.NewDisplayModel(deployment)
