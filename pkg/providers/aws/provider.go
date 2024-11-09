@@ -64,6 +64,10 @@ func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
 	}
 
+	// Initialize EC2 client
+	ec2Client := ec2.NewFromConfig(awsConfig)
+	provider.EC2Client = &LiveEC2Client{client: ec2Client}
+
 	return provider, nil
 }
 

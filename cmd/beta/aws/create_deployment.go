@@ -52,6 +52,15 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Ensure EC2 client is initialized
+	if awsProvider.EC2Client == nil {
+		ec2Client, err := NewEC2Client(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to initialize EC2 client: %w", err)
+		}
+		awsProvider.SetEC2Client(ec2Client)
+	}
+
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
 
