@@ -396,13 +396,6 @@ func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting termination of AWS deployment")
 
-	// Create CloudFormation client
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-	p.CloudFormationClient = cloudformation.NewFromConfig(cfg)
-
 	// Clean up local state
 	p.VPCID = ""
 
