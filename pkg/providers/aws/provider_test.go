@@ -9,7 +9,6 @@ import (
 	cdk_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/jsii-runtime-go"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
@@ -113,7 +112,7 @@ func TestCreateVPC(t *testing.T) {
 	require.NoError(t, err)
 
 	mockEC2Client := new(mocks.MockEC2Clienter)
-	
+
 	// Mock VPC creation
 	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -317,7 +315,6 @@ func (p *AWSProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
 func (p *AWSProvider) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }
-
 
 func (p *AWSProvider) ValidateMachineType(
 	ctx context.Context,
