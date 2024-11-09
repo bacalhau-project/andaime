@@ -31,19 +31,15 @@ const (
 )
 
 type AWSProvider struct {
-	AccountID            string
-	Config               *aws.Config
-	Region               string
-	ClusterDeployer      common_interface.ClusterDeployerer
-	UpdateQueue          chan display.UpdateAction
-	VPCID                string
-	cloudFormationClient aws_interface.CloudFormationAPIer
-	EC2Client            aws_interface.EC2Clienter
+	AccountID       string
+	Config          *aws.Config
+	Region          string
+	ClusterDeployer common_interface.ClusterDeployerer
+	UpdateQueue     chan display.UpdateAction
+	VPCID           string
+	EC2Client       aws_interface.EC2Clienter
 }
 
-var NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-	return cloudformation.NewFromConfig(cfg)
-}
 
 func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 	if accountID == "" {
@@ -63,12 +59,11 @@ func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 	}
 
 	provider := &AWSProvider{
-		AccountID:            accountID,
-		Region:               region,
-		Config:               &awsConfig,
-		ClusterDeployer:      common.NewClusterDeployer(models.DeploymentTypeAWS),
-		UpdateQueue:          make(chan display.UpdateAction, UpdateQueueSize),
-		cloudFormationClient: NewCloudFormationClientFunc(awsConfig),
+		AccountID:       accountID,
+		Region:          region,
+		Config:          &awsConfig,
+		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
+		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
 	}
 
 	return provider, nil
