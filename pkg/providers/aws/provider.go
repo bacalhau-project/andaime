@@ -230,7 +230,23 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	return nil
 }
 
-// Destroy modification to clean up bootstrap resources
+// Destroy cleans up all AWS resources created for this deployment.
+// This includes terminating instances, deleting VPC components, and removing any
+// associated networking resources.
+//
+// The cleanup process follows this order:
+// 1. Terminates all EC2 instances
+// 2. Deletes route table associations
+// 3. Deletes routes and route tables
+// 4. Detaches and deletes internet gateways
+// 5. Deletes subnets
+// 6. Finally deletes the VPC
+//
+// Parameters:
+//   - ctx: Context for timeout and cancellation
+//
+// Returns:
+//   - error: Returns an error if any cleanup step fails
 func (p *AWSProvider) Destroy(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting destruction of AWS resources")
