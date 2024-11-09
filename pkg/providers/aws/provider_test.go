@@ -5,13 +5,10 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
-	cdk_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -39,6 +36,46 @@ func TestCreateInfrastructure(t *testing.T) {
 	require.NoError(t, err)
 
 	mockEC2Client := new(mocks.MockEC2Clienter)
+	// Mock VPC creation
+	mockEC2Client.On("CreateVPC", mock.Anything, mock.Anything, mock.Anything).
+		Return(&ec2.CreateVpcOutput{
+			Vpc: &types.Vpc{
+				VpcId: aws.String("vpc-12345"),
+			},
+		}, nil)
+	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeAvailabilityZonesOutput{
+			AvailabilityZones: []types.AvailabilityZone{
+				{
+					ZoneName: aws.String("FAKE-ZONE"),
+				},
+			},
+		}, nil)
+	mockEC2Client.On("CreateSubnet", mock.Anything, mock.Anything).
+		Return(&ec2.CreateSubnetOutput{
+			Subnet: &types.Subnet{
+				SubnetId: aws.String("subnet-12345"),
+			},
+		}, nil)
+	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.Anything).
+		Return(&ec2.CreateInternetGatewayOutput{
+			InternetGateway: &types.InternetGateway{
+				InternetGatewayId: aws.String("igw-12345"),
+			},
+		}, nil)
+	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.Anything).
+		Return(&ec2.AttachInternetGatewayOutput{}, nil)
+	mockEC2Client.On("CreateRoute", mock.Anything, mock.Anything).
+		Return(&ec2.CreateRouteOutput{}, nil)
+	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.Anything).
+		Return(&ec2.AssociateRouteTableOutput{}, nil)
+	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.Anything).
+		Return(&ec2.CreateRouteTableOutput{
+			RouteTable: &types.RouteTable{
+				RouteTableId: aws.String("rtb-12345"),
+			},
+		}, nil)
+
 	provider.SetEC2Client(mockEC2Client)
 
 	ctx := context.Background()
@@ -56,7 +93,7 @@ func TestCreateVPC(t *testing.T) {
 	mockEC2Client := new(mocks.MockEC2Clienter)
 
 	// Mock VPC creation
-	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).
+	mockEC2Client.On("CreateVPC", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
 			Vpc: &types.Vpc{
 				VpcId: aws.String("vpc-12345"),
@@ -251,4 +288,3 @@ func TestGetVMExternalIP(t *testing.T) {
 	// Verify that the mock was called as expected
 	mockEC2Client.AssertExpectations(t)
 }
-

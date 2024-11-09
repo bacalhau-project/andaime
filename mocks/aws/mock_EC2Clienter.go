@@ -540,6 +540,80 @@ func (_c *MockEC2Clienter_CreateVPC_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// DescribeAvailabilityZones provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeAvailabilityZones(ctx context.Context, params *ec2.DescribeAvailabilityZonesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeAvailabilityZones")
+	}
+
+	var r0 *ec2.DescribeAvailabilityZonesOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeAvailabilityZonesInput, ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeAvailabilityZonesInput, ...func(*ec2.Options)) *ec2.DescribeAvailabilityZonesOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeAvailabilityZonesOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeAvailabilityZonesInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DescribeAvailabilityZones_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeAvailabilityZones'
+type MockEC2Clienter_DescribeAvailabilityZones_Call struct {
+	*mock.Call
+}
+
+// DescribeAvailabilityZones is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DescribeAvailabilityZonesInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DescribeAvailabilityZones(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeAvailabilityZones_Call {
+	return &MockEC2Clienter_DescribeAvailabilityZones_Call{Call: _e.mock.On("DescribeAvailabilityZones",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DescribeAvailabilityZones_Call) Run(run func(ctx context.Context, params *ec2.DescribeAvailabilityZonesInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeAvailabilityZones_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DescribeAvailabilityZonesInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeAvailabilityZones_Call) Return(_a0 *ec2.DescribeAvailabilityZonesOutput, _a1 error) *MockEC2Clienter_DescribeAvailabilityZones_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeAvailabilityZones_Call) RunAndReturn(run func(context.Context, *ec2.DescribeAvailabilityZonesInput, ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error)) *MockEC2Clienter_DescribeAvailabilityZones_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DescribeImages provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) DescribeImages(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
 	_va := make([]interface{}, len(optFns))
