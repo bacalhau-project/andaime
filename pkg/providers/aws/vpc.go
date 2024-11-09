@@ -34,7 +34,7 @@ func (p *AWSProvider) CreateVPC(ctx context.Context) error {
 		},
 	}
 
-	vpcOutput, err := p.EC2Client.CreateVpc(ctx, createVpcInput)
+	vpcOutput, err := p.EC2Client.CreateVPC(ctx, createVpcInput)
 	if err != nil {
 		return fmt.Errorf("failed to create VPC: %w", err)
 	}
