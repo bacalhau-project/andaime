@@ -68,4 +68,9 @@ type EC2Clienter interface {
 		params *ec2.AssociateRouteTableInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.AssociateRouteTableOutput, error)
+	DescribeAvailabilityZones(
+		ctx context.Context,
+		params *ec2.DescribeAvailabilityZonesInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeAvailabilityZonesOutput, error)
 }
