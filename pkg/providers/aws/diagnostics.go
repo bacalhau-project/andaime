@@ -91,7 +91,7 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 	l.Info("\nService Access Check:")
 
 	// Check CloudFormation
-	_, err = p.cloudFormationClient.ListStacks(ctx, &cloudformation.ListStacksInput{})
+	_, err = p.CloudFormationClient.ListStacks(ctx, &cloudformation.ListStacksInput{})
 	l.Infof("  CloudFormation Access: %v", err == nil)
 	if err != nil {
 		l.Errorf("    Error: %v", err)
