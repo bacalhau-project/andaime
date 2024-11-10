@@ -43,6 +43,17 @@ func TestCreateInfrastructure(t *testing.T) {
 				VpcId: aws.String("vpc-12345"),
 			},
 		}, nil)
+	
+	// Mock VPC status check
+	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeVpcsOutput{
+			Vpcs: []types.Vpc{
+				{
+					VpcId: aws.String("vpc-12345"),
+					State: ec2_types.VpcStateAvailable,
+				},
+			},
+		}, nil)
 	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeAvailabilityZonesOutput{
 			AvailabilityZones: []types.AvailabilityZone{
