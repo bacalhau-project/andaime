@@ -41,6 +41,15 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 
 	p.VPCID = *vpcOutput.Vpc.VpcId
 
+	// Store VPC ID in viper config
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), p.VPCID)
+		if err := viper.WriteConfig(); err != nil {
+			l.Warnf("Failed to write VPC ID to config: %v", err)
+		}
+	}
+
 	// Create subnets
 	azs, err := p.EC2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{})
 	if err != nil {

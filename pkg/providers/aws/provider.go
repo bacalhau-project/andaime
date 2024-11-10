@@ -365,6 +365,32 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting destruction of AWS resources")
 
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		// Get VPC ID from config
+		vpcID := viper.GetString(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath))
+		if vpcID != "" {
+			l.Infof("Found VPC ID in config: %s", vpcID)
+			p.VPCID = vpcID
+
+			// TODO: Implement VPC deletion here
+			// This should clean up all VPC resources in the correct order:
+			// 1. EC2 instances
+			// 2. Security groups
+			// 3. Route table associations
+			// 4. Route tables
+			// 5. Internet gateway
+			// 6. Subnets
+			// 7. VPC itself
+		}
+
+		// Remove VPC ID from config
+		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), nil)
+		if err := viper.WriteConfig(); err != nil {
+			l.Warnf("Failed to remove VPC ID from config: %v", err)
+		}
+	}
+
 	// Clean up local state
 	p.VPCID = ""
 
