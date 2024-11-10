@@ -234,7 +234,10 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 			return backoff.Permanent(fmt.Errorf("failed to check if project exists: %w", err))
 		}
 		if !projectExists {
-			l.Debugf("Project %s does not exist, skipping resource polling", m.Deployment.GCP.ProjectID)
+			l.Debugf(
+				"Project %s does not exist, skipping resource polling",
+				m.Deployment.GCP.ProjectID,
+			)
 			return nil
 		}
 
@@ -307,9 +310,9 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 				if err != nil {
 					consecutiveErrors++
 					l.Warnf("Poll error (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err)
-					
+
 					if consecutiveErrors >= maxConsecutiveErrors {
-						errChan <- fmt.Errorf("polling failed after %d consecutive errors: %w", 
+						errChan <- fmt.Errorf("polling failed after %d consecutive errors: %w",
 							maxConsecutiveErrors, err)
 						return
 					}
@@ -694,10 +697,10 @@ func (p *GCPProvider) CreateAndConfigureVM(
 
 	// Wait for SSH connectivity
 	sshConfig := &sshutils.SSHConfig{
-		User:          p.SSHUser,
-		Host:          *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP,
-		Port:          p.SSHPort,
-		PrivateKeyPath: p.Config.SSHPrivateKeyPath,
+		User:               p.SSHUser,
+		Host:               *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP,
+		Port:               p.SSHPort,
+		PrivateKeyMaterial: []byte(m.Deployment.SSHPrivateKeyMaterial),
 	}
 
 	if err := sshConfig.WaitForSSH(ctx, 30, 10*time.Second); err != nil {
