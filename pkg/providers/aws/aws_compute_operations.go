@@ -10,6 +10,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -31,7 +32,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 		machine := machine // Create local copy for goroutine
 		g.Go(func() error {
 			// Create and configure the VM
-			if err := p.Client.CreateVM(ctx, machine); err != nil {
+			if err := p.EC2Client.CreateVM(ctx, machine); err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
 				mu.Unlock()
@@ -64,10 +65,10 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 	m := display.GetGlobalModelFunc()
 
 	sshConfig := &sshutils.SSHConfig{
-		User:       p.Config.SSHUser,
-		Host:       machine.GetPublicIP(),
-		Port:       p.Config.SSHPort,
-		KeyPath:    p.Config.SSHPrivateKeyPath,
+		User:          p.SSHUser,
+		Host:          machine.GetPublicIP(),
+		Port:          p.SSHPort,
+		PrivateKeyPath: p.SSHPrivateKeyPath,
 	}
 
 	for i := 0; i < MaxRetries; i++ {

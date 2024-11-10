@@ -694,10 +694,10 @@ func (p *GCPProvider) CreateAndConfigureVM(
 
 	// Wait for SSH connectivity
 	sshConfig := &sshutils.SSHConfig{
-		User:       p.SSHUser,
-		Host:       instance.NetworkInterfaces[0].AccessConfigs[0].NatIP,
-		Port:       p.SSHPort,
-		KeyPath:    p.SSHPrivateKeyPath,
+		User:          p.SSHUser,
+		Host:          *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP,
+		Port:          p.SSHPort,
+		PrivateKeyPath: p.Config.SSHPrivateKeyPath,
 	}
 
 	if err := sshConfig.WaitForSSH(ctx, 30, 10*time.Second); err != nil {
