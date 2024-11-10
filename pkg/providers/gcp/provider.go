@@ -703,19 +703,8 @@ func (p *GCPProvider) CreateAndConfigureVM(
 		PrivateKeyMaterial: []byte(m.Deployment.SSHPrivateKeyMaterial),
 	}
 
-	// Try to establish SSH connection with backoff
-	b := backoff.NewExponentialBackOff()
-	b.InitialInterval = 10 * time.Second
-	b.MaxInterval = 30 * time.Second
-	b.MaxElapsedTime = 5 * time.Minute
-
-	err = backoff.Retry(func() error {
-		if err := sshConfig.WaitForSSH(ctx, 30, 10*time.Second); err != nil {
-			l.Warnf("SSH connection attempt failed, retrying: %v", err)
-			return err
-		}
-		return nil
-	}, backoff.WithContext(b, ctx))
+	// Try to establish SSH connection
+	err = sshConfig.WaitForSSH(ctx, 30, 10*time.Second)
 
 	if err != nil {
 		return fmt.Errorf("failed to establish SSH connectivity: %w", err)
