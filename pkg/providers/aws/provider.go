@@ -257,6 +257,55 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	return nil
 }
 
+func (p *AWSProvider) waitForNetworkConnectivity(ctx context.Context) error {
+	l := logger.Get()
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 5 * time.Second
+	b.MaxInterval = 30 * time.Second
+	b.MaxElapsedTime = 5 * time.Minute
+
+	operation := func() error {
+		if err := ctx.Err(); err != nil {
+			return backoff.Permanent(err)
+		}
+
+		// Check if we can describe route tables (tests network connectivity)
+		input := &ec2.DescribeRouteTablesInput{
+			Filters: []types.Filter{
+				{
+					Name:   aws.String("vpc-id"),
+					Values: []string{p.VPCID},
+				},
+			},
+		}
+
+		result, err := p.EC2Client.DescribeRouteTables(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to describe route tables: %w", err)
+		}
+
+		// Verify route table has internet gateway route
+		hasInternetRoute := false
+		for _, rt := range result.RouteTables {
+			for _, route := range rt.Routes {
+				if route.GatewayId != nil && strings.HasPrefix(*route.GatewayId, "igw-") {
+					hasInternetRoute = true
+					break
+				}
+			}
+		}
+
+		if !hasInternetRoute {
+			return fmt.Errorf("internet gateway route not found")
+		}
+
+		l.Info("Network connectivity check passed")
+		return nil
+	}
+
+	return backoff.Retry(operation, backoff.WithContext(b, ctx))
+}
+
 func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 	l := logger.Get()
 	

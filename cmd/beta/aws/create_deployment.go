@@ -206,9 +206,13 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
 
-	// Give AWS a moment to propagate networking changes
+	// Wait for network propagation and connectivity
 	l.Info("Waiting for network propagation...")
-	time.Sleep(30 * time.Second)
+	if err := p.waitForNetworkConnectivity(ctx); err != nil {
+		return fmt.Errorf("failed waiting for network connectivity: %w", err)
+	}
+
+	l.Info("Network connectivity confirmed")
 
 	// Now provision the Bacalhau cluster
 	if err := awsProvider.ProvisionBacalhauCluster(ctx); err != nil {
