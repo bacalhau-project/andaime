@@ -3,6 +3,133 @@ package awsprovider
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+)
+
+// LiveEC2Client implements the EC2Clienter interface
+type LiveEC2Client struct {
+	client *ec2.Client
+}
+
+func (c *LiveEC2Client) WaitUntilInstanceRunning(
+	ctx context.Context,
+	params *ec2.DescribeInstancesInput,
+	optFns ...func(*ec2.Options),
+) error {
+	waiter := ec2.NewInstanceRunningWaiter(c.client)
+	return waiter.Wait(ctx, params, 5*time.Minute, optFns...)
+}
+
+func (c *LiveEC2Client) RunInstances(
+	ctx context.Context,
+	params *ec2.RunInstancesInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.RunInstancesOutput, error) {
+	return c.client.RunInstances(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DescribeInstances(
+	ctx context.Context,
+	params *ec2.DescribeInstancesInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeInstancesOutput, error) {
+	return c.client.DescribeInstances(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DescribeImages(
+	ctx context.Context,
+	params *ec2.DescribeImagesInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeImagesOutput, error) {
+	return c.client.DescribeImages(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateVpc(
+	ctx context.Context,
+	params *ec2.CreateVpcInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateVpcOutput, error) {
+	return c.client.CreateVpc(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateSubnet(
+	ctx context.Context,
+	params *ec2.CreateSubnetInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateSubnetOutput, error) {
+	return c.client.CreateSubnet(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateInternetGateway(
+	ctx context.Context,
+	params *ec2.CreateInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateInternetGatewayOutput, error) {
+	return c.client.CreateInternetGateway(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) AttachInternetGateway(
+	ctx context.Context,
+	params *ec2.AttachInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AttachInternetGatewayOutput, error) {
+	return c.client.AttachInternetGateway(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateRouteTable(
+	ctx context.Context,
+	params *ec2.CreateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateRouteTableOutput, error) {
+	return c.client.CreateRouteTable(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateRoute(
+	ctx context.Context,
+	params *ec2.CreateRouteInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateRouteOutput, error) {
+	return c.client.CreateRoute(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) AssociateRouteTable(
+	ctx context.Context,
+	params *ec2.AssociateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AssociateRouteTableOutput, error) {
+	return c.client.AssociateRouteTable(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DescribeAvailabilityZones(
+	ctx context.Context,
+	params *ec2.DescribeAvailabilityZonesInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeAvailabilityZonesOutput, error) {
+	return c.client.DescribeAvailabilityZones(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DescribeRouteTables(
+	ctx context.Context,
+	params *ec2.DescribeRouteTablesInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeRouteTablesOutput, error) {
+	return c.client.DescribeRouteTables(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DescribeVpcs(
+	ctx context.Context,
+	params *ec2.DescribeVpcsInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeVpcsOutput, error) {
+	return c.client.DescribeVpcs(ctx, params, optFns...)
+}
+
+import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
