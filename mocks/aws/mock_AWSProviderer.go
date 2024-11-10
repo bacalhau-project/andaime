@@ -71,12 +71,12 @@ func (_c *MockAWSProviderer_CreateDeployment_Call) RunAndReturn(run func(context
 	return _c
 }
 
-// CreateVPC provides a mock function with given fields: ctx
-func (_m *MockAWSProviderer) CreateVPC(ctx context.Context) error {
+// CreateVpc provides a mock function with given fields: ctx
+func (_m *MockAWSProviderer) CreateVpc(ctx context.Context) error {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateVPC")
+		panic("no return value specified for CreateVpc")
 	}
 
 	var r0 error
@@ -89,30 +89,30 @@ func (_m *MockAWSProviderer) CreateVPC(ctx context.Context) error {
 	return r0
 }
 
-// MockAWSProviderer_CreateVPC_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateVPC'
-type MockAWSProviderer_CreateVPC_Call struct {
+// MockAWSProviderer_CreateVpc_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateVpc'
+type MockAWSProviderer_CreateVpc_Call struct {
 	*mock.Call
 }
 
-// CreateVPC is a helper method to define mock.On call
+// CreateVpc is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockAWSProviderer_Expecter) CreateVPC(ctx interface{}) *MockAWSProviderer_CreateVPC_Call {
-	return &MockAWSProviderer_CreateVPC_Call{Call: _e.mock.On("CreateVPC", ctx)}
+func (_e *MockAWSProviderer_Expecter) CreateVpc(ctx interface{}) *MockAWSProviderer_CreateVpc_Call {
+	return &MockAWSProviderer_CreateVpc_Call{Call: _e.mock.On("CreateVpc", ctx)}
 }
 
-func (_c *MockAWSProviderer_CreateVPC_Call) Run(run func(ctx context.Context)) *MockAWSProviderer_CreateVPC_Call {
+func (_c *MockAWSProviderer_CreateVpc_Call) Run(run func(ctx context.Context)) *MockAWSProviderer_CreateVpc_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context))
 	})
 	return _c
 }
 
-func (_c *MockAWSProviderer_CreateVPC_Call) Return(_a0 error) *MockAWSProviderer_CreateVPC_Call {
+func (_c *MockAWSProviderer_CreateVpc_Call) Return(_a0 error) *MockAWSProviderer_CreateVpc_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockAWSProviderer_CreateVPC_Call) RunAndReturn(run func(context.Context) error) *MockAWSProviderer_CreateVPC_Call {
+func (_c *MockAWSProviderer_CreateVpc_Call) RunAndReturn(run func(context.Context) error) *MockAWSProviderer_CreateVpc_Call {
 	_c.Call.Return(run)
 	return _c
 }

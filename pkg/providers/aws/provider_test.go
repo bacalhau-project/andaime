@@ -37,7 +37,7 @@ func TestCreateInfrastructure(t *testing.T) {
 
 	mockEC2Client := new(mocks.MockEC2Clienter)
 	// Mock VPC creation
-	mockEC2Client.On("CreateVPC", mock.Anything, mock.Anything, mock.Anything).
+	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
 			Vpc: &types.Vpc{
 				VpcId: aws.String("vpc-12345"),
@@ -86,14 +86,14 @@ func TestCreateInfrastructure(t *testing.T) {
 	assert.NotEmpty(t, provider.VPCID)
 }
 
-func TestCreateVPC(t *testing.T) {
+func TestCreateVpc(t *testing.T) {
 	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	require.NoError(t, err)
 
 	mockEC2Client := new(mocks.MockEC2Clienter)
 
 	// Mock VPC creation
-	mockEC2Client.On("CreateVPC", mock.Anything, mock.Anything).
+	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
 			Vpc: &types.Vpc{
 				VpcId: aws.String("vpc-12345"),
@@ -142,7 +142,7 @@ func TestCreateVPC(t *testing.T) {
 
 	provider.SetEC2Client(mockEC2Client)
 
-	err = provider.CreateVPC(context.Background())
+	err = provider.CreateVpc(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, "vpc-12345", provider.VPCID)
 

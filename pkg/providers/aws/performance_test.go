@@ -21,10 +21,10 @@ func TestPerformanceCreateInfrastructure(t *testing.T) {
 
 	// Measure VPC creation time
 	start := time.Now()
-	err = provider.CreateVPC(ctx)
+	err = provider.CreateVpc(ctx)
 	duration := time.Since(start)
 	assert.NoError(t, err)
-	
+
 	// VPC creation should typically complete within 2 minutes
 	assert.Less(t, duration, 2*time.Minute)
 

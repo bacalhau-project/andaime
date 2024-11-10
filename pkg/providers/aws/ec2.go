@@ -65,8 +65,8 @@ func (c *LiveEC2Client) TerminateInstances(
 	return c.client.TerminateInstances(ctx, input, options...)
 }
 
-// CreateVPC creates a new VPC
-func (c *LiveEC2Client) CreateVPC(
+// CreateVpc creates a new VPC
+func (c *LiveEC2Client) CreateVpc(
 	ctx context.Context,
 	input *ec2.CreateVpcInput,
 	options ...func(*ec2.Options),
@@ -74,8 +74,8 @@ func (c *LiveEC2Client) CreateVPC(
 	return c.client.CreateVpc(ctx, input, options...)
 }
 
-// DescribeVPCs describes VPCs
-func (c *LiveEC2Client) DescribeVPCs(
+// DescribeVpcs describes VPCs
+func (c *LiveEC2Client) DescribeVpcs(
 	ctx context.Context,
 	input *ec2.DescribeVpcsInput,
 	options ...func(*ec2.Options),

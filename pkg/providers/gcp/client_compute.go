@@ -586,7 +586,10 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Update resource states for the VM
-	machine.SetMachineResourceState("compute.googleapis.com/Instance", models.ResourceStateSucceeded)
+	machine.SetMachineResourceState(
+		"compute.googleapis.com/Instance",
+		models.ResourceStateSucceeded,
+	)
 	machine.SetMachineResourceState("compute.googleapis.com/Network", models.ResourceStateSucceeded)
 	machine.SetMachineResourceState("compute.googleapis.com/Disk", models.ResourceStateSucceeded)
 	machine.SetMachineResourceState("compute.googleapis.com/IP", models.ResourceStateSucceeded)

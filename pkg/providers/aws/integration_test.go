@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +56,7 @@ func verifyVPCExists(ctx context.Context, provider *AWSProvider) (bool, error) {
 		VpcIds: []string{provider.VPCID},
 	}
 
-	result, err := provider.EC2Client.DescribeVPCs(ctx, input)
+	result, err := provider.EC2Client.DescribeVpcs(ctx, input)
 	if err != nil {
 		return false, err
 	}
@@ -70,8 +73,8 @@ func verifyNetworkConnectivity(ctx context.Context, provider *AWSProvider) (bool
 	input := &ec2.DescribeRouteTablesInput{
 		Filters: []types.Filter{
 			{
-				Name:   aws.String("vpc-id"),
-				Value:  []string{provider.VPCID},
+				Name:  aws.String("vpc-id"),
+				Value: []string{provider.VPCID},
 			},
 		},
 	}

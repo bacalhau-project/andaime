@@ -466,8 +466,8 @@ func (_c *MockEC2Clienter_CreateSubnet_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
-// CreateVPC provides a mock function with given fields: ctx, params, optFns
-func (_m *MockEC2Clienter) CreateVPC(ctx context.Context, params *ec2.CreateVpcInput, optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
+// CreateVpc provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput, optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
 	_va := make([]interface{}, len(optFns))
 	for _i := range optFns {
 		_va[_i] = optFns[_i]
@@ -478,7 +478,7 @@ func (_m *MockEC2Clienter) CreateVPC(ctx context.Context, params *ec2.CreateVpcI
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateVPC")
+		panic("no return value specified for CreateVpc")
 	}
 
 	var r0 *ec2.CreateVpcOutput
@@ -503,21 +503,21 @@ func (_m *MockEC2Clienter) CreateVPC(ctx context.Context, params *ec2.CreateVpcI
 	return r0, r1
 }
 
-// MockEC2Clienter_CreateVPC_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateVPC'
-type MockEC2Clienter_CreateVPC_Call struct {
+// MockEC2Clienter_CreateVpc_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateVpc'
+type MockEC2Clienter_CreateVpc_Call struct {
 	*mock.Call
 }
 
-// CreateVPC is a helper method to define mock.On call
+// CreateVpc is a helper method to define mock.On call
 //   - ctx context.Context
 //   - params *ec2.CreateVpcInput
 //   - optFns ...func(*ec2.Options)
-func (_e *MockEC2Clienter_Expecter) CreateVPC(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_CreateVPC_Call {
-	return &MockEC2Clienter_CreateVPC_Call{Call: _e.mock.On("CreateVPC",
+func (_e *MockEC2Clienter_Expecter) CreateVpc(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_CreateVpc_Call {
+	return &MockEC2Clienter_CreateVpc_Call{Call: _e.mock.On("CreateVpc",
 		append([]interface{}{ctx, params}, optFns...)...)}
 }
 
-func (_c *MockEC2Clienter_CreateVPC_Call) Run(run func(ctx context.Context, params *ec2.CreateVpcInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_CreateVPC_Call {
+func (_c *MockEC2Clienter_CreateVpc_Call) Run(run func(ctx context.Context, params *ec2.CreateVpcInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_CreateVpc_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]func(*ec2.Options), len(args)-2)
 		for i, a := range args[2:] {
@@ -530,12 +530,12 @@ func (_c *MockEC2Clienter_CreateVPC_Call) Run(run func(ctx context.Context, para
 	return _c
 }
 
-func (_c *MockEC2Clienter_CreateVPC_Call) Return(_a0 *ec2.CreateVpcOutput, _a1 error) *MockEC2Clienter_CreateVPC_Call {
+func (_c *MockEC2Clienter_CreateVpc_Call) Return(_a0 *ec2.CreateVpcOutput, _a1 error) *MockEC2Clienter_CreateVpc_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockEC2Clienter_CreateVPC_Call) RunAndReturn(run func(context.Context, *ec2.CreateVpcInput, ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error)) *MockEC2Clienter_CreateVPC_Call {
+func (_c *MockEC2Clienter_CreateVpc_Call) RunAndReturn(run func(context.Context, *ec2.CreateVpcInput, ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error)) *MockEC2Clienter_CreateVpc_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -762,8 +762,8 @@ func (_c *MockEC2Clienter_DescribeInstances_Call) RunAndReturn(run func(context.
 	return _c
 }
 
-// DescribeVPCs provides a mock function with given fields: ctx, params, optFns
-func (_m *MockEC2Clienter) DescribeVPCs(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
+// DescribeVpcs provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeVpcs(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
 	_va := make([]interface{}, len(optFns))
 	for _i := range optFns {
 		_va[_i] = optFns[_i]
@@ -774,7 +774,7 @@ func (_m *MockEC2Clienter) DescribeVPCs(ctx context.Context, params *ec2.Describ
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for DescribeVPCs")
+		panic("no return value specified for DescribeVpcs")
 	}
 
 	var r0 *ec2.DescribeVpcsOutput
@@ -799,21 +799,21 @@ func (_m *MockEC2Clienter) DescribeVPCs(ctx context.Context, params *ec2.Describ
 	return r0, r1
 }
 
-// MockEC2Clienter_DescribeVPCs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeVPCs'
-type MockEC2Clienter_DescribeVPCs_Call struct {
+// MockEC2Clienter_DescribeVpcs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeVpcs'
+type MockEC2Clienter_DescribeVpcs_Call struct {
 	*mock.Call
 }
 
-// DescribeVPCs is a helper method to define mock.On call
+// DescribeVpcs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - params *ec2.DescribeVpcsInput
 //   - optFns ...func(*ec2.Options)
-func (_e *MockEC2Clienter_Expecter) DescribeVPCs(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeVPCs_Call {
-	return &MockEC2Clienter_DescribeVPCs_Call{Call: _e.mock.On("DescribeVPCs",
+func (_e *MockEC2Clienter_Expecter) DescribeVpcs(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeVpcs_Call {
+	return &MockEC2Clienter_DescribeVpcs_Call{Call: _e.mock.On("DescribeVpcs",
 		append([]interface{}{ctx, params}, optFns...)...)}
 }
 
-func (_c *MockEC2Clienter_DescribeVPCs_Call) Run(run func(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeVPCs_Call {
+func (_c *MockEC2Clienter_DescribeVpcs_Call) Run(run func(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeVpcs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]func(*ec2.Options), len(args)-2)
 		for i, a := range args[2:] {
@@ -826,12 +826,12 @@ func (_c *MockEC2Clienter_DescribeVPCs_Call) Run(run func(ctx context.Context, p
 	return _c
 }
 
-func (_c *MockEC2Clienter_DescribeVPCs_Call) Return(_a0 *ec2.DescribeVpcsOutput, _a1 error) *MockEC2Clienter_DescribeVPCs_Call {
+func (_c *MockEC2Clienter_DescribeVpcs_Call) Return(_a0 *ec2.DescribeVpcsOutput, _a1 error) *MockEC2Clienter_DescribeVpcs_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockEC2Clienter_DescribeVPCs_Call) RunAndReturn(run func(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error)) *MockEC2Clienter_DescribeVPCs_Call {
+func (_c *MockEC2Clienter_DescribeVpcs_Call) RunAndReturn(run func(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error)) *MockEC2Clienter_DescribeVpcs_Call {
 	_c.Call.Return(run)
 	return _c
 }

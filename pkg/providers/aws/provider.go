@@ -221,6 +221,7 @@ func isStackFailed(status types.StackStatus) bool {
 		status == types.StackStatusUpdateFailed ||
 		isStackInRollback(status)
 }
+
 // CreateInfrastructure creates the necessary AWS infrastructure including VPC, subnets,
 // internet gateway, and routing tables. This is the main entry point for setting up
 // the AWS networking infrastructure required for the deployment.
@@ -241,7 +242,7 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l.Info("Creating AWS infrastructure...")
 
 	// Create VPC and networking components
-	if err := p.CreateVPC(ctx); err != nil {
+	if err := p.CreateVpc(ctx); err != nil {
 		return fmt.Errorf("failed to create VPC: %w", err)
 	}
 

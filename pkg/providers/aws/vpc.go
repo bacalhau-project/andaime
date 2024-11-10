@@ -10,7 +10,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 )
 
-func (p *AWSProvider) CreateVPC(ctx context.Context) error {
+func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating VPC...")
 
@@ -34,7 +34,7 @@ func (p *AWSProvider) CreateVPC(ctx context.Context) error {
 		},
 	}
 
-	vpcOutput, err := p.EC2Client.CreateVPC(ctx, createVpcInput)
+	vpcOutput, err := p.EC2Client.CreateVpc(ctx, createVpcInput)
 	if err != nil {
 		return fmt.Errorf("failed to create VPC: %w", err)
 	}

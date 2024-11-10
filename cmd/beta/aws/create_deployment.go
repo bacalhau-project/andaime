@@ -56,7 +56,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	// Ensure EC2 client is initialized
 	if awsProvider.EC2Client == nil {
 		ec2Client := ec2.NewFromConfig(*awsProvider.Config)
-		awsProvider.SetEC2Client(&awsprovider.LiveEC2Client{Client: ec2Client})
+		awsProvider.SetEC2Client(ec2Client)
 	}
 
 	m := display.NewDisplayModel(deployment)
@@ -251,4 +251,3 @@ func writeConfig() {
 		}
 	}
 }
-

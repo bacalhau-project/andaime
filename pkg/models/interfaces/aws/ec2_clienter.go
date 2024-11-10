@@ -33,12 +33,12 @@ type EC2Clienter interface {
 		params *ec2.CreateSubnetInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.CreateSubnetOutput, error)
-	CreateVPC(
+	CreateVpc(
 		ctx context.Context,
 		params *ec2.CreateVpcInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.CreateVpcOutput, error)
-	DescribeVPCs(
+	DescribeVpcs(
 		ctx context.Context,
 		params *ec2.DescribeVpcsInput,
 		optFns ...func(*ec2.Options),
