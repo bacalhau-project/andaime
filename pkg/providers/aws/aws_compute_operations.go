@@ -145,6 +145,14 @@ func (c *LiveEC2Client) DescribeRouteTables(
 	return c.client.DescribeRouteTables(ctx, params, optFns...)
 }
 
+func (c *LiveEC2Client) DeleteSecurityGroup(
+	ctx context.Context,
+	params *ec2.DeleteSecurityGroupInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DeleteSecurityGroupOutput, error) {
+	return c.client.DeleteSecurityGroup(ctx, params, optFns...)
+}
+
 func (c *LiveEC2Client) DescribeVpcs(
 	ctx context.Context,
 	params *ec2.DescribeVpcsInput,

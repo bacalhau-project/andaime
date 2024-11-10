@@ -83,4 +83,9 @@ type EC2Clienter interface {
 		params *ec2.DescribeRouteTablesInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeRouteTablesOutput, error)
+	DeleteSecurityGroup(
+		ctx context.Context,
+		params *ec2.DeleteSecurityGroupInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteSecurityGroupOutput, error)
 }
