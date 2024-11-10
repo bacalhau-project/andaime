@@ -201,10 +201,16 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 		return fmt.Errorf("failed to bootstrap environment: %w", err)
 	}
 
+	// Create infrastructure and wait for it to be ready
 	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
 		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
 
+	// Give AWS a moment to propagate networking changes
+	l.Info("Waiting for network propagation...")
+	time.Sleep(30 * time.Second)
+
+	// Now provision the Bacalhau cluster
 	if err := awsProvider.ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
 	}

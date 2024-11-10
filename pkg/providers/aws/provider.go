@@ -246,8 +246,43 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 		return fmt.Errorf("failed to create VPC: %w", err)
 	}
 
+	// Wait for VPC to be available
+	l.Info("Waiting for VPC to be available...")
+	if err := p.waitForVPCAvailable(ctx); err != nil {
+		return fmt.Errorf("failed waiting for VPC: %w", err)
+	}
+
 	l.Info("Infrastructure created successfully")
 	return nil
+}
+
+func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
+	l := logger.Get()
+	retries := 30 // 5 minutes total with 10 second intervals
+	for i := 0; i < retries; i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		input := &ec2.DescribeVpcsInput{
+			VpcIds: []string{p.VPCID},
+		}
+
+		result, err := p.EC2Client.DescribeVpcs(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to describe VPC: %w", err)
+		}
+
+		if len(result.Vpcs) > 0 && result.Vpcs[0].State == types.VpcStateAvailable {
+			l.Info("VPC is now available")
+			return nil
+		}
+
+		l.Debugf("Waiting for VPC to be available (attempt %d/%d)...", i+1, retries)
+		time.Sleep(10 * time.Second)
+	}
+
+	return fmt.Errorf("timeout waiting for VPC to become available")
 }
 
 // Destroy cleans up all AWS resources created for this deployment.
