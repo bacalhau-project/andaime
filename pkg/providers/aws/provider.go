@@ -31,15 +31,15 @@ const (
 )
 
 type AWSProvider struct {
-	AccountID        string
-	Config           *aws.Config
-	Region           string
-	ClusterDeployer  common_interface.ClusterDeployerer
-	UpdateQueue      chan display.UpdateAction
-	VPCID            string
-	SubnetID         string
-	SecurityGroupID  string
-	EC2Client        aws_interface.EC2Clienter
+	AccountID       string
+	Config          *aws.Config
+	Region          string
+	ClusterDeployer common_interface.ClusterDeployerer
+	UpdateQueue     chan display.UpdateAction
+	VPCID           string
+	SubnetID        string
+	SecurityGroupID string
+	EC2Client       aws_interface.EC2Clienter
 }
 
 func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
