@@ -32,25 +32,6 @@ func NewEC2Client(ctx context.Context) (EC2Clienter, error) {
 	return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
 }
 
-func (c *LiveEC2Client) WaitUntilInstanceRunning(
-	ctx context.Context,
-	params *ec2.DescribeInstancesInput,
-	optFns ...func(*ec2.Options),
-) error {
-	waiter := ec2.NewInstanceRunningWaiter(c.client)
-	// Convert ec2.Options to InstanceRunningWaiterOptions
-	waiterOptFns := make([]func(*ec2.InstanceRunningWaiterOptions), len(optFns))
-	for i, fn := range optFns {
-		optFn := fn
-		waiterOptFns[i] = func(w *ec2.InstanceRunningWaiterOptions) {
-			opt := &ec2.Options{}
-			optFn(opt)
-			w.APIOptions = opt.APIOptions
-		}
-	}
-	return waiter.Wait(ctx, params, 5*time.Minute, waiterOptFns...)
-}
-
 func (c *LiveEC2Client) RunInstances(
 	ctx context.Context,
 	params *ec2.RunInstancesInput,
@@ -245,7 +226,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 			waiterInput := &ec2.DescribeInstancesInput{
 				InstanceIds: []string{*runResult.Instances[0].InstanceId},
 			}
-			if err := p.EC2Client.WaitUntilInstanceRunning(ctx, waiterInput); err != nil {
+			if err := p.WaitUntilInstanceRunning(ctx, waiterInput); err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
 				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
@@ -351,7 +332,7 @@ func (p *AWSProvider) CreateVM(
 	waiterInput := &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*instance.Instances[0].InstanceId},
 	}
-	err = p.EC2Client.WaitUntilInstanceRunning(ctx, waiterInput)
+	err = p.WaitUntilInstanceRunning(ctx, waiterInput)
 	if err != nil {
 		l.Error("Failed waiting for instance to be running",
 			zap.String("machine", machine.GetName()),
