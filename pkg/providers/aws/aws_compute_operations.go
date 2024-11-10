@@ -42,7 +42,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 			// Create and configure the VM
 			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
 				ImageId:      aws.String(machine.GetImageID()),
-				InstanceType: types.InstanceType(machine.GetVMSize()),
+				InstanceType: types.InstanceType(machine.GetType().ResourceString),
 				MinCount:     aws.Int32(1),
 				MaxCount:     aws.Int32(1),
 				KeyName:      aws.String(m.Deployment.GetSSHKeyName()),

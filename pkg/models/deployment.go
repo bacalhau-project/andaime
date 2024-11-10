@@ -89,6 +89,7 @@ type Deployment struct {
 	SSHPublicKeyMaterial   string
 	SSHPrivateKeyPath      string
 	SSHPrivateKeyMaterial  string
+	SSHKeyName             string
 	OrchestratorIP         string
 	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
@@ -268,6 +269,12 @@ func (d *Deployment) GetProjectID() string {
 		panic("project ID is not set in the deployment")
 	}
 	return d.projectID
+}
+
+func (d *Deployment) GetSSHKeyName() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.SSHKeyName
 }
 
 func (d *Deployment) SetProjectID(projectID string) {
