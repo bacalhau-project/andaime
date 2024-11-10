@@ -214,6 +214,37 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 
 	l.Info("Network connectivity confirmed")
 
+	// Wait for all VMs to be accessible via SSH
+	l.Info("Waiting for all VMs to be accessible via SSH...")
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
+	for _, machine := range m.Deployment.GetMachines() {
+		if machine.GetPublicIP() == "" {
+			return fmt.Errorf("machine %s has no public IP", machine.GetName())
+		}
+
+		sshConfig, err := sshutils.NewSSHConfigFunc(
+			machine.GetPublicIP(),
+			machine.GetSSHPort(),
+			machine.GetSSHUser(),
+			machine.GetSSHPrivateKeyPath(),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create SSH config for machine %s: %w", machine.GetName(), err)
+		}
+
+		if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
+			return fmt.Errorf("failed to establish SSH connection to machine %s: %w", machine.GetName(), err)
+		}
+
+		l.Infof("Machine %s is accessible via SSH", machine.GetName())
+	}
+
+	l.Info("All VMs are accessible via SSH")
+
 	// Now provision the Bacalhau cluster
 	if err := awsProvider.ProvisionBacalhauCluster(ctx); err != nil {
 		return fmt.Errorf("failed to provision Bacalhau cluster: %w", err)
