@@ -22,6 +22,15 @@ type LiveEC2Client struct {
 	client *ec2.Client
 }
 
+// NewEC2Client creates a new EC2 client
+func NewEC2Client(ctx context.Context) (awsinterfaces.EC2Clienter, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
+}
+
 func (c *LiveEC2Client) WaitUntilInstanceRunning(
 	ctx context.Context,
 	params *ec2.DescribeInstancesInput,
