@@ -130,7 +130,10 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 }
 
 // CreateVM creates a new EC2 instance with the specified configuration
-func (p *AWSProvider) CreateVM(ctx context.Context, machine models.Machiner) (*ec2.Instance, error) {
+func (p *AWSProvider) CreateVM(
+	ctx context.Context,
+	machine models.Machiner,
+) (*ec2.Instance, error) {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
@@ -143,9 +146,9 @@ func (p *AWSProvider) CreateVM(ctx context.Context, machine models.Machiner) (*e
 	))
 
 	// Create the instance
-	instance, err := p.EC2Client.CreateInstance(ctx, &ec2.RunInstancesInput{
+	instance, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
 		ImageId:      aws.String(machine.GetImageID()),
-		InstanceType: aws.String(machine.GetInstanceType()),
+		InstanceType: types.InstanceType(machine.GetType().ResourceString),
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
 		KeyName:      aws.String(m.Deployment.SSHKeyName),
@@ -176,7 +179,7 @@ func (p *AWSProvider) CreateVM(ctx context.Context, machine models.Machiner) (*e
 	})
 
 	if err != nil {
-		l.Error("Failed to create EC2 instance", 
+		l.Error("Failed to create EC2 instance",
 			zap.String("machine", machine.GetName()),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to create EC2 instance: %w", err)
