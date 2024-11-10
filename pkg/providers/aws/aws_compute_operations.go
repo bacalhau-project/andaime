@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -37,7 +40,37 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
 
 			// Create and configure the VM
-			instance, err := p.CreateVM(ctx, machine)
+			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
+				ImageId:      aws.String(machine.GetImageID()),
+				InstanceType: types.InstanceType(machine.GetVMSize()),
+				MinCount:     aws.Int32(1),
+				MaxCount:     aws.Int32(1),
+				KeyName:      aws.String(m.Deployment.GetSSHKeyName()),
+				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
+					{
+						DeviceIndex:              aws.Int32(0),
+						AssociatePublicIpAddress: aws.Bool(true),
+						DeleteOnTermination:      aws.Bool(true),
+						SubnetId:                 aws.String(p.SubnetID),
+						Groups:                   []string{p.SecurityGroupID},
+					},
+				},
+				TagSpecifications: []types.TagSpecification{
+					{
+						ResourceType: types.ResourceTypeInstance,
+						Tags: []types.Tag{
+							{
+								Key:   aws.String("Name"),
+								Value: aws.String(machine.GetName()),
+							},
+							{
+								Key:   aws.String("Project"),
+								Value: aws.String("andaime"),
+							},
+						},
+					},
+				},
+			})
 			if err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
@@ -46,7 +79,29 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 				return fmt.Errorf("failed to create VM %s: %w", machine.GetName(), err)
 			}
 
-			// Update machine with instance information
+			// Wait for instance to be running
+			waiterInput := &ec2.DescribeInstancesInput{
+				InstanceIds: []string{*runResult.Instances[0].InstanceId},
+			}
+			if err := p.EC2Client.WaitUntilInstanceRunning(ctx, waiterInput); err != nil {
+				mu.Lock()
+				machine.SetFailed(true)
+				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
+				mu.Unlock()
+				return fmt.Errorf("failed waiting for instance to be running: %w", err)
+			}
+
+			// Get instance details
+			describeResult, err := p.EC2Client.DescribeInstances(ctx, waiterInput)
+			if err != nil {
+				mu.Lock()
+				machine.SetFailed(true)
+				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
+				mu.Unlock()
+				return fmt.Errorf("failed to describe instance: %w", err)
+			}
+
+			instance := describeResult.Reservations[0].Instances[0]
 			machine.SetMachineResourceState("Instance", models.ResourceStateSucceeded)
 			machine.SetPublicIP(*instance.PublicIpAddress)
 			machine.SetPrivateIP(*instance.PrivateIpAddress)
