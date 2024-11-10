@@ -32,7 +32,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 		machine := machine // Create local copy for goroutine
 		g.Go(func() error {
 			// Create and configure the VM
-			if err := p.EC2Client.CreateVM(ctx, machine); err != nil {
+			if err := p.EC2Client.CreateInstance(ctx, machine); err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
 				mu.Unlock()
@@ -65,10 +65,10 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 	m := display.GetGlobalModelFunc()
 
 	sshConfig := &sshutils.SSHConfig{
-		User:          p.SSHUser,
-		Host:          machine.GetPublicIP(),
-		Port:          p.SSHPort,
-		PrivateKeyPath: p.SSHPrivateKeyPath,
+		User:               m.Deployment.SSHUser,
+		Host:               machine.GetPublicIP(),
+		Port:               m.Deployment.SSHPort,
+		PrivateKeyMaterial: []byte(m.Deployment.SSHPrivateKeyMaterial),
 	}
 
 	for i := 0; i < MaxRetries; i++ {
@@ -83,7 +83,7 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 				return nil
 			}
 
-			l.Debugf("Waiting for SSH on VM %s (attempt %d/%d): %v", 
+			l.Debugf("Waiting for SSH on VM %s (attempt %d/%d): %v",
 				machine.GetName(), i+1, MaxRetries, err)
 			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
 
@@ -99,5 +99,9 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 		}
 	}
 
-	return fmt.Errorf("SSH connectivity timeout after %d attempts for VM %s", MaxRetries, machine.GetName())
+	return fmt.Errorf(
+		"SSH connectivity timeout after %d attempts for VM %s",
+		MaxRetries,
+		machine.GetName(),
+	)
 }
