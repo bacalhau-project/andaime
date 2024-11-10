@@ -31,22 +31,37 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	for _, machine := range m.Deployment.GetMachines() {
 		machine := machine // Create local copy for goroutine
 		g.Go(func() error {
+			// Update initial machine state
+			machine.SetMachineResourceState("Instance", models.ResourceStatePending)
+			machine.SetMachineResourceState("Network", models.ResourceStatePending)
+			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
+
 			// Create and configure the VM
-			if err := p.EC2Client.CreateInstance(ctx, machine); err != nil {
+			instance, err := p.CreateVM(ctx, machine)
+			if err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
+				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
 				mu.Unlock()
 				return fmt.Errorf("failed to create VM %s: %w", machine.GetName(), err)
 			}
+
+			// Update machine with instance information
+			machine.SetMachineResourceState("Instance", models.ResourceStateSucceeded)
+			machine.SetPublicIP(*instance.PublicIpAddress)
+			machine.SetPrivateIP(*instance.PrivateIpAddress)
 
 			// Wait for SSH connectivity
 			if err := p.waitForSSHConnectivity(ctx, machine); err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
+				machine.SetMachineResourceState("SSH", models.ResourceStateFailed)
 				mu.Unlock()
 				return fmt.Errorf("SSH connectivity failed for VM %s: %w", machine.GetName(), err)
 			}
 
+			machine.SetMachineResourceState("SSH", models.ResourceStateSucceeded)
+			machine.SetMachineResourceState("Network", models.ResourceStateSucceeded)
 			return nil
 		})
 	}
@@ -57,6 +72,80 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// CreateVM creates a new EC2 instance with the specified configuration
+func (p *AWSProvider) CreateVM(ctx context.Context, machine models.Machiner) (*ec2.Instance, error) {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+
+	// Update status for creating instance
+	m.UpdateStatus(models.NewDisplayStatusWithText(
+		machine.GetName(),
+		models.AWSResourceTypeInstance,
+		models.ResourceStatePending,
+		"Creating EC2 instance",
+	))
+
+	// Create the instance
+	instance, err := p.EC2Client.CreateInstance(ctx, &ec2.RunInstancesInput{
+		ImageId:      aws.String(machine.GetImageID()),
+		InstanceType: aws.String(machine.GetInstanceType()),
+		MinCount:     aws.Int32(1),
+		MaxCount:     aws.Int32(1),
+		KeyName:      aws.String(m.Deployment.SSHKeyName),
+		NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
+			{
+				DeviceIndex:              aws.Int32(0),
+				AssociatePublicIpAddress: aws.Bool(true),
+				DeleteOnTermination:      aws.Bool(true),
+				SubnetId:                 aws.String(p.SubnetID),
+				Groups:                   []string{p.SecurityGroupID},
+			},
+		},
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeInstance,
+				Tags: []types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(machine.GetName()),
+					},
+					{
+						Key:   aws.String("Project"),
+						Value: aws.String("andaime"),
+					},
+				},
+			},
+		},
+	})
+
+	if err != nil {
+		l.Error("Failed to create EC2 instance", 
+			zap.String("machine", machine.GetName()),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to create EC2 instance: %w", err)
+	}
+
+	// Wait for instance to be running
+	err = p.EC2Client.WaitUntilInstanceRunning(ctx, instance.InstanceId)
+	if err != nil {
+		l.Error("Failed waiting for instance to be running",
+			zap.String("machine", machine.GetName()),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed waiting for instance to be running: %w", err)
+	}
+
+	// Get instance details
+	describeInstance, err := p.EC2Client.DescribeInstance(ctx, instance.InstanceId)
+	if err != nil {
+		l.Error("Failed to describe instance",
+			zap.String("machine", machine.GetName()),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to describe instance: %w", err)
+	}
+
+	return describeInstance, nil
 }
 
 // waitForSSHConnectivity polls a VM until SSH is available or max retries are reached
