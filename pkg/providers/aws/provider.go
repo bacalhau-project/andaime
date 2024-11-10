@@ -273,7 +273,7 @@ func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 			return fmt.Errorf("failed to describe VPC: %w", err)
 		}
 
-		if len(result.Vpcs) > 0 && result.Vpcs[0].State == types.VpcStateAvailable {
+		if len(result.Vpcs) > 0 && result.Vpcs[0].State == ec2_types.VpcStateAvailable {
 			l.Info("VPC is now available")
 			return nil
 		}
