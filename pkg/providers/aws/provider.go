@@ -603,6 +603,55 @@ func (p *AWSProvider) FinalizeDeployment(ctx context.Context) error {
 	return nil
 }
 
+// WaitUntilInstanceRunning waits for an EC2 instance to reach the running state
+func (p *AWSProvider) WaitUntilInstanceRunning(
+	ctx context.Context,
+	input *ec2.DescribeInstancesInput,
+) error {
+	l := logger.Get()
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 5 * time.Second
+	b.MaxInterval = 30 * time.Second
+	b.MaxElapsedTime = 10 * time.Minute
+
+	operation := func() error {
+		if err := ctx.Err(); err != nil {
+			return backoff.Permanent(err)
+		}
+
+		result, err := p.EC2Client.DescribeInstances(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to describe instances: %w", err)
+		}
+
+		if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
+			return fmt.Errorf("no instances found")
+		}
+
+		instance := result.Reservations[0].Instances[0]
+		if instance.State == nil {
+			return fmt.Errorf("instance state is nil")
+		}
+
+		switch instance.State.Name {
+		case ec2_types.InstanceStateNameRunning:
+			return nil
+		case ec2_types.InstanceStateNameTerminated, ec2_types.InstanceStateNameShuttingDown:
+			return backoff.Permanent(fmt.Errorf("instance terminated or shutting down"))
+		default:
+			return fmt.Errorf("instance not yet running, current state: %s", instance.State.Name)
+		}
+	}
+
+	err := backoff.Retry(operation, backoff.WithContext(b, ctx))
+	if err != nil {
+		return fmt.Errorf("timeout waiting for instance to reach running state: %w", err)
+	}
+
+	l.Info("Instance is now running")
+	return nil
+}
+
 func (p *AWSProvider) SetEC2Client(client aws_interface.EC2Clienter) {
 	p.EC2Client = client
 }
