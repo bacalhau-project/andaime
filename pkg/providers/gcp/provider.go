@@ -692,6 +692,18 @@ func (p *GCPProvider) CreateAndConfigureVM(
 		return fmt.Errorf("failed to create VM instance: %w", err)
 	}
 
+	// Wait for SSH connectivity
+	sshConfig := &sshutils.SSHConfig{
+		User:          p.SSHUser,
+		Host:          publicIPAddress,
+		Port:          p.SSHPort,
+		PrivateKeyPath: p.SSHPrivateKeyPath,
+	}
+
+	if err := sshConfig.WaitForSSH(ctx); err != nil {
+		return fmt.Errorf("failed to establish SSH connectivity: %w", err)
+	}
+
 	var publicIPAddress string
 	var privateIPAddress string
 
