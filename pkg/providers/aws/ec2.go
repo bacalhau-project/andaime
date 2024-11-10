@@ -114,3 +114,11 @@ func (c *LiveEC2Client) DeleteVpc(
 ) (*ec2.DeleteVpcOutput, error) {
 	return c.client.DeleteVpc(ctx, params, optFns...)
 }
+
+func (c *LiveEC2Client) CreateSecurityGroup(
+	ctx context.Context,
+	params *ec2.CreateSecurityGroupInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateSecurityGroupOutput, error) {
+	return c.client.CreateSecurityGroup(ctx, params, optFns...)
+}
