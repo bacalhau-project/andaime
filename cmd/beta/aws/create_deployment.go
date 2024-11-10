@@ -208,7 +208,7 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 
 	// Wait for network propagation and connectivity
 	l.Info("Waiting for network propagation...")
-	if err := p.waitForNetworkConnectivity(ctx); err != nil {
+	if err := awsProvider.WaitForNetworkConnectivity(ctx); err != nil {
 		return fmt.Errorf("failed waiting for network connectivity: %w", err)
 	}
 
