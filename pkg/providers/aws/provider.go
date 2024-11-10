@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws" 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
@@ -20,6 +19,7 @@ import (
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 )
 
@@ -257,7 +257,7 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	return nil
 }
 
-func (p *AWSProvider) waitForNetworkConnectivity(ctx context.Context) error {
+func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 	l := logger.Get()
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = 5 * time.Second
@@ -308,7 +308,7 @@ func (p *AWSProvider) waitForNetworkConnectivity(ctx context.Context) error {
 
 func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 	l := logger.Get()
-	
+
 	b := backoff.NewExponentialBackOff()
 	b.MaxElapsedTime = 5 * time.Minute
 	b.InitialInterval = 2 * time.Second
