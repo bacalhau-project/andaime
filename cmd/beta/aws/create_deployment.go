@@ -11,6 +11,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -216,7 +217,6 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 
 	// Wait for all VMs to be accessible via SSH
 	l.Info("Waiting for all VMs to be accessible via SSH...")
-	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("display model or deployment is nil")
 	}
