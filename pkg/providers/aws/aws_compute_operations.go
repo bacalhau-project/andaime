@@ -38,7 +38,17 @@ func (c *LiveEC2Client) WaitUntilInstanceRunning(
 	optFns ...func(*ec2.Options),
 ) error {
 	waiter := ec2.NewInstanceRunningWaiter(c.client)
-	return waiter.Wait(ctx, params, 5*time.Minute, optFns...)
+	// Convert ec2.Options to InstanceRunningWaiterOptions
+	waiterOptFns := make([]func(*ec2.InstanceRunningWaiterOptions), len(optFns))
+	for i, fn := range optFns {
+		optFn := fn
+		waiterOptFns[i] = func(w *ec2.InstanceRunningWaiterOptions) {
+			opt := &ec2.Options{}
+			optFn(opt)
+			w.APIOptions = opt.APIOptions
+		}
+	}
+	return waiter.Wait(ctx, params, 5*time.Minute, waiterOptFns...)
 }
 
 func (c *LiveEC2Client) RunInstances(
@@ -151,6 +161,14 @@ func (c *LiveEC2Client) DeleteSecurityGroup(
 	optFns ...func(*ec2.Options),
 ) (*ec2.DeleteSecurityGroupOutput, error) {
 	return c.client.DeleteSecurityGroup(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DeleteSubnet(
+	ctx context.Context,
+	params *ec2.DeleteSubnetInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DeleteSubnetOutput, error) {
+	return c.client.DeleteSubnet(ctx, params, optFns...)
 }
 
 func (c *LiveEC2Client) DescribeVpcs(
@@ -350,7 +368,7 @@ func (p *AWSProvider) CreateVM(
 		return nil, fmt.Errorf("failed to describe instance: %w", err)
 	}
 
-	return describeResult.Reservations[0].Instances[0], nil
+	return &describeResult.Reservations[0].Instances[0], nil
 }
 
 // waitForSSHConnectivity polls a VM until SSH is available or max retries are reached

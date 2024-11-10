@@ -88,4 +88,9 @@ type EC2Clienter interface {
 		params *ec2.DeleteSecurityGroupInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DeleteSecurityGroupOutput, error)
+	DeleteSubnet(
+		ctx context.Context,
+		params *ec2.DeleteSubnetInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteSubnetOutput, error)
 }
