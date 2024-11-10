@@ -271,7 +271,7 @@ func (p *AWSProvider) waitForNetworkConnectivity(ctx context.Context) error {
 
 		// Check if we can describe route tables (tests network connectivity)
 		input := &ec2.DescribeRouteTablesInput{
-			Filters: []types.Filter{
+			Filters: []ec2_types.Filter{
 				{
 					Name:   aws.String("vpc-id"),
 					Values: []string{p.VPCID},
