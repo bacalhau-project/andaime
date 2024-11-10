@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws" 
+	"github.com/cenkalti/backoff/v4"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
@@ -258,10 +259,15 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 
 func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 	l := logger.Get()
-	retries := 30 // 5 minutes total with 10 second intervals
-	for i := 0; i < retries; i++ {
+	
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 5 * time.Minute
+	b.InitialInterval = 2 * time.Second
+	b.MaxInterval = 30 * time.Second
+
+	operation := func() error {
 		if err := ctx.Err(); err != nil {
-			return err
+			return backoff.Permanent(err)
 		}
 
 		input := &ec2.DescribeVpcsInput{
@@ -278,11 +284,15 @@ func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 			return nil
 		}
 
-		l.Debugf("Waiting for VPC to be available (attempt %d/%d)...", i+1, retries)
-		time.Sleep(10 * time.Second)
+		return fmt.Errorf("VPC not yet available")
 	}
 
-	return fmt.Errorf("timeout waiting for VPC to become available")
+	err := backoff.Retry(operation, backoff.WithContext(b, ctx))
+	if err != nil {
+		return fmt.Errorf("timeout waiting for VPC to become available: %w", err)
+	}
+
+	return nil
 }
 
 // Destroy cleans up all AWS resources created for this deployment.
