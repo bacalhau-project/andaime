@@ -31,7 +31,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 		machine := machine // Create local copy for goroutine
 		g.Go(func() error {
 			// Create and configure the VM
-			if err := p.CreateAndConfigureVM(ctx, machine); err != nil {
+			if err := p.Client.CreateVM(ctx, machine); err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
 				mu.Unlock()
@@ -51,7 +51,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	}
 
 	if err := g.Wait(); err != nil {
-		l.Error("Failed to deploy VMs in parallel: ", err)
+		l.Error("Failed to deploy VMs in parallel", zap.Error(err))
 		return err
 	}
 
@@ -64,10 +64,10 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 	m := display.GetGlobalModelFunc()
 
 	sshConfig := &sshutils.SSHConfig{
-		User:          p.SSHUser,
-		Host:          machine.GetPublicIP(),
-		Port:          p.SSHPort,
-		PrivateKeyPath: p.SSHPrivateKeyPath,
+		User:       p.Config.SSHUser,
+		Host:       machine.GetPublicIP(),
+		Port:       p.Config.SSHPort,
+		KeyPath:    p.Config.SSHPrivateKeyPath,
 	}
 
 	for i := 0; i < MaxRetries; i++ {
@@ -75,7 +75,7 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			err := sshConfig.WaitForSSH(ctx)
+			err := sshConfig.WaitForSSH(ctx, MaxRetries, SSHRetryInterval)
 			if err == nil {
 				l.Infof("SSH connectivity established for VM %s", machine.GetName())
 				machine.SetMachineResourceState("SSH", models.ResourceStateSucceeded)
