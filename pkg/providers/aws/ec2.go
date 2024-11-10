@@ -138,6 +138,15 @@ func (c *LiveEC2Client) AssociateRouteTable(
 }
 
 // DescribeAvailabilityZones describes availability zones
+// DescribeRouteTables describes route tables
+func (c *LiveEC2Client) DescribeRouteTables(
+	ctx context.Context,
+	input *ec2.DescribeRouteTablesInput,
+	options ...func(*ec2.Options),
+) (*ec2.DescribeRouteTablesOutput, error) {
+	return c.client.DescribeRouteTables(ctx, input, options...)
+}
+
 func (c *LiveEC2Client) DescribeAvailabilityZones(
 	ctx context.Context,
 	input *ec2.DescribeAvailabilityZonesInput,
