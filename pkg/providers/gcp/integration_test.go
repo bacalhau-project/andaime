@@ -346,7 +346,14 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(3)
+	// Set up SSH mock expectations before running the test
+	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			// Simulate a small delay to mimic real SSH behavior
+			time.Sleep(100 * time.Millisecond)
+		}).
+		Return(nil).
+		Times(3)
 
 	s.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {

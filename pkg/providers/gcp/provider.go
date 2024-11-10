@@ -703,9 +703,11 @@ func (p *GCPProvider) CreateAndConfigureVM(
 		PrivateKeyMaterial: []byte(m.Deployment.SSHPrivateKeyMaterial),
 	}
 
-	// Try to establish SSH connection
-	err = sshConfig.WaitForSSH(ctx, 30, 10*time.Second)
+	// Try to establish SSH connection with timeout
+	sshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
+	err = sshConfig.WaitForSSH(sshCtx, 30, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to establish SSH connectivity: %w", err)
 	}
