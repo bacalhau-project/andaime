@@ -250,7 +250,7 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 		}
 	}
 
-	if err := awsProvider.DeployVMsInParallel(ctx); err != nil {
+	if err := awsProvider.DeployVMsInParallel(ctx, regionAMIs); err != nil {
 		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
 	}
 
