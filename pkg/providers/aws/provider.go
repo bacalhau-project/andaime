@@ -160,10 +160,9 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 					m.QueueUpdate(display.UpdateAction{
 						MachineName: machine.GetName(),
 						UpdateData: display.UpdateData{
-							UpdateType: display.UpdateTypeResource,
-							ResourceType: "Network",
+							UpdateType:    display.UpdateTypeResource,
+							ResourceType:  "Network",
 							ResourceState: networkStatus,
-							Message: fmt.Sprintf("Network interface %s", instance.NetworkInterfaces[0].Status),
 						},
 					})
 				}
@@ -171,17 +170,16 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 				// Check and update volume state
 				if instance.BlockDeviceMappings != nil && len(instance.BlockDeviceMappings) > 0 {
 					volumeStatus := models.ResourceStateRunning
-					if instance.BlockDeviceMappings[0].Ebs != nil && 
-					   instance.BlockDeviceMappings[0].Ebs.Status != "attached" {
+					if instance.BlockDeviceMappings[0].Ebs != nil &&
+						instance.BlockDeviceMappings[0].Ebs.Status != "attached" {
 						volumeStatus = models.ResourceStatePending
 					}
 					m.QueueUpdate(display.UpdateAction{
 						MachineName: machine.GetName(),
 						UpdateData: display.UpdateData{
-							UpdateType: display.UpdateTypeResource,
-							ResourceType: "Volume",
+							UpdateType:    display.UpdateTypeResource,
+							ResourceType:  "Volume",
 							ResourceState: volumeStatus,
-							Message: fmt.Sprintf("Volume %s", instance.BlockDeviceMappings[0].Ebs.Status),
 						},
 					})
 				}
@@ -276,7 +274,7 @@ func isStackFailed(status types.StackStatus) bool {
 func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating VPC...")
-	
+
 	// Update all machines to show VPC creation in progress
 	m := display.GetGlobalModelFunc()
 	if m != nil && m.Deployment != nil {
@@ -284,10 +282,9 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 			m.QueueUpdate(display.UpdateAction{
 				MachineName: machine.GetName(),
 				UpdateData: display.UpdateData{
-					UpdateType: display.UpdateTypeResource,
-					ResourceType: "VPC",
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "VPC",
 					ResourceState: models.ResourceStatePending,
-					Message: "Creating VPC...",
 				},
 			})
 		}
@@ -320,25 +317,22 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 
 	p.VPCID = *createVpcOutput.Vpc.VpcId
 	l.Infof("Created VPC with ID: %s", p.VPCID)
-	
+
 	// Update all machines to show VPC is ready
-	m := display.GetGlobalModelFunc()
 	if m != nil && m.Deployment != nil {
 		for _, machine := range m.Deployment.GetMachines() {
 			m.QueueUpdate(display.UpdateAction{
 				MachineName: machine.GetName(),
 				UpdateData: display.UpdateData{
-					UpdateType: display.UpdateTypeResource,
-					ResourceType: "VPC",
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "VPC",
 					ResourceState: models.ResourceStateRunning,
-					Message: fmt.Sprintf("VPC %s ready", p.VPCID),
 				},
 			})
 		}
 	}
 
 	// Save VPC ID to config immediately after creation
-	m := display.GetGlobalModelFunc()
 	if m != nil && m.Deployment != nil {
 		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), p.VPCID)
 		if err := viper.WriteConfig(); err != nil {
@@ -445,7 +439,7 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 		for i, rt := range result.RouteTables {
 			l.Infof("Checking route table %d...", i+1)
 			l.Infof("Route table ID: %s", *rt.RouteTableId)
-			
+
 			for _, route := range rt.Routes {
 				if route.GatewayId != nil {
 					l.Infof("Found route with gateway ID: %s", *route.GatewayId)

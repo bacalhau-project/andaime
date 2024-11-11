@@ -209,19 +209,15 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 	// Create infrastructure and wait for it to be ready
 	// Create infrastructure and update display
 	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
-		// Update all machines to show infrastructure creation failed
-		if m != nil {
-			for _, machine := range m.Deployment.GetMachines() {
-				m.QueueUpdate(display.UpdateAction{
-					MachineName: machine.GetName(),
-					UpdateData: display.UpdateData{
-						UpdateType: display.UpdateTypeResource,
-						ResourceType: "Infrastructure",
-						ResourceState: models.ResourceStateFailed,
-						Message: fmt.Sprintf("Infrastructure creation failed: %v", err),
-					},
-				})
-			}
+		for _, machine := range m.Deployment.GetMachines() {
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "Infrastructure",
+					ResourceState: models.ResourceStateFailed,
+				},
+			})
 		}
 		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
@@ -322,7 +318,7 @@ func writeConfig() {
 		if m != nil && m.Deployment != nil {
 			deploymentID := m.Deployment.UniqueID
 			deploymentPath := fmt.Sprintf("deployments.%s", deploymentID)
-			
+
 			// Save deployment details
 			viper.Set(deploymentPath, map[string]interface{}{
 				"provider": "aws",

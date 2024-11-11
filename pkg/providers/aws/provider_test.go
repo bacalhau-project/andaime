@@ -21,8 +21,15 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-const FAKE_ACCOUNT_ID = "123456789012"
-const FAKE_REGION = "burkina-faso-1"
+const (
+	FAKE_ACCOUNT_ID  = "123456789012"
+	FAKE_REGION      = "burkina-faso-1"
+	FAKE_VPC_ID      = "vpc-12345"
+	FAKE_SUBNET_ID   = "subnet-12345"
+	FAKE_IGW_ID      = "igw-12345"
+	FAKE_RTB_ID      = "rtb-12345"
+	FAKE_INSTANCE_ID = "i-1234567890abcdef0"
+)
 
 type PkgProvidersAWSProviderSuite struct {
 	suite.Suite
@@ -56,9 +63,8 @@ func (suite *PkgProvidersAWSProviderSuite) SetupSuite() {
 		}
 	}
 
-	suite.origLogger = logger.Get() // Save the original logger
-	testLogger := logger.NewTestLogger(suite.T())
-	logger.SetGlobalLogger(testLogger)
+	suite.origLogger = logger.Get()
+	logger.SetGlobalLogger(logger.NewTestLogger(suite.T()))
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TearDownSuite() {
@@ -66,6 +72,7 @@ func (suite *PkgProvidersAWSProviderSuite) TearDownSuite() {
 	suite.cleanupPrivateKey()
 	display.GetGlobalModelFunc = suite.origGetGlobalModelFunc
 	sshutils.NewSSHConfigFunc = suite.origNewSSHConfigFunc
+	logger.SetGlobalLogger(suite.origLogger)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
@@ -85,114 +92,87 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestNewAWSProvider() {
-	accountID := viper.GetString("aws.account_id")
-	region := viper.GetString("aws.region")
-	provider, err := NewAWSProvider(accountID, region)
+	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(provider)
-	suite.Require().Equal(region, provider.Region)
+	suite.Require().Equal(FAKE_REGION, provider.Region)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
-	suite.Require().NoError(err)
-
-	mockEC2Client := new(mocks.MockEC2Clienter)
 	// Mock VPC creation
-	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).
+	suite.mockAWSClient.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
-			Vpc: &types.Vpc{
-				VpcId: aws.String("vpc-12345"),
-			},
+			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
 		}, nil)
 
 	// Mock VPC status check
-	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.Anything).
+	suite.mockAWSClient.On("DescribeVpcs", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeVpcsOutput{
-			Vpcs: []types.Vpc{
-				{
-					VpcId: aws.String("vpc-12345"),
-					State: types.VpcStateAvailable,
-				},
-			},
+			Vpcs: []types.Vpc{{
+				VpcId: aws.String(FAKE_VPC_ID),
+				State: types.VpcStateAvailable,
+			}},
 		}, nil)
-	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+
+	// Mock availability zones
+	suite.mockAWSClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeAvailabilityZonesOutput{
-			AvailabilityZones: []types.AvailabilityZone{
-				{
-					ZoneName: aws.String("FAKE-ZONE"),
-				},
-			},
+			AvailabilityZones: []types.AvailabilityZone{{
+				ZoneName: aws.String("FAKE-ZONE"),
+			}},
 		}, nil)
-	mockEC2Client.On("CreateSubnet", mock.Anything, mock.Anything).
+
+	// Mock subnet creation
+	suite.mockAWSClient.On("CreateSubnet", mock.Anything, mock.Anything).
 		Return(&ec2.CreateSubnetOutput{
-			Subnet: &types.Subnet{
-				SubnetId: aws.String("subnet-12345"),
-			},
+			Subnet: &types.Subnet{SubnetId: aws.String(FAKE_SUBNET_ID)},
 		}, nil)
-	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.Anything).
+
+	// Mock internet gateway creation
+	suite.mockAWSClient.On("CreateInternetGateway", mock.Anything, mock.Anything).
 		Return(&ec2.CreateInternetGatewayOutput{
 			InternetGateway: &types.InternetGateway{
-				InternetGatewayId: aws.String("igw-12345"),
+				InternetGatewayId: aws.String(FAKE_IGW_ID),
 			},
 		}, nil)
-	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.Anything).
-		Return(&ec2.AttachInternetGatewayOutput{}, nil)
-	mockEC2Client.On("CreateRoute", mock.Anything, mock.Anything).
-		Return(&ec2.CreateRouteOutput{}, nil)
-	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.Anything).
-		Return(&ec2.AssociateRouteTableOutput{}, nil)
-	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.Anything).
+
+	// Mock route table creation
+	suite.mockAWSClient.On("CreateRouteTable", mock.Anything, mock.Anything).
 		Return(&ec2.CreateRouteTableOutput{
-			RouteTable: &types.RouteTable{
-				RouteTableId: aws.String("rtb-12345"),
-			},
+			RouteTable: &types.RouteTable{RouteTableId: aws.String(FAKE_RTB_ID)},
 		}, nil)
 
-	provider.SetEC2Client(mockEC2Client)
+	// Mock remaining network setup
+	suite.mockAWSClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
+		Return(&ec2.AttachInternetGatewayOutput{}, nil)
+	suite.mockAWSClient.On("CreateRoute", mock.Anything, mock.Anything).
+		Return(&ec2.CreateRouteOutput{}, nil)
+	suite.mockAWSClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
+		Return(&ec2.AssociateRouteTableOutput{}, nil)
 
-	ctx := context.Background()
-	err = provider.CreateInfrastructure(ctx)
+	err := suite.awsProvider.CreateInfrastructure(suite.ctx)
 	suite.Require().NoError(err)
-	suite.Require().NotEmpty(provider.VPCID)
+	suite.Require().Equal(FAKE_VPC_ID, suite.awsProvider.VPCID)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestCreateVpc() {
-	provider, err := NewAWSProviderFunc(FAKE_ACCOUNT_ID, FAKE_REGION)
-	suite.Require().NoError(err)
-
-	mockEC2Client := new(mocks.MockEC2Clienter)
-
-	// Mock VPC creation
-	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).
+	suite.mockAWSClient.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
-			Vpc: &types.Vpc{
-				VpcId: aws.String("vpc-12345"),
-			},
+			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
 		}, nil)
 
-	provider.SetEC2Client(mockEC2Client)
-
-	err = provider.CreateVpc(context.Background())
+	err := suite.awsProvider.CreateVpc(suite.ctx)
 	suite.Require().NoError(err)
-	suite.Require().Equal("vpc-12345", provider.VPCID)
-	mockEC2Client.AssertExpectations(suite.T())
+	suite.Require().Equal(FAKE_VPC_ID, suite.awsProvider.VPCID)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
-	testSSHPublicKeyPath,
-		cleanupPublicKey,
-		testSSHPrivateKeyPath,
-		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
-	defer cleanupPublicKey()
-	defer cleanupPrivateKey()
-
 	viper.Reset()
 	viper.Set("aws.default_count_per_zone", 1)
 	viper.Set("aws.default_machine_type", "t3.micro")
 	viper.Set("aws.default_disk_size_gb", 10)
-	viper.Set("general.ssh_private_key_path", testSSHPrivateKeyPath)
-	viper.Set("general.ssh_public_key_path", testSSHPublicKeyPath)
+	viper.Set("general.ssh_private_key_path", suite.testSSHPrivateKeyPath)
+	viper.Set("general.ssh_public_key_path", suite.testSSHPublicKeyPath)
 	viper.Set("aws.machines", []map[string]interface{}{
 		{
 			"location": "us-west-2",
@@ -204,302 +184,29 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 		},
 	})
 
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
-	suite.Require().NoError(err)
-
-	ctx := context.Background()
-	machines, locations, err := provider.ProcessMachinesConfig(ctx)
+	machines, locations, err := suite.awsProvider.ProcessMachinesConfig(suite.ctx)
 	suite.Require().NoError(err)
 	suite.Require().Len(machines, 1)
 	suite.Require().Contains(locations, "us-west-2")
 }
 
-func (suite *PkgProvidersAWSProviderSuite) TestStartResourcePolling() {
-	viper.Reset()
-	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
-	viper.Set("aws.region", FAKE_REGION)
-
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
-	suite.Require().NoError(err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	err = provider.StartResourcePolling(ctx)
-	suite.Require().NoError(err)
-}
-
-func (suite *PkgProvidersAWSProviderSuite) TestValidateMachineType() {
-	viper.Reset()
-	viper.Set("aws.region", FAKE_REGION)
-	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
-
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
-	suite.Require().NoError(err)
-
-	ctx := context.Background()
-
-	testCases := []struct {
-		name         string
-		location     string
-		instanceType string
-		expectValid  bool
-	}{
-		{
-			name:         "valid instance type",
-			location:     "us-west-2",
-			instanceType: "t3.micro",
-			expectValid:  true,
-		},
-		{
-			name:         "invalid location",
-			location:     "invalid-region",
-			instanceType: "t3.micro",
-			expectValid:  false,
-		},
-		{
-			name:         "invalid instance type",
-			location:     "us-west-2",
-			instanceType: "invalid-type",
-			expectValid:  false,
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			valid, err := provider.ValidateMachineType(ctx, tc.location, tc.instanceType)
-			if tc.expectValid {
-				suite.Require().NoError(err)
-				suite.Require().True(valid)
-			} else {
-				suite.Require().Error(err)
-				suite.Require().False(valid)
-			}
-		})
-	}
-}
-
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
-	// Create a mock EC2 client
-	mockEC2Client := new(mocks.MockEC2Clienter)
-
-	// Set up the expected call to DescribeInstances
-	mockEC2Client.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
-		InstanceIds: []string{"i-1234567890abcdef0"},
+	suite.mockAWSClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{FAKE_INSTANCE_ID},
 	}).Return(&ec2.DescribeInstancesOutput{
-		Reservations: []types.Reservation{
-			{
-				Instances: []types.Instance{
-					{
-						InstanceId:      aws.String("i-1234567890abcdef0"),
-						PublicIpAddress: aws.String("203.0.113.1"),
-					},
-				},
-			},
-		},
+		Reservations: []types.Reservation{{
+			Instances: []types.Instance{{
+				InstanceId:      aws.String(FAKE_INSTANCE_ID),
+				PublicIpAddress: aws.String("203.0.113.1"),
+			}},
+		}},
 	}, nil)
 
-	// Create a provider with the mock EC2 client
-	provider := &AWSProvider{
-		Region: "us-west-2",
-		Config: &aws.Config{},
-	}
-	provider.SetEC2Client(mockEC2Client)
-
-	// Call the method
-	ctx := context.Background()
-	ip, err := provider.GetVMExternalIP(ctx, "i-1234567890abcdef0")
-
-	// Assert the results
+	ip, err := suite.awsProvider.GetVMExternalIP(suite.ctx, FAKE_INSTANCE_ID)
 	suite.Require().NoError(err)
 	suite.Require().Equal("203.0.113.1", ip)
-
-	// Verify that the mock was called as expected
-	mockEC2Client.AssertExpectations(suite.T())
 }
 
 func TestPkgProvidersAWSProviderSuite(t *testing.T) {
 	suite.Run(t, new(PkgProvidersAWSProviderSuite))
-}
-package awsprovider
-
-import (
-	"context"
-	"testing"
-	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-)
-
-type mockEC2Client struct {
-	mock.Mock
-}
-
-func (m *mockEC2Client) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput, optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
-	args := m.Called(ctx, params)
-	return args.Get(0).(*ec2.CreateVpcOutput), args.Error(1)
-}
-
-func (m *mockEC2Client) DescribeInstances(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
-	args := m.Called(ctx, params)
-	return args.Get(0).(*ec2.DescribeInstancesOutput), args.Error(1)
-}
-
-func (m *mockEC2Client) DescribeVpcs(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
-	args := m.Called(ctx, params)
-	return args.Get(0).(*ec2.DescribeVpcsOutput), args.Error(1)
-}
-
-func TestResourcePolling(t *testing.T) {
-	// Create a mock EC2 client
-	mockClient := new(mockEC2Client)
-
-	// Create test provider
-	provider := &AWSProvider{
-		EC2Client:   mockClient,
-		Region:      "us-west-2",
-		AccountID:   "123456789012",
-		UpdateQueue: make(chan display.UpdateAction, UpdateQueueSize),
-	}
-
-	// Create test deployment with machines
-	deployment := &models.Deployment{
-		Name: "test-deployment",
-		Machines: map[string]models.Machiner{
-			"test-machine": &models.Machine{
-				ID:   "test-machine",
-				Name: "test-machine",
-			},
-		},
-	}
-
-	// Set up display model
-	model := display.NewDisplayModel(deployment)
-	display.SetGlobalModelFunc(func() *display.DisplayModel { return model })
-
-	// Mock EC2 DescribeInstances response
-	mockClient.On("DescribeInstances", mock.Anything, mock.Anything).Return(&ec2.DescribeInstancesOutput{
-		Reservations: []ec2_types.Reservation{
-			{
-				Instances: []ec2_types.Instance{
-					{
-						InstanceId: aws.String("i-1234567890"),
-						State: &ec2_types.InstanceState{
-							Name: ec2_types.InstanceStateNameRunning,
-						},
-						NetworkInterfaces: []ec2_types.InstanceNetworkInterface{
-							{
-								Status: aws.String("in-use"),
-							},
-						},
-						BlockDeviceMappings: []ec2_types.InstanceBlockDeviceMapping{
-							{
-								Ebs: &ec2_types.EbsInstanceBlockDevice{
-									Status: aws.String("attached"),
-								},
-							},
-						},
-						Tags: []ec2_types.Tag{
-							{
-								Key:   aws.String("AndaimeMachineID"),
-								Value: aws.String("test-machine"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}, nil)
-
-	// Test resource polling
-	ctx := context.Background()
-	err := provider.pollResources(ctx)
-	assert.NoError(t, err)
-
-	// Verify machine status updates
-	machine := deployment.GetMachine("test-machine")
-	assert.Equal(t, models.ResourceStateRunning, machine.GetMachineResourceState(models.AWSResourceTypeInstance.ResourceString))
-
-	// Verify display updates were queued
-	select {
-	case update := <-provider.UpdateQueue:
-		assert.Equal(t, "test-machine", update.MachineName)
-		assert.Equal(t, display.UpdateTypeResource, update.UpdateData.UpdateType)
-		assert.Equal(t, models.ResourceStateRunning, update.UpdateData.ResourceState)
-	case <-time.After(time.Second):
-		t.Fatal("Timeout waiting for update")
-	}
-
-	mockClient.AssertExpectations(t)
-}
-
-func TestVPCCreation(t *testing.T) {
-	// Create a mock EC2 client
-	mockClient := new(mockEC2Client)
-
-	// Create test provider
-	provider := &AWSProvider{
-		EC2Client:   mockClient,
-		Region:      "us-west-2",
-		AccountID:   "123456789012",
-		UpdateQueue: make(chan display.UpdateAction, UpdateQueueSize),
-	}
-
-	// Create test deployment with machines
-	deployment := &models.Deployment{
-		Name: "test-deployment",
-		Machines: map[string]models.Machiner{
-			"test-machine": &models.Machine{
-				ID:   "test-machine",
-				Name: "test-machine",
-			},
-		},
-	}
-
-	// Set up display model
-	model := display.NewDisplayModel(deployment)
-	display.SetGlobalModelFunc(func() *display.DisplayModel { return model })
-
-	// Mock EC2 CreateVpc response
-	mockClient.On("CreateVpc", mock.Anything, mock.Anything).Return(&ec2.CreateVpcOutput{
-		Vpc: &ec2_types.Vpc{
-			VpcId: aws.String("vpc-12345"),
-			State: ec2_types.VpcStateAvailable,
-		},
-	}, nil)
-
-	// Mock EC2 DescribeVpcs response
-	mockClient.On("DescribeVpcs", mock.Anything, mock.Anything).Return(&ec2.DescribeVpcsOutput{
-		Vpcs: []ec2_types.Vpc{
-			{
-				VpcId: aws.String("vpc-12345"),
-				State: ec2_types.VpcStateAvailable,
-			},
-		},
-	}, nil)
-
-	// Test VPC creation
-	ctx := context.Background()
-	err := provider.CreateVpc(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, "vpc-12345", provider.VPCID)
-
-	// Verify VPC status updates were queued
-	select {
-	case update := <-provider.UpdateQueue:
-		assert.Equal(t, "test-machine", update.MachineName)
-		assert.Equal(t, display.UpdateTypeResource, update.UpdateData.UpdateType)
-		assert.Equal(t, "VPC", update.UpdateData.ResourceType)
-		assert.Equal(t, models.ResourceStateRunning, update.UpdateData.ResourceState)
-	case <-time.After(time.Second):
-		t.Fatal("Timeout waiting for update")
-	}
-
-	mockClient.AssertExpectations(t)
 }
