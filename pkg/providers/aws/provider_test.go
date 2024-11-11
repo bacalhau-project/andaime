@@ -221,7 +221,7 @@ func (suite *PkgProvidersAWSProviderSuite) TestGetLatestUbuntuAMI() {
 			},
 		}, nil)
 
-	amiID, err := suite.awsProvider.GetLatestUbuntuAMI(suite.ctx)
+	amiID, err := suite.awsProvider.GetLatestUbuntuAMI(suite.ctx, FAKE_REGION)
 	suite.Require().NoError(err)
 	suite.Require().Equal("ami-12345", amiID)
 }

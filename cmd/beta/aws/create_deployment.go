@@ -234,7 +234,7 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 	l.Info("Network connectivity confirmed")
 
 	// Get AMIs for each region before deploying VMs
-	m := display.GetGlobalModelFunc()
+	model := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("display model or deployment is nil")
 	}
