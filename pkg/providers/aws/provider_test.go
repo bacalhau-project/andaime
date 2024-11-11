@@ -3,11 +3,11 @@ package awsprovider
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
@@ -208,22 +208,10 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 	suite.Require().Contains(locations, "us-west-2")
 }
 
-func (suite *PkgProvidersAWSProviderSuite) TestGetLatestUbuntuAMI() {
-	creationDate := time.Now().Format(time.RFC3339)
-	suite.mockAWSClient.On("DescribeImages", mock.Anything, mock.Anything).
-		Return(&ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:      aws.String("ami-12345"),
-					CreationDate: aws.String(creationDate),
-					State:        types.ImageStateAvailable,
-				},
-			},
-		}, nil)
-
-	amiID, err := suite.awsProvider.GetLatestUbuntuAMI(suite.ctx, FAKE_REGION)
-	suite.Require().NoError(err)
-	suite.Require().Equal("ami-12345", amiID)
+func (suite *PkgProvidersAWSProviderSuite) TestGetUbuntuAMI() {
+	amiID, found := internal_aws.GetUbuntuAMI("ap-southeast-2")
+	suite.Require().True(found)
+	suite.Require().Equal("ami-040e71e7b8391cae4", amiID)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {

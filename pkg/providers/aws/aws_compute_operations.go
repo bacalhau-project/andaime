@@ -216,10 +216,6 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 
 			// Ensure we have an image ID
 			imageID := machine.GetImageID()
-			if imageID == "" {
-				// Set a default Ubuntu AMI for the region if none specified
-				imageID = "ami-0c7217cdde317cfec" // Ubuntu 22.04 LTS in us-west-2
-			}
 
 			// Create and configure the VM
 			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
@@ -233,7 +229,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 						DeviceIndex:              aws.Int32(0),
 						AssociatePublicIpAddress: aws.Bool(true),
 						DeleteOnTermination:      aws.Bool(true),
-						SubnetId:                 aws.String(p.SubnetID),
+						SubnetId:                 aws.String(p.PublicSubnetIDs[0]),
 						Groups:                   []string{p.SecurityGroupID},
 					},
 				},
@@ -339,7 +335,7 @@ func (p *AWSProvider) CreateVM(
 				DeviceIndex:              aws.Int32(0),
 				AssociatePublicIpAddress: aws.Bool(true),
 				DeleteOnTermination:      aws.Bool(true),
-				SubnetId:                 aws.String(p.SubnetID),
+				SubnetId:                 aws.String(p.PublicSubnetIDs[0]),
 				Groups:                   []string{p.SecurityGroupID},
 			},
 		},

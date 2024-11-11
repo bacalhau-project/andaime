@@ -3,7 +3,6 @@ package awsprovider
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -29,7 +28,7 @@ const (
 	UpdateQueueSize         = 1000 // Increased from 100 to prevent dropping updates
 	DefaultStackTimeout     = 30 * time.Minute
 	TestStackTimeout        = 30 * time.Second
-	UbuntuAMIOwner         = "099720109477" // Canonical's AWS account ID
+	UbuntuAMIOwner          = "099720109477" // Canonical's AWS account ID
 )
 
 type AWSProvider struct {
@@ -279,12 +278,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// DeployVMsInParallel deploys VMs across regions in parallel
-func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, regionAMIs map[string]string) error {
-	// Implementation here
-	return nil
 }
 
 // Add these helper functions to check stack status
@@ -835,7 +828,11 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 							InstanceIds: []string{*instance.InstanceId},
 						})
 						if err != nil {
-							l.Warnf("Failed to terminate instance %s: %v", *instance.InstanceId, err)
+							l.Warnf(
+								"Failed to terminate instance %s: %v",
+								*instance.InstanceId,
+								err,
+							)
 						}
 					}
 				}
@@ -937,74 +934,6 @@ func (p *AWSProvider) ValidateMachineType(
 		instanceType,
 		location,
 	)
-}
-
-// GetLatestUbuntuAMI returns the latest Ubuntu 22.04 LTS AMI ID for the specified region
-func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context, region string) (string, error) {
-	l := logger.Get()
-	l.Debug("Looking up latest Ubuntu AMI...")
-
-	// Create a new EC2 client for the specific region
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
-	if err != nil {
-		return "", fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
-	}
-	cfg.Region = region
-	regionClient := ec2.NewFromConfig(cfg)
-
-	input := &ec2.DescribeImagesInput{
-		Filters: []ec2_types.Filter{
-			{
-				Name:   aws.String("name"),
-				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"},
-			},
-			{
-				Name:   aws.String("architecture"),
-				Values: []string{"x86_64"},
-			},
-			{
-				Name:   aws.String("virtualization-type"),
-				Values: []string{"hvm"},
-			},
-			{
-				Name:   aws.String("root-device-type"),
-				Values: []string{"ebs"},
-			},
-			{
-				Name:   aws.String("state"),
-				Values: []string{"available"},
-			},
-		},
-		Owners: []string{UbuntuAMIOwner},
-	}
-
-	l.Debugf("Searching for Ubuntu AMI in region %s with owner %s", region, UbuntuAMIOwner)
-	result, err := regionClient.DescribeImages(ctx, input)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe images in region %s: %w", region, err)
-	}
-
-	if len(result.Images) == 0 {
-		return "", fmt.Errorf("no Ubuntu AMIs found in region %s matching criteria", region)
-	}
-
-	l.Debugf("Found %d matching AMIs", len(result.Images))
-
-	// Sort images by creation date to get the latest
-	sort.Slice(result.Images, func(i, j int) bool {
-		iTime, _ := time.Parse(time.RFC3339, *result.Images[i].CreationDate)
-		jTime, _ := time.Parse(time.RFC3339, *result.Images[j].CreationDate)
-		return iTime.After(jTime)
-	})
-
-	amiID := *result.Images[0].ImageId
-	creationDate, _ := time.Parse(time.RFC3339, *result.Images[0].CreationDate)
-	l.Infof("Selected AMI %s created on %s", amiID, creationDate.Format("2006-01-02"))
-	l.Debugf("AMI details: Name=%s, Description=%s", 
-		aws.ToString(result.Images[0].Name),
-		aws.ToString(result.Images[0].Description))
-	
-	return amiID, nil
 }
 
 func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (string, error) {
