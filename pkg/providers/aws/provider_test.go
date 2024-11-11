@@ -304,22 +304,18 @@ package awsprovider
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/models"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/bacalhau-project/andaime/internal/testutil"
+	mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
-
-type MockEC2Client struct {
-	mock.Mock
-}
 
 func (m *MockEC2Client) CreateVpc(
 	ctx context.Context,
