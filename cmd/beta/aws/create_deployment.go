@@ -321,7 +321,16 @@ func writeConfig() {
 			deploymentID := m.Deployment.UniqueID
 			deploymentPath := fmt.Sprintf("deployments.%s", deploymentID)
 
-			// Save deployment details
+			// Save minimal deployment details
+			machines := make(map[string]interface{})
+			for name, machine := range m.Deployment.GetMachines() {
+				machines[name] = map[string]interface{}{
+					"public_ip":  machine.GetPublicIP(),
+					"private_ip": machine.GetPrivateIP(),
+					"location":   machine.GetLocation(),
+				}
+			}
+
 			viper.Set(deploymentPath, map[string]interface{}{
 				"provider": "aws",
 				"aws": map[string]interface{}{
@@ -329,7 +338,7 @@ func writeConfig() {
 					"account_id": m.Deployment.AWS.AccountID,
 					"vpc_id":     m.Deployment.AWS.VPCID,
 				},
-				"machines": m.Deployment.Machines,
+				"machines": machines,
 			})
 		}
 
