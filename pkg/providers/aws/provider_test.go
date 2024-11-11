@@ -3,6 +3,7 @@ package awsprovider
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -146,14 +147,15 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 	suite.mockAWSClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.AttachInternetGatewayInput)
-			logger.Get().Debugf("Attaching Internet Gateway %s to VPC %s", *input.InternetGatewayId, *input.VpcId)
+			logger.Get().
+				Debugf("Attaching Internet Gateway %s to VPC %s", *input.InternetGatewayId, *input.VpcId)
 		}).
 		Return(&ec2.AttachInternetGatewayOutput{}, nil)
 
 	suite.mockAWSClient.On("CreateRoute", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.CreateRouteInput)
-			logger.Get().Debugf("Creating route in route table %s with destination %s via IGW %s", 
+			logger.Get().Debugf("Creating route in route table %s with destination %s via IGW %s",
 				*input.RouteTableId, *input.DestinationCidrBlock, *input.GatewayId)
 		}).
 		Return(&ec2.CreateRouteOutput{}, nil)
@@ -161,7 +163,8 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 	suite.mockAWSClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.AssociateRouteTableInput)
-			logger.Get().Debugf("Associating route table %s with subnet %s", *input.RouteTableId, *input.SubnetId)
+			logger.Get().
+				Debugf("Associating route table %s with subnet %s", *input.RouteTableId, *input.SubnetId)
 		}).
 		Return(&ec2.AssociateRouteTableOutput{}, nil)
 
