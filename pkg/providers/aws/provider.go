@@ -227,6 +227,42 @@ func isStackFailed(status types.StackStatus) bool {
 		isStackInRollback(status)
 }
 
+// CreateVpc creates a new VPC with the specified CIDR block
+func (p *AWSProvider) CreateVpc(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Creating VPC...")
+
+	// Create the VPC
+	createVpcInput := &ec2.CreateVpcInput{
+		CidrBlock: aws.String("10.0.0.0/16"),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeVpc,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String("andaime-vpc"),
+					},
+					{
+						Key:   aws.String("andaime"),
+						Value: aws.String("true"),
+					},
+				},
+			},
+		},
+	}
+
+	createVpcOutput, err := p.EC2Client.CreateVpc(ctx, createVpcInput)
+	if err != nil {
+		return fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	p.VPCID = *createVpcOutput.Vpc.VpcId
+	l.Infof("Created VPC with ID: %s", p.VPCID)
+
+	return nil
+}
+
 // CreateInfrastructure creates the necessary AWS infrastructure including VPC, subnets,
 // internet gateway, and routing tables. This is the main entry point for setting up
 // the AWS networking infrastructure required for the deployment.
