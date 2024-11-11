@@ -293,11 +293,29 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockEC2Client := new(aws_mock.MockEC2Clienter)
 
 				// Mock EC2 operations
+				// Mock VPC operations
+				mockEC2Client.On("CreateVpc", mock.Anything, mock.AnythingOfType("*ec2.CreateVpcInput")).
+					Return(testdata.FakeEC2CreateVpcOutput(), nil)
+				mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
+					Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
+
+				// Mock instance operations
 				mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
 					Return(testdata.FakeEC2DescribeInstancesOutput(), nil)
-
 				mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
 					Return(testdata.FakeEC2RunInstancesOutput(), nil)
+
+				// Mock subnet operations
+				mockEC2Client.On("CreateSubnet", mock.Anything, mock.AnythingOfType("*ec2.CreateSubnetInput")).
+					Return(testdata.FakeEC2CreateSubnetOutput(), nil)
+				mockEC2Client.On("DescribeSubnets", mock.Anything, mock.AnythingOfType("*ec2.DescribeSubnetsInput")).
+					Return(testdata.FakeEC2DescribeSubnetsOutput(), nil)
+
+				// Mock security group operations
+				mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
+					Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil)
+				mockEC2Client.On("DescribeSecurityGroups", mock.Anything, mock.AnythingOfType("*ec2.DescribeSecurityGroupsInput")).
+					Return(testdata.FakeEC2DescribeSecurityGroupsOutput(), nil)
 
 				s.awsProvider.SetEC2Client(mockEC2Client)
 
