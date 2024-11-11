@@ -207,7 +207,22 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 	}
 
 	// Create infrastructure and wait for it to be ready
+	// Create infrastructure and update display
 	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
+		// Update all machines to show infrastructure creation failed
+		if m != nil {
+			for _, machine := range m.Deployment.GetMachines() {
+				m.QueueUpdate(display.UpdateAction{
+					MachineName: machine.GetName(),
+					UpdateData: display.UpdateData{
+						UpdateType: display.UpdateTypeResource,
+						ResourceType: "Infrastructure",
+						ResourceState: models.ResourceStateFailed,
+						Message: fmt.Sprintf("Infrastructure creation failed: %v", err),
+					},
+				})
+			}
+		}
 		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
 

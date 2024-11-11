@@ -111,6 +111,11 @@ func (p *AWSProvider) StartResourcePolling(ctx context.Context) error {
 }
 
 func (p *AWSProvider) pollResources(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
 	// Create EC2 client
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
 	if err != nil {
@@ -135,11 +140,51 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 
 	for _, reservation := range result.Reservations {
 		for _, instance := range reservation.Instances {
-			// Update instance status in the deployment model
 			machineID := getMachineIDFromTags(instance.Tags)
 			if machineID != "" {
+				machine := m.Deployment.GetMachine(machineID)
+				if machine == nil {
+					continue
+				}
+
+				// Check and update instance state
 				status := mapEC2StateToMachineState(instance.State.Name)
 				p.updateMachineStatus(machineID, status)
+
+				// Check and update network interface state
+				if instance.NetworkInterfaces != nil && len(instance.NetworkInterfaces) > 0 {
+					networkStatus := models.ResourceStateRunning
+					if instance.NetworkInterfaces[0].Status != "in-use" {
+						networkStatus = models.ResourceStatePending
+					}
+					m.QueueUpdate(display.UpdateAction{
+						MachineName: machine.GetName(),
+						UpdateData: display.UpdateData{
+							UpdateType: display.UpdateTypeResource,
+							ResourceType: "Network",
+							ResourceState: networkStatus,
+							Message: fmt.Sprintf("Network interface %s", instance.NetworkInterfaces[0].Status),
+						},
+					})
+				}
+
+				// Check and update volume state
+				if instance.BlockDeviceMappings != nil && len(instance.BlockDeviceMappings) > 0 {
+					volumeStatus := models.ResourceStateRunning
+					if instance.BlockDeviceMappings[0].Ebs != nil && 
+					   instance.BlockDeviceMappings[0].Ebs.Status != "attached" {
+						volumeStatus = models.ResourceStatePending
+					}
+					m.QueueUpdate(display.UpdateAction{
+						MachineName: machine.GetName(),
+						UpdateData: display.UpdateData{
+							UpdateType: display.UpdateTypeResource,
+							ResourceType: "Volume",
+							ResourceState: volumeStatus,
+							Message: fmt.Sprintf("Volume %s", instance.BlockDeviceMappings[0].Ebs.Status),
+						},
+					})
+				}
 			}
 		}
 	}
@@ -231,6 +276,22 @@ func isStackFailed(status types.StackStatus) bool {
 func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating VPC...")
+	
+	// Update all machines to show VPC creation in progress
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		for _, machine := range m.Deployment.GetMachines() {
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType: display.UpdateTypeResource,
+					ResourceType: "VPC",
+					ResourceState: models.ResourceStatePending,
+					Message: "Creating VPC...",
+				},
+			})
+		}
+	}
 
 	// Create the VPC
 	createVpcInput := &ec2.CreateVpcInput{
@@ -259,6 +320,22 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 
 	p.VPCID = *createVpcOutput.Vpc.VpcId
 	l.Infof("Created VPC with ID: %s", p.VPCID)
+	
+	// Update all machines to show VPC is ready
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		for _, machine := range m.Deployment.GetMachines() {
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType: display.UpdateTypeResource,
+					ResourceType: "VPC",
+					ResourceState: models.ResourceStateRunning,
+					Message: fmt.Sprintf("VPC %s ready", p.VPCID),
+				},
+			})
+		}
+	}
 
 	// Save VPC ID to config immediately after creation
 	m := display.GetGlobalModelFunc()
