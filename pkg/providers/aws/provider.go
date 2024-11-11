@@ -42,6 +42,8 @@ type AWSProvider struct {
 	EC2Client       aws_interface.EC2Clienter
 }
 
+var NewAWSProviderFunc = NewAWSProvider
+
 func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
 	if accountID == "" {
 		return nil, fmt.Errorf("account ID is required")
