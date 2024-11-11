@@ -304,7 +304,7 @@ func writeConfig() {
 		// Get the current deployment info
 		m := display.GetGlobalModelFunc()
 		if m != nil && m.Deployment != nil {
-			deploymentID := m.Deployment.GetID()
+			deploymentID := m.Deployment.UniqueID
 			deploymentPath := fmt.Sprintf("deployments.%s", deploymentID)
 			
 			// Save deployment details
@@ -315,7 +315,7 @@ func writeConfig() {
 					"account_id": m.Deployment.AWS.AccountID,
 					"vpc_id":     m.Deployment.AWS.VPCID,
 				},
-				"machines": m.Deployment.GetMachinesConfig(),
+				"machines": m.Deployment.Machines,
 			})
 		}
 
