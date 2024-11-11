@@ -176,6 +176,14 @@ func (c *LiveEC2Client) DeleteVpc(
 	return c.client.DeleteVpc(ctx, params, optFns...)
 }
 
+func (c *LiveEC2Client) DescribeRouteTables(
+	ctx context.Context,
+	params *ec2.DescribeRouteTablesInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeRouteTablesOutput, error) {
+	return c.client.DescribeRouteTables(ctx, params, optFns...)
+}
+
 func (c *LiveEC2Client) DeleteSubnet(
 	ctx context.Context,
 	params *ec2.DeleteSubnetInput,

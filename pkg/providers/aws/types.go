@@ -78,4 +78,9 @@ type EC2Clienter interface {
 		params *ec2.DeleteVpcInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DeleteVpcOutput, error)
+	DescribeRouteTables(
+		ctx context.Context,
+		params *ec2.DescribeRouteTablesInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeRouteTablesOutput, error)
 }
