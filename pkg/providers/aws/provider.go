@@ -802,24 +802,131 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 	m := display.GetGlobalModelFunc()
 	if m != nil && m.Deployment != nil {
 		// Get VPC ID from config
-		vpcID := viper.GetString(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath))
+		vpcID := viper.GetString(fmt.Sprintf("%s.aws.vpc_id", m.Deployment.ViperPath))
 		if vpcID != "" {
 			l.Infof("Found VPC ID in config: %s", vpcID)
 			p.VPCID = vpcID
 
-			// TODO: Implement VPC deletion here
-			// This should clean up all VPC resources in the correct order:
-			// 1. EC2 instances
-			// 2. Security groups
-			// 3. Route table associations
-			// 4. Route tables
-			// 5. Internet gateway
-			// 6. Subnets
-			// 7. VPC itself
+			// Delete EC2 instances
+			instances, err := p.EC2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("vpc-id"),
+						Values: []string{vpcID},
+					},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to describe instances: %w", err)
+			}
+
+			// Terminate instances
+			for _, reservation := range instances.Reservations {
+				for _, instance := range reservation.Instances {
+					if instance.State.Name != ec2_types.InstanceStateNameTerminated {
+						_, err := p.EC2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+							InstanceIds: []string{*instance.InstanceId},
+						})
+						if err != nil {
+							l.Warnf("Failed to terminate instance %s: %v", *instance.InstanceId, err)
+						}
+					}
+				}
+			}
+
+			// Delete route table associations and routes
+			rtbs, err := p.EC2Client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+				Filters: []ec2_types.Filter{{
+					Name:   aws.String("vpc-id"),
+					Values: []string{vpcID},
+				}},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to describe route tables: %w", err)
+			}
+
+			for _, rtb := range rtbs.RouteTables {
+				for _, assoc := range rtb.Associations {
+					if !aws.ToBool(assoc.Main) {
+						_, err := p.EC2Client.DisassociateRouteTable(ctx, &ec2.DisassociateRouteTableInput{
+							AssociationId: assoc.RouteTableAssociationId,
+						})
+						if err != nil {
+							l.Warnf("Failed to disassociate route table: %v", err)
+						}
+					}
+				}
+				if !aws.ToBool(rtb.Associations[0].Main) {
+					_, err := p.EC2Client.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
+						RouteTableId: rtb.RouteTableId,
+					})
+					if err != nil {
+						l.Warnf("Failed to delete route table: %v", err)
+					}
+				}
+			}
+
+			// Detach and delete internet gateway
+			igws, err := p.EC2Client.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
+				Filters: []ec2_types.Filter{{
+					Name:   aws.String("attachment.vpc-id"),
+					Values: []string{vpcID},
+				}},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to describe internet gateways: %w", err)
+			}
+
+			for _, igw := range igws.InternetGateways {
+				_, err := p.EC2Client.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
+					InternetGatewayId: igw.InternetGatewayId,
+					VpcId:            aws.String(vpcID),
+				})
+				if err != nil {
+					l.Warnf("Failed to detach internet gateway: %v", err)
+				}
+
+				_, err = p.EC2Client.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
+					InternetGatewayId: igw.InternetGatewayId,
+				})
+				if err != nil {
+					l.Warnf("Failed to delete internet gateway: %v", err)
+				}
+			}
+
+			// Delete subnets
+			subnets, err := p.EC2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+				Filters: []ec2_types.Filter{{
+					Name:   aws.String("vpc-id"),
+					Values: []string{vpcID},
+				}},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to describe subnets: %w", err)
+			}
+
+			for _, subnet := range subnets.Subnets {
+				_, err := p.EC2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
+					SubnetId: subnet.SubnetId,
+				})
+				if err != nil {
+					l.Warnf("Failed to delete subnet: %v", err)
+				}
+			}
+
+			// Finally delete the VPC
+			_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
+				VpcId: aws.String(vpcID),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to delete VPC: %w", err)
+			}
+
+			l.Infof("Successfully deleted VPC %s and all associated resources", vpcID)
 		}
 
 		// Remove VPC ID from config
-		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), nil)
+		viper.Set(fmt.Sprintf("%s.aws.vpc_id", m.Deployment.ViperPath), "")
 		if err := viper.WriteConfig(); err != nil {
 			l.Warnf("Failed to remove VPC ID from config: %v", err)
 		}

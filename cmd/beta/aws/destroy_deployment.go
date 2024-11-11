@@ -57,10 +57,20 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(deployments) == 0 {
+	// Filter out deployments with empty VPC IDs
+	var validDeployments []ConfigDeployment
+	for _, dep := range deployments {
+		if viper.GetString(fmt.Sprintf("%s.aws.vpc_id", dep.FullViperKey)) != "" {
+			validDeployments = append(validDeployments, dep)
+		}
+	}
+
+	if len(validDeployments) == 0 {
 		fmt.Println("No deployments found to destroy")
 		return nil
 	}
+
+	deployments = validDeployments
 
 	if flags.destroyAll {
 		return destroyAllDeployments(cmd.Context(), deployments, flags.dryRun)
