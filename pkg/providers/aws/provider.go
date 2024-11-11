@@ -310,19 +310,17 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 		},
 	}
 
-	l.Debug("Sending CreateVpc request...", 
-		logger.String("cidr_block", "10.0.0.0/16"))
-	
+	l.Debugf("Sending CreateVpc request with cidr_block %s", "10.0.0.0/16")
+
 	createVpcOutput, err := p.EC2Client.CreateVpc(ctx, createVpcInput)
 	if err != nil {
-		l.Debug("VPC creation failed", logger.Error(err))
+		l.Debugf("VPC creation failed: %v", err)
 		return fmt.Errorf("failed to create VPC: %w", err)
 	}
 
+	l.Debugf("VPC created successfully with ID %s", *createVpcOutput.Vpc.VpcId)
 	p.VPCID = *createVpcOutput.Vpc.VpcId
-	l.Debug("VPC created successfully", 
-		logger.String("vpc_id", p.VPCID),
-		logger.String("state", string(createVpcOutput.Vpc.State)))
+	l.Debugf("VPC created successfully with ID %s", p.VPCID)
 
 	// Update all machines to show VPC is ready
 	if m != nil && m.Deployment != nil {
@@ -407,9 +405,8 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 
 func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 	l := logger.Get()
-	l.Debug("Starting network connectivity check", 
-		logger.String("vpc_id", p.VPCID))
-	
+	l.Debugf("Starting network connectivity check with VPC ID %s", p.VPCID)
+
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = 5 * time.Second
 	b.MaxInterval = 30 * time.Second
@@ -437,15 +434,11 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 		l.Info("Attempting to describe route tables...")
 		result, err := p.EC2Client.DescribeRouteTables(ctx, input)
 		if err != nil {
-			l.Debug("Failed to describe route tables", 
-				logger.String("vpc_id", p.VPCID),
-				logger.Error(err))
+			l.Debugf("Failed to describe route tables: %v", err)
 			return fmt.Errorf("failed to describe route tables: %w", err)
 		}
 
-		l.Debug("Route tables found", 
-			logger.String("vpc_id", p.VPCID),
-			logger.Int("count", len(result.RouteTables)))
+		l.Debugf("Route tables found with VPC ID %s: %d", p.VPCID, len(result.RouteTables))
 
 		// Verify route table has internet gateway route
 		hasInternetRoute := false
@@ -455,11 +448,13 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 
 			for _, route := range rt.Routes {
 				if route.GatewayId != nil {
-					l.Debug("Examining route", 
-						logger.String("vpc_id", p.VPCID),
-						logger.String("route_table_id", *rt.RouteTableId),
-						logger.String("gateway_id", aws.ToString(route.GatewayId)),
-						logger.String("destination", aws.ToString(route.DestinationCidrBlock)))
+					l.Debugf(
+						`Examining route with route table ID %s,
+						 gateway ID %s, and destination %s`,
+						*rt.RouteTableId,
+						aws.ToString(route.GatewayId),
+						aws.ToString(route.DestinationCidrBlock),
+					)
 					if strings.HasPrefix(*route.GatewayId, "igw-") {
 						hasInternetRoute = true
 						l.Info("Found internet gateway route!")
@@ -525,8 +520,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 
 func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 	l := logger.Get()
-	l.Debug("Waiting for VPC to become available", 
-		logger.String("vpc_id", p.VPCID))
+	l.Debugf("Waiting for VPC to become available with ID %s", p.VPCID)
 
 	b := backoff.NewExponentialBackOff()
 	b.MaxElapsedTime = 5 * time.Minute
@@ -544,26 +538,20 @@ func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 
 		result, err := p.EC2Client.DescribeVpcs(ctx, input)
 		if err != nil {
-			l.Debug("Failed to describe VPC", 
-				logger.String("vpc_id", p.VPCID),
-				logger.Error(err))
+			l.Debugf("Failed to describe VPC with ID %s: %v", p.VPCID, err)
 			return fmt.Errorf("failed to describe VPC: %w", err)
 		}
 
 		if len(result.Vpcs) > 0 {
-			l.Debug("VPC status check", 
-				logger.String("vpc_id", p.VPCID),
-				logger.String("state", string(result.Vpcs[0].State)))
-			
+			l.Debugf("VPC status check with ID %s: %s", p.VPCID, string(result.Vpcs[0].State))
+
 			if result.Vpcs[0].State == ec2_types.VpcStateAvailable {
-				l.Debug("VPC is now available", 
-					logger.String("vpc_id", p.VPCID))
+				l.Debugf("VPC is now available with ID %s", p.VPCID)
 				return nil
 			}
 		}
 
-		l.Debug("VPC not yet available", 
-			logger.String("vpc_id", p.VPCID))
+		l.Debugf("VPC not yet available with ID %s", p.VPCID)
 		return fmt.Errorf("VPC not yet available")
 	}
 

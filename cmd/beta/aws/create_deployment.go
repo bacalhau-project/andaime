@@ -210,7 +210,7 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 	// Create infrastructure and wait for it to be ready
 	// Create infrastructure and update display
 	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
-		l.Debug("Infrastructure creation failed", logger.Error(err))
+		l.Debugf("Infrastructure creation failed: %v", err)
 		for _, machine := range m.Deployment.GetMachines() {
 			m.QueueUpdate(display.UpdateAction{
 				MachineName: machine.GetName(),
