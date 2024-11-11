@@ -268,6 +268,16 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 		return fmt.Errorf("failed waiting for VPC: %w", err)
 	}
 
+	// Save VPC ID to config
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), p.VPCID)
+		if err := viper.WriteConfig(); err != nil {
+			return fmt.Errorf("failed to save VPC ID to config: %w", err)
+		}
+		l.Infof("Saved VPC ID %s to config", p.VPCID)
+	}
+
 	l.Info("Infrastructure created successfully")
 	return nil
 }
