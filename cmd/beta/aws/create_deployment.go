@@ -34,6 +34,7 @@ func GetAwsCreateDeploymentCmd() *cobra.Command {
 }
 
 func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
+	l := logger.Get()
 	// Load .env file at the beginning
 	if err := godotenv.Load(); err != nil {
 		logger.Get().Warn(fmt.Sprintf("Error loading .env file: %v", err))
