@@ -34,7 +34,6 @@ func GetAwsCreateDeploymentCmd() *cobra.Command {
 }
 
 func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
-	l := logger.Get()
 	// Load .env file at the beginning
 	if err := godotenv.Load(); err != nil {
 		logger.Get().Warn(fmt.Sprintf("Error loading .env file: %v", err))
@@ -81,9 +80,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 			Warn(fmt.Sprintf("Failed to initialize display: %v. Continuing without interactive display.", err))
 	}
 
-	if err := startResourcePolling(ctx, awsProvider); err != nil {
-		l.Warn(fmt.Sprintf("Failed to start resource polling: %v", err))
-	}
+	startResourcePolling(ctx, awsProvider)
 
 	deploymentErr := runDeploymentAsync(ctx, awsProvider, cancel)
 
