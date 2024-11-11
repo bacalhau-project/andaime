@@ -246,9 +246,20 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating AWS infrastructure...")
 
-	// Create VPC and networking components
+	// Check if we've hit VPC limits
 	if err := p.CreateVpc(ctx); err != nil {
-		return fmt.Errorf("failed to create VPC: %w", err)
+		if strings.Contains(err.Error(), "VpcLimitExceeded") {
+			// Try to find and clean up any abandoned VPCs
+			if cleanupErr := p.cleanupAbandonedVPCs(ctx); cleanupErr != nil {
+				return fmt.Errorf("failed to cleanup VPCs: %w", cleanupErr)
+			}
+			// Retry VPC creation after cleanup
+			if retryErr := p.CreateVpc(ctx); retryErr != nil {
+				return fmt.Errorf("failed to create VPC after cleanup: %w", retryErr)
+			}
+		} else {
+			return fmt.Errorf("failed to create VPC: %w", err)
+		}
 	}
 
 	// Wait for VPC to be available
@@ -308,6 +319,48 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 	}
 
 	return backoff.Retry(operation, backoff.WithContext(b, ctx))
+}
+
+// cleanupAbandonedVPCs attempts to find and remove any abandoned VPCs
+func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Attempting to cleanup abandoned VPCs")
+
+	// List all VPCs
+	result, err := p.EC2Client.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{})
+	if err != nil {
+		return fmt.Errorf("failed to list VPCs: %w", err)
+	}
+
+	for _, vpc := range result.Vpcs {
+		// Skip the default VPC
+		if aws.ToBool(vpc.IsDefault) {
+			continue
+		}
+
+		// Check if VPC has the andaime tag but is older than 1 hour
+		isAndaimeVPC := false
+		for _, tag := range vpc.Tags {
+			if aws.ToString(tag.Key) == "andaime" {
+				isAndaimeVPC = true
+				break
+			}
+		}
+
+		if isAndaimeVPC {
+			// Delete the VPC
+			_, err := p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
+				VpcId: vpc.VpcId,
+			})
+			if err != nil {
+				l.Warnf("Failed to delete VPC %s: %v", aws.ToString(vpc.VpcId), err)
+				continue
+			}
+			l.Infof("Successfully deleted abandoned VPC %s", aws.ToString(vpc.VpcId))
+		}
+	}
+
+	return nil
 }
 
 func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
