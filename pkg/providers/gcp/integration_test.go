@@ -78,7 +78,6 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeGCP)
 
 	s.cleanup = func() {
-		_ = os.Remove(tempConfigFile.Name())
 		_ = os.Remove(localCustomScriptPath)
 		viper.Reset()
 	}
