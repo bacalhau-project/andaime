@@ -80,7 +80,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 			Warn(fmt.Sprintf("Failed to initialize display: %v. Continuing without interactive display.", err))
 	}
 
-	go startResourcePolling(ctx, awsProvider)
+	if err := startResourcePolling(ctx, awsProvider); err != nil {
+		l.Warn(fmt.Sprintf("Failed to start resource polling: %v", err))
+	}
 
 	deploymentErr := runDeploymentAsync(ctx, awsProvider, cancel)
 

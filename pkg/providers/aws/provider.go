@@ -98,21 +98,42 @@ func (p *AWSProvider) ProcessMachinesConfig(
 
 func (p *AWSProvider) StartResourcePolling(ctx context.Context) error {
 	go func() {
-		ticker := time.NewTicker(ResourcePollingInterval)
-		defer ticker.Stop()
+		resourceTicker := time.NewTicker(ResourcePollingInterval)
+		updateTicker := time.NewTicker(100 * time.Millisecond) // Process updates more frequently
+		defer resourceTicker.Stop()
+		defer updateTicker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-resourceTicker.C:
 				if err := p.pollResources(ctx); err != nil {
 					logger.Get().Error(fmt.Sprintf("Failed to poll resources: %v", err))
 				}
+			case <-updateTicker.C:
+				p.processUpdateQueue()
 			}
 		}
 	}()
 	return nil
+}
+
+func (p *AWSProvider) processUpdateQueue() {
+	m := display.GetGlobalModelFunc()
+	if m == nil {
+		return
+	}
+
+	// Process up to 100 updates per tick to prevent queue from filling
+	for i := 0; i < 100; i++ {
+		select {
+		case update := <-p.UpdateQueue:
+			m.QueueUpdate(update)
+		default:
+			return // No more updates in queue
+		}
+	}
 }
 
 func (p *AWSProvider) pollResources(ctx context.Context) error {
