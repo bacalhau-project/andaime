@@ -914,6 +914,10 @@ func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context) (string, error) {
 				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"},
 			},
 			{
+				Name:   aws.String("architecture"),
+				Values: []string{"x86_64"},
+			},
+			{
 				Name:   aws.String("virtualization-type"),
 				Values: []string{"hvm"},
 			},
@@ -929,14 +933,17 @@ func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context) (string, error) {
 		Owners: []string{UbuntuAMIOwner},
 	}
 
+	l.Debugf("Searching for Ubuntu AMI in region %s with owner %s", p.Region, UbuntuAMIOwner)
 	result, err := p.EC2Client.DescribeImages(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("failed to describe images: %w", err)
+		return "", fmt.Errorf("failed to describe images in region %s: %w", p.Region, err)
 	}
 
 	if len(result.Images) == 0 {
-		return "", fmt.Errorf("no Ubuntu AMIs found in region %s", p.Region)
+		return "", fmt.Errorf("no Ubuntu AMIs found in region %s matching criteria", p.Region)
 	}
+
+	l.Debugf("Found %d matching AMIs", len(result.Images))
 
 	// Sort images by creation date to get the latest
 	sort.Slice(result.Images, func(i, j int) bool {
@@ -946,7 +953,12 @@ func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context) (string, error) {
 	})
 
 	amiID := *result.Images[0].ImageId
-	l.Debugf("Found latest Ubuntu AMI: %s", amiID)
+	creationDate, _ := time.Parse(time.RFC3339, *result.Images[0].CreationDate)
+	l.Infof("Selected AMI %s created on %s", amiID, creationDate.Format("2006-01-02"))
+	l.Debugf("AMI details: Name=%s, Description=%s", 
+		aws.ToString(result.Images[0].Name),
+		aws.ToString(result.Images[0].Description))
+	
 	return amiID, nil
 }
 
