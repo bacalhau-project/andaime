@@ -31,15 +31,18 @@ const (
 )
 
 type AWSProvider struct {
-	AccountID       string
-	Config          *aws.Config
-	Region          string
-	ClusterDeployer common_interface.ClusterDeployerer
-	UpdateQueue     chan display.UpdateAction
-	VPCID           string
-	SubnetID        string
-	SecurityGroupID string
-	EC2Client       aws_interface.EC2Clienter
+	AccountID          string
+	Config             *aws.Config
+	Region             string
+	ClusterDeployer    common_interface.ClusterDeployerer
+	UpdateQueue        chan display.UpdateAction
+	VPCID              string
+	InternetGatewayID  string
+	PublicRouteTableID string
+	PublicSubnetIDs    []string
+	PrivateSubnetIDs   []string
+	SecurityGroupID    string
+	EC2Client          aws_interface.EC2Clienter
 }
 
 var NewAWSProviderFunc = NewAWSProvider
@@ -320,7 +323,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 
 	l.Debugf("VPC created successfully with ID %s", *createVpcOutput.Vpc.VpcId)
 	p.VPCID = *createVpcOutput.Vpc.VpcId
-	
+
 	// Immediately save VPC ID to config
 	if model := display.GetGlobalModelFunc(); model != nil && model.Deployment != nil {
 		deploymentPath := fmt.Sprintf("deployments.%s.aws", model.Deployment.UniqueID)
@@ -331,7 +334,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 			l.Debugf("Saved VPC ID %s to config", p.VPCID)
 		}
 	}
-	
+
 	l.Debugf("VPC created successfully with ID %s", p.VPCID)
 
 	// Update all machines to show VPC is ready
@@ -375,11 +378,179 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 //
 // Returns:
 //   - error: Returns an error if any step of the infrastructure creation fails
+//
+// CreateInfrastructure creates the necessary AWS infrastructure including VPC, subnets,
+// internet gateway, and routing tables. This is the main entry point for setting up
+// the AWS networking infrastructure required for the deployment.
+//
+// The function performs the following steps:
+// 1. Creates a VPC with CIDR block 10.0.0.0/16
+// 2. Creates public and private subnets across availability zones
+// 3. Sets up an internet gateway for public internet access
+// 4. Configures routing tables for public and private subnets
+// 5. Saves infrastructure IDs to configuration
+//
+// Parameters:
+//   - ctx: Context for timeout and cancellation
+//
+// Returns:
+//   - error: Returns an error if any step of the infrastructure creation fails
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating AWS infrastructure...")
 
-	// Check if we've hit VPC limits
+	// Create VPC with retry on limits exceeded
+	if err := p.createVPCWithRetry(ctx); err != nil {
+		return fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	// Get available availability zones
+	l.Info("Getting availability zones...")
+	zones, err := p.EC2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get availability zones: %w", err)
+	}
+
+	// Create subnets across availability zones
+	l.Info("Creating subnets...")
+	for i, az := range zones.AvailabilityZones {
+		// Create public subnet
+		publicSubnetInput := &ec2.CreateSubnetInput{
+			VpcId:            aws.String(p.VPCID),
+			AvailabilityZone: az.ZoneName,
+			CidrBlock:        aws.String(fmt.Sprintf("10.0.%d.0/24", i*2)),
+			TagSpecifications: []ec2_types.TagSpecification{
+				{
+					ResourceType: ec2_types.ResourceTypeSubnet,
+					Tags: []ec2_types.Tag{
+						{
+							Key:   aws.String("Name"),
+							Value: aws.String(fmt.Sprintf("public-subnet-%s", *az.ZoneName)),
+						},
+						{Key: aws.String("Type"), Value: aws.String("public")},
+					},
+				},
+			},
+		}
+		publicSubnet, err := p.EC2Client.CreateSubnet(ctx, publicSubnetInput)
+		if err != nil {
+			return fmt.Errorf("failed to create public subnet in %s: %w", *az.ZoneName, err)
+		}
+		p.PublicSubnetIDs = append(p.PublicSubnetIDs, *publicSubnet.Subnet.SubnetId)
+
+		// Create private subnet
+		privateSubnetInput := &ec2.CreateSubnetInput{
+			VpcId:            aws.String(p.VPCID),
+			AvailabilityZone: az.ZoneName,
+			CidrBlock:        aws.String(fmt.Sprintf("10.0.%d.0/24", i*2+1)),
+			TagSpecifications: []ec2_types.TagSpecification{
+				{
+					ResourceType: ec2_types.ResourceTypeSubnet,
+					Tags: []ec2_types.Tag{
+						{
+							Key:   aws.String("Name"),
+							Value: aws.String(fmt.Sprintf("private-subnet-%s", *az.ZoneName)),
+						},
+						{Key: aws.String("Type"), Value: aws.String("private")},
+					},
+				},
+			},
+		}
+		privateSubnet, err := p.EC2Client.CreateSubnet(ctx, privateSubnetInput)
+		if err != nil {
+			return fmt.Errorf("failed to create private subnet in %s: %w", *az.ZoneName, err)
+		}
+		p.PrivateSubnetIDs = append(p.PrivateSubnetIDs, *privateSubnet.Subnet.SubnetId)
+	}
+
+	// Create Internet Gateway
+	l.Info("Creating Internet Gateway...")
+	igw, err := p.EC2Client.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeInternetGateway,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String("andaime-igw")},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create internet gateway: %w", err)
+	}
+	p.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
+
+	// Attach Internet Gateway to VPC
+	l.Info("Attaching Internet Gateway to VPC...")
+	_, err = p.EC2Client.AttachInternetGateway(ctx, &ec2.AttachInternetGatewayInput{
+		InternetGatewayId: aws.String(p.InternetGatewayID),
+		VpcId:             aws.String(p.VPCID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to attach internet gateway: %w", err)
+	}
+
+	// Create public route table
+	l.Info("Creating route tables...")
+	publicRT, err := p.EC2Client.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{
+		VpcId: aws.String(p.VPCID),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeRouteTable,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String("public-rt")},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create public route table: %w", err)
+	}
+	p.PublicRouteTableID = *publicRT.RouteTable.RouteTableId
+
+	// Create route to Internet Gateway
+	_, err = p.EC2Client.CreateRoute(ctx, &ec2.CreateRouteInput{
+		RouteTableId:         aws.String(p.PublicRouteTableID),
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+		GatewayId:            aws.String(p.InternetGatewayID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create route to internet gateway: %w", err)
+	}
+
+	// Associate public subnets with public route table
+	for _, subnetID := range p.PublicSubnetIDs {
+		_, err = p.EC2Client.AssociateRouteTable(ctx, &ec2.AssociateRouteTableInput{
+			RouteTableId: aws.String(p.PublicRouteTableID),
+			SubnetId:     aws.String(subnetID),
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to associate public subnet %s with route table: %w",
+				subnetID,
+				err,
+			)
+		}
+	}
+
+	// Save infrastructure IDs to config
+	if err := p.saveInfrastructureToConfig(); err != nil {
+		return fmt.Errorf("failed to save infrastructure IDs to config: %w", err)
+	}
+
+	l.Info("Infrastructure created successfully")
+	return nil
+}
+
+// createVPCWithRetry handles VPC creation with cleanup retry logic
+func (p *AWSProvider) createVPCWithRetry(ctx context.Context) error {
 	if err := p.CreateVpc(ctx); err != nil {
 		if strings.Contains(err.Error(), "VpcLimitExceeded") {
 			// Try to find and clean up any abandoned VPCs
@@ -391,28 +562,36 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 				return fmt.Errorf("failed to create VPC after cleanup: %w", retryErr)
 			}
 		} else {
-			return fmt.Errorf("failed to create VPC: %w", err)
+			return err
 		}
 	}
 
 	// Wait for VPC to be available
-	l.Info("Waiting for VPC to be available...")
-	if err := p.waitForVPCAvailable(ctx); err != nil {
-		return fmt.Errorf("failed waiting for VPC: %w", err)
-	}
+	logger.Get().Info("Waiting for VPC to be available...")
+	return p.waitForVPCAvailable(ctx)
+}
 
-	// Save VPC ID to config
+// saveInfrastructureToConfig saves all infrastructure IDs to the configuration
+func (p *AWSProvider) saveInfrastructureToConfig() error {
 	m := display.GetGlobalModelFunc()
-	if m != nil && m.Deployment != nil {
-		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), p.VPCID)
-		if err := viper.WriteConfig(); err != nil {
-			return fmt.Errorf("failed to save VPC ID to config: %w", err)
-		}
-		l.Infof("Saved VPC ID %s to config", p.VPCID)
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	l.Info("Infrastructure created successfully")
-	return nil
+	basePath := m.Deployment.ViperPath
+	toSave := map[string]interface{}{
+		"vpc_id":              p.VPCID,
+		"public_subnet_ids":   p.PublicSubnetIDs,
+		"private_subnet_ids":  p.PrivateSubnetIDs,
+		"internet_gateway_id": p.InternetGatewayID,
+		"route_table_id":      p.PublicRouteTableID,
+	}
+
+	for key, value := range toSave {
+		viper.Set(fmt.Sprintf("%s.%s", basePath, key), value)
+	}
+
+	return viper.WriteConfig()
 }
 
 func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
