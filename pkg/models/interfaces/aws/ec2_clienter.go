@@ -18,11 +18,6 @@ type EC2Clienter interface {
 		params *ec2.DescribeInstancesInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeInstancesOutput, error)
-	WaitUntilInstanceRunning(
-		ctx context.Context,
-		params *ec2.DescribeInstancesInput,
-		optFns ...func(*ec2.Options),
-	) error
 	TerminateInstances(
 		ctx context.Context,
 		params *ec2.TerminateInstancesInput,
@@ -83,6 +78,11 @@ type EC2Clienter interface {
 		params *ec2.DescribeRouteTablesInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeRouteTablesOutput, error)
+	DeleteVpc(
+		ctx context.Context,
+		params *ec2.DeleteVpcInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteVpcOutput, error)
 	DeleteSecurityGroup(
 		ctx context.Context,
 		params *ec2.DeleteSecurityGroupInput,

@@ -63,6 +63,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
 
+	m.Deployment.AWS.Region = awsProvider.Region
+	m.Deployment.AWS.AccountID = awsProvider.AccountID
+
 	// Add error handling for TTY initialization
 	if err := prog.InitProgram(m); err != nil {
 		// Log the TTY error but don't fail the deployment
@@ -106,7 +109,7 @@ func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
 		)
 	}
 
-	awsProvider, err := awsprovider.NewAWSProvider(accountID, region)
+	awsProvider, err := awsprovider.NewAWSProviderFunc(accountID, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
@@ -215,12 +218,12 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 
 	l.Info("Network connectivity confirmed")
 
-	// Wait for all VMs to be accessible via SSH
-	l.Info("Waiting for all VMs to be accessible via SSH...")
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("display model or deployment is nil")
+	if err := awsProvider.DeployVMsInParallel(ctx); err != nil {
+		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
 	}
 
+	// Wait for all VMs to be accessible via SSH
+	l.Info("Waiting for all VMs to be accessible via SSH...")
 	for _, machine := range m.Deployment.GetMachines() {
 		if machine.GetPublicIP() == "" {
 			return fmt.Errorf("machine %s has no public IP", machine.GetName())
@@ -233,11 +236,19 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 			machine.GetSSHPrivateKeyPath(),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to create SSH config for machine %s: %w", machine.GetName(), err)
+			return fmt.Errorf(
+				"failed to create SSH config for machine %s: %w",
+				machine.GetName(),
+				err,
+			)
 		}
 
 		if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
-			return fmt.Errorf("failed to establish SSH connection to machine %s: %w", machine.GetName(), err)
+			return fmt.Errorf(
+				"failed to establish SSH connection to machine %s: %w",
+				machine.GetName(),
+				err,
+			)
 		}
 
 		l.Infof("Machine %s is accessible via SSH", machine.GetName())

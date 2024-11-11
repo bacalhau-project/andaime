@@ -292,6 +292,7 @@ resultdownloaders
 Retryable
 rgname
 rivo
+rtbassoc
 schollz
 Sdump
 secretkey

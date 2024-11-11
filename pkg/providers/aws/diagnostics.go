@@ -89,7 +89,6 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 	// Check if we can access necessary services
 	l.Info("\nService Access Check:")
 
-
 	// Check S3
 	s3Client := s3.NewFromConfig(*p.Config)
 	_, err = s3Client.ListBuckets(ctx, &s3.ListBucketsInput{})

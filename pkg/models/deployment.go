@@ -340,6 +340,7 @@ type GCPConfig struct {
 
 type AWSConfig struct {
 	Region                string
+	AccountID             string
 	VPCID                 string
 	SubnetID              string
 	DefaultRegion         string

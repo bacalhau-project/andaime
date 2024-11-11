@@ -80,7 +80,6 @@ func (c *LiveEC2Client) CreateSubnet(
 	return c.client.CreateSubnet(ctx, params, optFns...)
 }
 
-
 func (c *LiveEC2Client) DescribeAvailabilityZones(
 	ctx context.Context,
 	params *ec2.DescribeAvailabilityZonesInput,
@@ -390,11 +389,15 @@ func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
-	sshConfig := &sshutils.SSHConfig{
-		User:               m.Deployment.SSHUser,
-		Host:               machine.GetPublicIP(),
-		Port:               m.Deployment.SSHPort,
-		PrivateKeyMaterial: []byte(m.Deployment.SSHPrivateKeyMaterial),
+	sshConfig, err := sshutils.NewSSHConfigFunc(
+		machine.GetPublicIP(),
+		machine.GetSSHPort(),
+		machine.GetSSHUser(),
+		machine.GetSSHPrivateKeyPath(),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
 	for i := 0; i < MaxRetries; i++ {

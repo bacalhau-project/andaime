@@ -695,23 +695,6 @@ func (p *GCPProvider) CreateAndConfigureVM(
 		return fmt.Errorf("failed to create VM instance: %w", err)
 	}
 
-	// Wait for SSH connectivity
-	sshConfig := &sshutils.SSHConfig{
-		User:               p.SSHUser,
-		Host:               *instance.NetworkInterfaces[0].AccessConfigs[0].NatIP,
-		Port:               p.SSHPort,
-		PrivateKeyMaterial: []byte(m.Deployment.SSHPrivateKeyMaterial),
-	}
-
-	// Try to establish SSH connection with timeout
-	sshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	err = sshConfig.WaitForSSH(sshCtx, 30, 10*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to establish SSH connectivity: %w", err)
-	}
-
 	var publicIPAddress string
 	var privateIPAddress string
 

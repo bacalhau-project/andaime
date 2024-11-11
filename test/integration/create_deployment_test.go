@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/bacalhau-project/andaime/cmd"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -40,7 +39,6 @@ import (
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
-	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 )
 
 var (
@@ -275,12 +273,10 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				Name:           deploymentName,
 			}
 
-			var providerCmd *cobra.Command
 			var createDeploymentCmd *cobra.Command
 
 			switch tt.provider {
 			case models.DeploymentTypeAWS:
-				providerCmd = aws.GetAwsCmd()
 				createDeploymentCmd = aws.GetAwsCreateDeploymentCmd()
 				createDeploymentCmd.SetContext(context.Background())
 
@@ -299,6 +295,8 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					Return(testdata.FakeEC2CreateVpcOutput(), nil)
 				mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
 					Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
+				mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
+					Return(testdata.FakeEC2DescribeAvailabilityZonesOutput(), nil)
 				mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
 					Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
 				mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
@@ -332,27 +330,16 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 
 				s.awsProvider.SetEC2Client(mockEC2Client)
 
-				machine, err := models.NewMachine(
-					tt.provider,
-					"us-west-2",
-					"t3.medium",
-					30,
-					models.CloudSpecificInfo{
-						Region: "us-west-2",
-					},
-				)
-				s.Require().NoError(err)
-				machine.SetOrchestrator(true)
-				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
-
-				aws_provider.NewAWSProviderFunc = func(accountID, region string) (*aws_provider.AWSProvider, error) {
+				aws_provider.NewAWSProviderFunc = func(
+					accountID string,
+					region string,
+				) (*aws_provider.AWSProvider, error) {
 					return s.awsProvider, nil
 				}
 
 				err = aws.ExecuteCreateDeployment(createDeploymentCmd, []string{})
 				s.Require().NoError(err)
 			case models.DeploymentTypeAzure:
-				providerCmd = azure.GetAzureCmd()
 				createDeploymentCmd = azure.GetAzureCreateDeploymentCmd()
 				createDeploymentCmd.SetContext(context.Background())
 
@@ -395,17 +382,22 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
 					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
 
-				azure_provider.NewAzureProviderFunc = func(ctx context.Context,
-					subscriptionID string) (*azure_provider.AzureProvider, error) {
+				azure_provider.NewAzureProviderFunc = func(
+					ctx context.Context,
+					subscriptionID string,
+				) (*azure_provider.AzureProvider, error) {
 					return s.azureProvider, nil
 				}
-				azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interface.AzureClienter, error) {
+
+				azure_provider.NewAzureClientFunc = func(
+					subscriptionID string,
+				) (azure_interface.AzureClienter, error) {
 					return mockAzureClient, nil
 				}
+
 				err = azure.ExecuteCreateDeployment(createDeploymentCmd, []string{})
 				s.Require().NoError(err)
 			case models.DeploymentTypeGCP:
-				providerCmd = gcp.GetGCPCmd()
 				createDeploymentCmd = gcp.GetGCPCreateDeploymentCmd()
 				createDeploymentCmd.SetContext(context.Background())
 
@@ -454,27 +446,12 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				)
 				s.Require().NoError(err)
 
-				gcp_provider.NewGCPClientFunc = func(ctx context.Context,
-					organizationID string,
-				) (gcp_interface.GCPClienter, func(), error) {
-					return s.gcpProvider.GetGCPClient(), func() {}, nil
-				}
-
 				s.gcpProvider.SetGCPClient(mockGCPClient)
 
-				machine, err := models.NewMachine(
-					tt.provider,
-					"us-central1-a",
-					"n2-standard-2",
-					30,
-					models.CloudSpecificInfo{},
-				)
-				s.Require().NoError(err)
-				machine.SetOrchestrator(true)
-				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
-
-				gcp_provider.NewGCPProviderFunc = func(ctx context.Context,
-					organizationID, billingAccountID string,
+				gcp_provider.NewGCPProviderFunc = func(
+					ctx context.Context,
+					organizationID string,
+					billingAccountID string,
 				) (*gcp_provider.GCPProvider, error) {
 					return s.gcpProvider, nil
 				}
@@ -482,18 +459,6 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				err = gcp.ExecuteCreateDeployment(createDeploymentCmd, []string{})
 				s.Require().NoError(err)
 			}
-
-			rootCmd := cmd.GetRootCommandForTest()
-
-			rootCmd.AddCommand(providerCmd)
-			providerCmd.AddCommand(createDeploymentCmd)
-
-			rootCmd.SetArgs(
-				[]string{tt.name, "create-deployment", "--config", s.viperConfigFile},
-			)
-
-			err := rootCmd.Execute()
-			s.Require().NoError(err)
 
 			// Have to pull it again because it's out of sync
 			m = display.GetGlobalModelFunc()

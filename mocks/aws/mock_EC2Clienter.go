@@ -540,6 +540,228 @@ func (_c *MockEC2Clienter_CreateVpc_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// DeleteSecurityGroup provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DeleteSecurityGroup(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSecurityGroup")
+	}
+
+	var r0 *ec2.DeleteSecurityGroupOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) *ec2.DeleteSecurityGroupOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteSecurityGroupOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DeleteSecurityGroup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSecurityGroup'
+type MockEC2Clienter_DeleteSecurityGroup_Call struct {
+	*mock.Call
+}
+
+// DeleteSecurityGroup is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DeleteSecurityGroupInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DeleteSecurityGroup(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DeleteSecurityGroup_Call {
+	return &MockEC2Clienter_DeleteSecurityGroup_Call{Call: _e.mock.On("DeleteSecurityGroup",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DeleteSecurityGroup_Call) Run(run func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DeleteSecurityGroup_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DeleteSecurityGroupInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteSecurityGroup_Call) Return(_a0 *ec2.DeleteSecurityGroupOutput, _a1 error) *MockEC2Clienter_DeleteSecurityGroup_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteSecurityGroup_Call) RunAndReturn(run func(context.Context, *ec2.DeleteSecurityGroupInput, ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)) *MockEC2Clienter_DeleteSecurityGroup_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteSubnet provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DeleteSubnet(ctx context.Context, params *ec2.DeleteSubnetInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSubnet")
+	}
+
+	var r0 *ec2.DeleteSubnetOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) *ec2.DeleteSubnetOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteSubnetOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DeleteSubnet_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSubnet'
+type MockEC2Clienter_DeleteSubnet_Call struct {
+	*mock.Call
+}
+
+// DeleteSubnet is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DeleteSubnetInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DeleteSubnet(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DeleteSubnet_Call {
+	return &MockEC2Clienter_DeleteSubnet_Call{Call: _e.mock.On("DeleteSubnet",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DeleteSubnet_Call) Run(run func(ctx context.Context, params *ec2.DeleteSubnetInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DeleteSubnet_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DeleteSubnetInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteSubnet_Call) Return(_a0 *ec2.DeleteSubnetOutput, _a1 error) *MockEC2Clienter_DeleteSubnet_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteSubnet_Call) RunAndReturn(run func(context.Context, *ec2.DeleteSubnetInput, ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error)) *MockEC2Clienter_DeleteSubnet_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteVpc provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DeleteVpc(ctx context.Context, params *ec2.DeleteVpcInput, optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteVpc")
+	}
+
+	var r0 *ec2.DeleteVpcOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) *ec2.DeleteVpcOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteVpcOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DeleteVpc_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteVpc'
+type MockEC2Clienter_DeleteVpc_Call struct {
+	*mock.Call
+}
+
+// DeleteVpc is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DeleteVpcInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DeleteVpc(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DeleteVpc_Call {
+	return &MockEC2Clienter_DeleteVpc_Call{Call: _e.mock.On("DeleteVpc",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DeleteVpc_Call) Run(run func(ctx context.Context, params *ec2.DeleteVpcInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DeleteVpc_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DeleteVpcInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteVpc_Call) Return(_a0 *ec2.DeleteVpcOutput, _a1 error) *MockEC2Clienter_DeleteVpc_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteVpc_Call) RunAndReturn(run func(context.Context, *ec2.DeleteVpcInput, ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error)) *MockEC2Clienter_DeleteVpc_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DescribeAvailabilityZones provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) DescribeAvailabilityZones(ctx context.Context, params *ec2.DescribeAvailabilityZonesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error) {
 	_va := make([]interface{}, len(optFns))
@@ -758,6 +980,80 @@ func (_c *MockEC2Clienter_DescribeInstances_Call) Return(_a0 *ec2.DescribeInstan
 }
 
 func (_c *MockEC2Clienter_DescribeInstances_Call) RunAndReturn(run func(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)) *MockEC2Clienter_DescribeInstances_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DescribeRouteTables provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeRouteTables(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeRouteTables")
+	}
+
+	var r0 *ec2.DescribeRouteTablesOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) *ec2.DescribeRouteTablesOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeRouteTablesOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DescribeRouteTables_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeRouteTables'
+type MockEC2Clienter_DescribeRouteTables_Call struct {
+	*mock.Call
+}
+
+// DescribeRouteTables is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DescribeRouteTablesInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DescribeRouteTables(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeRouteTables_Call {
+	return &MockEC2Clienter_DescribeRouteTables_Call{Call: _e.mock.On("DescribeRouteTables",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DescribeRouteTables_Call) Run(run func(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeRouteTables_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DescribeRouteTablesInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeRouteTables_Call) Return(_a0 *ec2.DescribeRouteTablesOutput, _a1 error) *MockEC2Clienter_DescribeRouteTables_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeRouteTables_Call) RunAndReturn(run func(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)) *MockEC2Clienter_DescribeRouteTables_Call {
 	_c.Call.Return(run)
 	return _c
 }

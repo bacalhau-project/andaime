@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	"github.com/spf13/viper"
@@ -43,7 +44,7 @@ func TestCreateInfrastructure(t *testing.T) {
 				VpcId: aws.String("vpc-12345"),
 			},
 		}, nil)
-	
+
 	// Mock VPC status check
 	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeVpcsOutput{
