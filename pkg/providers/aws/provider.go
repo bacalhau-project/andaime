@@ -335,8 +335,12 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 	b.MaxInterval = 30 * time.Second
 	b.MaxElapsedTime = 5 * time.Minute
 
+	l.Info("Starting network connectivity check...")
+	l.Infof("Using VPC ID: %s", p.VPCID)
+
 	operation := func() error {
 		if err := ctx.Err(); err != nil {
+			l.Error(fmt.Sprintf("Context error: %v", err))
 			return backoff.Permanent(err)
 		}
 
@@ -350,23 +354,35 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 			},
 		}
 
+		l.Info("Attempting to describe route tables...")
 		result, err := p.EC2Client.DescribeRouteTables(ctx, input)
 		if err != nil {
+			l.Error(fmt.Sprintf("Failed to describe route tables: %v", err))
 			return fmt.Errorf("failed to describe route tables: %w", err)
 		}
 
+		l.Infof("Found %d route tables", len(result.RouteTables))
+
 		// Verify route table has internet gateway route
 		hasInternetRoute := false
-		for _, rt := range result.RouteTables {
+		for i, rt := range result.RouteTables {
+			l.Infof("Checking route table %d...", i+1)
+			l.Infof("Route table ID: %s", *rt.RouteTableId)
+			
 			for _, route := range rt.Routes {
-				if route.GatewayId != nil && strings.HasPrefix(*route.GatewayId, "igw-") {
-					hasInternetRoute = true
-					break
+				if route.GatewayId != nil {
+					l.Infof("Found route with gateway ID: %s", *route.GatewayId)
+					if strings.HasPrefix(*route.GatewayId, "igw-") {
+						hasInternetRoute = true
+						l.Info("Found internet gateway route!")
+						break
+					}
 				}
 			}
 		}
 
 		if !hasInternetRoute {
+			l.Warn("No internet gateway route found in any route table")
 			return fmt.Errorf("internet gateway route not found")
 		}
 
