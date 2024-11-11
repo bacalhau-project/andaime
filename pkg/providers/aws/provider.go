@@ -466,7 +466,7 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 						*rt.RouteTableId,
 						aws.ToString(route.GatewayId),
 						aws.ToString(route.DestinationCidrBlock),
-						aws.ToString(route.State),
+						string(route.State),
 					)
 					if strings.HasPrefix(*route.GatewayId, "igw-") {
 						hasInternetRoute = true
