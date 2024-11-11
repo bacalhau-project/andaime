@@ -57,6 +57,11 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if len(deployments) == 0 {
+		fmt.Println("No deployments found to destroy")
+		return nil
+	}
+
 	if flags.destroyAll {
 		return destroyAllDeployments(cmd.Context(), deployments, flags.dryRun)
 	}
@@ -220,6 +225,10 @@ func selectDeploymentByIndex(deployments []ConfigDeployment, index int) (ConfigD
 }
 
 func selectDeploymentInteractively(deployments []ConfigDeployment) (ConfigDeployment, error) {
+	if len(deployments) == 0 {
+		return ConfigDeployment{}, fmt.Errorf("no deployments available to destroy")
+	}
+
 	fmt.Println("Available deployments:")
 	for i, dep := range deployments {
 		fmt.Printf("%d. %s (%s) - %s\n", i+1, dep.Name, dep.Type, dep.ID)
