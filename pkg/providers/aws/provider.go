@@ -260,6 +260,16 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 	p.VPCID = *createVpcOutput.Vpc.VpcId
 	l.Infof("Created VPC with ID: %s", p.VPCID)
 
+	// Save VPC ID to config immediately after creation
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), p.VPCID)
+		if err := viper.WriteConfig(); err != nil {
+			return fmt.Errorf("failed to save VPC ID to config: %w", err)
+		}
+		l.Infof("Saved VPC ID %s to config at %s.vpc_id", p.VPCID, m.Deployment.ViperPath)
+	}
+
 	return nil
 }
 
