@@ -214,9 +214,16 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 			machine.SetMachineResourceState("Network", models.ResourceStatePending)
 			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
 
+			// Ensure we have an image ID
+			imageID := machine.GetImageID()
+			if imageID == "" {
+				// Set a default Ubuntu AMI for the region if none specified
+				imageID = "ami-0c7217cdde317cfec" // Ubuntu 22.04 LTS in us-west-2
+			}
+
 			// Create and configure the VM
 			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
-				ImageId:      aws.String(machine.GetImageID()),
+				ImageId:      aws.String(imageID),
 				InstanceType: types.InstanceType(machine.GetType().ResourceString),
 				MinCount:     aws.Int32(1),
 				MaxCount:     aws.Int32(1),
