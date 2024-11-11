@@ -321,3 +321,185 @@ func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
 func TestPkgProvidersAWSProviderSuite(t *testing.T) {
 	suite.Run(t, new(PkgProvidersAWSProviderSuite))
 }
+package awsprovider
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
+
+type mockEC2Client struct {
+	mock.Mock
+}
+
+func (m *mockEC2Client) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput, optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).(*ec2.CreateVpcOutput), args.Error(1)
+}
+
+func (m *mockEC2Client) DescribeInstances(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).(*ec2.DescribeInstancesOutput), args.Error(1)
+}
+
+func (m *mockEC2Client) DescribeVpcs(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).(*ec2.DescribeVpcsOutput), args.Error(1)
+}
+
+func TestResourcePolling(t *testing.T) {
+	// Create a mock EC2 client
+	mockClient := new(mockEC2Client)
+
+	// Create test provider
+	provider := &AWSProvider{
+		EC2Client:   mockClient,
+		Region:      "us-west-2",
+		AccountID:   "123456789012",
+		UpdateQueue: make(chan display.UpdateAction, UpdateQueueSize),
+	}
+
+	// Create test deployment with machines
+	deployment := &models.Deployment{
+		Name: "test-deployment",
+		Machines: map[string]models.Machiner{
+			"test-machine": &models.Machine{
+				ID:   "test-machine",
+				Name: "test-machine",
+			},
+		},
+	}
+
+	// Set up display model
+	model := display.NewDisplayModel(deployment)
+	display.SetGlobalModelFunc(func() *display.DisplayModel { return model })
+
+	// Mock EC2 DescribeInstances response
+	mockClient.On("DescribeInstances", mock.Anything, mock.Anything).Return(&ec2.DescribeInstancesOutput{
+		Reservations: []ec2_types.Reservation{
+			{
+				Instances: []ec2_types.Instance{
+					{
+						InstanceId: aws.String("i-1234567890"),
+						State: &ec2_types.InstanceState{
+							Name: ec2_types.InstanceStateNameRunning,
+						},
+						NetworkInterfaces: []ec2_types.InstanceNetworkInterface{
+							{
+								Status: aws.String("in-use"),
+							},
+						},
+						BlockDeviceMappings: []ec2_types.InstanceBlockDeviceMapping{
+							{
+								Ebs: &ec2_types.EbsInstanceBlockDevice{
+									Status: aws.String("attached"),
+								},
+							},
+						},
+						Tags: []ec2_types.Tag{
+							{
+								Key:   aws.String("AndaimeMachineID"),
+								Value: aws.String("test-machine"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}, nil)
+
+	// Test resource polling
+	ctx := context.Background()
+	err := provider.pollResources(ctx)
+	assert.NoError(t, err)
+
+	// Verify machine status updates
+	machine := deployment.GetMachine("test-machine")
+	assert.Equal(t, models.ResourceStateRunning, machine.GetMachineResourceState(models.AWSResourceTypeInstance.ResourceString))
+
+	// Verify display updates were queued
+	select {
+	case update := <-provider.UpdateQueue:
+		assert.Equal(t, "test-machine", update.MachineName)
+		assert.Equal(t, display.UpdateTypeResource, update.UpdateData.UpdateType)
+		assert.Equal(t, models.ResourceStateRunning, update.UpdateData.ResourceState)
+	case <-time.After(time.Second):
+		t.Fatal("Timeout waiting for update")
+	}
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestVPCCreation(t *testing.T) {
+	// Create a mock EC2 client
+	mockClient := new(mockEC2Client)
+
+	// Create test provider
+	provider := &AWSProvider{
+		EC2Client:   mockClient,
+		Region:      "us-west-2",
+		AccountID:   "123456789012",
+		UpdateQueue: make(chan display.UpdateAction, UpdateQueueSize),
+	}
+
+	// Create test deployment with machines
+	deployment := &models.Deployment{
+		Name: "test-deployment",
+		Machines: map[string]models.Machiner{
+			"test-machine": &models.Machine{
+				ID:   "test-machine",
+				Name: "test-machine",
+			},
+		},
+	}
+
+	// Set up display model
+	model := display.NewDisplayModel(deployment)
+	display.SetGlobalModelFunc(func() *display.DisplayModel { return model })
+
+	// Mock EC2 CreateVpc response
+	mockClient.On("CreateVpc", mock.Anything, mock.Anything).Return(&ec2.CreateVpcOutput{
+		Vpc: &ec2_types.Vpc{
+			VpcId: aws.String("vpc-12345"),
+			State: ec2_types.VpcStateAvailable,
+		},
+	}, nil)
+
+	// Mock EC2 DescribeVpcs response
+	mockClient.On("DescribeVpcs", mock.Anything, mock.Anything).Return(&ec2.DescribeVpcsOutput{
+		Vpcs: []ec2_types.Vpc{
+			{
+				VpcId: aws.String("vpc-12345"),
+				State: ec2_types.VpcStateAvailable,
+			},
+		},
+	}, nil)
+
+	// Test VPC creation
+	ctx := context.Background()
+	err := provider.CreateVpc(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, "vpc-12345", provider.VPCID)
+
+	// Verify VPC status updates were queued
+	select {
+	case update := <-provider.UpdateQueue:
+		assert.Equal(t, "test-machine", update.MachineName)
+		assert.Equal(t, display.UpdateTypeResource, update.UpdateData.UpdateType)
+		assert.Equal(t, "VPC", update.UpdateData.ResourceType)
+		assert.Equal(t, models.ResourceStateRunning, update.UpdateData.ResourceState)
+	case <-time.After(time.Second):
+		t.Fatal("Timeout waiting for update")
+	}
+
+	mockClient.AssertExpectations(t)
+}
