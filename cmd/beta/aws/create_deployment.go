@@ -38,6 +38,13 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		logger.Get().Warn(fmt.Sprintf("Error loading .env file: %v", err))
 	}
 
+	// Ensure we're using the config file specified in the command
+	configFile, err := cmd.Flags().GetString("config")
+	if err != nil {
+		return fmt.Errorf("failed to get config flag: %w", err)
+	}
+	viper.SetConfigFile(configFile)
+
 	ctx := cmd.Context()
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
@@ -289,10 +296,35 @@ func writeConfig() {
 	l := logger.Get()
 	configFile := viper.ConfigFileUsed()
 	if configFile != "" {
-		if err := viper.WriteConfigAs(configFile); err != nil {
+		// Ensure the deployments section exists
+		if !viper.IsSet("deployments") {
+			viper.Set("deployments", make(map[string]interface{}))
+		}
+
+		// Get the current deployment info
+		m := display.GetGlobalModelFunc()
+		if m != nil && m.Deployment != nil {
+			deploymentID := m.Deployment.GetID()
+			deploymentPath := fmt.Sprintf("deployments.%s", deploymentID)
+			
+			// Save deployment details
+			viper.Set(deploymentPath, map[string]interface{}{
+				"provider": "aws",
+				"aws": map[string]interface{}{
+					"region":     m.Deployment.AWS.Region,
+					"account_id": m.Deployment.AWS.AccountID,
+					"vpc_id":     m.Deployment.AWS.VPCID,
+				},
+				"machines": m.Deployment.GetMachinesConfig(),
+			})
+		}
+
+		if err := viper.WriteConfig(); err != nil {
 			l.Error(fmt.Sprintf("Failed to write configuration to file: %v", err))
 		} else {
-			l.Debug(fmt.Sprintf("Configuration written to %s", configFile))
+			l.Info(fmt.Sprintf("Configuration written to %s", configFile))
 		}
+	} else {
+		l.Error("No config file specified")
 	}
 }
