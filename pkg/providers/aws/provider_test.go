@@ -342,18 +342,13 @@ func (m *MockEC2Client) DescribeVpcs(
 // Add other required interface methods with mock implementations...
 
 func TestCreateInfrastructure(t *testing.T) {
-	// Create a temporary config file
-	tmpfile, err := os.CreateTemp("", "config*.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpfile.Name())
-	
-	// Set up viper with the temp config
+	// Reset viper and use test config
 	viper.Reset()
-	viper.SetConfigFile(tmpfile.Name())
-	if err := viper.WriteConfig(); err != nil {
-		t.Fatal(err)
+	if err := viper.ReadInConfig(); err != nil {
+		// Ignore file not found errors in tests
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			t.Fatal(err)
+		}
 	}
 
 	// Set up the test deployment
