@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
@@ -376,16 +376,16 @@ func TestCreateInfrastructure(t *testing.T) {
 
 	// Set up mock expectations
 	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).Return(&ec2.CreateVpcOutput{
-		Vpc: &types.Vpc{
+		Vpc: &ec2_types.Vpc{
 			VpcId: aws.String("vpc-12345"),
 		},
 	}, nil)
 
 	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.Anything).Return(&ec2.DescribeVpcsOutput{
-		Vpcs: []types.Vpc{
+		Vpcs: []ec2_types.Vpc{
 			{
 				VpcId: aws.String("vpc-12345"),
-				State: types.VpcStateAvailable,
+				State: ec2_types.VpcStateAvailable,
 			},
 		},
 	}, nil)
