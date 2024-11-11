@@ -300,3 +300,101 @@ func TestGetVMExternalIP(t *testing.T) {
 	// Verify that the mock was called as expected
 	mockEC2Client.AssertExpectations(t)
 }
+package awsprovider
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
+
+type MockEC2Client struct {
+	mock.Mock
+}
+
+func (m *MockEC2Client) CreateVpc(
+	ctx context.Context,
+	params *ec2.CreateVpcInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateVpcOutput, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).(*ec2.CreateVpcOutput), args.Error(1)
+}
+
+func (m *MockEC2Client) DescribeVpcs(
+	ctx context.Context,
+	params *ec2.DescribeVpcsInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeVpcsOutput, error) {
+	args := m.Called(ctx, params)
+	return args.Get(0).(*ec2.DescribeVpcsOutput), args.Error(1)
+}
+
+// Add other required interface methods with mock implementations...
+
+func TestCreateInfrastructure(t *testing.T) {
+	// Create a temporary config file
+	tmpfile, err := os.CreateTemp("", "config*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+	
+	// Set up viper with the temp config
+	viper.Reset()
+	viper.SetConfigFile(tmpfile.Name())
+	if err := viper.WriteConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up the test deployment
+	deployment, err := models.NewDeployment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployment.ViperPath = "test.deployment"
+	m := display.NewDisplayModel(deployment)
+	display.SetGlobalModel(m)
+
+	// Create provider with mock client
+	provider := &AWSProvider{
+		AccountID: "123456789012",
+		Region:    "us-west-2",
+	}
+
+	mockEC2Client := new(MockEC2Client)
+	provider.SetEC2Client(mockEC2Client)
+
+	// Set up mock expectations
+	mockEC2Client.On("CreateVpc", mock.Anything, mock.Anything).Return(&ec2.CreateVpcOutput{
+		Vpc: &types.Vpc{
+			VpcId: aws.String("vpc-12345"),
+		},
+	}, nil)
+
+	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.Anything).Return(&ec2.DescribeVpcsOutput{
+		Vpcs: []types.Vpc{
+			{
+				VpcId: aws.String("vpc-12345"),
+				State: types.VpcStateAvailable,
+			},
+		},
+	}, nil)
+
+	// Run the test
+	err = provider.CreateInfrastructure(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "vpc-12345", provider.VPCID)
+
+	// Verify the VPC ID was saved to config
+	assert.Equal(t, "vpc-12345", viper.GetString("test.deployment.vpc_id"))
+}
