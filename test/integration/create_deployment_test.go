@@ -26,12 +26,16 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 
+	"github.com/bacalhau-project/andaime/cmd/beta/aws"
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 
+	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
 	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
 	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
+
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
@@ -55,6 +59,7 @@ type IntegrationTestSuite struct {
 	mockSSHConfig         *sshutils.MockSSHConfig
 	azureProvider         *azure_provider.AzureProvider
 	gcpProvider           *gcp_provider.GCPProvider
+	awsProvider           *aws_provider.AWSProvider
 }
 
 func (s *IntegrationTestSuite) SetupSuite() {
@@ -175,6 +180,29 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 				},
 			},
 		})
+	case models.DeploymentTypeAWS:
+		viper.Set("aws.account_id", "123456789012")
+		viper.Set("aws.region", "us-west-2")
+		viper.Set("aws.default_count_per_zone", 1)
+		viper.Set("aws.default_machine_type", "t3.medium")
+		viper.Set("aws.default_disk_size_gb", 30)
+		viper.Set("aws.machines", []interface{}{
+			map[string]interface{}{
+				"location": "us-west-2",
+				"parameters": map[string]interface{}{
+					"count":         1,
+					"orchestrator":  true,
+					"instance_type": "t3.medium",
+				},
+			},
+			map[string]interface{}{
+				"location": "us-east-1",
+				"parameters": map[string]interface{}{
+					"count":         1,
+					"instance_type": "t3.medium",
+				},
+			},
+		})
 	}
 }
 
@@ -227,6 +255,7 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 		name     string
 		provider models.DeploymentType
 	}{
+		{"aws", models.DeploymentTypeAWS},
 		{"azure", models.DeploymentTypeAzure},
 		{"gcp", models.DeploymentTypeGCP},
 	}
@@ -250,6 +279,47 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 			var createDeploymentCmd *cobra.Command
 
 			switch tt.provider {
+			case models.DeploymentTypeAWS:
+				providerCmd = aws.GetAwsCmd()
+				createDeploymentCmd = aws.GetAwsCreateDeploymentCmd()
+				createDeploymentCmd.SetContext(context.Background())
+
+				s.awsProvider, err = aws_provider.NewAWSProvider(
+					viper.GetString("aws.account_id"),
+					viper.GetString("aws.region"),
+				)
+				s.Require().NoError(err)
+
+				mockEC2Client := new(aws_mock.MockEC2Clienter)
+
+				// Mock EC2 operations
+				mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
+					Return(testdata.FakeEC2DescribeInstancesOutput(), nil)
+
+				mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
+					Return(testdata.FakeEC2RunInstancesOutput(), nil)
+
+				s.awsProvider.SetEC2Client(mockEC2Client)
+
+				machine, err := models.NewMachine(
+					tt.provider,
+					"us-west-2",
+					"t3.medium",
+					30,
+					models.CloudSpecificInfo{
+						Region: "us-west-2",
+					},
+				)
+				s.Require().NoError(err)
+				machine.SetOrchestrator(true)
+				m.Deployment.SetMachines(map[string]models.Machiner{"test-machine": machine})
+
+				aws_provider.NewAWSProviderFunc = func(accountID, region string) (*aws_provider.AWSProvider, error) {
+					return s.awsProvider, nil
+				}
+
+				err = aws.ExecuteCreateDeployment(createDeploymentCmd, []string{})
+				s.Require().NoError(err)
 			case models.DeploymentTypeAzure:
 				providerCmd = azure.GetAzureCmd()
 				createDeploymentCmd = azure.GetAzureCreateDeploymentCmd()
@@ -407,9 +477,11 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 
 			if tt.provider == models.DeploymentTypeAzure {
 				s.Equal("4a45a76b-5754-461d-84a1-f5e47b0a7198", m.Deployment.Azure.SubscriptionID)
-			} else {
+			} else if tt.provider == models.DeploymentTypeGCP {
 				s.Equal("test-1292-gcp", m.Deployment.GCP.ProjectID)
 				s.Equal("org-1234567890", m.Deployment.GCP.OrganizationID)
+			} else if tt.provider == models.DeploymentTypeAWS {
+				s.Equal("us-west-2", m.Deployment.AWS.Region)
 			}
 		})
 	}
