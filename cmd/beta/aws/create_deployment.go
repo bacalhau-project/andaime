@@ -80,7 +80,10 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 			Warn(fmt.Sprintf("Failed to initialize display: %v. Continuing without interactive display.", err))
 	}
 
-	startResourcePolling(ctx, awsProvider)
+	err = startResourcePolling(ctx, awsProvider)
+	if err != nil {
+		return fmt.Errorf("failed to start resource polling: %w", err)
+	}
 
 	deploymentErr := runDeploymentAsync(ctx, awsProvider, cancel)
 
@@ -233,12 +236,6 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 
 	l.Info("Network connectivity confirmed")
 
-	// Get AMIs for each region before deploying VMs
-	model := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("display model or deployment is nil")
-	}
-
 	// Create a map of region to AMI ID
 	regionAMIs := make(map[string]string)
 	for _, machine := range m.Deployment.GetMachines() {
@@ -253,7 +250,7 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 		}
 	}
 
-	if err := awsProvider.DeployVMsInParallel(ctx, regionAMIs); err != nil {
+	if err := awsProvider.DeployVMsInParallel(ctx); err != nil {
 		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
 	}
 
