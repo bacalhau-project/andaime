@@ -3,7 +3,6 @@ package aws
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -89,23 +88,17 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 
 func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
 	// Try environment variables first, then fall back to viper config
-	accountID := os.Getenv("AWS_ACCOUNT_ID")
-	if accountID == "" {
-		accountID = viper.GetString("aws.account_id")
-	}
+	accountID := viper.GetString("aws.account_id")
 	if accountID == "" {
 		return nil, fmt.Errorf(
-			"AWS account ID is required. Set AWS_ACCOUNT_ID in .env file or aws.account_id in config",
+			"AWS account ID is required. Set aws.account_id in config",
 		)
 	}
 
-	region := os.Getenv("AWS_DEFAULT_REGION")
-	if region == "" {
-		region = viper.GetString("aws.region")
-	}
+	region := viper.GetString("aws.region")
 	if region == "" {
 		return nil, fmt.Errorf(
-			"AWS region is required. Set AWS_DEFAULT_REGION in .env file or aws.region in config",
+			"AWS region is required. Set aws.region in config",
 		)
 	}
 

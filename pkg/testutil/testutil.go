@@ -5,16 +5,15 @@ import (
 	"math/rand"
 	"strings"
 
-	"github.com/bacalhau-project/andaime/internal/testdata"
 	internal_testutil "github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 )
 
-func InitializeTestViper() (*viper.Viper, error) {
+func InitializeTestViper(testConfig string) (*viper.Viper, error) {
 	viper.Reset()
-	configFile, cleanup, err := internal_testutil.WriteStringToTempFile(testdata.TestAzureConfig)
+	configFile, cleanup, err := internal_testutil.WriteStringToTempFile(testConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +65,10 @@ func SetupViper(deploymentType models.DeploymentType,
 				},
 			},
 		})
+	} else if deploymentType == models.DeploymentTypeAWS {
+		viper.Set("aws.region", "us-east-1")
+		viper.Set("aws.account_id", "1234567890")
 	}
-
 }
 
 func GenerateRandomLogEntry() string {

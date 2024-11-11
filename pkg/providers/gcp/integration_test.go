@@ -38,6 +38,12 @@ type PkgProvidersGCPIntegrationTest struct {
 }
 
 func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
+	tempConfigFile, err := os.CreateTemp("", "config*.yaml")
+	s.Require().NoError(err)
+
+	testConfig, err := testdata.ReadTestGCPConfig()
+	s.Require().NoError(err)
+
 	f, err := os.CreateTemp("", "local_custom_script*.sh")
 	s.Require().NoError(err)
 
@@ -47,21 +53,20 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	_, err = f.Write(localCustomScriptContent)
 	s.Require().NoError(err)
 
+	_, err = tempConfigFile.Write([]byte(testConfig))
+	s.Require().NoError(err)
+
 	localCustomScriptPath = f.Name()
 
-	// Reset viper and use test config
-	viper.Reset()
-	if err := viper.ReadInConfig(); err != nil {
-		// Ignore file not found errors in tests
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			s.Require().NoError(err)
-		}
-	}
+	viper.SetConfigFile(tempConfigFile.Name())
+	err = viper.ReadInConfig()
+	s.Require().NoError(err)
 
 	viper.Set("gcp.project_id", "test-project-id")
 	viper.Set("gcp.region", "us-central1")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
+	viper.Set("general.custom_script_path", localCustomScriptPath)
 	viper.Set("gcp.default_disk_size_gb", 30)
 
 	s.mockGCPClient = new(gcp_mocks.MockGCPClienter)
@@ -78,13 +83,10 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	s.clusterDeployer = common.NewClusterDeployer(models.DeploymentTypeGCP)
 
 	s.cleanup = func() {
+		_ = os.Remove(tempConfigFile.Name())
 		_ = os.Remove(localCustomScriptPath)
 		viper.Reset()
 	}
-}
-
-func (s *PkgProvidersGCPIntegrationTest) TearDownSuite() {
-	s.cleanup()
 }
 
 func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
