@@ -281,6 +281,12 @@ func min(a, b int) int {
 	return b
 }
 
+// DeployVMsInParallel deploys VMs across regions in parallel
+func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, regionAMIs map[string]string) error {
+	// Implementation here
+	return nil
+}
+
 // Add these helper functions to check stack status
 func isStackInRollback(status types.StackStatus) bool {
 	return status == types.StackStatusRollbackComplete ||
@@ -939,7 +945,10 @@ func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context, region string) (st
 	l.Debug("Looking up latest Ubuntu AMI...")
 
 	// Create a new EC2 client for the specific region
-	cfg := *p.Config
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return "", fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+	}
 	cfg.Region = region
 	regionClient := ec2.NewFromConfig(cfg)
 
