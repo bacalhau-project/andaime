@@ -168,6 +168,46 @@ func (c *LiveEC2Client) DeleteVpc(
 	return c.client.DeleteVpc(ctx, params, optFns...)
 }
 
+func (c *LiveEC2Client) CreateInternetGateway(
+	ctx context.Context,
+	params *ec2.CreateInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateInternetGatewayOutput, error) {
+	return c.client.CreateInternetGateway(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) AttachInternetGateway(
+	ctx context.Context,
+	params *ec2.AttachInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AttachInternetGatewayOutput, error) {
+	return c.client.AttachInternetGateway(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateRouteTable(
+	ctx context.Context,
+	params *ec2.CreateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateRouteTableOutput, error) {
+	return c.client.CreateRouteTable(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) CreateRoute(
+	ctx context.Context,
+	params *ec2.CreateRouteInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.CreateRouteOutput, error) {
+	return c.client.CreateRoute(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) AssociateRouteTable(
+	ctx context.Context,
+	params *ec2.AssociateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AssociateRouteTableOutput, error) {
+	return c.client.AssociateRouteTable(ctx, params, optFns...)
+}
+
 func (c *LiveEC2Client) DescribeRouteTables(
 	ctx context.Context,
 	params *ec2.DescribeRouteTablesInput,

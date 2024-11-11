@@ -294,10 +294,23 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 
 				// Mock EC2 operations
 				// Mock VPC operations
+				// Mock VPC and networking operations
 				mockEC2Client.On("CreateVpc", mock.Anything, mock.AnythingOfType("*ec2.CreateVpcInput")).
 					Return(testdata.FakeEC2CreateVpcOutput(), nil)
 				mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
 					Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
+				mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
+					Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
+				mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
+					Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil)
+				mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
+					Return(testdata.FakeEC2CreateRouteTableOutput(), nil)
+				mockEC2Client.On("CreateRoute", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteInput")).
+					Return(testdata.FakeEC2CreateRouteOutput(), nil)
+				mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.AssociateRouteTableInput")).
+					Return(testdata.FakeEC2AssociateRouteTableOutput(), nil)
+				mockEC2Client.On("DescribeRouteTables", mock.Anything, mock.AnythingOfType("*ec2.DescribeRouteTablesInput")).
+					Return(testdata.FakeEC2DescribeRouteTablesOutput(), nil)
 
 				// Mock instance operations
 				mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
