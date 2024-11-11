@@ -206,9 +206,11 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 		return fmt.Errorf("failed to bootstrap environment: %w", err)
 	}
 
+	l.Debug("Starting infrastructure creation...")
 	// Create infrastructure and wait for it to be ready
 	// Create infrastructure and update display
 	if err := awsProvider.CreateInfrastructure(ctx); err != nil {
+		l.Debug("Infrastructure creation failed", logger.Error(err))
 		for _, machine := range m.Deployment.GetMachines() {
 			m.QueueUpdate(display.UpdateAction{
 				MachineName: machine.GetName(),

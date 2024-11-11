@@ -273,7 +273,7 @@ func isStackFailed(status types.StackStatus) bool {
 // CreateVpc creates a new VPC with the specified CIDR block
 func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 	l := logger.Get()
-	l.Info("Creating VPC...")
+	l.Debug("Starting VPC creation...")
 
 	// Update all machines to show VPC creation in progress
 	m := display.GetGlobalModelFunc()
@@ -310,13 +310,19 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 		},
 	}
 
+	l.Debug("Sending CreateVpc request...", 
+		logger.String("cidr_block", "10.0.0.0/16"))
+	
 	createVpcOutput, err := p.EC2Client.CreateVpc(ctx, createVpcInput)
 	if err != nil {
+		l.Debug("VPC creation failed", logger.Error(err))
 		return fmt.Errorf("failed to create VPC: %w", err)
 	}
 
 	p.VPCID = *createVpcOutput.Vpc.VpcId
-	l.Infof("Created VPC with ID: %s", p.VPCID)
+	l.Debug("VPC created successfully", 
+		logger.String("vpc_id", p.VPCID),
+		logger.String("state", string(createVpcOutput.Vpc.State)))
 
 	// Update all machines to show VPC is ready
 	if m != nil && m.Deployment != nil {
@@ -401,6 +407,9 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 
 func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 	l := logger.Get()
+	l.Debug("Starting network connectivity check", 
+		logger.String("vpc_id", p.VPCID))
+	
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = 5 * time.Second
 	b.MaxInterval = 30 * time.Second
@@ -428,11 +437,15 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 		l.Info("Attempting to describe route tables...")
 		result, err := p.EC2Client.DescribeRouteTables(ctx, input)
 		if err != nil {
-			l.Error(fmt.Sprintf("Failed to describe route tables: %v", err))
+			l.Debug("Failed to describe route tables", 
+				logger.String("vpc_id", p.VPCID),
+				logger.Error(err))
 			return fmt.Errorf("failed to describe route tables: %w", err)
 		}
 
-		l.Infof("Found %d route tables", len(result.RouteTables))
+		l.Debug("Route tables found", 
+			logger.String("vpc_id", p.VPCID),
+			logger.Int("count", len(result.RouteTables)))
 
 		// Verify route table has internet gateway route
 		hasInternetRoute := false
@@ -442,7 +455,11 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 
 			for _, route := range rt.Routes {
 				if route.GatewayId != nil {
-					l.Infof("Found route with gateway ID: %s", *route.GatewayId)
+					l.Debug("Examining route", 
+						logger.String("vpc_id", p.VPCID),
+						logger.String("route_table_id", *rt.RouteTableId),
+						logger.String("gateway_id", aws.ToString(route.GatewayId)),
+						logger.String("destination", aws.ToString(route.DestinationCidrBlock)))
 					if strings.HasPrefix(*route.GatewayId, "igw-") {
 						hasInternetRoute = true
 						l.Info("Found internet gateway route!")
@@ -508,6 +525,8 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 
 func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 	l := logger.Get()
+	l.Debug("Waiting for VPC to become available", 
+		logger.String("vpc_id", p.VPCID))
 
 	b := backoff.NewExponentialBackOff()
 	b.MaxElapsedTime = 5 * time.Minute
@@ -525,14 +544,26 @@ func (p *AWSProvider) waitForVPCAvailable(ctx context.Context) error {
 
 		result, err := p.EC2Client.DescribeVpcs(ctx, input)
 		if err != nil {
+			l.Debug("Failed to describe VPC", 
+				logger.String("vpc_id", p.VPCID),
+				logger.Error(err))
 			return fmt.Errorf("failed to describe VPC: %w", err)
 		}
 
-		if len(result.Vpcs) > 0 && result.Vpcs[0].State == ec2_types.VpcStateAvailable {
-			l.Info("VPC is now available")
-			return nil
+		if len(result.Vpcs) > 0 {
+			l.Debug("VPC status check", 
+				logger.String("vpc_id", p.VPCID),
+				logger.String("state", string(result.Vpcs[0].State)))
+			
+			if result.Vpcs[0].State == ec2_types.VpcStateAvailable {
+				l.Debug("VPC is now available", 
+					logger.String("vpc_id", p.VPCID))
+				return nil
+			}
 		}
 
+		l.Debug("VPC not yet available", 
+			logger.String("vpc_id", p.VPCID))
 		return fmt.Errorf("VPC not yet available")
 	}
 
