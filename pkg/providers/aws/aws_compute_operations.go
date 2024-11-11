@@ -128,14 +128,6 @@ func (c *LiveEC2Client) DescribeAvailabilityZones(
 	return c.client.DescribeAvailabilityZones(ctx, params, optFns...)
 }
 
-func (c *LiveEC2Client) DescribeRouteTables(
-	ctx context.Context,
-	params *ec2.DescribeRouteTablesInput,
-	optFns ...func(*ec2.Options),
-) (*ec2.DescribeRouteTablesOutput, error) {
-	return c.client.DescribeRouteTables(ctx, params, optFns...)
-}
-
 func (c *LiveEC2Client) DeleteSecurityGroup(
 	ctx context.Context,
 	params *ec2.DeleteSecurityGroupInput,
