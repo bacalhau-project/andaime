@@ -934,9 +934,14 @@ func (p *AWSProvider) ValidateMachineType(
 }
 
 // GetLatestUbuntuAMI returns the latest Ubuntu 22.04 LTS AMI ID for the specified region
-func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context) (string, error) {
+func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context, region string) (string, error) {
 	l := logger.Get()
 	l.Debug("Looking up latest Ubuntu AMI...")
+
+	// Create a new EC2 client for the specific region
+	cfg := *p.Config
+	cfg.Region = region
+	regionClient := ec2.NewFromConfig(cfg)
 
 	input := &ec2.DescribeImagesInput{
 		Filters: []ec2_types.Filter{
@@ -964,14 +969,14 @@ func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context) (string, error) {
 		Owners: []string{UbuntuAMIOwner},
 	}
 
-	l.Debugf("Searching for Ubuntu AMI in region %s with owner %s", p.Region, UbuntuAMIOwner)
-	result, err := p.EC2Client.DescribeImages(ctx, input)
+	l.Debugf("Searching for Ubuntu AMI in region %s with owner %s", region, UbuntuAMIOwner)
+	result, err := regionClient.DescribeImages(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("failed to describe images in region %s: %w", p.Region, err)
+		return "", fmt.Errorf("failed to describe images in region %s: %w", region, err)
 	}
 
 	if len(result.Images) == 0 {
-		return "", fmt.Errorf("no Ubuntu AMIs found in region %s matching criteria", p.Region)
+		return "", fmt.Errorf("no Ubuntu AMIs found in region %s matching criteria", region)
 	}
 
 	l.Debugf("Found %d matching AMIs", len(result.Images))

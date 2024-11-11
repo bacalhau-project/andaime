@@ -233,7 +233,27 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 
 	l.Info("Network connectivity confirmed")
 
-	if err := awsProvider.DeployVMsInParallel(ctx); err != nil {
+	// Get AMIs for each region before deploying VMs
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
+	}
+
+	// Create a map of region to AMI ID
+	regionAMIs := make(map[string]string)
+	for _, machine := range m.Deployment.GetMachines() {
+		region := machine.GetLocation()
+		if _, exists := regionAMIs[region]; !exists {
+			amiID, err := awsProvider.GetLatestUbuntuAMI(ctx, region)
+			if err != nil {
+				return fmt.Errorf("failed to get AMI for region %s: %w", region, err)
+			}
+			regionAMIs[region] = amiID
+			l.Infof("Found AMI %s for region %s", amiID, region)
+		}
+	}
+
+	if err := awsProvider.DeployVMsInParallel(ctx, regionAMIs); err != nil {
 		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
 	}
 
