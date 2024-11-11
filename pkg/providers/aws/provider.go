@@ -807,7 +807,7 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 			l.Infof("Found VPC ID in config: %s", vpcID)
 			p.VPCID = vpcID
 
-			// Delete EC2 instances
+			// Terminate any instances in the VPC
 			instances, err := p.EC2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 				Filters: []ec2_types.Filter{
 					{
@@ -820,10 +820,11 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 				return fmt.Errorf("failed to describe instances: %w", err)
 			}
 
-			// Terminate instances
+			// Terminate instances and wait for them to be terminated
 			for _, reservation := range instances.Reservations {
 				for _, instance := range reservation.Instances {
 					if instance.State.Name != ec2_types.InstanceStateNameTerminated {
+						l.Infof("Terminating instance %s", *instance.InstanceId)
 						_, err := p.EC2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 							InstanceIds: []string{*instance.InstanceId},
 						})
@@ -834,87 +835,10 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 				}
 			}
 
-			// Delete route table associations and routes
-			rtbs, err := p.EC2Client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
-				Filters: []ec2_types.Filter{{
-					Name:   aws.String("vpc-id"),
-					Values: []string{vpcID},
-				}},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to describe route tables: %w", err)
-			}
+			// Wait a bit for instances to start terminating
+			time.Sleep(5 * time.Second)
 
-			for _, rtb := range rtbs.RouteTables {
-				for _, assoc := range rtb.Associations {
-					if !aws.ToBool(assoc.Main) {
-						_, err := p.EC2Client.DisassociateRouteTable(ctx, &ec2.DisassociateRouteTableInput{
-							AssociationId: assoc.RouteTableAssociationId,
-						})
-						if err != nil {
-							l.Warnf("Failed to disassociate route table: %v", err)
-						}
-					}
-				}
-				if !aws.ToBool(rtb.Associations[0].Main) {
-					_, err := p.EC2Client.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
-						RouteTableId: rtb.RouteTableId,
-					})
-					if err != nil {
-						l.Warnf("Failed to delete route table: %v", err)
-					}
-				}
-			}
-
-			// Detach and delete internet gateway
-			igws, err := p.EC2Client.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
-				Filters: []ec2_types.Filter{{
-					Name:   aws.String("attachment.vpc-id"),
-					Values: []string{vpcID},
-				}},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to describe internet gateways: %w", err)
-			}
-
-			for _, igw := range igws.InternetGateways {
-				_, err := p.EC2Client.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
-					InternetGatewayId: igw.InternetGatewayId,
-					VpcId:            aws.String(vpcID),
-				})
-				if err != nil {
-					l.Warnf("Failed to detach internet gateway: %v", err)
-				}
-
-				_, err = p.EC2Client.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
-					InternetGatewayId: igw.InternetGatewayId,
-				})
-				if err != nil {
-					l.Warnf("Failed to delete internet gateway: %v", err)
-				}
-			}
-
-			// Delete subnets
-			subnets, err := p.EC2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
-				Filters: []ec2_types.Filter{{
-					Name:   aws.String("vpc-id"),
-					Values: []string{vpcID},
-				}},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to describe subnets: %w", err)
-			}
-
-			for _, subnet := range subnets.Subnets {
-				_, err := p.EC2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
-					SubnetId: subnet.SubnetId,
-				})
-				if err != nil {
-					l.Warnf("Failed to delete subnet: %v", err)
-				}
-			}
-
-			// Finally delete the VPC
+			// Delete the VPC - this will automatically delete all dependent resources
 			_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
 				VpcId: aws.String(vpcID),
 			})
