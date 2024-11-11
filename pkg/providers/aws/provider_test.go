@@ -142,12 +142,27 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 			RouteTable: &types.RouteTable{RouteTableId: aws.String(FAKE_RTB_ID)},
 		}, nil)
 
-	// Mock remaining network setup
+	// Mock remaining network setup with detailed logging
 	suite.mockAWSClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			input := args.Get(1).(*ec2.AttachInternetGatewayInput)
+			logger.Get().Debugf("Attaching Internet Gateway %s to VPC %s", *input.InternetGatewayId, *input.VpcId)
+		}).
 		Return(&ec2.AttachInternetGatewayOutput{}, nil)
+
 	suite.mockAWSClient.On("CreateRoute", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			input := args.Get(1).(*ec2.CreateRouteInput)
+			logger.Get().Debugf("Creating route in route table %s with destination %s via IGW %s", 
+				*input.RouteTableId, *input.DestinationCidrBlock, *input.GatewayId)
+		}).
 		Return(&ec2.CreateRouteOutput{}, nil)
+
 	suite.mockAWSClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			input := args.Get(1).(*ec2.AssociateRouteTableInput)
+			logger.Get().Debugf("Associating route table %s with subnet %s", *input.RouteTableId, *input.SubnetId)
+		}).
 		Return(&ec2.AssociateRouteTableOutput{}, nil)
 
 	err := suite.awsProvider.CreateInfrastructure(suite.ctx)

@@ -25,7 +25,7 @@ import (
 
 const (
 	ResourcePollingInterval = 10 * time.Second
-	UpdateQueueSize         = 100
+	UpdateQueueSize         = 1000 // Increased from 100 to prevent dropping updates
 	DefaultStackTimeout     = 30 * time.Minute
 	TestStackTimeout        = 30 * time.Second
 )
@@ -443,7 +443,8 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 			},
 		}
 
-		l.Info("Attempting to describe route tables...")
+		l.Info("Attempting to describe route tables for VPC connectivity check...")
+		l.Debugf("Looking for route tables in VPC %s with internet gateway routes", p.VPCID)
 		result, err := p.EC2Client.DescribeRouteTables(ctx, input)
 		if err != nil {
 			l.Debugf("Failed to describe route tables: %v", err)
@@ -461,11 +462,11 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 			for _, route := range rt.Routes {
 				if route.GatewayId != nil {
 					l.Debugf(
-						`Examining route with route table ID %s,
-						 gateway ID %s, and destination %s`,
+						"Examining route: [RouteTable: %s] [GatewayID: %s] [Destination: %s] [State: %s]",
 						*rt.RouteTableId,
 						aws.ToString(route.GatewayId),
 						aws.ToString(route.DestinationCidrBlock),
+						aws.ToString(route.State),
 					)
 					if strings.HasPrefix(*route.GatewayId, "igw-") {
 						hasInternetRoute = true
