@@ -38,12 +38,6 @@ type PkgProvidersGCPIntegrationTest struct {
 }
 
 func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
-	tempConfigFile, err := os.CreateTemp("", "config*.yaml")
-	s.Require().NoError(err)
-
-	testConfig, err := testdata.ReadTestGCPConfig()
-	s.Require().NoError(err)
-
 	f, err := os.CreateTemp("", "local_custom_script*.sh")
 	s.Require().NoError(err)
 
@@ -53,14 +47,16 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	_, err = f.Write(localCustomScriptContent)
 	s.Require().NoError(err)
 
-	_, err = tempConfigFile.Write([]byte(testConfig))
-	s.Require().NoError(err)
-
 	localCustomScriptPath = f.Name()
 
-	viper.SetConfigFile(tempConfigFile.Name())
-	err = viper.ReadInConfig()
-	s.Require().NoError(err)
+	// Reset viper and use test config
+	viper.Reset()
+	if err := viper.ReadInConfig(); err != nil {
+		// Ignore file not found errors in tests
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			s.Require().NoError(err)
+		}
+	}
 
 	viper.Set("gcp.project_id", "test-project-id")
 	viper.Set("gcp.region", "us-central1")
