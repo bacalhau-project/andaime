@@ -205,6 +205,24 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 	suite.Require().Contains(locations, "us-west-2")
 }
 
+func (suite *PkgProvidersAWSProviderSuite) TestGetLatestUbuntuAMI() {
+	creationDate := time.Now().Format(time.RFC3339)
+	suite.mockAWSClient.On("DescribeImages", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeImagesOutput{
+			Images: []types.Image{
+				{
+					ImageId:      aws.String("ami-12345"),
+					CreationDate: aws.String(creationDate),
+					State:        types.ImageStateAvailable,
+				},
+			},
+		}, nil)
+
+	amiID, err := suite.awsProvider.GetLatestUbuntuAMI(suite.ctx)
+	suite.Require().NoError(err)
+	suite.Require().Equal("ami-12345", amiID)
+}
+
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
 	suite.mockAWSClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{FAKE_INSTANCE_ID},

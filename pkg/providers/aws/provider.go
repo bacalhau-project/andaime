@@ -3,6 +3,7 @@ package awsprovider
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ const (
 	UpdateQueueSize         = 1000 // Increased from 100 to prevent dropping updates
 	DefaultStackTimeout     = 30 * time.Minute
 	TestStackTimeout        = 30 * time.Second
+	UbuntuAMIOwner         = "099720109477" // Canonical's AWS account ID
 )
 
 type AWSProvider struct {
@@ -877,6 +879,54 @@ func (p *AWSProvider) ValidateMachineType(
 		instanceType,
 		location,
 	)
+}
+
+// GetLatestUbuntuAMI returns the latest Ubuntu 22.04 LTS AMI ID for the specified region
+func (p *AWSProvider) GetLatestUbuntuAMI(ctx context.Context) (string, error) {
+	l := logger.Get()
+	l.Debug("Looking up latest Ubuntu AMI...")
+
+	input := &ec2.DescribeImagesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("name"),
+				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"},
+			},
+			{
+				Name:   aws.String("virtualization-type"),
+				Values: []string{"hvm"},
+			},
+			{
+				Name:   aws.String("root-device-type"),
+				Values: []string{"ebs"},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+		Owners: []string{UbuntuAMIOwner},
+	}
+
+	result, err := p.EC2Client.DescribeImages(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe images: %w", err)
+	}
+
+	if len(result.Images) == 0 {
+		return "", fmt.Errorf("no Ubuntu AMIs found in region %s", p.Region)
+	}
+
+	// Sort images by creation date to get the latest
+	sort.Slice(result.Images, func(i, j int) bool {
+		iTime, _ := time.Parse(time.RFC3339, *result.Images[i].CreationDate)
+		jTime, _ := time.Parse(time.RFC3339, *result.Images[j].CreationDate)
+		return iTime.After(jTime)
+	})
+
+	amiID := *result.Images[0].ImageId
+	l.Debugf("Found latest Ubuntu AMI: %s", amiID)
+	return amiID, nil
 }
 
 func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (string, error) {
