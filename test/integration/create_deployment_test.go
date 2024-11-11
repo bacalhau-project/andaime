@@ -370,7 +370,9 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockAzureClient.On("DeployTemplate",
 					mock.Anything,
 					mock.Anything,
-					mock.Anything,
+					mock.MatchedBy(func(s string) bool {
+						return strings.HasPrefix(s, "deployment-") || strings.HasPrefix(s, "machine-")
+					}),
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
