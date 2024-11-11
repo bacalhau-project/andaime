@@ -140,12 +140,13 @@ func prepareDeployment(
 	return deployment, nil
 }
 
-func startResourcePolling(ctx context.Context, awsProvider *awsprovider.AWSProvider) {
+func startResourcePolling(ctx context.Context, awsProvider *awsprovider.AWSProvider) error {
 	l := logger.Get()
 	err := awsProvider.StartResourcePolling(ctx)
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to start resource polling: %v", err))
 	}
+	return err
 }
 
 func runDeploymentAsync(
