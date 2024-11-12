@@ -2,6 +2,7 @@ package provision
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -22,8 +23,10 @@ For compute nodes, an orchestrator IP must be provided.`,
 	cmd.Flags().StringVar(&config.IPAddress, "ip", "", "IP address of the target node")
 	cmd.Flags().StringVar(&config.Username, "user", "", "SSH username")
 	cmd.Flags().StringVar(&config.PrivateKey, "key", "", "Path to private key file (PEM format)")
-	cmd.Flags().StringVar(&config.OrchestratorIP, "orchestrator", "", "Orchestrator IP (required for compute nodes)")
-	cmd.Flags().Var(newNodeTypeValue(&config.NodeType), "type", "Node type (orchestrator or compute)")
+	cmd.Flags().
+		StringVar(&config.OrchestratorIP, "orchestrator", "", "Orchestrator IP (required for compute nodes)")
+	cmd.Flags().
+		Var(newNodeTypeValue(&config.NodeType), "type", "Node type (orchestrator or compute)")
 
 	// Mark required flags
 	cmd.MarkFlagRequired("ip")
