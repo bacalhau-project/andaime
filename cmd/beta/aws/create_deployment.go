@@ -9,6 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+
 	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/joho/godotenv"
@@ -62,16 +63,17 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Ensure EC2 client is initialized
-	if awsProvider.EC2Client == nil {
-		ec2Client := ec2.NewFromConfig(*awsProvider.Config)
+	ec2Client := awsProvider.GetEC2Client()
+	if ec2Client == nil {
+		ec2Client = ec2.NewFromConfig(*awsProvider.GetConfig())
 		awsProvider.SetEC2Client(ec2Client)
 	}
 
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
 
-	m.Deployment.AWS.Region = awsProvider.Region
-	m.Deployment.AWS.AccountID = awsProvider.AccountID
+	m.Deployment.AWS.Region = awsProvider.GetRegion()
+	m.Deployment.AWS.AccountID = awsProvider.GetAccountID()
 
 	// Add error handling for TTY initialization
 	if err := prog.InitProgram(m); err != nil {

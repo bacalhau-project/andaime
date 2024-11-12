@@ -280,7 +280,7 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				createDeploymentCmd = aws.GetAwsCreateDeploymentCmd()
 				createDeploymentCmd.SetContext(context.Background())
 
-				s.awsProvider, err = aws_provider.NewAWSProvider(
+				s.awsProvider, err = aws_provider.NewAWSProviderFunc(
 					viper.GetString("aws.account_id"),
 					viper.GetString("aws.region"),
 				)
@@ -371,7 +371,8 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					mock.Anything,
 					mock.Anything,
 					mock.MatchedBy(func(s string) bool {
-						return strings.HasPrefix(s, "deployment-") || strings.HasPrefix(s, "machine-")
+						return strings.HasPrefix(s, "deployment-") ||
+							strings.HasPrefix(s, "machine-")
 					}),
 					mock.Anything,
 					mock.Anything,

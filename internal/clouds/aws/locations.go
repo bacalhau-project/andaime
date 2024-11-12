@@ -10,9 +10,8 @@ import (
 )
 
 type AWSData struct {
-	Locations  []string          `yaml:"locations"`
-	UbuntuAMIs map[string]string `yaml:"ubuntu_amis"`
-	VMSizes    map[string][]string
+	Locations []string            `yaml:"locations"`
+	VMSizes   map[string][]string `yaml:"vmsizes"`
 }
 
 func getSortedAWSData() ([]byte, error) {
@@ -28,9 +27,8 @@ func getSortedAWSData() ([]byte, error) {
 	}
 
 	awsData := AWSData{
-		Locations:  make([]string, 0),
-		UbuntuAMIs: make(map[string]string),
-		VMSizes:    make(map[string][]string),
+		Locations: make([]string, 0),
+		VMSizes:   make(map[string][]string),
 	}
 
 	// Extract locations and VM sizes
@@ -45,13 +43,6 @@ func getSortedAWSData() ([]byte, error) {
 					awsData.VMSizes[regionStr][i] = size.(string)
 				}
 			}
-		}
-	}
-
-	// Extract Ubuntu AMIs
-	if ubuntuAMIs, ok := rawData["ubuntu_amis"].(map[interface{}]interface{}); ok {
-		for region, ami := range ubuntuAMIs {
-			awsData.UbuntuAMIs[region.(string)] = ami.(string)
 		}
 	}
 
@@ -89,30 +80,6 @@ func IsValidAWSRegion(region string) bool {
 
 	l.Warnf("Invalid AWS region: %s", region)
 	return false
-}
-
-func GetUbuntuAMI(region string) (string, bool) {
-	l := logger.Get()
-	data, err := getSortedAWSData()
-	if err != nil {
-		l.Warnf("Failed to get sorted AWS data: %v", err)
-		return "", false
-	}
-
-	var awsData AWSData
-	err = yaml.Unmarshal(data, &awsData)
-	if err != nil {
-		l.Warnf("Failed to unmarshal AWS data: %v", err)
-		return "", false
-	}
-
-	ami, exists := awsData.UbuntuAMIs[region]
-	if !exists {
-		l.Warnf("No Ubuntu AMI found for region: %s", region)
-		return "", false
-	}
-
-	return ami, true
 }
 
 func IsValidAWSInstanceType(region, instanceType string) bool {
@@ -183,8 +150,4 @@ func GetAWSInstanceTypes(region string) ([]string, error) {
 	}
 
 	return instanceTypes, nil
-}
-
-func GetUbuntuAMIForRegion(region string, architecture string) (string, error) {
-	return "", nil
 }

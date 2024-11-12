@@ -39,6 +39,11 @@ backoff==2.2.1
     #   posthog
 beautifulsoup4==4.12.3
     # via aider-chat
+boto3==1.35.58
+botocore==1.35.58
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2024.8.30
     # via
     #   aider-chat
@@ -161,6 +166,10 @@ jiter==0.7.0
     #   aider-chat
     #   anthropic
     #   openai
+jmespath==1.0.1
+    # via
+    #   boto3
+    #   botocore
 joblib==1.4.2
     # via
     #   nltk
@@ -321,6 +330,7 @@ pyperclip==1.9.0
 python-dateutil==2.9.0.post0
     # via
     #   aider-chat
+    #   botocore
     #   pandas
     #   posthog
 python-dotenv==1.0.1
@@ -366,6 +376,8 @@ rpds-py==0.20.1
     #   jsonschema
     #   referencing
 ruff==0.6.9
+s3transfer==0.10.3
+    # via boto3
 safetensors==0.4.3
     # via transformers
 scikit-learn==1.5.1
@@ -474,6 +486,7 @@ tzdata==2024.1
 urllib3==2.2.3
     # via
     #   aider-chat
+    #   botocore
     #   mixpanel
     #   requests
 uv==0.4.26

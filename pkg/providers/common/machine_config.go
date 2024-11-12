@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -171,6 +170,7 @@ func ProcessMachinesConfig(
 					newMachine.SetOrchestrator(true)
 				}
 			}
+
 			newMachines[newMachine.GetName()] = newMachine
 			newMachines[newMachine.GetName()].SetMachineResourceState(
 				string(providerType)+"VM",
@@ -288,11 +288,7 @@ func createNewMachine(
 		newMachine.SetDiskImageURL(diskImageURL)
 		newMachine.SetDiskImageFamily(diskImageFamily)
 	} else if providerType == models.DeploymentTypeAWS {
-		imageID, found := internal_aws.GetUbuntuAMI(location)
-		if !found {
-			return nil, fmt.Errorf("failed to get AMI for region %s", location)
-		}
-		newMachine.SetImageID(imageID)
+		l.Debugf("Nothing to do for AWS - we will set the Ubuntu AMI in the cloud provider")
 	}
 
 	return newMachine, nil

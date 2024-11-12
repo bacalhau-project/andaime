@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	mocks "github.com/bacalhau-project/andaime/mocks/aws"
@@ -93,10 +92,10 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestNewAWSProvider() {
-	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
+	provider, err := NewAWSProviderFunc(FAKE_ACCOUNT_ID, FAKE_REGION)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(provider)
-	suite.Require().Equal(FAKE_REGION, provider.Region)
+	suite.Require().Equal(FAKE_REGION, provider.GetRegion())
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
@@ -206,12 +205,6 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 	suite.Require().NoError(err)
 	suite.Require().Len(machines, 1)
 	suite.Require().Contains(locations, "us-west-2")
-}
-
-func (suite *PkgProvidersAWSProviderSuite) TestGetUbuntuAMI() {
-	amiID, found := internal_aws.GetUbuntuAMI("ap-southeast-2")
-	suite.Require().True(found)
-	suite.Require().Equal("ami-040e71e7b8391cae4", amiID)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {

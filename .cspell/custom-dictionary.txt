@@ -370,6 +370,7 @@ virtualnetworks
 visibilitytimeout
 VMEX
 VMIP
+vmsizes
 VMSS
 vnet
 vnets

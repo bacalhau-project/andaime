@@ -1121,3 +1121,19 @@ func (p *AWSProvider) WaitUntilInstanceRunning(
 func (p *AWSProvider) SetEC2Client(client aws_interface.EC2Clienter) {
 	p.EC2Client = client
 }
+
+func (p *AWSProvider) GetEC2Client() aws_interface.EC2Clienter {
+	return p.EC2Client
+}
+
+func (p *AWSProvider) GetRegion() string {
+	return p.Region
+}
+
+func (p *AWSProvider) GetAccountID() string {
+	return p.AccountID
+}
+
+func (p *AWSProvider) GetConfig() *aws.Config {
+	return p.Config
+}
