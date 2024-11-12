@@ -191,7 +191,7 @@ func (p *Provisioner) applyBacalhauSettings(ctx context.Context, settings []mode
 
 func (p *Provisioner) runCustomScript(ctx context.Context) error {
 	// Read the custom script
-	scriptContent, err := os.ReadFile(p.config.CustomScriptPath)
+	scriptContent, err := os.ReadFile(p.machine.GetCustomScriptPath())
 	if err != nil {
 		return fmt.Errorf("failed to read custom script: %w", err)
 	}
