@@ -45,32 +45,27 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 		return fmt.Errorf("connection verification failed: %w", err)
 	}
 
-	// Step 2: Prepare System
+	// Step 2: Prepare System and Install Docker
 	if err := p.prepareSystem(ctx); err != nil {
 		return fmt.Errorf("system preparation failed: %w", err)
 	}
 
-	// Step 3: Install Docker
-	if err := p.installDocker(ctx); err != nil {
-		return fmt.Errorf("Docker installation failed: %w", err)
-	}
-
-	// Step 4: Install Bacalhau
+	// Step 3: Install Bacalhau
 	if err := p.installBacalhau(ctx); err != nil {
 		return fmt.Errorf("Bacalhau installation failed: %w", err)
 	}
 
-	// Step 5: Configure Node
+	// Step 4: Configure Node
 	if err := p.configureNode(ctx); err != nil {
 		return fmt.Errorf("node configuration failed: %w", err)
 	}
 
-	// Step 6: Configure Service
+	// Step 5: Configure Service
 	if err := p.configureService(ctx); err != nil {
 		return fmt.Errorf("service configuration failed: %w", err)
 	}
 
-	// Step 7: Verify Installation
+	// Step 6: Verify Installation
 	if err := p.verifyInstallation(ctx); err != nil {
 		return fmt.Errorf("installation verification failed: %w", err)
 	}
@@ -83,39 +78,11 @@ func (p *Provisioner) verifyConnection(ctx context.Context) error {
 }
 
 func (p *Provisioner) prepareSystem(ctx context.Context) error {
-	commands := []string{
-		"sudo apt-get update",
-		"sudo apt-get upgrade -y",
-		"sudo apt-get install -y curl wget git build-essential",
-	}
-
-	for _, cmd := range commands {
-		if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
-			return err
-		}
-	}
-	return nil
+	return p.config.InstallDockerAndCorePackages(ctx)
 }
 
 func (p *Provisioner) installDocker(ctx context.Context) error {
-	commands := []string{
-		"sudo apt-get remove -y docker docker-engine docker.io containerd runc",
-		"sudo apt-get update",
-		"sudo apt-get install -y ca-certificates curl gnupg lsb-release",
-		"curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg",
-		"echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null",
-		"sudo apt-get update",
-		"sudo apt-get install -y docker-ce docker-ce-cli containerd.io",
-		"sudo usermod -aG docker $USER",
-		"sudo systemctl enable docker",
-		"sudo systemctl start docker",
-	}
-
-	for _, cmd := range commands {
-		if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
-			return err
-		}
-	}
+	// Docker installation is handled by InstallDockerAndCorePackages
 	return nil
 }
 
