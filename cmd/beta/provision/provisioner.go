@@ -17,6 +17,7 @@ type Provisioner struct {
 	sshConfig sshutils.SSHConfiger
 	nodeType  NodeType
 	config    *NodeConfig
+	machine   models.Machiner
 }
 
 // NewProvisioner creates a new Provisioner instance
@@ -31,10 +32,25 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 		return nil, fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
+	machine, err := models.NewMachine(models.DeploymentTypeAzure, "eastus", "Standard_D2s_v3", 30, models.CloudSpecificInfo{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create machine: %w", err)
+	}
+
+	machine.SetSSHUser(config.Username)
+	machine.SetSSHPrivateKeyPath(config.PrivateKey)
+	machine.SetSSHPort(22)
+	machine.SetPublicIP(config.IPAddress)
+	machine.SetNodeType(string(config.NodeType))
+	if config.OrchestratorIP != "" {
+		machine.SetOrchestratorIP(config.OrchestratorIP)
+	}
+
 	return &Provisioner{
 		sshConfig: sshConfig,
 		nodeType:  config.NodeType,
 		config:    config,
+		machine:   machine,
 	}, nil
 }
 
@@ -78,7 +94,7 @@ func (p *Provisioner) verifyConnection(ctx context.Context) error {
 }
 
 func (p *Provisioner) prepareSystem(ctx context.Context) error {
-	return p.config.InstallDockerAndCorePackages(ctx)
+	return p.machine.InstallDockerAndCorePackages(ctx)
 }
 
 func (p *Provisioner) installDocker(ctx context.Context) error {
