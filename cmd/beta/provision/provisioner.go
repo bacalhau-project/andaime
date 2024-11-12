@@ -33,11 +33,13 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 		return nil, fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
-	machine, err := models.NewMachine(models.DeploymentTypeAzure, "eastus", "Standard_D2s_v3", 30, models.CloudSpecificInfo{})
+	// Create a minimal machine instance just for software installation
+	machine, err := models.NewMachine(models.DeploymentTypeGeneric, "", "", 0, models.CloudSpecificInfo{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create machine: %w", err)
 	}
 
+	// Set only the required SSH and node configuration
 	machine.SetSSHUser(config.Username)
 	machine.SetSSHPrivateKeyPath(config.PrivateKey)
 	machine.SetSSHPort(22)
@@ -57,14 +59,14 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 
 // Provision executes all provisioning steps
 func (p *Provisioner) Provision(ctx context.Context) error {
-	// Step 1: Verify Connection
+	// Step 1: Verify SSH Connection
 	if err := p.verifyConnection(ctx); err != nil {
-		return fmt.Errorf("connection verification failed: %w", err)
+		return fmt.Errorf("SSH connection verification failed: %w", err)
 	}
 
-	// Step 2: Prepare System and Install Docker
-	if err := p.prepareSystem(ctx); err != nil {
-		return fmt.Errorf("system preparation failed: %w", err)
+	// Step 2: Install Docker and core packages
+	if err := p.machine.InstallDockerAndCorePackages(ctx); err != nil {
+		return fmt.Errorf("Docker installation failed: %w", err)
 	}
 
 	// Step 3: Install Bacalhau
@@ -72,17 +74,12 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 		return fmt.Errorf("Bacalhau installation failed: %w", err)
 	}
 
-	// Step 4: Configure Node
-	if err := p.configureNode(ctx); err != nil {
-		return fmt.Errorf("node configuration failed: %w", err)
-	}
-
-	// Step 5: Configure Service
+	// Step 4: Configure and start Bacalhau service
 	if err := p.configureService(ctx); err != nil {
-		return fmt.Errorf("service configuration failed: %w", err)
+		return fmt.Errorf("Bacalhau service configuration failed: %w", err)
 	}
 
-	// Step 6: Verify Installation
+	// Step 5: Verify Installation
 	if err := p.verifyInstallation(ctx); err != nil {
 		return fmt.Errorf("installation verification failed: %w", err)
 	}
@@ -94,9 +91,6 @@ func (p *Provisioner) verifyConnection(ctx context.Context) error {
 	return p.sshConfig.WaitForSSH(ctx, 10, SSHTimeOut)
 }
 
-func (p *Provisioner) prepareSystem(ctx context.Context) error {
-	return p.machine.InstallDockerAndCorePackages(ctx)
-}
 
 func (p *Provisioner) installDocker(ctx context.Context) error {
 	// Docker installation is handled by InstallDockerAndCorePackages
