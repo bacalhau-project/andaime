@@ -21,10 +21,9 @@ type NodeConfig struct {
 	PrivateKey string
 
 	// Optional fields
-	OrchestratorIP    string   // Required only for compute nodes
-	NodeType          NodeType
-	BacalhauSettings  []string // Key=value pairs for Bacalhau configuration
-	CustomScriptPath  string   // Path to custom script to run after installation
+	OrchestratorIP   string   // Required only for compute nodes
+	BacalhauSettings []string // Key=value pairs for Bacalhau configuration
+	CustomScriptPath string   // Path to custom script to run after installation
 }
 
 // Validate checks if the configuration is valid
@@ -42,11 +41,6 @@ func (c *NodeConfig) Validate() error {
 	// Verify private key exists and is readable
 	if _, err := os.Stat(c.PrivateKey); err != nil {
 		return fmt.Errorf("private key file error: %w", err)
-	}
-
-	// If this is a compute node, orchestrator IP is required
-	if c.NodeType == ComputeNode && c.OrchestratorIP == "" {
-		return fmt.Errorf("orchestrator IP is required for compute nodes")
 	}
 
 	return nil

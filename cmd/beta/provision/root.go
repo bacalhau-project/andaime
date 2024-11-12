@@ -26,62 +26,28 @@ For compute nodes, an orchestrator IP must be provided.`,
 	cmd.Flags().
 		StringVar(&config.OrchestratorIP, "orchestrator", "", "Orchestrator IP (required for compute nodes)")
 	cmd.Flags().
-		Var(newNodeTypeValue(&config.NodeType), "type", "Node type (orchestrator or compute)")
+		StringSliceVar(&config.BacalhauSettings, "bacalhau-setting", []string{},
+			"Bacalhau settings in key=value format (can be specified multiple times)")
 	cmd.Flags().
-		StringSliceVar(&config.BacalhauSettings, "bacalhau-setting", []string{}, 
-		"Bacalhau settings in key=value format (can be specified multiple times)")
-	cmd.Flags().
-		StringVar(&config.CustomScriptPath, "custom-script", "", 
-		"Path to custom script to run after installation")
+		StringVar(&config.CustomScriptPath, "custom-script", "",
+			"Path to custom script to run after installation")
 
 	// Mark required flags
-	cmd.MarkFlagRequired("ip")
-	cmd.MarkFlagRequired("user")
-	cmd.MarkFlagRequired("key")
+	err := cmd.MarkFlagRequired("ip")
+	if err != nil {
+		fmt.Println(err)
+		return cmd
+	}
+	err = cmd.MarkFlagRequired("user")
+	if err != nil {
+		fmt.Println(err)
+		return cmd
+	}
+	err = cmd.MarkFlagRequired("key")
+	if err != nil {
+		fmt.Println(err)
+		return cmd
+	}
 
 	return cmd
-}
-
-// nodeTypeValue implements pflag.Value interface for NodeType
-type nodeTypeValue NodeType
-
-func newNodeTypeValue(p *NodeType) *nodeTypeValue {
-	*p = OrchestratorNode // default value
-	return (*nodeTypeValue)(p)
-}
-
-func (n *nodeTypeValue) String() string {
-	switch NodeType(*n) {
-	case OrchestratorNode:
-		return "requester"
-	case ComputeNode:
-		return "compute"
-	}
-	return "unknown"
-}
-
-func (n NodeType) String() string {
-	switch n {
-	case OrchestratorNode:
-		return "requester"
-	case ComputeNode:
-		return "compute"
-	}
-	return "unknown"
-}
-
-func (n *nodeTypeValue) Set(val string) error {
-	switch val {
-	case "orchestrator":
-		*n = nodeTypeValue(OrchestratorNode)
-	case "compute":
-		*n = nodeTypeValue(ComputeNode)
-	default:
-		return fmt.Errorf("must be either 'orchestrator' or 'compute'")
-	}
-	return nil
-}
-
-func (n *nodeTypeValue) Type() string {
-	return "nodeType"
 }

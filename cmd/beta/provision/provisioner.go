@@ -36,7 +36,7 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 
 	// Create a minimal machine instance just for software installation
 	machine, err := models.NewMachine(
-		models.DeploymentTypeAWS,
+		models.DeploymentTypeUnknown,
 		"",
 		"",
 		0,
@@ -51,14 +51,16 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 	machine.SetSSHPrivateKeyPath(config.PrivateKey)
 	machine.SetSSHPort(22)
 	machine.SetPublicIP(config.IPAddress)
-	machine.SetNodeType(config.NodeType.String())
 	if config.OrchestratorIP != "" {
 		machine.SetOrchestratorIP(config.OrchestratorIP)
+		machine.SetOrchestrator(true)
+	} else {
+		machine.SetOrchestratorIP("")
+		machine.SetOrchestrator(false)
 	}
 
 	return &Provisioner{
 		sshConfig: sshConfig,
-		nodeType:  config.NodeType,
 		config:    config,
 		machine:   machine,
 	}, nil
