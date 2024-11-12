@@ -3,6 +3,7 @@ package provision
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -34,7 +35,13 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 	}
 
 	// Create a minimal machine instance just for software installation
-	machine, err := models.NewMachine(models.DeploymentTypeAWS, "", "", 0, models.CloudSpecificInfo{})
+	machine, err := models.NewMachine(
+		models.DeploymentTypeAWS,
+		"",
+		"",
+		0,
+		models.CloudSpecificInfo{},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create machine: %w", err)
 	}
@@ -104,7 +111,6 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 func (p *Provisioner) verifyConnection(ctx context.Context) error {
 	return p.sshConfig.WaitForSSH(ctx, 10, SSHTimeOut)
 }
-
 
 func (p *Provisioner) installDocker(ctx context.Context) error {
 	// Docker installation is handled by InstallDockerAndCorePackages
