@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
