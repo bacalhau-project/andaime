@@ -79,7 +79,21 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 		return fmt.Errorf("Bacalhau service configuration failed: %w", err)
 	}
 
-	// Step 5: Verify Installation
+	// Step 5: Apply Bacalhau Settings
+	if len(p.config.BacalhauSettings) > 0 {
+		if err := p.applyBacalhauSettings(ctx); err != nil {
+			return fmt.Errorf("failed to apply Bacalhau settings: %w", err)
+		}
+	}
+
+	// Step 6: Run Custom Script
+	if p.config.CustomScriptPath != "" {
+		if err := p.runCustomScript(ctx); err != nil {
+			return fmt.Errorf("custom script execution failed: %w", err)
+		}
+	}
+
+	// Step 7: Verify Installation
 	if err := p.verifyInstallation(ctx); err != nil {
 		return fmt.Errorf("installation verification failed: %w", err)
 	}
@@ -156,6 +170,37 @@ func (p *Provisioner) verifyInstallation(ctx context.Context) error {
 
 	if output != "active" {
 		return fmt.Errorf("bacalhau service is not active, status: %s", output)
+	}
+
+	return nil
+}
+func (p *Provisioner) applyBacalhauSettings(ctx context.Context) error {
+	for _, setting := range p.config.BacalhauSettings {
+		cmd := fmt.Sprintf("sudo bacalhau config set '%s'", setting)
+		if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
+			return fmt.Errorf("failed to apply Bacalhau setting '%s': %w", setting, err)
+		}
+	}
+	return nil
+}
+
+func (p *Provisioner) runCustomScript(ctx context.Context) error {
+	// Read the custom script
+	scriptContent, err := os.ReadFile(p.config.CustomScriptPath)
+	if err != nil {
+		return fmt.Errorf("failed to read custom script: %w", err)
+	}
+
+	// Push the script to the remote machine
+	remotePath := "/tmp/custom_script.sh"
+	if err := p.sshConfig.PushFile(ctx, remotePath, scriptContent, true); err != nil {
+		return fmt.Errorf("failed to push custom script: %w", err)
+	}
+
+	// Execute the script
+	cmd := fmt.Sprintf("sudo bash %s", remotePath)
+	if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
+		return fmt.Errorf("failed to execute custom script: %w", err)
 	}
 
 	return nil

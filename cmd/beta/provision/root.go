@@ -27,6 +27,12 @@ For compute nodes, an orchestrator IP must be provided.`,
 		StringVar(&config.OrchestratorIP, "orchestrator", "", "Orchestrator IP (required for compute nodes)")
 	cmd.Flags().
 		Var(newNodeTypeValue(&config.NodeType), "type", "Node type (orchestrator or compute)")
+	cmd.Flags().
+		StringSliceVar(&config.BacalhauSettings, "bacalhau-setting", []string{}, 
+		"Bacalhau settings in key=value format (can be specified multiple times)")
+	cmd.Flags().
+		StringVar(&config.CustomScriptPath, "custom-script", "", 
+		"Path to custom script to run after installation")
 
 	// Mark required flags
 	cmd.MarkFlagRequired("ip")
