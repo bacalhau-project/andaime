@@ -34,7 +34,7 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 	}
 
 	// Create a minimal machine instance just for software installation
-	machine, err := models.NewMachine(models.DeploymentTypeGeneric, "", "", 0, models.CloudSpecificInfo{})
+	machine, err := models.NewMachine(models.DeploymentTypeAWS, "", "", 0, models.CloudSpecificInfo{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create machine: %w", err)
 	}
