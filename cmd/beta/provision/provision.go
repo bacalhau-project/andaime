@@ -12,6 +12,16 @@ func runProvision(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// TODO: Implement the actual provisioning steps
-	return fmt.Errorf("provisioning not yet implemented")
+	// Create new provisioner
+	provisioner, err := NewProvisioner(config)
+	if err != nil {
+		return fmt.Errorf("failed to create provisioner: %w", err)
+	}
+
+	// Run provisioning
+	if err := provisioner.Provision(cmd.Context()); err != nil {
+		return fmt.Errorf("provisioning failed: %w", err)
+	}
+
+	return nil
 }
