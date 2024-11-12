@@ -44,7 +44,7 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 	machine.SetSSHPrivateKeyPath(config.PrivateKey)
 	machine.SetSSHPort(22)
 	machine.SetPublicIP(config.IPAddress)
-	machine.SetNodeType(string(config.NodeType))
+	machine.SetNodeType(config.NodeType.String())
 	if config.OrchestratorIP != "" {
 		machine.SetOrchestratorIP(config.OrchestratorIP)
 	}

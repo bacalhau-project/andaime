@@ -44,7 +44,17 @@ func newNodeTypeValue(p *NodeType) *nodeTypeValue {
 func (n *nodeTypeValue) String() string {
 	switch NodeType(*n) {
 	case OrchestratorNode:
-		return "orchestrator"
+		return "requester"
+	case ComputeNode:
+		return "compute"
+	}
+	return "unknown"
+}
+
+func (n NodeType) String() string {
+	switch n {
+	case OrchestratorNode:
+		return "requester"
 	case ComputeNode:
 		return "compute"
 	}
