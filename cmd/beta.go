@@ -34,7 +34,7 @@ func GetBetaCmd() *cobra.Command {
 	betaCmd.AddCommand(gcp.GetGCPCmd())
 	betaCmd.AddCommand(aws.GetAwsCmd())
 	betaCmd.AddCommand(internal.GetGenerateCloudDataCmd())
-	betaCmd.AddCommand(GetProvisionNodeCmd())
+	betaCmd.AddCommand(provision.GetProvisionNodeCmd())
 
 	return betaCmd
 }
