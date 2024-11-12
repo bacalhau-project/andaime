@@ -184,3 +184,7 @@ func GetAWSInstanceTypes(region string) ([]string, error) {
 
 	return instanceTypes, nil
 }
+
+func GetUbuntuAMIForRegion(region string, architecture string) (string, error) {
+	return "", nil
+}
