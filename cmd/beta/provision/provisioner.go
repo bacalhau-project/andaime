@@ -116,7 +116,10 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 		p.machine,
 		settings,
 	); err != nil {
-		return fmt.Errorf("failed to provision Bacalhau node: %w", err)
+		return fmt.Errorf("failed to provision Bacalhau node (ip: %s, user: %s): %w", 
+			p.config.IPAddress, 
+			p.config.Username,
+			err)
 	}
 
 	return nil

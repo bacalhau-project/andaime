@@ -81,7 +81,11 @@ type SSHSessionWrapper struct {
 }
 
 func (s *SSHSessionWrapper) Run(cmd string) error {
-	return s.Session.Run(cmd)
+	output, err := s.Session.CombinedOutput(cmd)
+	if err != nil {
+		return fmt.Errorf("command failed: %w, output: %s", err, string(output))
+	}
+	return nil
 }
 
 func (s *SSHSessionWrapper) Start(cmd string) error {
