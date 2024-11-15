@@ -21,8 +21,9 @@ type NodeConfig struct {
 	PrivateKey string
 
 	// Optional fields
-	OrchestratorIP   string   // Required only for compute nodes
+	OrchestratorIP       string // Required only for compute nodes
 	BacalhauSettingsPath string // Path to JSON file containing Bacalhau settings
+	CustomScriptPath     string // Path to custom script to run after installation
 }
 
 // Validate checks if the configuration is valid

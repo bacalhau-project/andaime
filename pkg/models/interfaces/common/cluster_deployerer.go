@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
@@ -32,3 +33,5 @@ type ClusterDeployerer interface {
 	ProvisionOrchestrator(ctx context.Context, machineName string) error
 	ProvisionWorker(ctx context.Context, machineName string) error
 }
+
+var _ ClusterDeployerer = &common.ClusterDeployer{}

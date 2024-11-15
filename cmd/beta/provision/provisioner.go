@@ -3,30 +3,41 @@ package provision
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
 const (
-	SSHTimeOut = 60 * time.Second
+	SSHTimeOut     = 60 * time.Second
+	DefaultSSHPort = 22
 )
 
 // Provisioner handles the node provisioning process
 type Provisioner struct {
-	sshConfig sshutils.SSHConfiger
-	nodeType  NodeType
-	config    *NodeConfig
-	machine   models.Machiner
+	sshConfig      sshutils.SSHConfiger
+	config         *NodeConfig
+	machine        models.Machiner
+	settingsParser *SettingsParser
+	deployer       common_interface.ClusterDeployerer
 }
 
 // NewProvisioner creates a new Provisioner instance
 func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
-	sshConfig, err := sshutils.NewSSHConfig(
+	if config == nil {
+		return nil, fmt.Errorf("node config cannot be nil")
+	}
+
+	if err := validateNodeConfig(config); err != nil {
+		return nil, fmt.Errorf("invalid node configuration: %w", err)
+	}
+
+	sshConfig, err := sshutils.NewSSHConfigFunc(
 		config.IPAddress,
-		22, // Default SSH port
+		DefaultSSHPort,
 		config.Username,
 		config.PrivateKey,
 	)
@@ -34,179 +45,109 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 		return nil, fmt.Errorf("failed to create SSH config: %w", err)
 	}
 
-	// Create a minimal machine instance just for software installation
-	machine, err := models.NewMachine(
-		models.DeploymentTypeUnknown,
-		"",
-		"",
-		0,
-		models.CloudSpecificInfo{},
-	)
+	machine, err := createMachineInstance(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create machine: %w", err)
-	}
-
-	// Set only the required SSH and node configuration
-	machine.SetSSHUser(config.Username)
-	machine.SetSSHPrivateKeyPath(config.PrivateKey)
-	machine.SetSSHPort(22)
-	machine.SetPublicIP(config.IPAddress)
-	if config.OrchestratorIP != "" {
-		machine.SetOrchestratorIP(config.OrchestratorIP)
-		machine.SetOrchestrator(true)
-	} else {
-		machine.SetOrchestratorIP("")
-		machine.SetOrchestrator(false)
+		return nil, fmt.Errorf("failed to create machine instance: %w", err)
 	}
 
 	return &Provisioner{
-		sshConfig: sshConfig,
-		config:    config,
-		machine:   machine,
+		sshConfig:      sshConfig,
+		config:         config,
+		machine:        machine,
+		settingsParser: NewSettingsParser(),
 	}, nil
+}
+
+// validateNodeConfig checks if the provided configuration is valid
+func validateNodeConfig(config *NodeConfig) error {
+	if config.IPAddress == "" {
+		return fmt.Errorf("IP address is required")
+	}
+	if config.Username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if config.PrivateKey == "" {
+		return fmt.Errorf("private key is required")
+	}
+	return nil
+}
+
+// createMachineInstance creates a new machine instance with the provided configuration
+func createMachineInstance(config *NodeConfig) (models.Machiner, error) {
+	machine := models.Machine{}
+	machine.SetSSHUser(config.Username)
+	machine.SetSSHPrivateKeyPath(config.PrivateKey)
+	machine.SetSSHPort(DefaultSSHPort)
+	machine.SetPublicIP(config.IPAddress)
+	machine.SetOrchestratorIP("")
+	machine.SetOrchestrator(true)
+	machine.SetNodeType(models.BacalhauNodeTypeOrchestrator)
+
+	if config.OrchestratorIP != "" {
+		machine.SetOrchestratorIP(config.OrchestratorIP)
+		machine.SetOrchestrator(false)
+		machine.SetNodeType(models.BacalhauNodeTypeCompute)
+	}
+
+	return &machine, nil
 }
 
 // Provision executes all provisioning steps
 func (p *Provisioner) Provision(ctx context.Context) error {
-	// Step 1: Verify SSH Connection
-	if err := p.verifyConnection(ctx); err != nil {
-		return fmt.Errorf("SSH connection verification failed: %w", err)
+	if ctx == nil {
+		return fmt.Errorf("context cannot be nil")
 	}
 
-	// Step 2: Install Docker and core packages
-	if err := p.machine.InstallDockerAndCorePackages(ctx); err != nil {
-		return fmt.Errorf("Docker installation failed: %w", err)
-	}
+	ctx, cancel := context.WithTimeout(ctx, SSHTimeOut)
+	defer cancel()
 
-	// Step 3: Install Bacalhau
-	if err := p.installBacalhau(ctx); err != nil {
-		return fmt.Errorf("Bacalhau installation failed: %w", err)
-	}
+	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
 
-	// Step 4: Configure and start Bacalhau service
-	if err := p.configureService(ctx); err != nil {
-		return fmt.Errorf("Bacalhau service configuration failed: %w", err)
-	}
-
-	// Step 5: Apply Bacalhau Settings
-	if p.config.BacalhauSettingsPath != "" {
-		settings, err := readBacalhauSettingsFromFile(p.config.BacalhauSettingsPath)
-		if err != nil {
-			return fmt.Errorf("failed to read Bacalhau settings: %w", err)
-		}
-		if err := p.applyBacalhauSettings(ctx, settings); err != nil {
-			return fmt.Errorf("failed to apply Bacalhau settings: %w", err)
-		}
-	}
-
-	// Step 6: Verify Installation
-	if err := p.verifyInstallation(ctx); err != nil {
-		return fmt.Errorf("installation verification failed: %w", err)
-	}
-
-	return nil
-}
-
-func (p *Provisioner) verifyConnection(ctx context.Context) error {
-	return p.sshConfig.WaitForSSH(ctx, 10, SSHTimeOut)
-}
-
-func (p *Provisioner) installDocker(ctx context.Context) error {
-	// Docker installation is handled by InstallDockerAndCorePackages
-	return nil
-}
-
-func (p *Provisioner) installBacalhau(ctx context.Context) error {
-	commands := []string{
-		"curl -sL https://get.bacalhau.org/install.sh | bash",
-	}
-
-	for _, cmd := range commands {
-		if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *Provisioner) configureNode(ctx context.Context) error {
-	var configCmd string
-	if p.nodeType == OrchestratorNode {
-		configCmd = "sudo bacalhau serve --node-type compute,requester"
-	} else {
-		if p.config.OrchestratorIP == "" {
-			return fmt.Errorf("orchestrator IP is required for compute nodes")
-		}
-		configCmd = fmt.Sprintf("sudo bacalhau serve --peer %s --node-type compute", p.config.OrchestratorIP)
-	}
-
-	_, err := p.sshConfig.ExecuteCommand(ctx, configCmd)
-	return err
-}
-
-func (p *Provisioner) configureService(ctx context.Context) error {
-	serviceContent := `[Unit]
-Description=Bacalhau Node
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/bacalhau serve
-Restart=always
-User=root
-
-[Install]
-WantedBy=multi-user.target`
-
-	if err := p.sshConfig.InstallSystemdService(ctx, "bacalhau", serviceContent); err != nil {
+	// Parse settings if path is provided
+	settings, err := p.settingsParser.ParseFile(p.config.BacalhauSettingsPath)
+	if err != nil {
 		return err
 	}
 
-	return p.sshConfig.StartService(ctx, "bacalhau")
-}
-
-func (p *Provisioner) verifyInstallation(ctx context.Context) error {
-	// Check if bacalhau is installed and running
-	cmd := "systemctl is-active bacalhau"
-	output, err := p.sshConfig.ExecuteCommand(ctx, cmd)
-	if err != nil {
-		return fmt.Errorf("bacalhau service verification failed: %w", err)
-	}
-
-	if output != "active" {
-		return fmt.Errorf("bacalhau service is not active, status: %s", output)
+	// Provision the node
+	if err := cd.ProvisionBacalhauNode(
+		ctx,
+		p.sshConfig,
+		p.machine,
+		settings,
+	); err != nil {
+		return fmt.Errorf("failed to provision Bacalhau node: %w", err)
 	}
 
 	return nil
 }
-func (p *Provisioner) applyBacalhauSettings(ctx context.Context, settings []models.BacalhauSettings) error {
-	for _, setting := range settings {
-		cmd := fmt.Sprintf("sudo bacalhau config set '%s'", setting)
-		if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
-			return fmt.Errorf("failed to apply Bacalhau setting '%s': %w", setting, err)
-		}
-	}
-	return nil
+
+// GetMachine returns the configured machine instance
+func (p *Provisioner) GetMachine() models.Machiner {
+	return p.machine
 }
 
-func (p *Provisioner) runCustomScript(ctx context.Context) error {
-	// Read the custom script
-	scriptContent, err := os.ReadFile(p.machine.GetCustomScriptPath())
-	if err != nil {
-		return fmt.Errorf("failed to read custom script: %w", err)
-	}
+// GetSSHConfig returns the configured SSH configuration
+func (p *Provisioner) GetSSHConfig() sshutils.SSHConfiger {
+	return p.sshConfig
+}
 
-	// Push the script to the remote machine
-	remotePath := "/tmp/custom_script.sh"
-	if err := p.sshConfig.PushFile(ctx, remotePath, scriptContent, true); err != nil {
-		return fmt.Errorf("failed to push custom script: %w", err)
-	}
+// GetSettings returns the configured Bacalhau settings
+func (p *Provisioner) GetSettings() ([]models.BacalhauSettings, error) {
+	return p.settingsParser.ParseFile(p.config.BacalhauSettingsPath)
+}
 
-	// Execute the script
-	cmd := fmt.Sprintf("sudo bash %s", remotePath)
-	if _, err := p.sshConfig.ExecuteCommand(ctx, cmd); err != nil {
-		return fmt.Errorf("failed to execute custom script: %w", err)
-	}
+// GetConfig returns the configured node configuration
+func (p *Provisioner) GetConfig() *NodeConfig {
+	return p.config
+}
 
-	return nil
+// SetClusterDeployer sets the cluster deployer for the provisioner
+func (p *Provisioner) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
+	p.deployer = deployer
+}
+
+// ParseSettings parses the Bacalhau settings from the given file path
+func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings, error) {
+	return p.settingsParser.ParseFile(filePath)
 }
