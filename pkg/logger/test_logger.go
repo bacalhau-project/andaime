@@ -19,7 +19,7 @@ type LoggerInterface interface {
 type LoggerWithCapture interface {
 	LoggerInterface
 	GetLogs() []string
-	PrintLogs()
+	PrintLogs(*testing.T)
 }
 
 // TestLogger extends Logger with log capture for testing
