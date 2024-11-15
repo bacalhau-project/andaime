@@ -48,7 +48,7 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 
 	// Initialize test logger
 	testLogger := logger.NewTestLogger(cbpts.T())
-	logger.SetGlobalLogger(testLogger.Logger)
+	logger.SetGlobalLogger(testLogger)
 
 	// Create new mocks for each test
 	cbpts.mockSSHConfig = new(sshutils.MockSSHConfig)
