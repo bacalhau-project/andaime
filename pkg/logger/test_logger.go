@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+// LoggerWithCapture defines the interface for loggers that can capture logs
+type LoggerWithCapture interface {
+	GetLogs() []string
+	PrintLogs()
+}
+
 // TestLogger extends Logger with log capture for testing
 type TestLogger struct {
 	*Logger
