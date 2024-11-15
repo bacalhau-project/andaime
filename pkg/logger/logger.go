@@ -375,6 +375,13 @@ func NewNopLogger() *Logger {
 }
 
 // SetLevel sets the logging level for the global logger
+// SetupTestLogger initializes a test logger and sets it as the global logger
+func SetupTestLogger(tb zaptest.TestingT) *TestLogger {
+	testLogger := NewTestLogger(tb)
+	SetGlobalLogger(testLogger)
+	return testLogger
+}
+
 func SetLevel(level zapcore.Level) {
 	if globalLogger == nil {
 		InitProduction()
