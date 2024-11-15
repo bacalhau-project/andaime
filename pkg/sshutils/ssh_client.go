@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -89,7 +90,7 @@ type SSHSessionWrapper struct {
 func (s *SSHSessionWrapper) Run(cmd string) error {
 	l := logger.Get()
 	l.Debugf("Executing SSH command: %s", cmd)
-	
+
 	output, err := s.Session.CombinedOutput(cmd)
 	if err != nil {
 		l.Debugf("SSH command failed: %v", err)
