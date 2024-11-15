@@ -93,6 +93,18 @@ type SSHSessionWrapper struct {
 	Session *ssh.Session
 }
 
+// SSHError represents an SSH command execution error with output
+type SSHError struct {
+	Cmd    string
+	Output string
+	Err    error
+}
+
+func (e *SSHError) Error() string {
+	return fmt.Sprintf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %v", 
+		e.Cmd, e.Output, e.Err)
+}
+
 func (s *SSHSessionWrapper) Run(cmd string) error {
 	l := logger.Get()
 	if s.Session == nil {
@@ -106,9 +118,16 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		l.Errorf("Command output: %s", string(output))
 		if len(output) == 0 {
 			l.Debug("No command output received - this may indicate a connection failure")
-			return fmt.Errorf("SSH command failed with no output (possible connection failure): %w", err)
+			return &SSHError{
+				Cmd: cmd,
+				Err: fmt.Errorf("SSH command failed with no output (possible connection failure): %w", err),
+			}
 		}
-		return fmt.Errorf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %w", cmd, string(output), err)
+		return &SSHError{
+			Cmd:    cmd,
+			Output: string(output),
+			Err:    err,
+		}
 	}
 	l.Infof("SSH command completed successfully")
 	l.Debugf("Command output: %s", string(output))

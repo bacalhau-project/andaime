@@ -310,3 +310,81 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 func TestProvisionerSuite(t *testing.T) {
 	suite.Run(t, new(CmdBetaProvisionTestSuite))
 }
+package provision
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
+
+type MockSSHConfig struct {
+	mock.Mock
+}
+
+func (m *MockSSHConfig) WaitForSSH(ctx context.Context, retries int, timeout time.Duration) error {
+	args := m.Called(ctx, retries, timeout)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) ExecuteCommand(cmd string) (string, error) {
+	args := m.Called(cmd)
+	return args.String(0), args.Error(1)
+}
+
+func TestProvisionerLowLevelFailure(t *testing.T) {
+	// Setup test logger to capture output
+	testLogger := logger.NewTestLogger(t)
+	logger.SetGlobalLogger(testLogger)
+
+	// Create a mock SSH config
+	mockSSH := new(MockSSHConfig)
+	
+	// Setup the mock to pass SSH wait but fail command execution
+	mockSSH.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockSSH.On("ExecuteCommand", mock.Anything).Return(
+		"Permission denied: cannot execute command", 
+		fmt.Errorf("command failed: permission denied"),
+	)
+
+	// Create a provisioner with test configuration
+	config := &NodeConfig{
+		IPAddress:  "192.168.1.100",
+		Username:   "testuser",
+		PrivateKey: "/path/to/key",
+	}
+
+	p := &Provisioner{
+		sshConfig: mockSSH,
+		config:    config,
+		machine: &models.Machine{},
+	}
+
+	// Execute provisioning
+	err := p.Provision(context.Background())
+
+	// Verify error is returned
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "permission denied")
+	
+	// Verify the error details were logged
+	logs := testLogger.GetLogs()
+	foundErrorLog := false
+	for _, log := range logs {
+		if log.Contains("Permission denied: cannot execute command") {
+			foundErrorLog = true
+			break
+		}
+	}
+	assert.True(t, foundErrorLog, "Error details should be logged")
+
+	// Verify all mock expectations were met
+	mockSSH.AssertExpectations(t)
+}

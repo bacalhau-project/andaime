@@ -139,7 +139,19 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 		l.Errorf("Failed to provision Bacalhau node (ip: %s, user: %s)", 
 			p.config.IPAddress,
 			p.config.Username)
+		
+		// Extract command output if it's an SSH error
+		var cmdOutput string
+		if sshErr, ok := err.(*sshutils.SSHError); ok {
+			cmdOutput = sshErr.Output
+		}
+		
 		// Log detailed error information
+		l.Errorf("Provisioning failed with error: %v", err)
+		if cmdOutput != "" {
+			l.Errorf("Command output: %s", cmdOutput)
+		}
+		
 		l.Debugf("Full error context:\nIP: %s\nUser: %s\nPrivate Key Path: %s\nError: %v", 
 			p.config.IPAddress,
 			p.config.Username,
@@ -148,7 +160,12 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 		if ctx.Err() != nil {
 			l.Debugf("Context error: %v", ctx.Err())
 		}
-		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w", 
+		
+		if cmdOutput != "" {
+			return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nCommand Output: %s\nError Details: %w",
+				p.config.IPAddress, cmdOutput, err)
+		}
+		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
 			p.config.IPAddress, err)
 	}
 	l.Infof("Successfully provisioned Bacalhau node on %s", p.config.IPAddress)
