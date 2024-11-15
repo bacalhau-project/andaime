@@ -99,14 +99,14 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		return fmt.Errorf("SSH session is nil")
 	}
 	
-	l.Debugf("Executing SSH command: %s", cmd)
+	l.Infof("Executing SSH command: %s", cmd)
 	output, err := s.Session.CombinedOutput(cmd)
 	if err != nil {
-		l.Debugf("SSH command failed: %v", err)
-		l.Debugf("Command output: %s", string(output))
+		l.Errorf("SSH command failed: %v", err)
+		l.Errorf("Command output: %s", string(output))
 		return fmt.Errorf("command failed: %w, output: %s", err, string(output))
 	}
-	l.Debugf("SSH command completed successfully")
+	l.Infof("SSH command completed successfully")
 	l.Debugf("Command output: %s", string(output))
 	return nil
 }

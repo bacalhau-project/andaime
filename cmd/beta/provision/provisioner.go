@@ -102,9 +102,11 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	defer cancel()
 
 	// Ensure SSH connection is available before proceeding
+	fmt.Printf("Establishing SSH connection to %s...\n", p.config.IPAddress)
 	if err := p.sshConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
 	}
+	fmt.Printf("SSH connection established successfully\n")
 
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
 
@@ -115,6 +117,7 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	}
 
 	// Provision the node
+	fmt.Printf("Starting Bacalhau node provisioning on %s...\n", p.config.IPAddress)
 	if err := cd.ProvisionBacalhauNode(
 		ctx,
 		p.sshConfig,
@@ -126,6 +129,7 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 			p.config.Username,
 			err)
 	}
+	fmt.Printf("Successfully provisioned Bacalhau node on %s\n", p.config.IPAddress)
 
 	return nil
 }
