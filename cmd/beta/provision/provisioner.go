@@ -101,6 +101,11 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, SSHTimeOut)
 	defer cancel()
 
+	// Ensure SSH connection is available before proceeding
+	if err := p.sshConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
+		return fmt.Errorf("failed to establish SSH connection: %w", err)
+	}
+
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
 
 	// Parse settings if path is provided

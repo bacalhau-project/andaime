@@ -62,6 +62,12 @@ func (w *SSHClientWrapper) IsConnected() bool {
 		l.Debug("SSH client is nil")
 		return false
 	}
+	
+	// Check if the underlying network connection is still alive
+	if _, err := w.Client.NewSession(); err != nil {
+		l.Debugf("Failed to create new session, connection may be dead: %v", err)
+		return false
+	}
 
 	// Try to create a new session
 	session, err := w.Client.NewSession()
@@ -89,8 +95,11 @@ type SSHSessionWrapper struct {
 
 func (s *SSHSessionWrapper) Run(cmd string) error {
 	l := logger.Get()
+	if s.Session == nil {
+		return fmt.Errorf("SSH session is nil")
+	}
+	
 	l.Debugf("Executing SSH command: %s", cmd)
-
 	output, err := s.Session.CombinedOutput(cmd)
 	if err != nil {
 		l.Debugf("SSH command failed: %v", err)
