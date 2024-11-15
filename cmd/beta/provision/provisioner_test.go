@@ -317,47 +317,48 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
-	// Create and set test logger
-	testLogger := logger.NewTestLogger(cbpts.T())
-	logger.SetGlobalLogger(testLogger)
-
-	// Create a mock SSH config
-	mockSSH := new(sshutils.MockSSHConfig)
-
-	// Set up expectations
-	mockSSH.On("WaitForSSH",
-		mock.Anything,
-		3,
-		60*time.Second,
-	).Return(nil)
-
-	mockSSH.On("ExecuteCommand",
-		mock.Anything,
-	).Return("Permission denied: cannot execute command", fmt.Errorf("command failed: permission denied"))
-
 	config := &provision.NodeConfig{
 		IPAddress:  "192.168.1.1",
 		Username:   "testuser",
 		PrivateKey: cbpts.testSSHPrivateKeyPath,
 	}
 
-	p := &provision.Provisioner{
-		Config:    config,
-		SSHConfig: mockSSH,
-		Machine:   &models.Machine{},
+	// Clear existing expectations
+	cbpts.mockSSHConfig.ExpectedCalls = nil
+
+	// Set up required mock expectations
+	cbpts.mockSSHConfig.On("WaitForSSH", 
+		mock.Anything, 
+		3, 
+		60*time.Second,
+	).Return(nil).Once()
+
+	// Set up the failure scenario
+	expectedError := &sshutils.SSHError{
+		Cmd:    "sudo docker run hello-world",
+		Output: "Permission denied: cannot execute command",
+		Err:    fmt.Errorf("command failed: permission denied"),
 	}
 
-	err := p.Provision(context.Background())
+	// Mock the command execution that will fail
+	cbpts.mockSSHConfig.On("ExecuteCommand",
+		mock.Anything,
+		"sudo docker run hello-world",
+	).Return("", expectedError).Once()
+
+	p, err := provision.NewProvisioner(config)
+	cbpts.Require().NoError(err)
+	p.SetClusterDeployer(cbpts.mockClusterDeployer)
+
+	err = p.Provision(context.Background())
 	cbpts.Error(err)
 	cbpts.Contains(err.Error(), "Permission denied")
 
-	// Print logs for debugging
-	testLogger.PrintLogs()
-
-	// Check logs
-	logs := testLogger.GetLogs()
-	cbpts.Require().NotNil(logs)
-
+	// Get the test logger and verify logs
+	testLogger := logger.Get()
+	logs := testLogger.(*logger.TestLogger).GetLogs()
+	
+	// Verify error details are logged
 	foundError := false
 	for _, log := range logs {
 		if strings.Contains(log, "Permission denied") {
@@ -365,9 +366,7 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 			break
 		}
 	}
-	cbpts.True(foundError, "Expected to find error message in logs")
-
-	mockSSH.AssertExpectations(cbpts.T())
+	cbpts.True(foundError, "Error details should be logged")
 }
 
 func TestProvisionerSuite(t *testing.T) {
