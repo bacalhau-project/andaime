@@ -567,9 +567,8 @@ func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 // LogPanic logs the panic message and stack trace
 func LogPanic(rec interface{}) {
 	stack := debug.Stack()
-	Get().Error("PANIC",
-		zap.Any("recover", rec),
-		zap.String("stack", string(stack)),
+	Get().ErrorWithFields("PANIC",
+		ZapString("stack", string(stack)),
 	)
 }
 
