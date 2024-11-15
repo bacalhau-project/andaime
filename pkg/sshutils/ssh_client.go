@@ -104,7 +104,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	if err != nil {
 		l.Errorf("SSH command failed: %v", err)
 		l.Errorf("Command output: %s", string(output))
-		return fmt.Errorf("command failed: %w, output: %s", err, string(output))
+		return fmt.Errorf("command failed with output:\n%s\nError: %w", string(output), err)
 	}
 	l.Infof("SSH command completed successfully")
 	l.Debugf("Command output: %s", string(output))
