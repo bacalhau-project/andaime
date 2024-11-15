@@ -353,11 +353,7 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	cbpts.Contains(err.Error(), "Permission denied")
 
 	// Get the test logger and verify logs
-	testLogger, ok := logger.Get().(*logger.TestLogger)
-	if !ok {
-		cbpts.T().Fatal("Logger is not a TestLogger")
-	}
-	logs := testLogger.GetLogs()
+	logs := logger.Get().(*logger.TestLogger).GetLogs()
 
 	// Verify error details are logged
 	foundError := false
