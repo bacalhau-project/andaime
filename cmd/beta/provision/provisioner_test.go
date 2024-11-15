@@ -42,6 +42,10 @@ func (cbpts *CmdBetaProvisionTestSuite) TearDownSuite() {
 func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.tmpDir = cbpts.T().TempDir()
 
+	// Initialize test logger
+	testLogger := logger.NewTestLogger(cbpts.T())
+	logger.SetGlobalLogger(testLogger)
+
 	// Create new mocks for each test
 	cbpts.mockSSHConfig = new(sshutils.MockSSHConfig)
 	cbpts.mockClusterDeployer = new(common_mock.MockClusterDeployerer)
@@ -305,6 +309,44 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 
 	err = p.Provision(context.Background())
 	cbpts.NoError(err)
+}
+
+func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
+	config := &provision.NodeConfig{
+		IPAddress:  "192.168.1.1",
+		Username:   "testuser",
+		PrivateKey: cbpts.testSSHPrivateKeyPath,
+	}
+
+	// Clear existing ExecuteCommand expectations
+	cbpts.mockSSHConfig.ExpectedCalls = nil
+
+	// Set up specific failure scenario
+	expectedError := &sshutils.SSHError{
+		Cmd:    "sudo docker run hello-world",
+		Output: "Permission denied",
+		Err:    fmt.Errorf("command failed"),
+	}
+
+	cbpts.mockSSHConfig.On("ExecuteCommand",
+		mock.Anything,
+		"sudo docker run hello-world",
+	).Return("", expectedError).Once()
+
+	p, err := provision.NewProvisioner(config)
+	cbpts.Require().NoError(err)
+	p.SetClusterDeployer(cbpts.mockClusterDeployer)
+
+	err = p.Provision(context.Background())
+	cbpts.Error(err)
+	cbpts.Contains(err.Error(), "Permission denied")
+
+	// Get the test logger and verify logs
+	testLogger := logger.Get().(*logger.TestLogger)
+	logs := testLogger.GetLogs()
+	
+	cbpts.Contains(logs, "Permission denied")
+	cbpts.Contains(logs, "Command failed")
 }
 
 func TestProvisionerSuite(t *testing.T) {
