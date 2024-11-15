@@ -56,23 +56,29 @@ func (w *SSHClientWrapper) Close() error {
 }
 
 func (w *SSHClientWrapper) IsConnected() bool {
+	l := logger.Get()
 	if w.Client == nil {
+		l.Debug("SSH client is nil")
 		return false
 	}
 
 	// Try to create a new session
 	session, err := w.Client.NewSession()
 	if err != nil {
+		l.Debugf("Failed to create SSH session: %v", err)
 		return false
 	}
 	defer session.Close()
 
 	// Run a simple command to check if the connection is alive
+	l.Debug("Testing SSH connection with 'echo' command")
 	err = session.Run("echo")
 	if err != nil {
+		l.Debugf("SSH connection test failed: %v", err)
 		return false
 	}
 
+	l.Debug("SSH connection test successful")
 	return true
 }
 
@@ -81,10 +87,17 @@ type SSHSessionWrapper struct {
 }
 
 func (s *SSHSessionWrapper) Run(cmd string) error {
+	l := logger.Get()
+	l.Debugf("Executing SSH command: %s", cmd)
+	
 	output, err := s.Session.CombinedOutput(cmd)
 	if err != nil {
+		l.Debugf("SSH command failed: %v", err)
+		l.Debugf("Command output: %s", string(output))
 		return fmt.Errorf("command failed: %w, output: %s", err, string(output))
 	}
+	l.Debugf("SSH command completed successfully")
+	l.Debugf("Command output: %s", string(output))
 	return nil
 }
 
