@@ -13,7 +13,6 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
 	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -327,9 +326,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	cbpts.mockSSHConfig.ExpectedCalls = nil
 
 	// Set up required mock expectations
-	cbpts.mockSSHConfig.On("WaitForSSH", 
-		mock.Anything, 
-		3, 
+	cbpts.mockSSHConfig.On("WaitForSSH",
+		mock.Anything,
+		3,
 		60*time.Second,
 	).Return(nil).Once()
 
@@ -357,7 +356,7 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	// Get the test logger and verify logs
 	testLogger := logger.Get()
 	logs := testLogger.(*logger.TestLogger).GetLogs()
-	
+
 	// Verify error details are logged
 	foundError := false
 	for _, log := range logs {

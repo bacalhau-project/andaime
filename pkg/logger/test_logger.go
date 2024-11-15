@@ -15,7 +15,7 @@ type LoggerWithCapture interface {
 type TestLogger struct {
 	*Logger
 	logs    []string
-	t       *testing.T 
+	t       *testing.T
 	logLock sync.Mutex
 }
 
