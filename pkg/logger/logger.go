@@ -284,22 +284,43 @@ func (l *Logger) With(fields ...zap.Field) *Logger {
 	return &Logger{l.Logger.With(fields...), l.verbose}
 }
 
-func (l *Logger) Debug(msg string, fields ...zap.Field) {
+func (l *Logger) Debug(msg string) {
+	l.Logger.Debug(formatMessage(msg))
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Info(msg string) {
+	l.Logger.Info(formatMessage(msg))
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Warn(msg string) {
+	l.Logger.Warn(formatMessage(msg))
+	l.syncIfNeeded()
+}
+
+func (l *Logger) Error(msg string) {
+	l.Logger.Error(formatMessage(msg))
+	l.syncIfNeeded()
+}
+
+// Advanced logging methods with fields
+func (l *Logger) DebugWithFields(msg string, fields ...zap.Field) {
 	l.Logger.Debug(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
-func (l *Logger) Info(msg string, fields ...zap.Field) {
+func (l *Logger) InfoWithFields(msg string, fields ...zap.Field) {
 	l.Logger.Info(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
-func (l *Logger) Warn(msg string, fields ...zap.Field) {
+func (l *Logger) WarnWithFields(msg string, fields ...zap.Field) {
 	l.Logger.Warn(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
 
-func (l *Logger) Error(msg string, fields ...zap.Field) {
+func (l *Logger) ErrorWithFields(msg string, fields ...zap.Field) {
 	l.Logger.Error(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }

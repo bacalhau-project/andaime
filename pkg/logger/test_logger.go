@@ -66,6 +66,35 @@ func (tl *TestLogger) Error(msg string) {
 	tl.Logger.Error(msg)
 }
 
+// Advanced logging methods with fields
+func (tl *TestLogger) DebugWithFields(msg string, fields ...zap.Field) {
+	tl.logLock.Lock()
+	tl.logs = append(tl.logs, msg)
+	tl.logLock.Unlock()
+	tl.Logger.DebugWithFields(msg, fields...)
+}
+
+func (tl *TestLogger) InfoWithFields(msg string, fields ...zap.Field) {
+	tl.logLock.Lock()
+	tl.logs = append(tl.logs, msg)
+	tl.logLock.Unlock()
+	tl.Logger.InfoWithFields(msg, fields...)
+}
+
+func (tl *TestLogger) WarnWithFields(msg string, fields ...zap.Field) {
+	tl.logLock.Lock()
+	tl.logs = append(tl.logs, msg)
+	tl.logLock.Unlock()
+	tl.Logger.WarnWithFields(msg, fields...)
+}
+
+func (tl *TestLogger) ErrorWithFields(msg string, fields ...zap.Field) {
+	tl.logLock.Lock()
+	tl.logs = append(tl.logs, msg)
+	tl.logLock.Unlock()
+	tl.Logger.ErrorWithFields(msg, fields...)
+}
+
 // PrintLogs prints all captured logs to test output
 func (tl *TestLogger) PrintLogs() {
 	tl.logLock.Lock()
