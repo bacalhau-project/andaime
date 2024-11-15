@@ -98,11 +98,11 @@ func (tl *TestLogger) ErrorWithFields(msg string, fields ...zap.Field) {
 }
 
 // PrintLogs prints all captured logs to test output
-func (tl *TestLogger) PrintLogs() {
+func (tl *TestLogger) PrintLogs(t *testing.T) {
 	tl.logLock.Lock()
 	defer tl.logLock.Unlock()
-	tl.t.Log("Captured logs:")
+	t.Log("Captured logs:")
 	for i, log := range tl.logs {
-		tl.t.Logf("[%d] %s", i, log)
+		t.Logf("[%d] %s", i, log)
 	}
 }
