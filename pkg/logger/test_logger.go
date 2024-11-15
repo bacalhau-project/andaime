@@ -13,19 +13,6 @@ type TestLogger struct {
 	logLock sync.Mutex
 }
 
-// NewTestLogger creates a new test logger
-func NewTestLogger(t *testing.T) *TestLogger {
-	return &TestLogger{
-		Logger: NewLogger(&LoggerConfig{
-			Console: false,
-			File:    false,
-			Buffer:  true,
-		}),
-		t:    t,
-		logs: make([]string, 0),
-	}
-}
-
 // GetLogs returns captured logs
 func (tl *TestLogger) GetLogs() []string {
 	tl.logLock.Lock()
