@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -152,7 +151,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 			}
 
 			// Set up expectations for this specific test case
-			for machineName, err := range tt.deployMachineErrors {
+			for _, err := range tt.deployMachineErrors {
 				suite.mockAzureClient.On("DeployTemplate",
 					mock.Anything,
 					mock.Anything,
