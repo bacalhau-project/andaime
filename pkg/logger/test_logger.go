@@ -5,8 +5,17 @@ import (
 	"testing"
 )
 
+// LoggerInterface defines the common interface for all loggers
+type LoggerInterface interface {
+	Debug(msg string)
+	Info(msg string)
+	Warn(msg string)
+	Error(msg string)
+}
+
 // LoggerWithCapture defines the interface for loggers that can capture logs
 type LoggerWithCapture interface {
+	LoggerInterface
 	GetLogs() []string
 	PrintLogs()
 }

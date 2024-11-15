@@ -252,10 +252,14 @@ func InitTest(tb zaptest.TestingT) {
 }
 
 // SetGlobalLogger sets the global logger instance
-func SetGlobalLogger(logger *Logger) {
+func SetGlobalLogger(logger LoggerInterface) {
 	loggerMutex.Lock()
 	defer loggerMutex.Unlock()
-	globalLogger = logger.Logger
+	if l, ok := logger.(*Logger); ok {
+		globalLogger = l.Logger
+	} else if tl, ok := logger.(*TestLogger); ok {
+		globalLogger = tl.Logger.Logger
+	}
 }
 
 // Get returns the global logger instance
