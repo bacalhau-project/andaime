@@ -218,8 +218,6 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 		},
 		t:    tb.(*testing.T),
 		logs: make([]string, 0),
-		t:    tb.(*testing.T),
-		logs: make([]string, 0),
 	}
 }
 
