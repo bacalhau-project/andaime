@@ -3,6 +3,8 @@ package logger
 import (
 	"sync"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 // LoggerInterface defines the common interface for all loggers
