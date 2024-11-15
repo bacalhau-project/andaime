@@ -202,8 +202,8 @@ func InitProduction() {
 	})
 }
 
-// NewTestLogger creates a new Logger instance for testing
-func NewTestLogger(tb zaptest.TestingT) *Logger {
+// NewTestLogger creates a new TestLogger instance for testing
+func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 		zapcore.AddSync(&testingWriter{tb: tb}),
@@ -211,9 +211,13 @@ func NewTestLogger(tb zaptest.TestingT) *Logger {
 			return lvl >= zapcore.DebugLevel
 		}),
 	)
-	return &Logger{
-		Logger:  zap.New(core),
-		verbose: true,
+	return &TestLogger{
+		Logger: &Logger{
+			Logger:  zap.New(core),
+			verbose: true,
+		},
+		t:    tb.(*testing.T),
+		logs: make([]string, 0),
 	}
 }
 

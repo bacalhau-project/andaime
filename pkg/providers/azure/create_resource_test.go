@@ -52,7 +52,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) SetupSuite() {
 	}
 
 	suite.origLogger = logger.Get() // Save the original logger
-	testLogger := logger.NewTestLogger(suite.T()).(*logger.TestLogger)
+	testLogger := logger.NewTestLogger(suite.T())
 	logger.SetGlobalLogger(testLogger)
 }
 

@@ -15,9 +15,11 @@ type LoggerWithCapture interface {
 type TestLogger struct {
 	*Logger
 	logs    []string
-	t       *testing.T
+	t       *testing.T 
 	logLock sync.Mutex
 }
+
+var _ LoggerWithCapture = (*TestLogger)(nil) // Ensure TestLogger implements LoggerWithCapture
 
 // GetLogs returns captured logs
 func (tl *TestLogger) GetLogs() []string {
