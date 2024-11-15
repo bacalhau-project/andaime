@@ -48,7 +48,7 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.tmpDir = cbpts.T().TempDir()
 
 	// Initialize test logger
-	testLogger := logger.NewTestLogger(cbpts.T()).(*logger.TestLogger)
+	testLogger := logger.NewTestLogger(cbpts.T())
 	logger.SetGlobalLogger(testLogger)
 
 	// Create new mocks for each test
