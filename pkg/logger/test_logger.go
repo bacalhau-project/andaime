@@ -45,6 +45,16 @@ func (tl *TestLogger) GetLogs() []string {
 	return append([]string{}, tl.logs...)
 }
 
+// GetLogs returns logs from the global test logger
+func GetLogs() []string {
+	if testLogger, ok := globalLogger.(*zap.Logger); ok {
+		if tl, ok := testLogger.(*TestLogger); ok {
+			return tl.GetLogs()
+		}
+	}
+	return []string{}
+}
+
 // Override logging methods to capture logs
 func (tl *TestLogger) Debug(msg string) {
 	tl.logLock.Lock()
