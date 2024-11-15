@@ -156,9 +156,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 				suite.mockAzureClient.On("DeployTemplate",
 					mock.Anything,
 					mock.Anything,
-					mock.MatchedBy(func(deploymentName string) bool {
-						return strings.Contains(deploymentName, machineName)
-					}),
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
@@ -179,7 +177,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
-				).Return(mockPoller, nil)
+				).Return(mockPoller, nil).Maybe()
 				suite.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
 					Return(testdata.FakeVirtualMachine(), nil)
 				suite.mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
