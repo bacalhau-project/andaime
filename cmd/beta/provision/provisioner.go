@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
@@ -94,7 +95,11 @@ func createMachineInstance(config *NodeConfig) (models.Machiner, error) {
 
 // Provision executes all provisioning steps
 func (p *Provisioner) Provision(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Starting node provisioning process")
+
 	if ctx == nil {
+		l.Error("Context is nil")
 		return fmt.Errorf("context cannot be nil")
 	}
 
@@ -102,34 +107,45 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	defer cancel()
 
 	// Ensure SSH connection is available before proceeding
-	fmt.Printf("Establishing SSH connection to %s...\n", p.config.IPAddress)
+	l.Infof("Establishing SSH connection to %s...", p.config.IPAddress)
 	if err := p.sshConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
+		l.Errorf("Failed to establish SSH connection: %v", err)
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
 	}
-	fmt.Printf("SSH connection established successfully\n")
+	l.Info("SSH connection established successfully")
 
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
+	l.Debug("Created cluster deployer")
 
 	// Parse settings if path is provided
+	l.Debug("Parsing Bacalhau settings")
 	settings, err := p.settingsParser.ParseFile(p.config.BacalhauSettingsPath)
 	if err != nil {
+		l.Errorf("Failed to parse settings: %v", err)
 		return err
+	}
+	if len(settings) > 0 {
+		l.Infof("Found %d Bacalhau settings to apply", len(settings))
 	}
 
 	// Provision the node
-	fmt.Printf("Starting Bacalhau node provisioning on %s...\n", p.config.IPAddress)
+	l.Infof("Starting Bacalhau node provisioning on %s...", p.config.IPAddress)
 	if err := cd.ProvisionBacalhauNode(
 		ctx,
 		p.sshConfig,
 		p.machine,
 		settings,
 	); err != nil {
-		return fmt.Errorf("failed to provision Bacalhau node (ip: %s, user: %s): %w", 
-			p.config.IPAddress, 
+		l.Errorf("Failed to provision Bacalhau node (ip: %s, user: %s): %v",
+			p.config.IPAddress,
+			p.config.Username,
+			err)
+		return fmt.Errorf("failed to provision Bacalhau node (ip: %s, user: %s): %w",
+			p.config.IPAddress,
 			p.config.Username,
 			err)
 	}
-	fmt.Printf("Successfully provisioned Bacalhau node on %s\n", p.config.IPAddress)
+	l.Infof("Successfully provisioned Bacalhau node on %s", p.config.IPAddress)
 
 	return nil
 }
