@@ -13,6 +13,7 @@ type LoggerInterface interface {
 	Info(msg string)
 	Warn(msg string)
 	Error(msg string)
+	SetVerbose(bool)
 }
 
 // LoggerWithCapture defines the interface for loggers that can capture logs
