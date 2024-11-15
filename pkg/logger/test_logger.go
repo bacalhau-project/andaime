@@ -14,6 +14,11 @@ type LoggerInterface interface {
 	Warn(msg string)
 	Error(msg string)
 	SetVerbose(bool)
+	With(fields ...zap.Field) *Logger
+	Debugf(format string, args ...interface{})
+	Infof(format string, args ...interface{})
+	Warnf(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
 }
 
 // LoggerWithCapture defines the interface for loggers that can capture logs

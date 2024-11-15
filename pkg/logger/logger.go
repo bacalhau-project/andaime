@@ -252,13 +252,16 @@ func InitTest(tb zaptest.TestingT) {
 }
 
 // SetGlobalLogger sets the global logger instance
-func SetGlobalLogger(logger LoggerInterface) {
+func SetGlobalLogger(logger interface{}) {
 	loggerMutex.Lock()
 	defer loggerMutex.Unlock()
-	if l, ok := logger.(*Logger); ok {
+	switch l := logger.(type) {
+	case *Logger:
 		globalLogger = l.Logger
-	} else if tl, ok := logger.(*TestLogger); ok {
-		globalLogger = tl.Logger.Logger
+	case *TestLogger:
+		globalLogger = l.Logger.Logger
+	default:
+		panic("unsupported logger type")
 	}
 }
 
