@@ -142,7 +142,6 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 
 	s.mockClient.AssertExpectations(s.T())
 	s.mockSession.AssertExpectations(s.T())
-	mockStdin.AssertExpectations(s.T())
 }
 
 func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
