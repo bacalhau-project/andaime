@@ -143,22 +143,24 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 
 	l.Debugf("Current file permissions at destination: %s", cmd)
 	// Create new sessions for permission checks
-	permSession, err := cl.Client.NewSession()
-	if err == nil {
-		defer permSession.Close()
-		permCmd := fmt.Sprintf("ls -l %s 2>/dev/null || echo 'File does not exist'", strings.Split(cmd, " ")[3])
-		perms, _ := permSession.CombinedOutput(permCmd)
-		l.Debugf("File permissions check output: %s", string(perms))
-	}
+	if client, ok := s.Session.Client().(*ssh.Client); ok {
+		permSession, err := client.NewSession()
+		if err == nil {
+			defer permSession.Close()
+			permCmd := fmt.Sprintf("ls -l %s 2>/dev/null || echo 'File does not exist'", strings.Split(cmd, " ")[3])
+			perms, _ := permSession.CombinedOutput(permCmd)
+			l.Debugf("File permissions check output: %s", string(perms))
+		}
 
-	// Check target directory permissions with a new session
-	dirSession, err := cl.Client.NewSession()
-	if err == nil {
-		defer dirSession.Close()
-		dirPath := strings.Split(cmd, " ")[3]
-		dirCmd := fmt.Sprintf("ls -ld $(dirname %s) 2>/dev/null || echo 'Directory does not exist'", dirPath)
-		dirPerms, _ := dirSession.CombinedOutput(dirCmd)
-		l.Debugf("Target directory permissions: %s", string(dirPerms))
+		// Check target directory permissions with a new session
+		dirSession, err := client.NewSession()
+		if err == nil {
+			defer dirSession.Close()
+			dirPath := strings.Split(cmd, " ")[3]
+			dirCmd := fmt.Sprintf("ls -ld $(dirname %s) 2>/dev/null || echo 'Directory does not exist'", dirPath)
+			dirPerms, _ := dirSession.CombinedOutput(dirCmd)
+			l.Debugf("Target directory permissions: %s", string(dirPerms))
+		}
 	}
 
 	// Start copying output in background
