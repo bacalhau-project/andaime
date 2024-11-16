@@ -135,8 +135,18 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	}
 
 	// Start copying output in background
-	go io.Copy(&stdoutBuf, stdout)
-	go io.Copy(&stderrBuf, stderr)
+	go func() {
+		_, err := io.Copy(&stdoutBuf, stdout)
+		if err != nil {
+			l.Errorf("failed to copy stdout: %v", err)
+		}
+	}()
+	go func() {
+		_, err := io.Copy(&stderrBuf, stderr)
+		if err != nil {
+			l.Errorf("failed to copy stderr: %v", err)
+		}
+	}()
 
 	// Start the command
 	if err := s.Session.Start(wrappedCmd); err != nil {
@@ -152,7 +162,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		l.Errorf("SSH command failed: %v", err)
 		l.Errorf("STDOUT: %s", stdoutBuf.String())
 		l.Errorf("STDERR: %s", stderrBuf.String())
-		
+
 		return &SSHError{
 			Cmd:    cmd,
 			Output: fmt.Sprintf("STDOUT:\n%s\nSTDERR:\n%s", stdoutBuf.String(), stderrBuf.String()),
