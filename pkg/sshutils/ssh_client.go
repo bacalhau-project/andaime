@@ -119,16 +119,21 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	escapedCmd = strings.Replace(escapedCmd, "\\", "\\\\", -1)
 	wrappedCmd := fmt.Sprintf("sudo bash -c '%s'", escapedCmd)
 
+	// Create a new session for each command
+	session := s.Session
+	s.Session = nil // Clear the session so it won't be reused
+	defer session.Close()
+
 	// Set up pipes for capturing output
 	var stdoutBuf, stderrBuf strings.Builder
-	stdout, err := s.Session.StdoutPipe()
+	stdout, err := session.StdoutPipe()
 	if err != nil {
 		return &SSHError{
 			Cmd: cmd,
 			Err: fmt.Errorf("failed to get stdout pipe: %w", err),
 		}
 	}
-	stderr, err := s.Session.StderrPipe()
+	stderr, err := session.StderrPipe()
 	if err != nil {
 		return &SSHError{
 			Cmd: cmd,
@@ -173,7 +178,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	}
 
 	// Start the command
-	if err := s.Session.Start(wrappedCmd); err != nil {
+	if err := session.Start(wrappedCmd); err != nil {
 		l.Errorf("Failed to start SSH command: %v", err)
 		return &SSHError{
 			Cmd: cmd,
@@ -182,8 +187,8 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	}
 
 	l.Debug("Waiting for SSH command completion...")
-	// Wait for command completion
-	err = s.Session.Wait()
+	// Wait for command completion 
+	err = session.Wait()
 	l.Debugf("SSH command wait completed with error: %v", err)
 	if err != nil {
 		l.Errorf("SSH command failed: %v", err)
