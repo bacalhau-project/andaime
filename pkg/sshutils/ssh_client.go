@@ -1,7 +1,6 @@
 package sshutils
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -119,7 +118,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	wrappedCmd := fmt.Sprintf("sudo bash -c '%s'", strings.Replace(cmd, "'", "'\"'\"'", -1))
 
 	// For regular commands without stdin
-	output, err := s.Session.CombinedOutput(cmd)
+	output, err := s.Session.CombinedOutput(wrappedCmd)
 	if err != nil {
 		l.Errorf("SSH command failed: %v", err)
 		l.Errorf("Command output: %s", string(output))
