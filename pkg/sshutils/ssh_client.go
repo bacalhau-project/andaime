@@ -150,9 +150,8 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 	}()
 
-	// Start the command, ensuring proper escaping of special characters
-	escapedCmd := strings.ReplaceAll(wrappedCmd, `\`, `\\`)
-	if err := s.Session.Start(escapedCmd); err != nil {
+	// Start the command
+	if err := s.Session.Start(wrappedCmd); err != nil {
 		return &SSHError{
 			Cmd: cmd,
 			Err: fmt.Errorf("failed to start command: %w", err),
