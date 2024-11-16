@@ -93,8 +93,16 @@ func createMachineInstance(config *NodeConfig) (models.Machiner, error) {
 	return &machine, nil
 }
 
+// UpdateCallback is a function type for status updates during provisioning
+type UpdateCallback func(*models.DisplayStatus)
+
 // Provision executes all provisioning steps
 func (p *Provisioner) Provision(ctx context.Context) error {
+	return p.ProvisionWithCallback(ctx, func(*models.DisplayStatus) {})
+}
+
+// ProvisionWithCallback executes all provisioning steps with status updates
+func (p *Provisioner) ProvisionWithCallback(ctx context.Context, callback UpdateCallback) error {
 	l := logger.Get()
 	l.Info("Starting node provisioning process")
 
@@ -130,11 +138,12 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 
 	// Provision the node
 	l.Infof("Starting Bacalhau node provisioning on %s...", p.Config.IPAddress)
-	if err := cd.ProvisionBacalhauNode(
+	if err := cd.ProvisionBacalhauNodeWithCallback(
 		ctx,
 		p.SSHConfig,
 		p.Machine,
 		settings,
+		callback,
 	); err != nil {
 		l.Errorf("Failed to provision Bacalhau node (ip: %s, user: %s)",
 			p.Config.IPAddress,
