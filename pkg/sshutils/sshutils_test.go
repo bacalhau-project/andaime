@@ -134,13 +134,7 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 		remoteCmd += fmt.Sprintf(" && chmod -f +x %s", "/remote/path")
 	}
 
-	mockStdin := &MockWriteCloser{}
-	s.mockSession.On("StdinPipe").Return(mockStdin, nil)
-	s.mockSession.On("Start", remoteCmd).Return(nil)
 	s.mockSession.On("Run", remoteCmd).Return(nil)
-	mockStdin.On("Write", localContent).Return(len(localContent), nil)
-	mockStdin.On("Close").Return(nil)
-	s.mockSession.On("Wait").Return(nil)
 	s.mockSession.On("Close").Return(nil)
 
 	err := s.sshConfig.PushFile(s.ctx, "/remote/path", localContent, executable)
