@@ -19,11 +19,11 @@ const (
 
 // Provisioner handles the node provisioning process
 type Provisioner struct {
-	sshConfig      sshutils.SSHConfiger
-	config         *NodeConfig
-	machine        models.Machiner
-	settingsParser *SettingsParser
-	deployer       common_interface.ClusterDeployerer
+	SSHConfig      sshutils.SSHConfiger
+	Config         *NodeConfig
+	Machine        models.Machiner
+	SettingsParser *SettingsParser
+	Deployer       common_interface.ClusterDeployerer
 }
 
 // NewProvisioner creates a new Provisioner instance
@@ -52,10 +52,10 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 	}
 
 	return &Provisioner{
-		sshConfig:      sshConfig,
-		config:         config,
-		machine:        machine,
-		settingsParser: NewSettingsParser(),
+		SSHConfig:      sshConfig,
+		Config:         config,
+		Machine:        machine,
+		SettingsParser: NewSettingsParser(),
 	}, nil
 }
 
@@ -107,8 +107,8 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	defer cancel()
 
 	// Ensure SSH connection is available before proceeding
-	l.Infof("Establishing SSH connection to %s...", p.config.IPAddress)
-	if err := p.sshConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
+	l.Infof("Establishing SSH connection to %s...", p.Config.IPAddress)
+	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
 		l.Errorf("Failed to establish SSH connection: %v", err)
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
 	}
@@ -119,7 +119,7 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 
 	// Parse settings if path is provided
 	l.Debug("Parsing Bacalhau settings")
-	settings, err := p.settingsParser.ParseFile(p.config.BacalhauSettingsPath)
+	settings, err := p.SettingsParser.ParseFile(p.Config.BacalhauSettingsPath)
 	if err != nil {
 		l.Errorf("Failed to parse settings: %v", err)
 		return err
@@ -129,76 +129,80 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	}
 
 	// Provision the node
-	l.Infof("Starting Bacalhau node provisioning on %s...", p.config.IPAddress)
+	l.Infof("Starting Bacalhau node provisioning on %s...", p.Config.IPAddress)
 	if err := cd.ProvisionBacalhauNode(
 		ctx,
-		p.sshConfig,
-		p.machine,
+		p.SSHConfig,
+		p.Machine,
 		settings,
 	); err != nil {
-		l.Errorf("Failed to provision Bacalhau node (ip: %s, user: %s)", 
-			p.config.IPAddress,
-			p.config.Username)
-		
+		l.Errorf("Failed to provision Bacalhau node (ip: %s, user: %s)",
+			p.Config.IPAddress,
+			p.Config.Username)
+
 		// Extract command output if it's an SSH error
 		var cmdOutput string
 		if sshErr, ok := err.(*sshutils.SSHError); ok {
 			cmdOutput = sshErr.Output
 		}
-		
+
 		// Log detailed error information
 		l.Errorf("Provisioning failed with error: %v", err)
 		if cmdOutput != "" {
 			l.Errorf("Command output: %s", cmdOutput)
 		}
-		
-		l.Debugf("Full error context:\nIP: %s\nUser: %s\nPrivate Key Path: %s\nError: %v", 
-			p.config.IPAddress,
-			p.config.Username,
-			p.config.PrivateKey,
+
+		l.Debugf("Full error context:\nIP: %s\nUser: %s\nPrivate Key Path: %s\nError: %v",
+			p.Config.IPAddress,
+			p.Config.Username,
+			p.Config.PrivateKey,
 			err)
 		if ctx.Err() != nil {
 			l.Debugf("Context error: %v", ctx.Err())
 		}
-		
+
 		if cmdOutput != "" {
-			return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nCommand Output: %s\nError Details: %w",
-				p.config.IPAddress, cmdOutput, err)
+			return fmt.Errorf(
+				"failed to provision Bacalhau node:\nIP: %s\nCommand Output: %s\nError Details: %w",
+				p.Config.IPAddress,
+				cmdOutput,
+				err,
+			)
 		}
 		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
-			p.config.IPAddress, err)
+			p.Config.IPAddress, err)
 	}
-	l.Infof("Successfully provisioned Bacalhau node on %s", p.config.IPAddress)
+	l.Infof("Successfully provisioned Bacalhau node on %s", p.Config.IPAddress)
 
 	return nil
 }
 
 // GetMachine returns the configured machine instance
 func (p *Provisioner) GetMachine() models.Machiner {
-	return p.machine
+	return p.Machine
 }
 
 // GetSSHConfig returns the configured SSH configuration
 func (p *Provisioner) GetSSHConfig() sshutils.SSHConfiger {
-	return p.sshConfig
+	return p.SSHConfig
 }
 
 // GetSettings returns the configured Bacalhau settings
 func (p *Provisioner) GetSettings() ([]models.BacalhauSettings, error) {
-	return p.settingsParser.ParseFile(p.config.BacalhauSettingsPath)
+	return p.SettingsParser.ParseFile(p.Config.BacalhauSettingsPath)
 }
 
 // GetConfig returns the configured node configuration
 func (p *Provisioner) GetConfig() *NodeConfig {
-	return p.config
+	return p.Config
 }
 
 // SetClusterDeployer sets the cluster deployer for the provisioner
 func (p *Provisioner) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
-	p.deployer = deployer
+	p.Deployer = deployer
 }
 
 // ParseSettings parses the Bacalhau settings from the given file path
 func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings, error) {
-	return p.settingsParser.ParseFile(filePath)
+	return p.SettingsParser.ParseFile(filePath)
 }
