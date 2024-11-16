@@ -114,8 +114,10 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 
 	l.Infof("Executing SSH command: %s", cmd)
 
-	// Wrap the command in sudo bash -c to handle all parts in one go
-	wrappedCmd := fmt.Sprintf("sudo bash -c '%s'", strings.Replace(cmd, "'", "'\"'\"'", -1))
+	// Wrap the command in sudo bash -c to handle all parts in one go, with proper escaping
+	escapedCmd := strings.Replace(cmd, "'", "'\"'\"'", -1)
+	escapedCmd = strings.Replace(escapedCmd, "\\", "\\\\", -1)
+	wrappedCmd := fmt.Sprintf("sudo bash -c '%s'", escapedCmd)
 
 	// Set up pipes for capturing output
 	var stdoutBuf, stderrBuf strings.Builder
@@ -148,8 +150,9 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 	}()
 
-	// Start the command
-	if err := s.Session.Start(wrappedCmd); err != nil {
+	// Start the command, ensuring proper escaping of special characters
+	escapedCmd := strings.ReplaceAll(wrappedCmd, `\`, `\\`)
+	if err := s.Session.Start(escapedCmd); err != nil {
 		return &SSHError{
 			Cmd: cmd,
 			Err: fmt.Errorf("failed to start command: %w", err),
