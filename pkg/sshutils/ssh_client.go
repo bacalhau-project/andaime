@@ -115,42 +115,86 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	
 	l.Infof("Executing SSH command: %s", cmd)
 
-	// For commands that expect stdin, we need to handle them differently
+	// For commands that expect stdin or have multiple parts, handle them specially
 	if strings.Contains(cmd, "cat >") {
-		stdin, err := s.Session.StdinPipe()
-		if err != nil {
-			return &SSHError{
-				Cmd: cmd,
-				Err: fmt.Errorf("failed to get stdin pipe: %w", err),
+		// Split the command into parts if it contains &&
+		cmdParts := strings.Split(cmd, "&&")
+		
+		// Execute each part separately
+		for i, part := range cmdParts {
+			part = strings.TrimSpace(part)
+			
+			if strings.Contains(part, "cat >") {
+				// Handle the cat > command specially
+				stdin, err := s.Session.StdinPipe()
+				if err != nil {
+					return &SSHError{
+						Cmd: cmd,
+						Err: fmt.Errorf("failed to get stdin pipe: %w", err),
+					}
+				}
+
+				var outputBuffer bytes.Buffer
+				s.Session.Stdout = &outputBuffer
+				s.Session.Stderr = &outputBuffer
+
+				if err := s.Session.Start(part); err != nil {
+					stdin.Close()
+					return &SSHError{
+						Cmd:    cmd,
+						Output: outputBuffer.String(),
+						Err:    fmt.Errorf("failed to start command: %w", err),
+					}
+				}
+
+				// Close stdin to signal EOF
+				stdin.Close()
+
+				if err := s.Session.Wait(); err != nil {
+					return &SSHError{
+						Cmd:    cmd,
+						Output: outputBuffer.String(),
+						Err:    fmt.Errorf("failed to execute cat command: %w", err),
+					}
+				}
+
+				// Create new session for next command
+				if i < len(cmdParts)-1 {
+					s.Session.Close()
+					s.Session, err = s.Session.(*ssh.Session).Client().NewSession()
+					if err != nil {
+						return &SSHError{
+							Cmd: cmd,
+							Err: fmt.Errorf("failed to create new session: %w", err),
+						}
+					}
+				}
+			} else {
+				// For non-cat commands, use CombinedOutput
+				output, err := s.Session.CombinedOutput(part)
+				if err != nil {
+					return &SSHError{
+						Cmd:    cmd,
+						Output: string(output),
+						Err:    fmt.Errorf("command failed: %w", err),
+					}
+				}
+				
+				// Create new session for next command if needed
+				if i < len(cmdParts)-1 {
+					s.Session.Close()
+					s.Session, err = s.Session.(*ssh.Session).Client().NewSession()
+					if err != nil {
+						return &SSHError{
+							Cmd: cmd,
+							Err: fmt.Errorf("failed to create new session: %w", err),
+						}
+					}
+				}
 			}
 		}
-		defer stdin.Close()
-
-		var outputBuffer bytes.Buffer
-		s.Session.Stdout = &outputBuffer
-		s.Session.Stderr = &outputBuffer
-
-		if err := s.Session.Start(cmd); err != nil {
-			return &SSHError{
-				Cmd:    cmd,
-				Output: outputBuffer.String(),
-				Err:    fmt.Errorf("failed to start command: %w", err),
-			}
-		}
-
-		// Close stdin to signal EOF
-		stdin.Close()
-
-		if err := s.Session.Wait(); err != nil {
-			return &SSHError{
-				Cmd:    cmd,
-				Output: outputBuffer.String(),
-				Err:    fmt.Errorf("command failed: %w", err),
-			}
-		}
-
-		l.Infof("SSH command completed successfully")
-		l.Debugf("Command output: %s", outputBuffer.String())
+		
+		l.Infof("Multi-part SSH command completed successfully")
 		return nil
 	}
 
