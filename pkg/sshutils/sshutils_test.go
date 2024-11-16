@@ -129,9 +129,9 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 
 	s.mockClient.On("NewSession").Return(s.mockSession, nil)
 	s.mockClient.On("IsConnected").Return(true)
-	remoteCmd := fmt.Sprintf("cat > %s", "/remote/path")
+	remoteCmd := fmt.Sprintf("rm -f %s && cat > %s", "/remote/path", "/remote/path")
 	if executable {
-		remoteCmd += fmt.Sprintf(" && chmod +x %s", "/remote/path")
+		remoteCmd += fmt.Sprintf(" && chmod -f +x %s", "/remote/path")
 	}
 
 	mockStdin := &MockWriteCloser{}
