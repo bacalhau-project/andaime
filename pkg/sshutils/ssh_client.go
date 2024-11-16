@@ -119,10 +119,13 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	escapedCmd = strings.Replace(escapedCmd, "\\", "\\\\", -1)
 	wrappedCmd := fmt.Sprintf("sudo bash -c '%s'", escapedCmd)
 
-	// Create a new session for each command
+	// Keep a reference to the session for cleanup
 	session := s.Session
-	s.Session = nil // Clear the session so it won't be reused
-	defer session.Close()
+	defer func() {
+		if session != nil {
+			session.Close()
+		}
+	}()
 
 	// Set up pipes for capturing output
 	var stdoutBuf, stderrBuf strings.Builder
@@ -201,7 +204,10 @@ func (s *SSHSessionWrapper) Wait() error {
 }
 
 func (s *SSHSessionWrapper) Close() error {
-	return s.Session.Close()
+	if s.Session != nil {
+		return s.Session.Close()
+	}
+	return nil
 }
 
 func (s *SSHSessionWrapper) StdinPipe() (io.WriteCloser, error) {
