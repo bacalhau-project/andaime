@@ -1,8 +1,10 @@
 package sshutils
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"golang.org/x/crypto/ssh"
@@ -112,6 +114,47 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	}
 	
 	l.Infof("Executing SSH command: %s", cmd)
+
+	// For commands that expect stdin, we need to handle them differently
+	if strings.Contains(cmd, "cat >") {
+		stdin, err := s.Session.StdinPipe()
+		if err != nil {
+			return &SSHError{
+				Cmd: cmd,
+				Err: fmt.Errorf("failed to get stdin pipe: %w", err),
+			}
+		}
+		defer stdin.Close()
+
+		var outputBuffer bytes.Buffer
+		s.Session.Stdout = &outputBuffer
+		s.Session.Stderr = &outputBuffer
+
+		if err := s.Session.Start(cmd); err != nil {
+			return &SSHError{
+				Cmd:    cmd,
+				Output: outputBuffer.String(),
+				Err:    fmt.Errorf("failed to start command: %w", err),
+			}
+		}
+
+		// Close stdin to signal EOF
+		stdin.Close()
+
+		if err := s.Session.Wait(); err != nil {
+			return &SSHError{
+				Cmd:    cmd,
+				Output: outputBuffer.String(),
+				Err:    fmt.Errorf("command failed: %w", err),
+			}
+		}
+
+		l.Infof("SSH command completed successfully")
+		l.Debugf("Command output: %s", outputBuffer.String())
+		return nil
+	}
+
+	// For regular commands without stdin
 	output, err := s.Session.CombinedOutput(cmd)
 	if err != nil {
 		l.Errorf("SSH command failed: %v", err)
