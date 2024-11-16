@@ -142,15 +142,24 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	}
 
 	l.Debugf("Current file permissions at destination: %s", cmd)
-	permCmd := fmt.Sprintf("ls -l %s 2>/dev/null || echo 'File does not exist'", strings.Split(cmd, " ")[3])
-	perms, _ := s.Session.CombinedOutput(permCmd)
-	l.Debugf("File permissions check output: %s", string(perms))
+	// Create new sessions for permission checks
+	permSession, err := cl.Client.NewSession()
+	if err == nil {
+		defer permSession.Close()
+		permCmd := fmt.Sprintf("ls -l %s 2>/dev/null || echo 'File does not exist'", strings.Split(cmd, " ")[3])
+		perms, _ := permSession.CombinedOutput(permCmd)
+		l.Debugf("File permissions check output: %s", string(perms))
+	}
 
-	// Check target directory permissions
-	dirPath := strings.Split(cmd, " ")[3]
-	dirCmd := fmt.Sprintf("ls -ld $(dirname %s) 2>/dev/null || echo 'Directory does not exist'", dirPath)
-	dirPerms, _ := s.Session.CombinedOutput(dirCmd)
-	l.Debugf("Target directory permissions: %s", string(dirPerms))
+	// Check target directory permissions with a new session
+	dirSession, err := cl.Client.NewSession()
+	if err == nil {
+		defer dirSession.Close()
+		dirPath := strings.Split(cmd, " ")[3]
+		dirCmd := fmt.Sprintf("ls -ld $(dirname %s) 2>/dev/null || echo 'Directory does not exist'", dirPath)
+		dirPerms, _ := dirSession.CombinedOutput(dirCmd)
+		l.Debugf("Target directory permissions: %s", string(dirPerms))
+	}
 
 	// Start copying output in background
 	go func() {
@@ -168,18 +177,10 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 
 	l.Debugf("Starting SSH command with wrapped command: %s", wrappedCmd)
 	
-	// Check if session is valid
-	if s.Session == nil {
-		l.Error("SSH session is nil before command execution")
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("ssh session is nil"),
-		}
-	}
-
 	// Start the command
 	if err := session.Start(wrappedCmd); err != nil {
 		l.Errorf("Failed to start SSH command: %v", err)
+		session.Close() // Ensure we close the session on error
 		return &SSHError{
 			Cmd: cmd,
 			Err: fmt.Errorf("failed to start command: %w", err),
@@ -233,5 +234,12 @@ func (s *SSHSessionWrapper) StderrPipe() (io.Reader, error) {
 }
 
 func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
-	return s.Session.CombinedOutput(cmd)
+	if s.Session == nil {
+		return nil, fmt.Errorf("ssh session is nil")
+	}
+	output, err := s.Session.CombinedOutput(cmd)
+	if err != nil {
+		return output, err
+	}
+	return output, nil
 }
