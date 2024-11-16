@@ -64,7 +64,7 @@ func (w *SSHClientWrapper) IsConnected() bool {
 		l.Debug("SSH client is nil")
 		return false
 	}
-	
+
 	// Check if the underlying network connection is still alive
 	if _, err := w.Client.NewSession(); err != nil {
 		l.Debugf("Failed to create new session, connection may be dead: %v", err)
@@ -103,7 +103,7 @@ type SSHError struct {
 }
 
 func (e *SSHError) Error() string {
-	return fmt.Sprintf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %v", 
+	return fmt.Sprintf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %v",
 		e.Cmd, e.Output, e.Err)
 }
 
@@ -112,18 +112,18 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	if s.Session == nil {
 		return fmt.Errorf("SSH session is nil")
 	}
-	
+
 	l.Infof("Executing SSH command: %s", cmd)
 
 	// For commands that expect stdin or have multiple parts, handle them specially
 	if strings.Contains(cmd, "cat >") {
 		// Split the command into parts if it contains &&
 		cmdParts := strings.Split(cmd, "&&")
-		
+
 		// Execute each part separately
 		for i, part := range cmdParts {
 			part = strings.TrimSpace(part)
-			
+
 			if strings.Contains(part, "cat >") {
 				// Handle the cat > command specially
 				stdin, err := s.Session.StdinPipe()
@@ -161,11 +161,15 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 				// Create new session for next command
 				if i < len(cmdParts)-1 {
 					s.Session.Close()
-					s.Session, err = s.Session.(*ssh.Session).Client().NewSession()
+					s.Session, err = w.Session.NewSession()
 					if err != nil {
 						return &SSHError{
 							Cmd: cmd,
-							Err: fmt.Errorf("failed to create new session: %w", err),
+							Err: fmt.Errorf(
+								"command: %s\nfailed to create new session: %w",
+								part,
+								err,
+							),
 						}
 					}
 				}
@@ -179,11 +183,11 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 						Err:    fmt.Errorf("command failed: %w", err),
 					}
 				}
-				
+
 				// Create new session for next command if needed
 				if i < len(cmdParts)-1 {
 					s.Session.Close()
-					s.Session, err = s.Session.(*ssh.Session).Client().NewSession()
+					s.Session, err = w.Session.NewSession()
 					if err != nil {
 						return &SSHError{
 							Cmd: cmd,
@@ -193,7 +197,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 				}
 			}
 		}
-		
+
 		l.Infof("Multi-part SSH command completed successfully")
 		return nil
 	}
@@ -207,7 +211,10 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 			l.Debug("No command output received - this may indicate a connection failure")
 			return &SSHError{
 				Cmd: cmd,
-				Err: fmt.Errorf("SSH command failed with no output (possible connection failure): %w", err),
+				Err: fmt.Errorf(
+					"SSH command failed with no output (possible connection failure): %w",
+					err,
+				),
 			}
 		}
 		return &SSHError{
