@@ -141,6 +141,12 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	perms, _ := s.Session.CombinedOutput(permCmd)
 	l.Debugf("File permissions check output: %s", string(perms))
 
+	// Check target directory permissions
+	dirPath := strings.Split(cmd, " ")[3]
+	dirCmd := fmt.Sprintf("ls -ld $(dirname %s) 2>/dev/null || echo 'Directory does not exist'", dirPath)
+	dirPerms, _ := s.Session.CombinedOutput(dirCmd)
+	l.Debugf("Target directory permissions: %s", string(dirPerms))
+
 	// Start copying output in background
 	go func() {
 		_, err := io.Copy(&stdoutBuf, stdout)
