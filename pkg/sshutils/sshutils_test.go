@@ -137,6 +137,7 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 	mockStdin := &MockWriteCloser{}
 	s.mockSession.On("StdinPipe").Return(mockStdin, nil)
 	s.mockSession.On("Start", remoteCmd).Return(nil)
+	s.mockSession.On("Run", remoteCmd).Return(nil)
 	mockStdin.On("Write", localContent).Return(len(localContent), nil)
 	mockStdin.On("Close").Return(nil)
 	s.mockSession.On("Wait").Return(nil)

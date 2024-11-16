@@ -803,10 +803,10 @@ func (p *AzureProvider) DeployBacalhauWorkersWithCallback(ctx context.Context, c
 	}
 	l.Info("All Bacalhau workers deployed successfully")
 	callback(&models.DisplayStatus{
-		Name:          "bacalhau-workers",
-		ResourceType:  models.AzureResourceTypeVM,
-		ResourceState: models.ResourceStateSucceeded,
-		StatusMessage: "All workers deployed successfully",
+		ID:             "bacalhau-workers",
+		Type:           models.AzureResourceTypeVM,
+		StatusMessage:  "All workers deployed successfully",
+		DetailedStatus: "All workers deployed successfully",
 	})
 	return nil
 }
