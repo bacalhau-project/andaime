@@ -136,6 +136,11 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 	}
 
+	l.Debugf("Current file permissions at destination: %s", cmd)
+	permCmd := fmt.Sprintf("ls -l %s 2>/dev/null || echo 'File does not exist'", strings.Split(cmd, " ")[3])
+	perms, _ := s.Session.CombinedOutput(permCmd)
+	l.Debugf("File permissions check output: %s", string(perms))
+
 	// Start copying output in background
 	go func() {
 		_, err := io.Copy(&stdoutBuf, stdout)
@@ -150,16 +155,30 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 	}()
 
+	l.Debugf("Starting SSH command with wrapped command: %s", wrappedCmd)
+	
+	// Check if session is valid
+	if s.Session == nil {
+		l.Error("SSH session is nil before command execution")
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("ssh session is nil"),
+		}
+	}
+
 	// Start the command
 	if err := s.Session.Start(wrappedCmd); err != nil {
+		l.Errorf("Failed to start SSH command: %v", err)
 		return &SSHError{
 			Cmd: cmd,
 			Err: fmt.Errorf("failed to start command: %w", err),
 		}
 	}
 
+	l.Debug("Waiting for SSH command completion...")
 	// Wait for command completion
 	err = s.Session.Wait()
+	l.Debugf("SSH command wait completed with error: %v", err)
 	if err != nil {
 		l.Errorf("SSH command failed: %v", err)
 		l.Errorf("STDOUT: %s", stdoutBuf.String())
