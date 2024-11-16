@@ -117,29 +117,52 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	// Wrap the command in sudo bash -c to handle all parts in one go
 	wrappedCmd := fmt.Sprintf("sudo bash -c '%s'", strings.Replace(cmd, "'", "'\"'\"'", -1))
 
-	// For regular commands without stdin
-	output, err := s.Session.CombinedOutput(wrappedCmd)
+	// Set up pipes for capturing output
+	var stdoutBuf, stderrBuf strings.Builder
+	stdout, err := s.Session.StdoutPipe()
 	if err != nil {
-		l.Errorf("SSH command failed: %v", err)
-		l.Errorf("Command output: %s", string(output))
-		if len(output) == 0 {
-			l.Debug("No command output received - this may indicate a connection failure")
-			return &SSHError{
-				Cmd: cmd,
-				Err: fmt.Errorf(
-					"SSH command failed with no output (possible connection failure): %w",
-					err,
-				),
-			}
-		}
 		return &SSHError{
-			Cmd:    cmd,
-			Output: string(output),
-			Err:    err,
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to get stdout pipe: %w", err),
 		}
 	}
+	stderr, err := s.Session.StderrPipe()
+	if err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to get stderr pipe: %w", err),
+		}
+	}
+
+	// Start copying output in background
+	go io.Copy(&stdoutBuf, stdout)
+	go io.Copy(&stderrBuf, stderr)
+
+	// Start the command
+	if err := s.Session.Start(wrappedCmd); err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to start command: %w", err),
+		}
+	}
+
+	// Wait for command completion
+	err = s.Session.Wait()
+	if err != nil {
+		l.Errorf("SSH command failed: %v", err)
+		l.Errorf("STDOUT: %s", stdoutBuf.String())
+		l.Errorf("STDERR: %s", stderrBuf.String())
+		
+		return &SSHError{
+			Cmd:    cmd,
+			Output: fmt.Sprintf("STDOUT:\n%s\nSTDERR:\n%s", stdoutBuf.String(), stderrBuf.String()),
+			Err:    fmt.Errorf("command failed with exit code %v: %w", err, err),
+		}
+	}
+
+	output := stdoutBuf.String()
 	l.Infof("SSH command completed successfully")
-	l.Debugf("Command output: %s", string(output))
+	l.Debugf("Command output:\nSTDOUT: %s\nSTDERR: %s", output, stderrBuf.String())
 	return nil
 }
 
