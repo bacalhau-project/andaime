@@ -190,6 +190,15 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 
 		l.Debug("Waiting for SSH command completion...")
 		err = session.Wait()
+		if err != nil {
+			l.Errorf("SSH command failed: %v", err)
+			return &SSHError{
+				Cmd:    cmd,
+				Output: stderrBuf.String(),
+				Err:    fmt.Errorf("command failed: %w", err),
+			}
+		}
+		return nil
 	} else {
 		// For non-file transfer commands, use combined output
 		output, err := session.CombinedOutput(wrappedCmd)
