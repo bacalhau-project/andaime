@@ -127,55 +127,84 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 	}()
 
-	// Set up pipes for capturing output
-	var stdoutBuf, stderrBuf strings.Builder
-	stdout, err := session.StdoutPipe()
-	if err != nil {
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to get stdout pipe: %w", err),
-		}
-	}
-	stderr, err := session.StderrPipe()
-	if err != nil {
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to get stderr pipe: %w", err),
-		}
-	}
-
-	l.Debugf("Current file permissions at destination: %s", cmd)
-	// Skip permission checks for now as we're using sudo
-
-	// Start copying output in background
-	go func() {
-		_, err := io.Copy(&stdoutBuf, stdout)
+	// For file transfer commands that contain a pipe, we need to handle stdin
+	if strings.Contains(wrappedCmd, "cat >") {
+		stdin, err := session.StdinPipe()
 		if err != nil {
-			l.Errorf("failed to copy stdout: %v", err)
+			return &SSHError{
+				Cmd: cmd,
+				Err: fmt.Errorf("failed to get stdin pipe: %w", err),
+			}
 		}
-	}()
-	go func() {
-		_, err := io.Copy(&stderrBuf, stderr)
+
+		// Set up pipes for stderr only since we're using stdin for content
+		var stderrBuf strings.Builder
+		stderr, err := session.StderrPipe()
 		if err != nil {
-			l.Errorf("failed to copy stderr: %v", err)
+			return &SSHError{
+				Cmd: cmd,
+				Err: fmt.Errorf("failed to get stderr pipe: %w", err),
+			}
 		}
-	}()
 
-	l.Debugf("Starting SSH command with wrapped command: %s", wrappedCmd)
-	
-	// Start the command
-	if err := session.Start(wrappedCmd); err != nil {
-		l.Errorf("Failed to start SSH command: %v", err)
-		session.Close() // Ensure we close the session on error
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to start command: %w", err),
+		// Copy stderr in background
+		go func() {
+			_, err := io.Copy(&stderrBuf, stderr)
+			if err != nil {
+				l.Errorf("failed to copy stderr: %v", err)
+			}
+		}()
+
+		l.Debugf("Starting SSH command with wrapped command: %s", wrappedCmd)
+		
+		// Start the command before writing to stdin
+		if err := session.Start(wrappedCmd); err != nil {
+			l.Errorf("Failed to start SSH command: %v", err)
+			session.Close()
+			return &SSHError{
+				Cmd: cmd,
+				Err: fmt.Errorf("failed to start command: %w", err),
+			}
 		}
+
+		// Extract content from the command (assuming it's between the last '>' and any optional chmod)
+		parts := strings.Split(cmd, ">")
+		if len(parts) < 2 {
+			return fmt.Errorf("invalid file transfer command format")
+		}
+		content := strings.TrimSpace(parts[1])
+		if idx := strings.Index(content, "&&"); idx != -1 {
+			content = strings.TrimSpace(content[:idx])
+		}
+
+		// Write the content to stdin and close it
+		_, err = io.WriteString(stdin, content)
+		if err != nil {
+			l.Errorf("Failed to write to stdin: %v", err)
+			return &SSHError{
+				Cmd: cmd,
+				Err: fmt.Errorf("failed to write content: %w", err),
+			}
+		}
+		stdin.Close()
+
+		l.Debug("Waiting for SSH command completion...")
+		err = session.Wait()
+	} else {
+		// For non-file transfer commands, use combined output
+		output, err := session.CombinedOutput(wrappedCmd)
+		if err != nil {
+			l.Errorf("SSH command failed: %v", err)
+			l.Errorf("Command output: %s", string(output))
+			return &SSHError{
+				Cmd:    cmd,
+				Output: string(output),
+				Err:    fmt.Errorf("command failed: %w", err),
+			}
+		}
+		l.Debugf("Command output: %s", string(output))
+		return nil
 	}
-
-	l.Debug("Waiting for SSH command completion...")
-	// Wait for command completion 
-	err = session.Wait()
 	l.Debugf("SSH command wait completed with error: %v", err)
 	if err != nil {
 		l.Errorf("SSH command failed: %v", err)
