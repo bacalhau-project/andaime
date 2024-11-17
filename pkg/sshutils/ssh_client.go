@@ -214,23 +214,6 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		l.Debugf("Command output: %s", string(output))
 		return nil
 	}
-	l.Debugf("SSH command wait completed with error: %v", err)
-	if err != nil {
-		l.Errorf("SSH command failed: %v", err)
-		l.Errorf("STDOUT: %s", stdoutBuf.String())
-		l.Errorf("STDERR: %s", stderrBuf.String())
-
-		return &SSHError{
-			Cmd:    cmd,
-			Output: fmt.Sprintf("STDOUT:\n%s\nSTDERR:\n%s", stdoutBuf.String(), stderrBuf.String()),
-			Err:    fmt.Errorf("command failed with exit code %v: %w", err, err),
-		}
-	}
-
-	output := stdoutBuf.String()
-	l.Infof("SSH command completed successfully")
-	l.Debugf("Command output:\nSTDOUT: %s\nSTDERR: %s", output, stderrBuf.String())
-	return nil
 }
 
 func (s *SSHSessionWrapper) Start(cmd string) error {
