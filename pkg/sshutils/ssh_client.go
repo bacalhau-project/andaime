@@ -243,6 +243,13 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 				newSession, err := s.Session.Client().NewSession()
 				if err != nil {
 					return &SSHError{
+						Cmd:    cmd,
+						Err:    fmt.Errorf("failed to create new session after timeout: %w", err),
+					}
+				}
+				s.Session = newSession
+				if err != nil {
+					return &SSHError{
 						Cmd: cmd,
 						Err: fmt.Errorf("failed to create new session after timeout: %w", err),
 					}
