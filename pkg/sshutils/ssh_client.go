@@ -1,6 +1,7 @@
 package sshutils
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"strings"
@@ -128,143 +129,142 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 	}()
 
-	// For file transfer commands that contain a pipe, we need to handle stdin
+	// For file transfer commands that contain a pipe, handle them separately
 	if strings.Contains(wrappedCmd, "cat >") {
-		stdin, err := session.StdinPipe()
-		if err != nil {
-			return &SSHError{
-				Cmd: cmd,
-				Err: fmt.Errorf("failed to get stdin pipe: %w", err),
-			}
-		}
-
-		// Set up pipes for stderr only since we're using stdin for content
-		var stderrBuf strings.Builder
-		stderr, err := session.StderrPipe()
-		if err != nil {
-			return &SSHError{
-				Cmd: cmd,
-				Err: fmt.Errorf("failed to get stderr pipe: %w", err),
-			}
-		}
-
-		// Copy stderr in background
-		go func() {
-			_, err := io.Copy(&stderrBuf, stderr)
-			if err != nil {
-				l.Errorf("failed to copy stderr: %v", err)
-			}
-		}()
-
-		l.Debugf("Starting SSH command with wrapped command: %s", wrappedCmd)
-
-		// Start the command before writing to stdin
-		if err := session.Start(wrappedCmd); err != nil {
-			l.Errorf("Failed to start SSH command: %v", err)
-			session.Close()
-			return &SSHError{
-				Cmd: cmd,
-				Err: fmt.Errorf("failed to start command: %w", err),
-			}
-		}
-
-		// Extract content from the command (assuming it's between the last '>' and any optional chmod)
-		parts := strings.Split(cmd, ">")
-		if len(parts) < 2 {
-			return fmt.Errorf("invalid file transfer command format")
-		}
-		content := strings.TrimSpace(parts[1])
-		if idx := strings.Index(content, "&&"); idx != -1 {
-			content = strings.TrimSpace(content[:idx])
-		}
-
-		// Write the content to stdin and close it
-		_, err = io.WriteString(stdin, content)
-		if err != nil {
-			l.Errorf("Failed to write to stdin: %v", err)
-			return &SSHError{
-				Cmd: cmd,
-				Err: fmt.Errorf("failed to write content: %w", err),
-			}
-		}
-		stdin.Close()
-
-		l.Debug("Waiting for SSH command completion...")
-		err = session.Wait()
-		if err != nil {
-			l.Errorf("SSH command failed: %v", err)
-			return &SSHError{
-				Cmd:    cmd,
-				Output: stderrBuf.String(),
-				Err:    fmt.Errorf("command failed: %w", err),
-			}
-		}
-		return nil
-	} else {
-		// For non-file transfer commands, use combined output with timeout handling
-		var output []byte
-		var err error
-
-		// Try command multiple times with increasing timeouts
-		timeouts := []time.Duration{30 * time.Second, 60 * time.Second, 120 * time.Second}
-		for i, timeout := range timeouts {
-			done := make(chan struct{})
-			go func() {
-				output, err = session.CombinedOutput(wrappedCmd)
-				close(done)
-			}()
-
-			select {
-			case <-done:
-				if err == nil {
-					l.Debugf("Command output: %s", string(output))
-					return nil
-				}
-				if i == len(timeouts)-1 {
-					l.Errorf("SSH command failed after all retries: %v", err)
-					l.Errorf("Command output: %s", string(output))
-					return &SSHError{
-						Cmd:    cmd,
-						Output: string(output),
-						Err:    fmt.Errorf("command failed after %d retries: %w", len(timeouts), err),
-					}
-				}
-				l.Warnf("Command failed with timeout %v, retrying with longer timeout", timeout)
-			case <-time.After(timeout):
-				if i == len(timeouts)-1 {
-					l.Errorf("Command timed out after %v on final attempt", timeout)
-					return &SSHError{
-						Cmd: cmd,
-						Err: fmt.Errorf("command timed out after %v on final attempt", timeout),
-					}
-				}
-				l.Warnf("Command timed out after %v, retrying with longer timeout", timeout)
-				session.Close()
-				newSession, err := s.Session.Client().NewSession()
-				if err != nil {
-					return &SSHError{
-						Cmd:    cmd,
-						Err:    fmt.Errorf("failed to create new session after timeout: %w", err),
-					}
-				}
-				s.Session = newSession
-				if err != nil {
-					return &SSHError{
-						Cmd: cmd,
-						Err: fmt.Errorf("failed to create new session after timeout: %w", err),
-					}
-				}
-				s.Session = newSession
-				if err != nil {
-					return &SSHError{
-						Cmd: cmd,
-						Err: fmt.Errorf("failed to create new session after timeout: %w", err),
-					}
-				}
-			}
-		}
-		return fmt.Errorf("unexpected exit from retry loop")
+		return s.handleFileTransfer(cmd, wrappedCmd)
 	}
+
+	// Set up pipes for stdout and stderr
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	// Start the command
+	if err := session.Start(wrappedCmd); err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to start command: %w", err),
+		}
+	}
+
+	// Channel to track the last activity time
+	lastActivity := make(chan time.Time, 1)
+	done := make(chan error, 1)
+
+	// Start monitoring stdout
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			l.Infof("stdout: %s", line)
+			lastActivity <- time.Now()
+		}
+	}()
+
+	// Start monitoring stderr
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			l.Infof("stderr: %s", line)
+			lastActivity <- time.Now()
+		}
+	}()
+
+	// Start a goroutine to wait for the command completion
+	go func() {
+		done <- session.Wait()
+	}()
+
+	// Initialize the last activity time
+	lastActivityTime := time.Now()
+	const inactivityTimeout = 30 * time.Second
+
+	// Monitor for completion or timeout
+	for {
+		select {
+		case err := <-done:
+			return err
+		case t := <-lastActivity:
+			lastActivityTime = t
+		case <-time.After(1 * time.Second): // Check activity every second
+			if time.Since(lastActivityTime) > inactivityTimeout {
+				session.Signal(ssh.SIGTERM) // Try graceful termination first
+				time.Sleep(5 * time.Second) // Give it 5 seconds to cleanup
+				session.Signal(ssh.SIGKILL) // Force kill if still running
+				return &SSHError{
+					Cmd: cmd,
+					Err: fmt.Errorf(
+						"command terminated due to %v of inactivity",
+						inactivityTimeout,
+					),
+				}
+			}
+		}
+	}
+}
+
+// handleFileTransfer handles the special case of file transfer commands
+func (s *SSHSessionWrapper) handleFileTransfer(cmd, wrappedCmd string) error {
+	l := logger.Get()
+	stdin, err := s.Session.StdinPipe()
+	if err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to get stdin pipe: %w", err),
+		}
+	}
+
+	var stderrBuf strings.Builder
+	stderr, err := s.Session.StderrPipe()
+	if err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to get stderr pipe: %w", err),
+		}
+	}
+
+	// Copy stderr in background
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			l.Infof("stderr: %s", line)
+			stderrBuf.WriteString(line + "\n")
+		}
+	}()
+
+	if err := s.Session.Start(wrappedCmd); err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to start command: %w", err),
+		}
+	}
+
+	// Extract and write content
+	parts := strings.Split(cmd, ">")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid file transfer command format")
+	}
+	content := strings.TrimSpace(parts[1])
+	if idx := strings.Index(content, "&&"); idx != -1 {
+		content = strings.TrimSpace(content[:idx])
+	}
+
+	if _, err := io.WriteString(stdin, content); err != nil {
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to write content: %w", err),
+		}
+	}
+	stdin.Close()
+
+	return s.Session.Wait()
 }
 
 func (s *SSHSessionWrapper) Start(cmd string) error {
