@@ -120,10 +120,12 @@ func (e *SSHError) Error() string {
 func (s *SSHSessionWrapper) Run(cmd string) error {
 	l := logger.Get()
 	if s.Session == nil {
+		l.Error("SSH session is nil")
 		return fmt.Errorf("SSH session is nil")
 	}
 
 	l.Infof("Executing SSH command: %s", cmd)
+	defer l.Sync() // Ensure logs are flushed
 
 	// Wrap the command in sudo bash -c to handle all parts in one go, with proper escaping
 	escapedCmd := strings.Replace(cmd, "'", "'\"'\"'", -1)
@@ -157,6 +159,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	if err := session.Start(wrappedCmd); err != nil {
 		l.Errorf("Failed to start SSH command: %s", wrappedCmd)
 		l.Debugf("SSH command start error details: %v", err)
+		l.Sync() // Ensure error logs are flushed
 		return &SSHError{
 			Cmd:    cmd,
 			Output: "Command failed to start",
@@ -168,6 +171,9 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	// Channel to track the last activity time
 	lastActivity := make(chan time.Time, 1)
 	done := make(chan error, 1)
+	
+	l.Debug("Starting command execution monitoring")
+	l.Sync()
 
 	// Start monitoring stdout
 	go func() {
