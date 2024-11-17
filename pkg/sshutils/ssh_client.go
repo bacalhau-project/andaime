@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"golang.org/x/crypto/ssh"
@@ -156,7 +157,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}()
 
 		l.Debugf("Starting SSH command with wrapped command: %s", wrappedCmd)
-		
+
 		// Start the command before writing to stdin
 		if err := session.Start(wrappedCmd); err != nil {
 			l.Errorf("Failed to start SSH command: %v", err)
@@ -203,7 +204,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		// For non-file transfer commands, use combined output with timeout handling
 		var output []byte
 		var err error
-	
+
 		// Try command multiple times with increasing timeouts
 		timeouts := []time.Duration{30 * time.Second, 60 * time.Second, 120 * time.Second}
 		for i, timeout := range timeouts {
@@ -233,8 +234,8 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 				if i == len(timeouts)-1 {
 					l.Errorf("Command timed out after %v on final attempt", timeout)
 					return &SSHError{
-						Cmd:    cmd,
-						Err:    fmt.Errorf("command timed out after %v on final attempt", timeout),
+						Cmd: cmd,
+						Err: fmt.Errorf("command timed out after %v on final attempt", timeout),
 					}
 				}
 				l.Warnf("Command timed out after %v, retrying with longer timeout", timeout)
@@ -242,8 +243,8 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 				session, err = cl.NewSession()
 				if err != nil {
 					return &SSHError{
-						Cmd:    cmd,
-						Err:    fmt.Errorf("failed to create new session after timeout: %w", err),
+						Cmd: cmd,
+						Err: fmt.Errorf("failed to create new session after timeout: %w", err),
 					}
 				}
 			}
