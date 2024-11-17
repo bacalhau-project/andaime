@@ -67,10 +67,19 @@ func (w *SSHClientWrapper) IsConnected() bool {
 	}
 
 	// Check if the underlying network connection is still alive
-	if _, err := w.Client.NewSession(); err != nil {
+	session, err := w.Client.NewSession()
+	if err != nil {
 		l.Debugf("Failed to create new session, connection may be dead: %v", err)
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			l.Error("SSH connection has been closed")
+		} else if strings.Contains(err.Error(), "i/o timeout") {
+			l.Error("SSH connection timed out")
+		} else {
+			l.Errorf("Unexpected SSH error: %v", err)
+		}
 		return false
 	}
+	defer session.Close()
 
 	// Try to create a new session
 	session, err := w.Client.NewSession()
@@ -146,11 +155,15 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 
 	// Start the command
 	if err := session.Start(wrappedCmd); err != nil {
+		l.Errorf("Failed to start SSH command: %s", wrappedCmd)
+		l.Debugf("SSH command start error details: %v", err)
 		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to start command: %w", err),
+			Cmd:    cmd,
+			Output: "Command failed to start",
+			Err:    fmt.Errorf("failed to start command: %w", err),
 		}
 	}
+	l.Debugf("Successfully started SSH command: %s", wrappedCmd)
 
 	// Channel to track the last activity time
 	lastActivity := make(chan time.Time, 1)
@@ -164,6 +177,10 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 			l.Infof("stdout: %s", line)
 			lastActivity <- time.Now()
 		}
+		if err := scanner.Err(); err != nil {
+			l.Errorf("Error reading stdout: %v", err)
+		}
+		l.Debug("Stdout monitoring completed")
 	}()
 
 	// Start monitoring stderr
@@ -194,14 +211,29 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 			lastActivityTime = t
 		case <-time.After(1 * time.Second): // Check activity every second
 			if time.Since(lastActivityTime) > inactivityTimeout {
-				session.Signal(ssh.SIGTERM) // Try graceful termination first
+				l.Warnf("Command inactive for %v, initiating termination", inactivityTimeout)
+				
+				// Try graceful termination first
+				l.Debug("Sending SIGTERM signal")
+				if err := session.Signal(ssh.SIGTERM); err != nil {
+					l.Errorf("Error sending SIGTERM: %v", err)
+				}
+				
 				time.Sleep(5 * time.Second) // Give it 5 seconds to cleanup
-				session.Signal(ssh.SIGKILL) // Force kill if still running
+				
+				// Force kill if still running
+				l.Debug("Sending SIGKILL signal")
+				if err := session.Signal(ssh.SIGKILL); err != nil {
+					l.Errorf("Error sending SIGKILL: %v", err)
+				}
+				
 				return &SSHError{
-					Cmd: cmd,
+					Cmd:    cmd,
+					Output: "Command timed out due to inactivity",
 					Err: fmt.Errorf(
-						"command terminated due to %v of inactivity",
+						"command terminated due to %v of inactivity - last activity at %v",
 						inactivityTimeout,
+						lastActivityTime.Format(time.RFC3339),
 					),
 				}
 			}
