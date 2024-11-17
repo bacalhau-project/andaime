@@ -287,20 +287,35 @@ func (s *SSHSessionWrapper) handleFileTransfer(cmd, wrappedCmd string) error {
 	// Extract and write content
 	parts := strings.Split(cmd, ">")
 	if len(parts) < 2 {
+		l.Error("Invalid file transfer command format")
 		return fmt.Errorf("invalid file transfer command format")
 	}
+
 	content := strings.TrimSpace(parts[1])
 	if idx := strings.Index(content, "&&"); idx != -1 {
 		content = strings.TrimSpace(content[:idx])
 	}
 
-	if _, err := io.WriteString(stdin, content); err != nil {
+	l.Debugf("Attempting to write content (length: %d) to remote file", len(content))
+	
+	written, err := io.WriteString(stdin, content)
+	if err != nil {
+		l.Errorf("Failed to write content: %v", err)
 		return &SSHError{
 			Cmd: cmd,
 			Err: fmt.Errorf("failed to write content: %w", err),
 		}
 	}
-	stdin.Close()
+	l.Debugf("Successfully wrote %d bytes", written)
+
+	if err := stdin.Close(); err != nil {
+		l.Errorf("Error closing stdin: %v", err)
+		return &SSHError{
+			Cmd: cmd,
+			Err: fmt.Errorf("failed to close stdin: %w", err),
+		}
+	}
+	l.Debug("Successfully closed stdin")
 
 	return s.Session.Wait()
 }
