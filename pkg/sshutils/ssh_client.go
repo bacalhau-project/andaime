@@ -82,7 +82,7 @@ func (w *SSHClientWrapper) IsConnected() bool {
 	defer session.Close()
 
 	// Try to create a new session
-	session, err := w.Client.NewSession()
+	session, err = w.Client.NewSession()
 	if err != nil {
 		l.Debugf("Failed to create SSH session: %v", err)
 		return false
@@ -212,21 +212,21 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		case <-time.After(1 * time.Second): // Check activity every second
 			if time.Since(lastActivityTime) > inactivityTimeout {
 				l.Warnf("Command inactive for %v, initiating termination", inactivityTimeout)
-				
+
 				// Try graceful termination first
 				l.Debug("Sending SIGTERM signal")
 				if err := session.Signal(ssh.SIGTERM); err != nil {
 					l.Errorf("Error sending SIGTERM: %v", err)
 				}
-				
+
 				time.Sleep(5 * time.Second) // Give it 5 seconds to cleanup
-				
+
 				// Force kill if still running
 				l.Debug("Sending SIGKILL signal")
 				if err := session.Signal(ssh.SIGKILL); err != nil {
 					l.Errorf("Error sending SIGKILL: %v", err)
 				}
-				
+
 				return &SSHError{
 					Cmd:    cmd,
 					Output: "Command timed out due to inactivity",
