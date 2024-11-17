@@ -200,19 +200,55 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 		}
 		return nil
 	} else {
-		// For non-file transfer commands, use combined output
-		output, err := session.CombinedOutput(wrappedCmd)
-		if err != nil {
-			l.Errorf("SSH command failed: %v", err)
-			l.Errorf("Command output: %s", string(output))
-			return &SSHError{
-				Cmd:    cmd,
-				Output: string(output),
-				Err:    fmt.Errorf("command failed: %w", err),
+		// For non-file transfer commands, use combined output with timeout handling
+		var output []byte
+		var err error
+	
+		// Try command multiple times with increasing timeouts
+		timeouts := []time.Duration{30 * time.Second, 60 * time.Second, 120 * time.Second}
+		for i, timeout := range timeouts {
+			done := make(chan struct{})
+			go func() {
+				output, err = session.CombinedOutput(wrappedCmd)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+				if err == nil {
+					l.Debugf("Command output: %s", string(output))
+					return nil
+				}
+				if i == len(timeouts)-1 {
+					l.Errorf("SSH command failed after all retries: %v", err)
+					l.Errorf("Command output: %s", string(output))
+					return &SSHError{
+						Cmd:    cmd,
+						Output: string(output),
+						Err:    fmt.Errorf("command failed after %d retries: %w", len(timeouts), err),
+					}
+				}
+				l.Warnf("Command failed with timeout %v, retrying with longer timeout", timeout)
+			case <-time.After(timeout):
+				if i == len(timeouts)-1 {
+					l.Errorf("Command timed out after %v on final attempt", timeout)
+					return &SSHError{
+						Cmd:    cmd,
+						Err:    fmt.Errorf("command timed out after %v on final attempt", timeout),
+					}
+				}
+				l.Warnf("Command timed out after %v, retrying with longer timeout", timeout)
+				session.Close()
+				session, err = cl.NewSession()
+				if err != nil {
+					return &SSHError{
+						Cmd:    cmd,
+						Err:    fmt.Errorf("failed to create new session after timeout: %w", err),
+					}
+				}
 			}
 		}
-		l.Debugf("Command output: %s", string(output))
-		return nil
+		return fmt.Errorf("unexpected exit from retry loop")
 	}
 }
 

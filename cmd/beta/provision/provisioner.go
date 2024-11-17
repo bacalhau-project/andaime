@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	SSHTimeOut     = 60 * time.Second
+	SSHTimeOut     = 180 * time.Second // Increased from 60s to 180s
 	DefaultSSHPort = 22
+	MaxRetries     = 5
+	RetryDelay     = 10 * time.Second
 )
 
 // Provisioner handles the node provisioning process
