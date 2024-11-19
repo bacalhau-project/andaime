@@ -257,7 +257,9 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
 	if callback == nil {
-		callback = func(*models.DisplayStatus) {} // No-op callback if none provided
+		callback = func(status *models.DisplayStatus) {
+			fmt.Printf("\r%s", status.StatusMessage)
+		}
 	}
 
 	// Initial validation
@@ -277,7 +279,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	// Start provisioning
 	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf("🔄 Starting provisioning for %s (%s)",
+		StatusMessage: fmt.Sprintf("\n🔄 Starting provisioning for %s (%s)\n",
 			machine.GetName(), machine.GetPublicIP()),
 		Progress: 0,
 	})
@@ -287,7 +289,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	// Machine provisioning
 	callback(&models.DisplayStatus{
-		StatusMessage: "🛠️ Provisioning base system...",
+		StatusMessage: "\n🛠️ Provisioning base system...\n",
 		Progress:      10,
 	})
 	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
