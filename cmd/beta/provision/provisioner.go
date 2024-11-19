@@ -123,14 +123,18 @@ func (p *Provisioner) ProvisionWithCallback(
 		Name:        "Initial Connection",
 		Description: "Establishing SSH connection",
 	})
-	callback(&models.DisplayStatus{Message: "Establishing SSH connection..."})
+	callback(&models.DisplayStatus{
+		StatusMessage: "Establishing SSH connection...",
+		Progress:     int(progress.GetProgress()),
+	})
 	
 	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
 		progress.CurrentStep.Status = "Failed"
 		progress.CurrentStep.Error = err
 		callback(&models.DisplayStatus{
-			Message: fmt.Sprintf("SSH connection failed: %v", err),
-			Error:   err,
+			StatusMessage:  fmt.Sprintf("SSH connection failed: %v", err),
+			DetailedStatus: err.Error(),
+			Progress:      int(progress.GetProgress()),
 		})
 		l.Errorf("Failed to establish SSH connection: %v", err)
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
@@ -139,8 +143,8 @@ func (p *Provisioner) ProvisionWithCallback(
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
 	callback(&models.DisplayStatus{
-		Message: "SSH connection established successfully",
-		Progress: progress.GetProgress(),
+		StatusMessage: "SSH connection established successfully",
+		Progress:     int(progress.GetProgress()),
 	})
 	l.Info("SSH connection established successfully")
 
@@ -150,8 +154,8 @@ func (p *Provisioner) ProvisionWithCallback(
 		Description: "Initializing deployment configuration",
 	})
 	callback(&models.DisplayStatus{
-		Message: "Preparing system configuration...",
-		Progress: progress.GetProgress(),
+		StatusMessage: "Preparing system configuration...",
+		Progress:     int(progress.GetProgress()),
 	})
 	
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
