@@ -414,18 +414,6 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
-	// Final service restart
-	callback(&models.DisplayStatus{
-		StatusMessage: "🔄 Performing final service restart...",
-		Progress: 95,
-	})
-	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Final service restart failed: %v", err),
-			Progress: 95,
-		})
-		return cd.HandleDeploymentError(ctx, machine, err)
-	}
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
