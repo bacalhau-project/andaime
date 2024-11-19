@@ -10,6 +10,7 @@ import (
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -216,4 +217,33 @@ func (p *Provisioner) SetClusterDeployer(deployer common_interface.ClusterDeploy
 // ParseSettings parses the Bacalhau settings from the given file path
 func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings, error) {
 	return p.SettingsParser.ParseFile(filePath)
+}
+
+func runProvision(cmd *cobra.Command, args []string) error {
+	// Validate configuration
+	if err := config.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Create new provisioner
+	l := logger.Get()
+	l.Debug("Creating new provisioner with config")
+	l.Debugf("Config details - IP: %s, Username: %s", config.IPAddress, config.Username)
+
+	provisioner, err := NewProvisioner(config)
+	if err != nil {
+		l.Errorf("Failed to create provisioner: %v", err)
+		return fmt.Errorf("failed to create provisioner: %w", err)
+	}
+	l.Debug("Successfully created provisioner")
+
+	// Run provisioning
+	l.Debug("Starting provisioning process")
+	if err := provisioner.Provision(cmd.Context()); err != nil {
+		l.Errorf("Provisioning failed: %v", err)
+		return fmt.Errorf("provisioning failed: %w", err)
+	}
+	l.Info("Provisioning completed successfully")
+
+	return nil
 }
