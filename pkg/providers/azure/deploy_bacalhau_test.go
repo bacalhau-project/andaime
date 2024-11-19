@@ -741,7 +741,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorkers() {
 		},
 		RestartServiceExpectation: &sshutils.Expectation{
 			Error: nil,
-			Times: 6,
+			Times: 12,
 		},
 	}
 	s.deployment.SetMachines(machines)
