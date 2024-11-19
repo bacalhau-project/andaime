@@ -125,16 +125,16 @@ func (p *Provisioner) ProvisionWithCallback(
 	})
 	callback(&models.DisplayStatus{
 		StatusMessage: "Establishing SSH connection...",
-		Progress:     int(progress.GetProgress()),
+		Progress:      int(progress.GetProgress()),
 	})
-	
+
 	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
 		progress.CurrentStep.Status = "Failed"
 		progress.CurrentStep.Error = err
 		callback(&models.DisplayStatus{
 			StatusMessage:  fmt.Sprintf("SSH connection failed: %v", err),
 			DetailedStatus: err.Error(),
-			Progress:      int(progress.GetProgress()),
+			Progress:       int(progress.GetProgress()),
 		})
 		l.Errorf("Failed to establish SSH connection: %v", err)
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
@@ -144,7 +144,7 @@ func (p *Provisioner) ProvisionWithCallback(
 	l.Info("Checking system requirements...")
 	callback(&models.DisplayStatus{
 		StatusMessage: "Checking system requirements...",
-		Progress:     int(progress.GetProgress()),
+		Progress:      int(progress.GetProgress()),
 	})
 
 	if err := checkSystemRequirements(ctx, p.SSHConfig); err != nil {
@@ -153,7 +153,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		callback(&models.DisplayStatus{
 			StatusMessage:  fmt.Sprintf("System requirements check failed: %v", err),
 			DetailedStatus: err.Error(),
-			Progress:      int(progress.GetProgress()),
+			Progress:       int(progress.GetProgress()),
 		})
 		l.Errorf("System requirements check failed: %v", err)
 		return fmt.Errorf("system requirements check failed: %w", err)
@@ -163,7 +163,7 @@ func (p *Provisioner) ProvisionWithCallback(
 	progress.AddStep(progress.CurrentStep)
 	callback(&models.DisplayStatus{
 		StatusMessage: "SSH connection established successfully",
-		Progress:     int(progress.GetProgress()),
+		Progress:      int(progress.GetProgress()),
 	})
 	l.Info("SSH connection established successfully")
 
@@ -174,7 +174,7 @@ func (p *Provisioner) ProvisionWithCallback(
 	})
 	callback(&models.DisplayStatus{
 		StatusMessage: "Preparing system configuration...",
-		Progress:     int(progress.GetProgress()),
+		Progress:      int(progress.GetProgress()),
 	})
 
 	// Update package lists
@@ -201,7 +201,7 @@ func (p *Provisioner) ProvisionWithCallback(
 
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
 	l.Debug("Created cluster deployer")
-	
+
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
 
