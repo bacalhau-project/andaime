@@ -98,30 +98,7 @@ func createMachineInstance(config *NodeConfig) (models.Machiner, error) {
 
 // Provision executes all provisioning steps with progress updates
 func (p *Provisioner) Provision(ctx context.Context) error {
-	// Create a channel for progress updates
-	updates := make(chan *models.DisplayStatus)
-	defer close(updates)
-
-	// Start a goroutine to handle progress updates
-	go func() {
-		for status := range updates {
-			if status.DetailedStatus != "" {
-				fmt.Printf(
-					"\r%s (%s) [%d%%]",
-					status.StatusMessage,
-					status.DetailedStatus,
-					status.Progress,
-				)
-			} else {
-				fmt.Printf("\r%s [%d%%]", status.StatusMessage, status.Progress)
-			}
-			fmt.Println()
-		}
-	}()
-
-	return p.ProvisionWithCallback(ctx, func(status *models.DisplayStatus) {
-		updates <- status
-	})
+	return p.ProvisionWithCallback(ctx, func(status *models.DisplayStatus) {})
 }
 
 // ProvisionWithCallback executes all provisioning steps with callback updates
@@ -306,14 +283,31 @@ func runProvision(cmd *cobra.Command, args []string) error {
 	}
 	l.Debug("Successfully created provisioner")
 
+	// Create a channel for progress updates
+	updates := make(chan *models.DisplayStatus)
+	defer close(updates)
+
+	// Start a goroutine to handle progress updates
+	go func() {
+		for status := range updates {
+			if status.DetailedStatus != "" {
+				fmt.Printf(
+					"\r%s (%s) [%d%%]",
+					status.StatusMessage,
+					status.DetailedStatus,
+					status.Progress,
+				)
+			} else {
+				fmt.Printf("\r%s [%d%%]", status.StatusMessage, status.Progress)
+			}
+			fmt.Println()
+		}
+	}()
+
 	// Run provisioning
 	l.Debug("Starting provisioning process")
-	if err := provisioner.ProvisionWithCallback(cmd.Context(), func(status *models.DisplayStatus) {
-		if status.DetailedStatus != "" {
-			fmt.Printf("\r%s (%s) [%d%%]\n", status.StatusMessage, status.DetailedStatus, status.Progress)
-		} else {
-			fmt.Printf("\r%s [%d%%]\n", status.StatusMessage, status.Progress)
-		}
+	if err := provisioner.ProvisionWithCallback(cmd.Context(), func(ds *models.DisplayStatus) {
+		updates <- ds
 	}); err != nil {
 		l.Errorf("Provisioning failed: %v", err)
 		return fmt.Errorf("provisioning failed: %w", err)
