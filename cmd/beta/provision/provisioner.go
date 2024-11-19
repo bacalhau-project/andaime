@@ -302,19 +302,24 @@ func runProvision(cmd *cobra.Command, args []string) error {
 			progressStr := fmt.Sprintf("%*d%%", progressWidth, status.Progress)
 
 			// Build the status line with proper alignment
-			var statusLine string
-			if status.DetailedStatus != "" {
-				statusLine = fmt.Sprintf("%-60s [%s]",
-					fmt.Sprintf("%s (%s)", status.StatusMessage, status.DetailedStatus),
-					progressStr)
-			} else {
-				statusLine = fmt.Sprintf("%-60s [%s]",
-					status.StatusMessage,
-					progressStr)
+			statusMsg := strings.TrimSpace(status.StatusMessage)
+			if statusMsg == "" {
+				return // Skip empty messages
 			}
 
+			var statusLine string
+			if status.DetailedStatus != "" {
+				detailedStatus := strings.TrimSpace(status.DetailedStatus)
+				if detailedStatus != "" {
+					statusMsg = fmt.Sprintf("%s (%s)", statusMsg, detailedStatus)
+				}
+			}
+
+			// Ensure consistent width and alignment
+			statusLine = fmt.Sprintf("%-65s [%s]", statusMsg, progressStr)
+
 			// Clear the line and print the new status
-			fmt.Printf("\r%-80s\n", statusLine)
+			fmt.Printf("\r%s\n", statusLine)
 		}
 	}()
 
