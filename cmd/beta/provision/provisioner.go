@@ -308,7 +308,13 @@ func runProvision(cmd *cobra.Command, args []string) error {
 
 	// Run provisioning
 	l.Debug("Starting provisioning process")
-	if err := provisioner.Provision(cmd.Context()); err != nil {
+	if err := provisioner.ProvisionWithCallback(cmd.Context(), func(status *models.DisplayStatus) {
+		if status.DetailedStatus != "" {
+			fmt.Printf("\r%s (%s) [%d%%]\n", status.StatusMessage, status.DetailedStatus, status.Progress)
+		} else {
+			fmt.Printf("\r%s [%d%%]\n", status.StatusMessage, status.Progress)
+		}
+	}); err != nil {
 		l.Errorf("Provisioning failed: %v", err)
 		return fmt.Errorf("provisioning failed: %w", err)
 	}
