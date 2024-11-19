@@ -208,6 +208,7 @@ loadbalancer
 locabs
 localpublisher
 logdebuginfointerval
+Loggerer
 loggingmode
 logrunningexecutionsinterval
 logstreamconfig

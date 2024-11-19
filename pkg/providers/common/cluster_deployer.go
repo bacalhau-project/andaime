@@ -20,6 +20,9 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// UpdateCallback is a function type for status updates during provisioning
+type UpdateCallback func(*models.DisplayStatus)
+
 // ClusterDeployer struct that implements ClusterDeployerInterface
 type ClusterDeployer struct {
 	sshClient sshutils.SSHClienter
@@ -232,6 +235,22 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 	sshConfig sshutils.SSHConfiger,
 	machine models.Machiner,
 	bacalhauSettings []models.BacalhauSettings,
+) error {
+	return cd.ProvisionBacalhauNodeWithCallback(
+		ctx,
+		sshConfig,
+		machine,
+		bacalhauSettings,
+		nil,
+	)
+}
+
+func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
+	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
+	machine models.Machiner,
+	bacalhauSettings []models.BacalhauSettings,
+	callback UpdateCallback,
 ) error {
 	l := logger.Get()
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)

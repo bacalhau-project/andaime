@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -297,39 +298,49 @@ func (c *SSHConfig) PushFileWithCallback(
 	}
 	defer session.Close()
 
-	remoteCmd := fmt.Sprintf("cat > %s", remotePath)
-	if executable {
-		remoteCmd += " && chmod +x " + remotePath
-	}
-
 	// Create a pipe for the session's stdin
 	stdin, err := session.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
-	defer stdin.Close()
 
-	// Start the remote command
-	err = session.Start(remoteCmd)
-	if err != nil {
+	// Combine all commands into a single shell command that:
+	// 1. Creates the directory
+	// 2. Removes any existing file
+	// 3. Writes the new content
+	// 4. Sets executable permission if needed
+	dirPath := filepath.Dir(remotePath)
+	remoteCmd := fmt.Sprintf("sudo mkdir -p '%s' && sudo rm -f '%s' && sudo cat > '%s'",
+		dirPath,
+		remotePath,
+		remotePath,
+	)
+	if executable {
+		remoteCmd += fmt.Sprintf(" && sudo chmod +x '%s'", remotePath)
+	}
+
+	// Start the command in the background
+	if err := session.Start(remoteCmd); err != nil {
+		stdin.Close()
 		return fmt.Errorf("failed to start remote command: %w", err)
 	}
 
-	// Copy the content to the remote command's stdin
-	_, err = stdin.Write(content)
-	if err != nil {
-		return fmt.Errorf("failed to write file contents: %w", err)
+	// Write the content in a separate goroutine to avoid deadlocks
+	writeErrCh := make(chan error, 1)
+	go func() {
+		defer stdin.Close()
+		_, err := stdin.Write(content)
+		writeErrCh <- err
+	}()
+
+	// Wait for both the write to complete and the command to finish
+	if writeErr := <-writeErrCh; writeErr != nil {
+		l.Errorf("Failed to write content in session: %v", writeErr)
+		return fmt.Errorf("failed to write content in session: %w", writeErr)
 	}
 
-	// Close the stdin pipe to signal end of input
-	err = stdin.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close stdin pipe: %w", err)
-	}
-
-	// Wait for the remote command to finish
-	err = session.Wait()
-	if err != nil {
+	// Wait for the command to complete
+	if err := session.Wait(); err != nil {
 		return fmt.Errorf("failed to wait for remote command: %w", err)
 	}
 

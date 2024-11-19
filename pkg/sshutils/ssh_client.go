@@ -171,7 +171,7 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	// Channel to track the last activity time
 	lastActivity := make(chan time.Time, 1)
 	done := make(chan error, 1)
-	
+
 	l.Debug("Starting command execution monitoring")
 	l.Sync()
 
@@ -297,7 +297,7 @@ func (s *SSHSessionWrapper) handleFileTransfer(cmd, wrappedCmd string) error {
 	}
 
 	l.Debugf("Attempting to write content (length: %d) to remote file", len(content))
-	
+
 	written, err := io.WriteString(stdin, content)
 	if err != nil {
 		l.Errorf("Failed to write content: %v", err)

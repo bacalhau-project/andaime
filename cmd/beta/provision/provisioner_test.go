@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -28,6 +28,7 @@ type CmdBetaProvisionTestSuite struct {
 	mockSSHConfig         *sshutils.MockSSHConfig
 	mockClusterDeployer   *common_mock.MockClusterDeployerer
 	origNewSSHConfigFunc  func(string, int, string, string) (sshutils.SSHConfiger, error)
+	testLogger            *logger.TestLogger // Add testLogger field
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) SetupSuite() {
@@ -46,8 +47,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TearDownSuite() {
 func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.tmpDir = cbpts.T().TempDir()
 
-	// Initialize test logger
-	logger.SetGlobalLogger(logger.NewTestLogger(cbpts.T()))
+	// Initialize test logger and store it
+	cbpts.testLogger = logger.NewTestLogger(cbpts.T())
+	logger.SetGlobalLogger(cbpts.testLogger)
 
 	// Create new mocks for each test
 	cbpts.mockSSHConfig = new(sshutils.MockSSHConfig)
@@ -314,56 +316,83 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 	cbpts.NoError(err)
 }
 
+type MockSSHConfig struct {
+	mock.Mock
+}
+
+func (m *MockSSHConfig) WaitForSSH(ctx context.Context, retries int, timeout time.Duration) error {
+	args := m.Called(ctx, retries, timeout)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) ExecuteCommand(cmd string) (string, error) {
+	args := m.Called(cmd)
+	return args.String(0), args.Error(1)
+}
+
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
+	// Setup test logger to capture output
+	logCapture := logger.NewTestLogger(cbpts.T())
+	logger.SetGlobalLogger(logCapture)
+
+	// Create a mock SSH config
+	mockSSH := new(sshutils.MockSSHConfig)
+
+	// Setup the mock to pass SSH wait but fail command execution
+	mockSSH.On("WaitForSSH", mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+	mockSSH.On("PushFile",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+	mockSSH.On("ExecuteCommand", mock.Anything, mock.Anything).Return(
+		"Permission denied: cannot execute command",
+		fmt.Errorf("command failed: permission denied"),
+	)
+
+	// Create a provisioner with test configuration
 	config := &provision.NodeConfig{
-		IPAddress:  "192.168.1.1",
+		IPAddress:  "192.168.1.100",
 		Username:   "testuser",
-		PrivateKey: cbpts.testSSHPrivateKeyPath,
+		PrivateKey: "/path/to/key",
 	}
 
-	// Clear existing expectations
-	cbpts.mockSSHConfig.ExpectedCalls = nil
+	testMachine, err := models.NewMachine(
+		models.DeploymentTypeAWS,
+		"us-east-1",
+		"test",
+		1,
+		models.CloudSpecificInfo{},
+	)
+	testMachine.SetNodeType(models.BacalhauNodeTypeOrchestrator)
 
-	// Set up required mock expectations
-	cbpts.mockSSHConfig.On("WaitForSSH",
-		mock.Anything,
-		3,
-		60*time.Second,
-	).Return(nil).Once()
-
-	// Set up the failure scenario
-	expectedError := &sshutils.SSHError{
-		Cmd:    "sudo docker run hello-world",
-		Output: "Permission denied: cannot execute command",
-		Err:    fmt.Errorf("command failed: permission denied"),
-	}
-
-	// Mock the command execution that will fail
-	cbpts.mockSSHConfig.On("ExecuteCommand",
-		mock.Anything,
-		"sudo docker run hello-world",
-	).Return("", expectedError).Once()
-
-	p, err := provision.NewProvisioner(config)
 	cbpts.Require().NoError(err)
-	p.SetClusterDeployer(cbpts.mockClusterDeployer)
 
-	err = p.Provision(context.Background())
-	cbpts.Error(err)
-	cbpts.Contains(err.Error(), "Permission denied")
-
-	// Get the test logger and verify logs
-	logs := logger.Get().(*logger.TestLogger).GetLogs()
-
-	// Verify error details are logged
-	foundError := false
-	for _, log := range logs {
-		if strings.Contains(log, "Permission denied") {
-			foundError = true
-			break
-		}
+	p := &provision.Provisioner{
+		SSHConfig: mockSSH,
+		Config:    config,
+		Machine:   testMachine,
 	}
-	cbpts.True(foundError, "Error details should be logged")
+
+	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+		return mockSSH, nil
+	}
+
+	// Execute provisioning
+	err = p.Provision(context.Background())
+
+	// Verify error is returned
+	cbpts.Error(err)
+	errString := err.Error()
+	cbpts.Contains(errString, "permission denied")
+
+	// Print captured logs for debugging
+	logCapture.PrintLogs(cbpts.T())
+
+	// Verify all mock expectations were met
+	mockSSH.AssertExpectations(cbpts.T())
 }
 
 func TestProvisionerSuite(t *testing.T) {

@@ -98,9 +98,16 @@ select_working_mirror
 echo "Installing prerequisites..."
 run_with_retries "Install prerequisites" "$MAX_RETRIES" sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release || error_exit "Failed to install prerequisites"
 
-# Add Docker’s official GPG key
+# Add Docker's official GPG key with proper handling of existing file
 echo "Adding Docker's GPG key..."
-run_with_retries "Add Docker GPG key" "$MAX_RETRIES" curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg || error_exit "Failed to add Docker GPG key"
+if [ -f "/usr/share/keyrings/docker-archive-keyring.gpg" ]; then
+    echo "Docker GPG key file already exists, removing old file..."
+    sudo rm -f /usr/share/keyrings/docker-archive-keyring.gpg || error_exit "Failed to remove existing Docker GPG key"
+fi
+
+run_with_retries "Add Docker GPG key" "$MAX_RETRIES" \
+    sh -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg' \
+    || error_exit "Failed to add Docker GPG key"
 
 # Set up the Docker stable repository
 echo "Setting up Docker repository..."

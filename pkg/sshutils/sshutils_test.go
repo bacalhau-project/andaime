@@ -1,6 +1,7 @@
 package sshutils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -113,6 +114,18 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommandWithRetry() {
 	s.mockSession.AssertExpectations(s.T())
 }
 
+type mockWriteCloser struct {
+	*bytes.Buffer
+	closeFunc func() error
+}
+
+func (m *mockWriteCloser) Close() error {
+	if m.closeFunc != nil {
+		return m.closeFunc()
+	}
+	return nil
+}
+
 func (s *PkgSSHUtilsTestSuite) TestPushFile() {
 	s.runPushFileTest(false)
 }
@@ -129,12 +142,23 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 
 	s.mockClient.On("NewSession").Return(s.mockSession, nil)
 	s.mockClient.On("IsConnected").Return(true)
-	remoteCmd := fmt.Sprintf("rm -f %s && cat > %s", "/remote/path", "/remote/path")
+	remoteCmd := fmt.Sprintf(
+		"sudo mkdir -p '/remote' && sudo rm -f '%s' && sudo cat > '%s'",
+		"/remote/path",
+		"/remote/path",
+	)
 	if executable {
-		remoteCmd += fmt.Sprintf(" && chmod -f +x %s", "/remote/path")
+		remoteCmd += fmt.Sprintf(" && sudo chmod +x '%s'", "/remote/path")
 	}
 
-	s.mockSession.On("Run", remoteCmd).Return(nil)
+	// Create a mock WriteCloser
+	writeCloser := &mockWriteCloser{
+		Buffer:    bytes.NewBuffer(nil),
+		closeFunc: func() error { return nil },
+	}
+	s.mockSession.On("StdinPipe").Return(writeCloser, nil)
+	s.mockSession.On("Start", remoteCmd).Return(nil)
+	s.mockSession.On("Wait").Return(nil)
 	s.mockSession.On("Close").Return(nil)
 
 	err := s.sshConfig.PushFile(s.ctx, "/remote/path", localContent, executable)
