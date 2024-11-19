@@ -287,20 +287,34 @@ func runProvision(cmd *cobra.Command, args []string) error {
 	updates := make(chan *models.DisplayStatus)
 	defer close(updates)
 
+	var lastProgress int
 	// Start a goroutine to handle progress updates
 	go func() {
+		const progressWidth = 4 // Width for progress percentage
 		for status := range updates {
-			if status.DetailedStatus != "" {
-				fmt.Printf(
-					"\r%s (%s) [%d%%]",
-					status.StatusMessage,
-					status.DetailedStatus,
-					status.Progress,
-				)
-			} else {
-				fmt.Printf("\r%s [%d%%]", status.StatusMessage, status.Progress)
+			// Ensure progress never decreases
+			if status.Progress < lastProgress {
+				status.Progress = lastProgress
 			}
-			fmt.Println()
+			lastProgress = status.Progress
+
+			// Format the progress string with fixed width
+			progressStr := fmt.Sprintf("%*d%%", progressWidth, status.Progress)
+
+			// Build the status line with proper alignment
+			var statusLine string
+			if status.DetailedStatus != "" {
+				statusLine = fmt.Sprintf("%-60s [%s]",
+					fmt.Sprintf("%s (%s)", status.StatusMessage, status.DetailedStatus),
+					progressStr)
+			} else {
+				statusLine = fmt.Sprintf("%-60s [%s]",
+					status.StatusMessage,
+					progressStr)
+			}
+
+			// Clear the line and print the new status
+			fmt.Printf("\r%-80s\n", statusLine)
 		}
 	}()
 
