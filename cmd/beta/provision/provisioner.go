@@ -106,6 +106,7 @@ func (p *Provisioner) ProvisionWithCallback(
 	ctx context.Context,
 	callback common.UpdateCallback,
 ) error {
+	progress := models.NewProvisionProgress()
 	l := logger.Get()
 	l.Info("Starting node provisioning process")
 
@@ -117,16 +118,47 @@ func (p *Provisioner) ProvisionWithCallback(
 	ctx, cancel := context.WithTimeout(ctx, SSHTimeOut)
 	defer cancel()
 
-	// Ensure SSH connection is available before proceeding
-	l.Infof("Establishing SSH connection to %s...", p.Config.IPAddress)
+	// Initial Connection Step
+	progress.SetCurrentStep(&models.ProvisionStep{
+		Name:        "Initial Connection",
+		Description: "Establishing SSH connection",
+	})
+	callback(&models.DisplayStatus{Message: "Establishing SSH connection..."})
+	
 	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
+		progress.CurrentStep.Status = "Failed"
+		progress.CurrentStep.Error = err
+		callback(&models.DisplayStatus{
+			Message: fmt.Sprintf("SSH connection failed: %v", err),
+			Error:   err,
+		})
 		l.Errorf("Failed to establish SSH connection: %v", err)
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
 	}
+	
+	progress.CurrentStep.Status = "Completed"
+	progress.AddStep(progress.CurrentStep)
+	callback(&models.DisplayStatus{
+		Message: "SSH connection established successfully",
+		Progress: progress.GetProgress(),
+	})
 	l.Info("SSH connection established successfully")
 
+	// System Preparation Step
+	progress.SetCurrentStep(&models.ProvisionStep{
+		Name:        "System Preparation",
+		Description: "Initializing deployment configuration",
+	})
+	callback(&models.DisplayStatus{
+		Message: "Preparing system configuration...",
+		Progress: progress.GetProgress(),
+	})
+	
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
 	l.Debug("Created cluster deployer")
+	
+	progress.CurrentStep.Status = "Completed"
+	progress.AddStep(progress.CurrentStep)
 
 	// Parse settings if path is provided
 	l.Debug("Parsing Bacalhau settings")
