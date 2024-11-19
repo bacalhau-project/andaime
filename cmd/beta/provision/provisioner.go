@@ -96,22 +96,47 @@ func createMachineInstance(config *NodeConfig) (models.Machiner, error) {
 	return &machine, nil
 }
 
-// Provision executes all provisioning steps
+// Provision executes all provisioning steps with progress updates
 func (p *Provisioner) Provision(ctx context.Context) error {
-	return p.ProvisionWithCallback(ctx, func(*models.DisplayStatus) {})
+	// Create a channel for progress updates
+	updates := make(chan *models.DisplayStatus)
+	defer close(updates)
+
+	// Start a goroutine to handle progress updates
+	go func() {
+		for status := range updates {
+			if status.DetailedStatus != "" {
+				fmt.Printf("\r%s (%s) [%d%%]", status.StatusMessage, status.DetailedStatus, status.Progress)
+			} else {
+				fmt.Printf("\r%s [%d%%]", status.StatusMessage, status.Progress)
+			}
+			fmt.Println()
+		}
+	}()
+
+	return p.ProvisionWithCallback(ctx, func(status *models.DisplayStatus) {
+		updates <- status
+	})
 }
 
-// ProvisionWithCallback executes all provisioning steps with status updates
+// ProvisionWithCallback executes all provisioning steps with callback updates
 func (p *Provisioner) ProvisionWithCallback(
 	ctx context.Context,
 	callback common.UpdateCallback,
 ) error {
 	progress := models.NewProvisionProgress()
 	l := logger.Get()
-	fmt.Printf("\n🚀 Starting node provisioning process\n\n")
+	callback(&models.DisplayStatus{
+		StatusMessage: "🚀 Starting node provisioning process",
+		Progress:     0,
+	})
 
 	if ctx == nil {
 		l.Error("Context is nil")
+		callback(&models.DisplayStatus{
+			StatusMessage: "❌ Provisioning failed: context is nil",
+			Progress:     0,
+		})
 		return fmt.Errorf("context cannot be nil")
 	}
 
@@ -123,9 +148,8 @@ func (p *Provisioner) ProvisionWithCallback(
 		Name:        "Initial Connection",
 		Description: "Establishing SSH connection",
 	})
-	fmt.Printf("📡 Establishing SSH connection...\n")
 	callback(&models.DisplayStatus{
-		StatusMessage: "Establishing SSH connection...",
+		StatusMessage: "📡 Establishing SSH connection...",
 		Progress:      int(progress.GetProgress()),
 	})
 
@@ -144,9 +168,8 @@ func (p *Provisioner) ProvisionWithCallback(
 
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
-	fmt.Printf("✅ SSH connection established successfully\n\n")
 	callback(&models.DisplayStatus{
-		StatusMessage: "SSH connection established successfully",
+		StatusMessage: "✅ SSH connection established successfully",
 		Progress:      int(progress.GetProgress()),
 	})
 
@@ -168,8 +191,14 @@ func (p *Provisioner) ProvisionWithCallback(
 	}
 
 	// Provision the node
-	fmt.Printf("🔧 Provisioning node on %s\n", p.Config.IPAddress)
-	fmt.Printf("   • Installing Docker and dependencies...\n")
+	callback(&models.DisplayStatus{
+		StatusMessage: fmt.Sprintf("🔧 Provisioning node on %s", p.Config.IPAddress),
+		Progress:      int(progress.GetProgress()),
+	})
+	callback(&models.DisplayStatus{
+		StatusMessage: "Installing Docker and dependencies...",
+		Progress:      int(progress.GetProgress()),
+	})
 	if err := cd.ProvisionBacalhauNodeWithCallback(
 		ctx,
 		p.SSHConfig,
@@ -177,9 +206,12 @@ func (p *Provisioner) ProvisionWithCallback(
 		settings,
 		callback,
 	); err != nil {
-		fmt.Printf("❌ Failed to provision node (ip: %s, user: %s)\n",
-			p.Config.IPAddress,
-			p.Config.Username)
+		callback(&models.DisplayStatus{
+			StatusMessage: fmt.Sprintf("❌ Failed to provision node (ip: %s, user: %s)",
+				p.Config.IPAddress,
+				p.Config.Username),
+			Progress: int(progress.GetProgress()),
+		})
 
 		// Extract command output if it's an SSH error
 		var cmdOutput string
@@ -213,7 +245,10 @@ func (p *Provisioner) ProvisionWithCallback(
 		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
 			p.Config.IPAddress, err)
 	}
-	fmt.Printf("\n✅ Successfully provisioned node on %s\n", p.Config.IPAddress)
+	callback(&models.DisplayStatus{
+		StatusMessage: fmt.Sprintf("✅ Successfully provisioned node on %s", p.Config.IPAddress),
+		Progress:      100,
+	})
 
 	return nil
 }
