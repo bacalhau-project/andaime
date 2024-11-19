@@ -108,7 +108,7 @@ func (p *Provisioner) ProvisionWithCallback(
 ) error {
 	progress := models.NewProvisionProgress()
 	l := logger.Get()
-	l.Info("Starting node provisioning process")
+	fmt.Printf("\n🚀 Starting node provisioning process\n\n")
 
 	if ctx == nil {
 		l.Error("Context is nil")
@@ -123,6 +123,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		Name:        "Initial Connection",
 		Description: "Establishing SSH connection",
 	})
+	fmt.Printf("📡 Establishing SSH connection...\n")
 	callback(&models.DisplayStatus{
 		StatusMessage: "Establishing SSH connection...",
 		Progress:      int(progress.GetProgress()),
@@ -131,22 +132,23 @@ func (p *Provisioner) ProvisionWithCallback(
 	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
 		progress.CurrentStep.Status = "Failed"
 		progress.CurrentStep.Error = err
+		errMsg := fmt.Sprintf("❌ SSH connection failed: %v", err)
+		fmt.Println(errMsg)
 		callback(&models.DisplayStatus{
-			StatusMessage:  fmt.Sprintf("SSH connection failed: %v", err),
+			StatusMessage:  errMsg,
 			DetailedStatus: err.Error(),
 			Progress:       int(progress.GetProgress()),
 		})
-		l.Errorf("Failed to establish SSH connection: %v", err)
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
 	}
 
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
+	fmt.Printf("✅ SSH connection established successfully\n\n")
 	callback(&models.DisplayStatus{
 		StatusMessage: "SSH connection established successfully",
 		Progress:      int(progress.GetProgress()),
 	})
-	l.Info("SSH connection established successfully")
 
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
 	l.Debug("Created cluster deployer")
@@ -166,7 +168,8 @@ func (p *Provisioner) ProvisionWithCallback(
 	}
 
 	// Provision the node
-	l.Infof("Starting Bacalhau node provisioning on %s...", p.Config.IPAddress)
+	fmt.Printf("🔧 Provisioning node on %s\n", p.Config.IPAddress)
+	fmt.Printf("   • Installing Docker and dependencies...\n")
 	if err := cd.ProvisionBacalhauNodeWithCallback(
 		ctx,
 		p.SSHConfig,
@@ -174,7 +177,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		settings,
 		callback,
 	); err != nil {
-		l.Errorf("Failed to provision Bacalhau node (ip: %s, user: %s)",
+		fmt.Printf("❌ Failed to provision node (ip: %s, user: %s)\n",
 			p.Config.IPAddress,
 			p.Config.Username)
 
@@ -210,7 +213,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
 			p.Config.IPAddress, err)
 	}
-	l.Infof("Successfully provisioned Bacalhau node on %s", p.Config.IPAddress)
+	fmt.Printf("\n✅ Successfully provisioned node on %s\n", p.Config.IPAddress)
 
 	return nil
 }
