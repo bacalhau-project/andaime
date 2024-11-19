@@ -333,85 +333,113 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Bacalhau installed successfully",
-		Progress: 60,
+		StatusMessage: "✅ Bacalhau binary installed successfully",
+		Progress: 55,
 	})
 
 	// Run script installation
 	callback(&models.DisplayStatus{
-		StatusMessage: "📝 Installing Bacalhau run script...",
-		Progress: 65,
+		StatusMessage: "📝 Installing Bacalhau service script...",
+		Progress: 60,
 	})
 	if err := cd.InstallBacalhauRunScript(ctx, sshConfig); err != nil {
 		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Run script installation failed: %v", err),
-			Progress: 65,
+			StatusMessage: fmt.Sprintf("❌ Service script installation failed: %v", err),
+			Progress: 60,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	callback(&models.DisplayStatus{
+		StatusMessage: "✅ Bacalhau service script installed",
+		Progress: 65,
+	})
 
 	// Service setup
 	callback(&models.DisplayStatus{
-		StatusMessage: "🔧 Setting up Bacalhau service...",
+		StatusMessage: "🔧 Setting up Bacalhau systemd service...",
 		Progress: 70,
 	})
 	if err := cd.SetupBacalhauService(ctx, sshConfig); err != nil {
 		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Service setup failed: %v", err),
+			StatusMessage: fmt.Sprintf("❌ Systemd service setup failed: %v", err),
 			Progress: 70,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	callback(&models.DisplayStatus{
+		StatusMessage: "✅ Bacalhau systemd service installed and started",
+		Progress: 75,
+	})
 
 	// Deployment verification
 	callback(&models.DisplayStatus{
-		StatusMessage: "🔍 Verifying deployment...",
+		StatusMessage: "🔍 Verifying Bacalhau node is running...",
 		Progress: 80,
 	})
 	if err := cd.VerifyBacalhauDeployment(ctx, sshConfig, machine.GetOrchestratorIP()); err != nil {
 		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Deployment verification failed: %v", err),
+			StatusMessage: fmt.Sprintf("❌ Node verification failed: %v", err),
 			Progress: 80,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
-
-	// Configuration application
 	callback(&models.DisplayStatus{
-		StatusMessage: "⚙️ Applying Bacalhau configurations...",
+		StatusMessage: "✅ Bacalhau node verified and running",
 		Progress: 85,
 	})
-	
+
+	// Configuration application
 	if len(bacalhauSettings) > 0 {
+		callback(&models.DisplayStatus{
+			StatusMessage: fmt.Sprintf("⚙️ Applying %d Bacalhau configurations...", len(bacalhauSettings)),
+			Progress: 90,
+		})
+		
 		if err := cd.ApplyBacalhauConfigs(ctx, sshConfig, bacalhauSettings); err != nil {
 			callback(&models.DisplayStatus{
 				StatusMessage: fmt.Sprintf("❌ Configuration application failed: %v", err),
-				Progress: 85,
+				Progress: 90,
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
 		
+		callback(&models.DisplayStatus{
+			StatusMessage: "🔄 Restarting service with new configuration...",
+			Progress: 92,
+		})
+		
 		// Restart service after applying configurations
 		if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 			callback(&models.DisplayStatus{
-				StatusMessage: fmt.Sprintf("❌ Service restart after config failed: %v", err),
-				Progress: 85,
+				StatusMessage: fmt.Sprintf("❌ Service restart failed: %v", err),
+				Progress: 92,
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
+		
+		callback(&models.DisplayStatus{
+			StatusMessage: "✅ Configuration applied and service restarted",
+			Progress: 95,
+		})
 	}
 
 	// Custom script execution
-	callback(&models.DisplayStatus{
-		StatusMessage: "📜 Running custom scripts...",
-		Progress: 90,
-	})
-	if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
+	if m.Deployment.CustomScriptPath != "" {
 		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Custom script execution failed: %v", err),
-			Progress: 90,
+			StatusMessage: "📜 Running custom configuration script...",
+			Progress: 97,
 		})
-		return cd.HandleDeploymentError(ctx, machine, err)
+		if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
+			callback(&models.DisplayStatus{
+				StatusMessage: fmt.Sprintf("❌ Custom script execution failed: %v", err),
+				Progress: 97,
+			})
+			return cd.HandleDeploymentError(ctx, machine, err)
+		}
+		callback(&models.DisplayStatus{
+			StatusMessage: "✅ Custom configuration script completed",
+			Progress: 98,
+		})
 	}
 
 
