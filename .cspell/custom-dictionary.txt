@@ -78,6 +78,7 @@ compinit
 computepb
 computestoragepath
 Configer
+containerd
 controlplanesettings
 Cpus
 creack
@@ -249,6 +250,7 @@ nolint
 nolintlint
 NOPASSWD
 northeurope
+nproc
 NSGID
 nsgs
 olekukonko

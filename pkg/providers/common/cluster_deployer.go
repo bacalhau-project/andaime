@@ -253,6 +253,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	callback UpdateCallback,
 ) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
 	if callback == nil {
@@ -276,7 +277,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	// Start provisioning
 	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf("🔄 Starting provisioning for %s (%s)", 
+		StatusMessage: fmt.Sprintf("🔄 Starting provisioning for %s (%s)",
 			machine.GetName(), machine.GetPublicIP()),
 		Progress: 0,
 	})
@@ -287,139 +288,142 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	// Machine provisioning
 	callback(&models.DisplayStatus{
 		StatusMessage: "🛠️ Provisioning base system...",
-		Progress: 10,
+		Progress:      10,
 	})
 	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
 		l.Errorf("Machine provisioning failed for %s: %v", machine.GetName(), err)
 		callback(&models.DisplayStatus{
 			StatusMessage: fmt.Sprintf("❌ Machine provisioning failed: %v", err),
-			Progress: 10,
+			Progress:      10,
 		})
 		return err
 	}
 	l.Infof("Machine provisioning completed successfully for %s", machine.GetName())
 	callback(&models.DisplayStatus{
 		StatusMessage: "✅ Base system provisioned successfully",
-		Progress: 20,
+		Progress:      20,
 	})
 
 	// Node configuration
 	callback(&models.DisplayStatus{
 		StatusMessage: "⚙️ Setting up node configuration...",
-		Progress: 30,
+		Progress:      30,
 	})
 	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig); err != nil {
 		callback(&models.DisplayStatus{
 			StatusMessage: fmt.Sprintf("❌ Node configuration failed: %v", err),
-			Progress: 30,
+			Progress:      30,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 	callback(&models.DisplayStatus{
 		StatusMessage: "✅ Node configuration completed",
-		Progress: 40,
+		Progress:      40,
 	})
 
 	// Bacalhau installation
 	callback(&models.DisplayStatus{
 		StatusMessage: "📦 Installing Bacalhau...",
-		Progress: 50,
+		Progress:      50,
 	})
 	if err := cd.InstallBacalhau(ctx, sshConfig); err != nil {
 		callback(&models.DisplayStatus{
 			StatusMessage: fmt.Sprintf("❌ Bacalhau installation failed: %v", err),
-			Progress: 50,
+			Progress:      50,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 	callback(&models.DisplayStatus{
 		StatusMessage: "✅ Bacalhau binary installed successfully",
-		Progress: 55,
+		Progress:      55,
 	})
 
 	// Run script installation
 	callback(&models.DisplayStatus{
 		StatusMessage: "📝 Installing Bacalhau service script...",
-		Progress: 60,
+		Progress:      60,
 	})
 	if err := cd.InstallBacalhauRunScript(ctx, sshConfig); err != nil {
 		callback(&models.DisplayStatus{
 			StatusMessage: fmt.Sprintf("❌ Service script installation failed: %v", err),
-			Progress: 60,
+			Progress:      60,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 	callback(&models.DisplayStatus{
 		StatusMessage: "✅ Bacalhau service script installed",
-		Progress: 65,
+		Progress:      65,
 	})
 
 	// Service setup
 	callback(&models.DisplayStatus{
 		StatusMessage: "🔧 Setting up Bacalhau systemd service...",
-		Progress: 70,
+		Progress:      70,
 	})
 	if err := cd.SetupBacalhauService(ctx, sshConfig); err != nil {
 		callback(&models.DisplayStatus{
 			StatusMessage: fmt.Sprintf("❌ Systemd service setup failed: %v", err),
-			Progress: 70,
+			Progress:      70,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 	callback(&models.DisplayStatus{
 		StatusMessage: "✅ Bacalhau systemd service installed and started",
-		Progress: 75,
+		Progress:      75,
 	})
 
 	// Deployment verification
 	callback(&models.DisplayStatus{
 		StatusMessage: "🔍 Verifying Bacalhau node is running...",
-		Progress: 80,
+		Progress:      80,
 	})
 	if err := cd.VerifyBacalhauDeployment(ctx, sshConfig, machine.GetOrchestratorIP()); err != nil {
 		callback(&models.DisplayStatus{
 			StatusMessage: fmt.Sprintf("❌ Node verification failed: %v", err),
-			Progress: 80,
+			Progress:      80,
 		})
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 	callback(&models.DisplayStatus{
 		StatusMessage: "✅ Bacalhau node verified and running",
-		Progress: 85,
+		Progress:      85,
 	})
 
 	// Configuration application
 	if len(bacalhauSettings) > 0 {
 		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("⚙️ Applying %d Bacalhau configurations...", len(bacalhauSettings)),
+			StatusMessage: fmt.Sprintf(
+				"⚙️ Applying %d Bacalhau configurations...",
+				len(bacalhauSettings),
+			),
 			Progress: 90,
 		})
-		
+
 		if err := cd.ApplyBacalhauConfigs(ctx, sshConfig, bacalhauSettings); err != nil {
 			callback(&models.DisplayStatus{
 				StatusMessage: fmt.Sprintf("❌ Configuration application failed: %v", err),
-				Progress: 90,
+				Progress:      90,
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
-		
+
 		callback(&models.DisplayStatus{
 			StatusMessage: "🔄 Restarting service with new configuration...",
-			Progress: 92,
+			Progress:      92,
 		})
-		
+
 		// Restart service after applying configurations
 		if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 			callback(&models.DisplayStatus{
 				StatusMessage: fmt.Sprintf("❌ Service restart failed: %v", err),
-				Progress: 92,
+				Progress:      92,
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
-		
+
 		callback(&models.DisplayStatus{
 			StatusMessage: "✅ Configuration applied and service restarted",
-			Progress: 95,
+			Progress:      95,
 		})
 	}
 
@@ -427,21 +431,20 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	if m.Deployment.CustomScriptPath != "" {
 		callback(&models.DisplayStatus{
 			StatusMessage: "📜 Running custom configuration script...",
-			Progress: 97,
+			Progress:      97,
 		})
 		if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
 			callback(&models.DisplayStatus{
 				StatusMessage: fmt.Sprintf("❌ Custom script execution failed: %v", err),
-				Progress: 97,
+				Progress:      97,
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
 		callback(&models.DisplayStatus{
 			StatusMessage: "✅ Custom configuration script completed",
-			Progress: 98,
+			Progress:      98,
 		})
 	}
-
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
@@ -449,7 +452,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	callback(&models.DisplayStatus{
 		StatusMessage: fmt.Sprintf("✅ Node %s successfully provisioned!", machine.GetName()),
-		Progress: 100,
+		Progress:      100,
 	})
 
 	return nil
