@@ -389,6 +389,15 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
+		
+		// Restart service after applying configurations
+		if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+			callback(&models.DisplayStatus{
+				StatusMessage: fmt.Sprintf("❌ Service restart after config failed: %v", err),
+				Progress: 85,
+			})
+			return cd.HandleDeploymentError(ctx, machine, err)
+		}
 	}
 
 	// Custom script execution
