@@ -106,7 +106,12 @@ func (p *Provisioner) Provision(ctx context.Context) error {
 	go func() {
 		for status := range updates {
 			if status.DetailedStatus != "" {
-				fmt.Printf("\r%s (%s) [%d%%]", status.StatusMessage, status.DetailedStatus, status.Progress)
+				fmt.Printf(
+					"\r%s (%s) [%d%%]",
+					status.StatusMessage,
+					status.DetailedStatus,
+					status.Progress,
+				)
 			} else {
 				fmt.Printf("\r%s [%d%%]", status.StatusMessage, status.Progress)
 			}
@@ -128,14 +133,14 @@ func (p *Provisioner) ProvisionWithCallback(
 	l := logger.Get()
 	callback(&models.DisplayStatus{
 		StatusMessage: "🚀 Starting node provisioning process",
-		Progress:     0,
+		Progress:      0,
 	})
 
 	if ctx == nil {
 		l.Error("Context is nil")
 		callback(&models.DisplayStatus{
 			StatusMessage: "❌ Provisioning failed: context is nil",
-			Progress:     0,
+			Progress:      0,
 		})
 		return fmt.Errorf("context cannot be nil")
 	}
