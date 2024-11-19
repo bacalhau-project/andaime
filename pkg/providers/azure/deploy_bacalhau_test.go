@@ -732,7 +732,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorkers() {
 				ProgressCallback: mock.Anything,
 				Output:           "",
 				Error:            nil,
-				Times:            15,
+				Times:            21,
 			},
 		},
 		InstallSystemdServiceExpectation: &sshutils.Expectation{
