@@ -376,7 +376,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
 
-	// Configuration application and service start
+	// Configuration application
 	callback(&models.DisplayStatus{
 		StatusMessage: "⚙️ Applying Bacalhau configurations...",
 		Progress: 85,
@@ -390,15 +390,15 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 			})
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
-	}
-
-	// Always restart service once after setup and config
-	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Service restart failed: %v", err),
-			Progress: 85,
-		})
-		return cd.HandleDeploymentError(ctx, machine, err)
+		
+		// Only restart after applying configurations if there were any
+		if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+			callback(&models.DisplayStatus{
+				StatusMessage: fmt.Sprintf("❌ Service restart after config failed: %v", err),
+				Progress: 85,
+			})
+			return cd.HandleDeploymentError(ctx, machine, err)
+		}
 	}
 
 	// Custom script execution
@@ -578,7 +578,11 @@ func (cd *ClusterDeployer) SetupBacalhauService(
 		return fmt.Errorf("failed to install Bacalhau systemd service: %w", err)
 	}
 
-	// Don't restart here - we'll do it after applying configs
+	// Always restart after service installation
+	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+		return fmt.Errorf("failed to restart Bacalhau service: %w", err)
+	}
+
 	return nil
 }
 
