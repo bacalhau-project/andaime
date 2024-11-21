@@ -1,5 +1,13 @@
 package common_interface
 
+import (
+	"context"
+
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
+)
+
 // ProvisioningStep defines a single step in the provisioning process
 type ProvisioningStep struct {
 	StartMessage  string

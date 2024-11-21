@@ -109,9 +109,10 @@ func (p *Provisioner) ProvisionWithCallback(
 ) error {
 	progress := models.NewProvisionProgress()
 	l := logger.Get()
+	steps := common_interface.ProvisioningSteps
 	callback(&models.DisplayStatus{
-		StatusMessage: "🚀 Starting node provisioning process",
-		Progress:      0,
+		StatusMessage: steps.Start.StartMessage,
+		Progress:      steps.Start.StartProgress,
 	})
 
 	if ctx == nil {
@@ -132,8 +133,8 @@ func (p *Provisioner) ProvisionWithCallback(
 		Description: "Establishing SSH connection",
 	})
 	callback(&models.DisplayStatus{
-		StatusMessage: "📡 Establishing SSH connection...",
-		Progress:      int(progress.GetProgress()),
+		StatusMessage: steps.SSHConnection.StartMessage,
+		Progress:      steps.SSHConnection.StartProgress,
 	})
 
 	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
@@ -152,8 +153,8 @@ func (p *Provisioner) ProvisionWithCallback(
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
 	callback(&models.DisplayStatus{
-		StatusMessage: "✅ SSH connection established successfully",
-		Progress:      int(progress.GetProgress()),
+		StatusMessage: steps.SSHConnection.DoneMessage,
+		Progress:      steps.SSHConnection.DoneProgress,
 	})
 
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
@@ -175,12 +176,12 @@ func (p *Provisioner) ProvisionWithCallback(
 
 	// Provision the node
 	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf("🔧 Provisioning node on %s", p.Config.IPAddress),
-		Progress:      int(progress.GetProgress()),
+		StatusMessage: fmt.Sprintf(steps.NodeProvisioning.StartMessage, p.Config.IPAddress),
+		Progress:      steps.NodeProvisioning.StartProgress,
 	})
 	callback(&models.DisplayStatus{
-		StatusMessage: "🐳 Installing Docker and dependencies...",
-		Progress:      int(progress.GetProgress()),
+		StatusMessage: steps.BaseSystem.StartMessage,
+		Progress:      steps.BaseSystem.StartProgress,
 	})
 	if err := cd.ProvisionBacalhauNodeWithCallback(
 		ctx,
@@ -231,8 +232,8 @@ func (p *Provisioner) ProvisionWithCallback(
 	// Skip final callback if we're already at 100% progress
 	if progress.GetProgress() < 100 {
 		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("✅ Successfully provisioned node on %s", p.Config.IPAddress),
-			Progress:      100,
+			StatusMessage: fmt.Sprintf(steps.Completion.DoneMessage, p.Config.IPAddress),
+			Progress:      steps.Completion.DoneProgress,
 		})
 	}
 
