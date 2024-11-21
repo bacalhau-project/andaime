@@ -228,10 +228,13 @@ func (p *Provisioner) ProvisionWithCallback(
 		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
 			p.Config.IPAddress, err)
 	}
-	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf("✅ Successfully provisioned node on %s", p.Config.IPAddress),
-		Progress:      100,
-	})
+	// Skip final callback if we're already at 100% progress
+	if progress.GetProgress() < 100 {
+		callback(&models.DisplayStatus{
+			StatusMessage: fmt.Sprintf("✅ Successfully provisioned node on %s", p.Config.IPAddress),
+			Progress:      100,
+		})
+	}
 
 	return nil
 }
