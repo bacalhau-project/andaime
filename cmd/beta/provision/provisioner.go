@@ -179,7 +179,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		Progress:      int(progress.GetProgress()),
 	})
 	callback(&models.DisplayStatus{
-		StatusMessage: "Installing Docker and dependencies...",
+		StatusMessage: "🐳 Installing Docker and dependencies...",
 		Progress:      int(progress.GetProgress()),
 	})
 	if err := cd.ProvisionBacalhauNodeWithCallback(
