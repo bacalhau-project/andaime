@@ -1,5 +1,7 @@
 package models
 
+import "sync"
+
 // ProvisionStep represents a single step in the provisioning process
 type ProvisionStep struct {
 	Name        string
@@ -10,9 +12,10 @@ type ProvisionStep struct {
 
 // ProvisionProgress tracks the overall provisioning progress
 type ProvisionProgress struct {
-	CurrentStep  *ProvisionStep
+	CurrentStep    *ProvisionStep
 	CompletedSteps []*ProvisionStep
 	TotalSteps     int
+	mutex          sync.Mutex
 }
 
 // NewProvisionProgress creates a new progress tracker
@@ -35,5 +38,8 @@ func (p *ProvisionProgress) SetCurrentStep(step *ProvisionStep) {
 
 // GetProgress returns the current progress as a percentage
 func (p *ProvisionProgress) GetProgress() float64 {
+	// Lock the mutex to ensure thread safety
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 	return float64(len(p.CompletedSteps)) / float64(p.TotalSteps) * 100
 }

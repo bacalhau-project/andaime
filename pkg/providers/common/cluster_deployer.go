@@ -289,7 +289,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	// Machine provisioning
 	callback(&models.DisplayStatus{
-		StatusMessage: "\n🛠️ Provisioning base system...\n",
+		StatusMessage: "\n🏠 Provisioning base system...\n",
 		Progress:      10,
 	})
 	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
@@ -308,7 +308,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	// Node configuration
 	callback(&models.DisplayStatus{
-		StatusMessage: "⚙️ Setting up node configuration...",
+		StatusMessage: "🍽️ Setting up node configuration...",
 		Progress:      30,
 	})
 	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig); err != nil {
