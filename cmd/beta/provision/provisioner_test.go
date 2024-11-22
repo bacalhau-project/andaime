@@ -395,6 +395,30 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	mockSSH.AssertExpectations(cbpts.T())
 }
 
+func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerSimulation() {
+	// Create a temporary SSH key file for testing
+	tmpKeyFile := filepath.Join(cbpts.tmpDir, "test_ssh_key")
+	err := os.WriteFile(tmpKeyFile, []byte("test-key-content"), 0600)
+	cbpts.Require().NoError(err)
+
+	config := &provision.NodeConfig{
+		IPAddress:  "192.168.1.100",
+		Username:   "test-user",
+		PrivateKey: tmpKeyFile,
+	}
+
+	p, err := provision.NewProvisioner(config)
+	cbpts.Require().NoError(err, "Failed to create provisioner")
+
+	// Enable test mode
+	testMode = true
+	defer func() { testMode = false }()
+
+	// Run the test mode simulation
+	err = p.Provision(context.Background())
+	cbpts.NoError(err)
+}
+
 func TestProvisionerSuite(t *testing.T) {
 	suite.Run(t, new(CmdBetaProvisionTestSuite))
 }
