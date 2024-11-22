@@ -398,13 +398,14 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 func TestProvisionerSuite(t *testing.T) {
 	suite.Run(t, new(CmdBetaProvisionTestSuite))
 }
-package provision
+package provision_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/bacalhau-project/andaime/cmd/beta/provision"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/stretchr/testify/assert"

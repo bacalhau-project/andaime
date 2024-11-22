@@ -274,7 +274,7 @@ func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings,
 var testMode bool
 
 func init() {
-	ProvisionCmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
+	RootCmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
 }
 
 func runProvision(cmd *cobra.Command, args []string) error {
