@@ -36,12 +36,12 @@ var ProvisioningSteps = struct {
 		StartMessage:  "🚀 Starting node provisioning process",
 		StartProgress: 0,
 		DoneMessage:   "",
-		DoneProgress:  1,
+		DoneProgress:  0,
 	},
 	SSHConnection: ProvisioningStep{
 		StartMessage:  "📡 Establishing SSH connection...",
-		StartProgress: 1,
-		DoneMessage:   "✅ SSH connection established successfully",
+		StartProgress: 0,
+		DoneMessage:   "✅ SSH connection established successfully (%s)",
 		DoneProgress:  10,
 	},
 	BaseSystem: ProvisioningStep{
