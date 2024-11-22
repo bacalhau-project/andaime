@@ -411,39 +411,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type mockSSHConfig struct{}
-
-func (m *mockSSHConfig) WaitForSSH(ctx context.Context, retries int, timeout time.Duration) error {
-	return nil
-}
-
-func (m *mockSSHConfig) GetHostname() string {
-	return "test-host"
-}
-
-func (m *mockSSHConfig) GetPort() int {
-	return 22
-}
-
-func (m *mockSSHConfig) GetUsername() string {
-	return "test-user"
-}
-
-func (m *mockSSHConfig) GetPrivateKeyPath() string {
-	return "/path/to/key"
-}
-
 func TestProvisionerSimulation(t *testing.T) {
-	config := &NodeConfig{
+	config := &provision.NodeConfig{
 		IPAddress:   "192.168.1.100",
 		Username:    "test-user",
 		PrivateKey:  "/path/to/key",
 	}
 
-	provisioner := &Provisioner{
-		SSHConfig: &mockSSHConfig{},
-		Config:    config,
-		Machine:   &models.Machine{},
+	p, err := provision.NewProvisioner(config)
+	if err != nil {
+		t.Fatalf("Failed to create provisioner: %v", err)
 	}
 
 	updates := make(chan *models.DisplayStatus)

@@ -273,8 +273,15 @@ func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings,
 // testMode is used to run the provisioner in test mode
 var testMode bool
 
+// ProvisionCmd represents the provision command
+var ProvisionCmd = &cobra.Command{
+	Use:   "provision",
+	Short: "Provision a new node",
+	RunE:  runProvision,
+}
+
 func init() {
-	RootCmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
+	ProvisionCmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
 }
 
 func runProvision(cmd *cobra.Command, args []string) error {
