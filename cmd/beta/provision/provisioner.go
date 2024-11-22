@@ -281,7 +281,13 @@ var ProvisionCmd = &cobra.Command{
 }
 
 func init() {
-	ProvisionCmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
+	flags := ProvisionCmd.Flags()
+	flags.BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
+	flags.StringVar(&config.IPAddress, "ip", "", "IP address of the target node")
+	flags.StringVar(&config.Username, "user", "", "SSH username")
+	flags.StringVar(&config.PrivateKey, "key", "", "Path to private key file (PEM format)")
+	flags.StringVar(&config.OrchestratorIP, "orchestrator", "", "Orchestrator IP (required for compute nodes)")
+	flags.StringVar(&config.BacalhauSettingsPath, "bacalhau-settings", "", "Path to JSON file containing Bacalhau settings")
 }
 
 func runProvision(cmd *cobra.Command, args []string) error {
