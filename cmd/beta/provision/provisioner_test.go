@@ -398,3 +398,97 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 func TestProvisionerSuite(t *testing.T) {
 	suite.Run(t, new(CmdBetaProvisionTestSuite))
 }
+package provision
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/bacalhau-project/andaime/pkg/models"
+	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/stretchr/testify/assert"
+)
+
+type mockSSHConfig struct{}
+
+func (m *mockSSHConfig) WaitForSSH(ctx context.Context, retries int, timeout time.Duration) error {
+	return nil
+}
+
+func (m *mockSSHConfig) GetHostname() string {
+	return "test-host"
+}
+
+func (m *mockSSHConfig) GetPort() int {
+	return 22
+}
+
+func (m *mockSSHConfig) GetUsername() string {
+	return "test-user"
+}
+
+func (m *mockSSHConfig) GetPrivateKeyPath() string {
+	return "/path/to/key"
+}
+
+func TestProvisionerSimulation(t *testing.T) {
+	config := &NodeConfig{
+		IPAddress:   "192.168.1.100",
+		Username:    "test-user",
+		PrivateKey:  "/path/to/key",
+	}
+
+	provisioner := &Provisioner{
+		SSHConfig: &mockSSHConfig{},
+		Config:    config,
+		Machine:   &models.Machine{},
+	}
+
+	updates := make(chan *models.DisplayStatus)
+	done := make(chan bool)
+
+	// Start a goroutine to collect and verify updates
+	go func() {
+		expectedSteps := []string{
+			"🚀 Starting node provisioning process",
+			"📡 Establishing SSH connection...",
+			"✅ SSH connection established successfully",
+			"🏠 Provisioning base packages...",
+			"✅ Base packages provisioned successfully",
+			"🍽️ Setting up node configuration...",
+			"✅ Node configuration completed",
+			"📦 Installing Bacalhau...",
+			"✅ Bacalhau binary installed successfully",
+			"📝 Installing Bacalhau service script...",
+			"✅ Bacalhau service script installed",
+			"🔧 Setting up Bacalhau systemd service...",
+			"✅ Bacalhau systemd service installed and started",
+			"🔍 Verifying Bacalhau node is running...",
+			"✅ Bacalhau node verified and running",
+			"✅ Successfully provisioned node on 192.168.1.100",
+		}
+
+		stepIndex := 0
+		for status := range updates {
+			if stepIndex < len(expectedSteps) {
+				assert.Contains(t, status.StatusMessage, expectedSteps[stepIndex])
+				stepIndex++
+			}
+			if status.Progress == 100 {
+				close(done)
+				return
+			}
+		}
+	}()
+
+	ctx := context.Background()
+	err := provisioner.ProvisionWithCallback(ctx, func(status *models.DisplayStatus) {
+		updates <- status
+		// Add small delay to simulate real deployment timing
+		time.Sleep(500 * time.Millisecond)
+	})
+
+	assert.NoError(t, err)
+	<-done
+}

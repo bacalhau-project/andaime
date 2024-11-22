@@ -270,6 +270,13 @@ func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings,
 	return p.SettingsParser.ParseFile(filePath)
 }
 
+// testMode is used to run the provisioner in test mode
+var testMode bool
+
+func init() {
+	ProvisionCmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
+}
+
 func runProvision(cmd *cobra.Command, args []string) error {
 	// Validate configuration
 	if err := config.Validate(); err != nil {
@@ -330,6 +337,44 @@ func runProvision(cmd *cobra.Command, args []string) error {
 
 	// Run provisioning
 	l.Debug("Starting provisioning process")
+	
+	if testMode {
+		l.Info("Running in test mode - simulating deployment")
+		// Simulate deployment with delays
+		go func() {
+			steps := common_interface.ProvisioningSteps
+			sendUpdate := func(msg string, progress int) {
+				updates <- &models.DisplayStatus{
+					StatusMessage: msg,
+					Progress:     progress,
+				}
+				time.Sleep(1 * time.Second) // Simulate step duration
+			}
+
+			// Simulate each step
+			sendUpdate(steps.Start.StartMessage, steps.Start.StartProgress)
+			sendUpdate(steps.SSHConnection.StartMessage, steps.SSHConnection.StartProgress)
+			sendUpdate(fmt.Sprintf(steps.SSHConnection.DoneMessage, config.IPAddress), steps.SSHConnection.DoneProgress)
+			sendUpdate(steps.BaseSystem.StartMessage, steps.BaseSystem.StartProgress)
+			sendUpdate(steps.BaseSystem.DoneMessage, steps.BaseSystem.DoneProgress)
+			sendUpdate(steps.NodeConfiguration.StartMessage, steps.NodeConfiguration.StartProgress)
+			sendUpdate(steps.NodeConfiguration.DoneMessage, steps.NodeConfiguration.DoneProgress)
+			sendUpdate(steps.BacalhauInstall.StartMessage, steps.BacalhauInstall.StartProgress)
+			sendUpdate(steps.BacalhauInstall.DoneMessage, steps.BacalhauInstall.DoneProgress)
+			sendUpdate(steps.ServiceScript.StartMessage, steps.ServiceScript.StartProgress)
+			sendUpdate(steps.ServiceScript.DoneMessage, steps.ServiceScript.DoneProgress)
+			sendUpdate(steps.SystemdService.StartMessage, steps.SystemdService.StartProgress)
+			sendUpdate(steps.SystemdService.DoneMessage, steps.SystemdService.DoneProgress)
+			sendUpdate(steps.NodeVerification.StartMessage, steps.NodeVerification.StartProgress)
+			sendUpdate(steps.NodeVerification.DoneMessage, steps.NodeVerification.DoneProgress)
+			sendUpdate(fmt.Sprintf(steps.Completion.DoneMessage, config.IPAddress), 100)
+		}()
+		
+		// Wait for simulation to complete
+		time.Sleep(15 * time.Second)
+		return nil
+	}
+
 	if err := provisioner.ProvisionWithCallback(cmd.Context(), func(ds *models.DisplayStatus) {
 		updates <- ds
 	}); err != nil {
