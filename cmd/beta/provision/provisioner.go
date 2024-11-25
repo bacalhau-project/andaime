@@ -3,7 +3,9 @@ package provision
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -12,6 +14,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -19,6 +22,7 @@ const (
 	DefaultSSHPort = 22
 	MaxRetries     = 5
 	RetryDelay     = 10 * time.Second
+	marginSpaces   = "   "
 )
 
 // Provisioner handles the node provisioning process
@@ -109,11 +113,7 @@ func (p *Provisioner) ProvisionWithCallback(
 ) error {
 	progress := models.NewProvisionProgress()
 	l := logger.Get()
-	steps := common_interface.ProvisioningSteps
-	callback(&models.DisplayStatus{
-		StatusMessage: steps.Start.StartMessage,
-		Progress:      steps.Start.StartProgress,
-	})
+	stepRegistry := common_interface.NewStepRegistry()
 
 	if ctx == nil {
 		l.Error("Context is nil")
@@ -133,8 +133,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		Description: "Establishing SSH connection",
 	})
 	callback(&models.DisplayStatus{
-		StatusMessage: steps.SSHConnection.StartMessage,
-		Progress:      steps.SSHConnection.StartProgress,
+		StatusMessage: stepRegistry.GetStep(common_interface.SSHConnection).RenderStartMessage(),
 	})
 
 	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
@@ -150,11 +149,22 @@ func (p *Provisioner) ProvisionWithCallback(
 		return fmt.Errorf("failed to establish SSH connection: %w", err)
 	}
 
+	// Execute 'hostname' on the server to get the hostname and assign it to the machine
+	hostname, err := p.SSHConfig.ExecuteCommand(ctx, "hostname")
+	if err != nil {
+		return fmt.Errorf("failed to get hostname: %w", err)
+	}
+	hostname = strings.TrimSpace(hostname)
+	p.Machine.SetName(hostname)
+
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
 	callback(&models.DisplayStatus{
-		StatusMessage: steps.SSHConnection.DoneMessage,
-		Progress:      steps.SSHConnection.DoneProgress,
+		StatusMessage: fmt.Sprintf(
+			stepRegistry.GetStep(common_interface.SSHConnection).DoneMessage,
+			p.Config.IPAddress,
+		),
+		StageComplete: true,
 	})
 
 	cd := common.NewClusterDeployer(models.DeploymentTypeUnknown)
@@ -175,14 +185,6 @@ func (p *Provisioner) ProvisionWithCallback(
 	}
 
 	// Provision the node
-	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf(steps.NodeProvisioning.StartMessage, p.Config.IPAddress),
-		Progress:      steps.NodeProvisioning.StartProgress,
-	})
-	callback(&models.DisplayStatus{
-		StatusMessage: steps.BaseSystem.StartMessage,
-		Progress:      steps.BaseSystem.StartProgress,
-	})
 	if err := cd.ProvisionBacalhauNodeWithCallback(
 		ctx,
 		p.SSHConfig,
@@ -194,50 +196,42 @@ func (p *Provisioner) ProvisionWithCallback(
 			StatusMessage: fmt.Sprintf("❌ Failed to provision node (ip: %s, user: %s)",
 				p.Config.IPAddress,
 				p.Config.Username),
-			Progress: int(progress.GetProgress()),
 		})
 
-		// Extract command output if it's an SSH error
-		var cmdOutput string
-		if sshErr, ok := err.(*sshutils.SSHError); ok {
-			cmdOutput = sshErr.Output
-		}
-
-		// Log detailed error information
-		l.Errorf("Provisioning failed with error: %v", err)
-		if cmdOutput != "" {
-			l.Errorf("Command output: %s", cmdOutput)
-		}
-
-		l.Debugf("Full error context:\nIP: %s\nUser: %s\nPrivate Key Path: %s\nError: %v",
-			p.Config.IPAddress,
-			p.Config.Username,
-			p.Config.PrivateKey,
-			err)
-		if ctx.Err() != nil {
-			l.Debugf("Context error: %v", ctx.Err())
-		}
-
-		if cmdOutput != "" {
-			return fmt.Errorf(
-				"failed to provision Bacalhau node:\nIP: %s\nCommand Output: %s\nError Details: %w",
-				p.Config.IPAddress,
-				cmdOutput,
-				err,
-			)
-		}
-		return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
-			p.Config.IPAddress, err)
-	}
-	// Skip final callback if we're already at 100% progress
-	if progress.GetProgress() < 100 {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf(steps.Completion.DoneMessage, p.Config.IPAddress),
-			Progress:      steps.Completion.DoneProgress,
-		})
+		return handleProvisionError(err, p.Config, l)
 	}
 
 	return nil
+}
+
+// handleProvisionError processes and formats provisioning errors
+func handleProvisionError(err error, config *NodeConfig, l *logger.Logger) error {
+	var cmdOutput string
+	if sshErr, ok := err.(*sshutils.SSHError); ok {
+		cmdOutput = sshErr.Output
+	}
+
+	l.Errorf("Provisioning failed with error: %v", err)
+	if cmdOutput != "" {
+		l.Errorf("Command output: %s", cmdOutput)
+	}
+
+	l.Debugf("Full error context:\nIP: %s\nUser: %s\nPrivate Key Path: %s\nError: %v",
+		config.IPAddress,
+		config.Username,
+		config.PrivateKey,
+		err)
+
+	if cmdOutput != "" {
+		return fmt.Errorf(
+			"failed to provision Bacalhau node:\nIP: %s\nCommand Output: %s\nError Details: %w",
+			config.IPAddress,
+			cmdOutput,
+			err,
+		)
+	}
+	return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
+		config.IPAddress, err)
 }
 
 // GetMachine returns the configured machine instance
@@ -280,16 +274,6 @@ var ProvisionCmd = &cobra.Command{
 	RunE:  runProvision,
 }
 
-func init() {
-	flags := ProvisionCmd.Flags()
-	flags.BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
-	flags.StringVar(&config.IPAddress, "ip", "", "IP address of the target node")
-	flags.StringVar(&config.Username, "user", "", "SSH username")
-	flags.StringVar(&config.PrivateKey, "key", "", "Path to private key file (PEM format)")
-	flags.StringVar(&config.OrchestratorIP, "orchestrator", "", "Orchestrator IP (required for compute nodes)")
-	flags.StringVar(&config.BacalhauSettingsPath, "bacalhau-settings", "", "Path to JSON file containing Bacalhau settings")
-}
-
 func runProvision(cmd *cobra.Command, args []string) error {
 	// Validate configuration
 	if err := config.Validate(); err != nil {
@@ -308,93 +292,187 @@ func runProvision(cmd *cobra.Command, args []string) error {
 	}
 	l.Debug("Successfully created provisioner")
 
+	// Starting message
+	fmt.Printf(`Starting provisioning process for:
+  IP: %s
+  Username: %s
+  Private Key Path: %s
+
+`,
+		config.IPAddress,
+		config.Username,
+		config.PrivateKey,
+	)
+
 	// Create a channel for progress updates
 	updates := make(chan *models.DisplayStatus)
-	defer close(updates)
+	stepRegistry := common_interface.NewStepRegistry()
 
-	var lastProgress int
-	// Start a goroutine to handle progress updates
-	go func() {
-		const progressWidth = 4 // Width for progress percentage
+	// Create error group for handling updates
+	errGroup := &errgroup.Group{}
+	errGroup.Go(func() error {
+		totalSteps := len(stepRegistry.GetAllSteps())
+		currentStep := 0
+
 		for status := range updates {
-			// Ensure progress never decreases
-			if status.Progress < lastProgress {
-				status.Progress = lastProgress
-			}
-			lastProgress = status.Progress
-
-			// Format the progress string with fixed width
-			progressStr := fmt.Sprintf("%*d%%", progressWidth, status.Progress)
-
-			// Build the status line with proper alignment
+			// Skip empty messages
 			statusMsg := strings.TrimSpace(status.StatusMessage)
 			if statusMsg == "" {
-				return // Skip empty messages
+				continue
 			}
 
+			// Format the progress string
+			var progressStr string
+			if !status.StageComplete {
+				progressStr = fmt.Sprintf("[ %d of %d ]", currentStep+1, totalSteps)
+			}
+
+			// Build the status line with proper alignment
 			var statusLine string
-			if status.DetailedStatus != "" {
-				detailedStatus := strings.TrimSpace(status.DetailedStatus)
-				if detailedStatus != "" {
-					statusMsg = fmt.Sprintf("%s (%s)", statusMsg, detailedStatus)
-				}
+			if status.StageComplete {
+				currentStep++
+				statusLine = fmt.Sprintf("%s   %s", marginSpaces, statusMsg)
+			} else {
+				statusLine = fmt.Sprintf("%s%s", marginSpaces, statusMsg)
 			}
 
-			// Ensure consistent width and alignment
-			statusLine = fmt.Sprintf("%-65s [%s]", statusMsg, progressStr)
+			// Ensure consistent width and add progress
+			if !status.StageComplete {
+				statusLine = fmt.Sprintf("%-65s %s", statusLine, progressStr)
+			}
 
 			// Clear the line and print the new status
 			fmt.Printf("\r%s\n", statusLine)
+			if status.StageComplete {
+				fmt.Println()
+			}
 		}
-	}()
+		return nil
+	})
 
 	// Run provisioning
 	l.Debug("Starting provisioning process")
-	
+
 	if testMode {
 		l.Info("Running in test mode - simulating deployment")
-		// Simulate deployment with delays
-		go func() {
-			steps := common_interface.ProvisioningSteps
-			sendUpdate := func(msg string, progress int) {
-				updates <- &models.DisplayStatus{
-					StatusMessage: msg,
-					Progress:     progress,
-				}
-				time.Sleep(1 * time.Second) // Simulate step duration
-			}
-
-			// Simulate each step
-			sendUpdate(steps.Start.StartMessage, steps.Start.StartProgress)
-			sendUpdate(steps.SSHConnection.StartMessage, steps.SSHConnection.StartProgress)
-			sendUpdate(fmt.Sprintf(steps.SSHConnection.DoneMessage, config.IPAddress), steps.SSHConnection.DoneProgress)
-			sendUpdate(steps.BaseSystem.StartMessage, steps.BaseSystem.StartProgress)
-			sendUpdate(steps.BaseSystem.DoneMessage, steps.BaseSystem.DoneProgress)
-			sendUpdate(steps.NodeConfiguration.StartMessage, steps.NodeConfiguration.StartProgress)
-			sendUpdate(steps.NodeConfiguration.DoneMessage, steps.NodeConfiguration.DoneProgress)
-			sendUpdate(steps.BacalhauInstall.StartMessage, steps.BacalhauInstall.StartProgress)
-			sendUpdate(steps.BacalhauInstall.DoneMessage, steps.BacalhauInstall.DoneProgress)
-			sendUpdate(steps.ServiceScript.StartMessage, steps.ServiceScript.StartProgress)
-			sendUpdate(steps.ServiceScript.DoneMessage, steps.ServiceScript.DoneProgress)
-			sendUpdate(steps.SystemdService.StartMessage, steps.SystemdService.StartProgress)
-			sendUpdate(steps.SystemdService.DoneMessage, steps.SystemdService.DoneProgress)
-			sendUpdate(steps.NodeVerification.StartMessage, steps.NodeVerification.StartProgress)
-			sendUpdate(steps.NodeVerification.DoneMessage, steps.NodeVerification.DoneProgress)
-			sendUpdate(fmt.Sprintf(steps.Completion.DoneMessage, config.IPAddress), 100)
-		}()
-		
-		// Wait for simulation to complete
-		time.Sleep(15 * time.Second)
-		return nil
+		simulateDeployment(provisioner.Config, updates)
+	} else {
+		// Run the actual provisioning
+		provisionErr := provisioner.ProvisionWithCallback(
+			cmd.Context(),
+			func(ds *models.DisplayStatus) {
+				updates <- ds
+			},
+		)
+		if provisionErr != nil {
+			l.Errorf("Provisioning failed: %v", provisionErr)
+			return fmt.Errorf("provisioning failed: %w", provisionErr)
+		}
 	}
 
-	if err := provisioner.ProvisionWithCallback(cmd.Context(), func(ds *models.DisplayStatus) {
-		updates <- ds
-	}); err != nil {
-		l.Errorf("Provisioning failed: %v", err)
-		return fmt.Errorf("provisioning failed: %w", err)
+	// Close the updates channel after provisioning is done
+	close(updates)
+
+	// Wait for error group to finish processing all updates
+	updateErr := errGroup.Wait()
+	if updateErr != nil {
+		l.Errorf("Error in progress updates: %v", updateErr)
+		return fmt.Errorf("error in progress updates: %w", updateErr)
 	}
+
+	// Print success message
 	l.Info("Provisioning completed successfully")
+	fmt.Printf("\nSuccessfully provisioned node on:\n")
+	fmt.Printf("    IP: %s\n", config.IPAddress)
+	fmt.Printf("    Username: %s\n", config.Username)
 
 	return nil
+}
+
+func simulateDeployment(config *NodeConfig, updates chan<- *models.DisplayStatus) {
+	stepRegistry := common_interface.NewStepRegistry()
+	waitGroup := &sync.WaitGroup{}
+	waitGroup.Add(1)
+
+	go func() {
+		defer waitGroup.Done()
+		sendUpdate := func(msg string, stageComplete bool) {
+			updates <- &models.DisplayStatus{
+				StatusMessage: msg,
+				StageComplete: stageComplete,
+			}
+			time.Sleep(20 * time.Millisecond) //nolint:mnd
+		}
+
+		randNumOfSettings := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
+
+		// Simulate each step
+		sendUpdate(stepRegistry.GetStep(common_interface.SSHConnection).RenderStartMessage(), false)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.SSHConnection).
+				RenderDoneMessage(config.IPAddress),
+			true,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.NodeProvisioning).
+				RenderStartMessage(config.IPAddress),
+			false,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.NodeProvisioning).RenderDoneMessage(),
+			true,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.NodeConfiguration).RenderStartMessage(),
+			false,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.NodeConfiguration).RenderDoneMessage(),
+			true,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.BacalhauInstall).RenderStartMessage(),
+			false,
+		)
+		sendUpdate(stepRegistry.GetStep(common_interface.BacalhauInstall).RenderDoneMessage(), true)
+		sendUpdate(stepRegistry.GetStep(common_interface.ServiceScript).RenderStartMessage(), false)
+		sendUpdate(stepRegistry.GetStep(common_interface.ServiceScript).RenderDoneMessage(), true)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.SystemdService).RenderStartMessage(),
+			false,
+		)
+		sendUpdate(stepRegistry.GetStep(common_interface.SystemdService).RenderDoneMessage(), true)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.NodeVerification).RenderStartMessage(),
+			false,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.NodeVerification).RenderDoneMessage(),
+			true,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.ConfigurationApply).
+				RenderStartMessage(randNumOfSettings.Intn(20)),
+			false,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.ConfigurationApply).RenderDoneMessage(),
+			true,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.ServiceRestart).RenderStartMessage(),
+			false,
+		)
+		sendUpdate(stepRegistry.GetStep(common_interface.ServiceRestart).RenderDoneMessage(), true)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.RunningCustomScript).RenderStartMessage(),
+			false,
+		)
+		sendUpdate(
+			stepRegistry.GetStep(common_interface.RunningCustomScript).RenderDoneMessage(),
+			true,
+		)
+	}()
+
+	waitGroup.Wait()
 }

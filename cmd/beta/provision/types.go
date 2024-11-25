@@ -16,6 +16,7 @@ const (
 // NodeConfig holds the configuration for a node to be provisioned
 type NodeConfig struct {
 	// Required fields
+	Name       string
 	IPAddress  string
 	Username   string
 	PrivateKey string

@@ -15,6 +15,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/goroutine"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"golang.org/x/sync/errgroup"
@@ -245,6 +246,47 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 	)
 }
 
+// sendStepUpdate is a helper function to send consistent status updates
+func (cd *ClusterDeployer) sendStepUpdate(
+	step common_interface.StepMessage,
+	callback UpdateCallback,
+	isComplete bool,
+	args ...interface{},
+) {
+	var msg string
+	if isComplete {
+		if len(args) > 0 {
+			msg = step.RenderDoneMessage(args...)
+		} else {
+			msg = step.RenderDoneMessage()
+		}
+	} else {
+		if len(args) > 0 {
+			msg = step.RenderStartMessage(args...)
+		} else {
+			msg = step.RenderStartMessage()
+		}
+	}
+
+	callback(&models.DisplayStatus{
+		StatusMessage: msg,
+		StageComplete: isComplete,
+	})
+}
+
+// sendErrorUpdate is a helper function to send error status updates
+func (cd *ClusterDeployer) sendErrorUpdate(
+	step common_interface.StepMessage,
+	callback UpdateCallback,
+	err error,
+	args ...interface{},
+) {
+	callback(&models.DisplayStatus{
+		StatusMessage: fmt.Sprintf("❌ %s: %v", fmt.Sprintf(step.StartMessage, args...), err),
+		StageComplete: false,
+	})
+}
+
 func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	ctx context.Context,
 	sshConfig sshutils.SSHConfiger,
@@ -254,6 +296,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 ) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
+	stepRegistry := common_interface.NewStepRegistry()
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
 	if callback == nil {
@@ -278,184 +321,202 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	}
 
 	// Start provisioning
-	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf("\n🔄 Starting provisioning for %s (%s)\n",
-			machine.GetName(), machine.GetPublicIP()),
-		Progress: 0,
-	})
-
-	l.Infof("Starting SSH provisioning for machine %s at IP %s:%d",
-		machine.GetName(), machine.GetPublicIP(), machine.GetSSHPort())
-
-	// Machine provisioning
-	callback(&models.DisplayStatus{
-		StatusMessage: "\n🏠 Provisioning base system...\n",
-		Progress:      10,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeProvisioning),
+		callback,
+		false,
+		machine.GetName(),
+		machine.GetPublicIP(),
+	)
 	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
 		l.Errorf("Machine provisioning failed for %s: %v", machine.GetName(), err)
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Machine provisioning failed: %v", err),
-			Progress:      10,
-		})
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.NodeProvisioning),
+			callback,
+			err,
+			machine.GetName(),
+			machine.GetPublicIP(),
+		)
 		return err
 	}
 	l.Infof("Machine provisioning completed successfully for %s", machine.GetName())
-	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Base system provisioned successfully",
-		Progress:      20,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeProvisioning),
+		callback,
+		true,
+	)
 
 	// Node configuration
-	callback(&models.DisplayStatus{
-		StatusMessage: "🍽️ Setting up node configuration...",
-		Progress:      30,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeConfiguration),
+		callback,
+		false,
+	)
 	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Node configuration failed: %v", err),
-			Progress:      30,
-		})
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.NodeConfiguration),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
-	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Node configuration completed",
-		Progress:      40,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeConfiguration),
+		callback,
+		true,
+	)
 
 	// Bacalhau installation
-	callback(&models.DisplayStatus{
-		StatusMessage: "📦 Installing Bacalhau...",
-		Progress:      50,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.BacalhauInstall),
+		callback,
+		false,
+	)
 	if err := cd.InstallBacalhau(ctx, sshConfig); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Bacalhau installation failed: %v", err),
-			Progress:      50,
-		})
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.BacalhauInstall),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
-	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Bacalhau binary installed successfully",
-		Progress:      55,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.BacalhauInstall),
+		callback,
+		true,
+	)
 
 	// Run script installation
-	callback(&models.DisplayStatus{
-		StatusMessage: "📝 Installing Bacalhau service script...",
-		Progress:      60,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceScript),
+		callback,
+		false,
+	)
 	if err := cd.InstallBacalhauRunScript(ctx, sshConfig); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Service script installation failed: %v", err),
-			Progress:      60,
-		})
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.ServiceScript),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
-	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Bacalhau service script installed",
-		Progress:      65,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceScript),
+		callback,
+		true,
+	)
 
 	// Service setup
-	callback(&models.DisplayStatus{
-		StatusMessage: "🔧 Setting up Bacalhau systemd service...",
-		Progress:      70,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.SystemdService),
+		callback,
+		false,
+	)
 	if err := cd.SetupBacalhauService(ctx, sshConfig); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Systemd service setup failed: %v", err),
-			Progress:      70,
-		})
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.SystemdService),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
-	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Bacalhau systemd service installed and started",
-		Progress:      75,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.SystemdService),
+		callback,
+		true,
+	)
 
 	// Deployment verification
-	callback(&models.DisplayStatus{
-		StatusMessage: "🔍 Verifying Bacalhau node is running...",
-		Progress:      80,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeVerification),
+		callback,
+		false,
+	)
 	if err := cd.VerifyBacalhauDeployment(ctx, sshConfig, machine.GetOrchestratorIP()); err != nil {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf("❌ Node verification failed: %v", err),
-			Progress:      80,
-		})
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.NodeVerification),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
-	callback(&models.DisplayStatus{
-		StatusMessage: "✅ Bacalhau node verified and running",
-		Progress:      85,
-	})
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeVerification),
+		callback,
+		true,
+	)
+
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ConfigurationApply),
+		callback,
+		false,
+		len(bacalhauSettings),
+	)
 
 	// Configuration application
 	if len(bacalhauSettings) > 0 {
-		callback(&models.DisplayStatus{
-			StatusMessage: fmt.Sprintf(
-				"⚙️ Applying %d Bacalhau configurations...",
-				len(bacalhauSettings),
-			),
-			Progress: 90,
-		})
-
 		if err := cd.ApplyBacalhauConfigs(ctx, sshConfig, bacalhauSettings); err != nil {
-			callback(&models.DisplayStatus{
-				StatusMessage: fmt.Sprintf("❌ Configuration application failed: %v", err),
-				Progress:      90,
-			})
+			cd.sendErrorUpdate(
+				stepRegistry.GetStep(common_interface.ConfigurationApply),
+				callback,
+				err,
+			)
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
-
-		callback(&models.DisplayStatus{
-			StatusMessage: "🔄 Restarting service with new configuration...",
-			Progress:      92,
-		})
-
-		// Restart service after applying configurations
-		if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
-			callback(&models.DisplayStatus{
-				StatusMessage: fmt.Sprintf("❌ Service restart failed: %v", err),
-				Progress:      92,
-			})
-			return cd.HandleDeploymentError(ctx, machine, err)
-		}
-
-		callback(&models.DisplayStatus{
-			StatusMessage: "✅ Configuration applied and service restarted",
-			Progress:      95,
-		})
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ConfigurationApply),
+		callback,
+		true,
+	)
+
+	// Restart service after applying configurations
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceRestart),
+		callback,
+		false,
+	)
+
+	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.ServiceRestart),
+			callback,
+			err,
+		)
+		return cd.HandleDeploymentError(ctx, machine, err)
+	}
+
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceRestart),
+		callback,
+		true,
+	)
 
 	// Custom script execution
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.RunningCustomScript),
+		callback,
+		false,
+	)
 	if m.Deployment.CustomScriptPath != "" {
-		callback(&models.DisplayStatus{
-			StatusMessage: "📜 Running custom configuration script...",
-			Progress:      97,
-		})
 		if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
-			callback(&models.DisplayStatus{
-				StatusMessage: fmt.Sprintf("❌ Custom script execution failed: %v", err),
-				Progress:      97,
-			})
+			cd.sendErrorUpdate(
+				stepRegistry.GetStep(common_interface.RunningCustomScript),
+				callback,
+				err,
+			)
 			return cd.HandleDeploymentError(ctx, machine, err)
 		}
-		callback(&models.DisplayStatus{
-			StatusMessage: "✅ Custom configuration script completed",
-			Progress:      98,
-		})
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.RunningCustomScript),
+		callback,
+		true,
+	)
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
 	machine.SetComplete()
-
-	callback(&models.DisplayStatus{
-		StatusMessage: fmt.Sprintf("✅ Node %s successfully provisioned!", machine.GetName()),
-		Progress:      100,
-	})
 
 	return nil
 }
@@ -878,3 +939,5 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 		}
 	}
 }
+
+var _ common_interface.ClusterDeployerer = &ClusterDeployer{}

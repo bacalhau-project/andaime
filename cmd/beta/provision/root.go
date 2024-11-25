@@ -28,6 +28,7 @@ For compute nodes, an orchestrator IP must be provided.`,
 	cmd.Flags().
 		StringVar(&config.BacalhauSettingsPath, "bacalhau-settings", "",
 			"Path to JSON file containing Bacalhau settings")
+	cmd.Flags().BoolVar(&testMode, "test", false, "Run in test mode (simulation only)")
 
 	// Mark required flags
 	err := cmd.MarkFlagRequired("ip")
