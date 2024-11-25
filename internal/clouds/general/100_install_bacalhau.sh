@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-BACALHAU_INSTALL_ID=${BACALHAU_INSTALL_ID:-"BACA14A0-eeee-eeee-eeee-eeeeeeeeeeee"}
+BACALHAU_INSTALL_ID=${BACALHAU_INSTALL_ID:-"BACA14A0-4EEE-EEEE-8EEE-EEEEEEEEEEEE"}
 
 ensure_jq_installed() {
     if ! command -v jq &> /dev/null; then
@@ -36,5 +36,5 @@ new_id = id[:-12] + uuid.uuid4().hex[:12]
 print(new_id)
     ")
 
-sudo curl -sSL https://get.bacalhau.org/install.sh?dl="${BACALHAU_INSTALL_ID}" | sudo bash
+sudo curl -sSL "https://get.bacalhau.org/install.sh?dl=${BACALHAU_INSTALL_ID}" | sudo bash
 
