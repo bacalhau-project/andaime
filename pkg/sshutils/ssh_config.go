@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -128,7 +129,7 @@ func getSSHClientConfig(user, host, privateKeyPath string) (*ssh.ClientConfig, e
 			ssh.PublicKeys(key),
 		},
 		HostKeyCallback: hostKeyCallback,
-		Timeout:         10 * time.Second,
+		Timeout:         SSHClientConfigTimeout,
 	}, nil
 }
 
@@ -159,7 +160,7 @@ func (c *SSHConfig) validateSSHConnection() error {
 
 	// Check if port is open
 	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", address, SSHDialTimeout)
 	if err != nil {
 		l.Debugf("Port %d is closed on host %s", c.Port, c.Host)
 		return fmt.Errorf("SSH port %d is closed on host %s: %v", c.Port, c.Host, err)
@@ -204,11 +205,15 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 		}
 
 		l.Error(err.Error())
+
+		time.Sleep(SSHRetryDelay)
 	}
 
 	if err != nil {
 		if strings.Contains(err.Error(), "connection refused") {
-			return nil, fmt.Errorf("SSH connection refused: check host, port, and firewall settings")
+			return nil, fmt.Errorf(
+				"SSH connection refused: check host, port, and firewall settings",
+			)
 		}
 
 		if strings.Contains(err.Error(), "no route to host") {
@@ -216,7 +221,9 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 		}
 
 		if strings.Contains(err.Error(), "handshake failed") {
-			return nil, fmt.Errorf("SSH handshake failed: check username and private key authentication")
+			return nil, fmt.Errorf(
+				"SSH handshake failed: check username and private key authentication",
+			)
 		}
 
 		return nil, fmt.Errorf("SSH connection failed: %v", err)
@@ -341,8 +348,10 @@ func (c *SSHConfig) PushFile(
 
 // PushFile copies a local file to the remote server.
 // It takes the local file path and the remote file path as arguments.
-// The file is copied over an SSH session using the stdin pipe.
+// The file is copied over an SSH session using sftp.
 // It returns an error if any step of the process fails.
+
+// Refactor the PushFileWithCallback method
 func (c *SSHConfig) PushFileWithCallback(
 	ctx context.Context,
 	remotePath string,
@@ -353,56 +362,36 @@ func (c *SSHConfig) PushFileWithCallback(
 	l := logger.Get()
 	l.Infof("Pushing file to: %s", remotePath)
 
-	session, err := c.NewSession()
+	// Create a new SFTP client
+	sftpClient, err := sftp.NewClient(c.SSHClient.(*SSHClientWrapper).Client)
 	if err != nil {
-		return fmt.Errorf("failed to create session: %w", err)
+		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
-	defer session.Close()
+	defer sftpClient.Close()
 
-	// Create a pipe for the session's stdin
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdin pipe: %w", err)
-	}
-
-	// Combine all commands into a single shell command that:
-	// 1. Creates the directory
-	// 2. Removes any existing file
-	// 3. Writes the new content
-	// 4. Sets executable permission if needed
+	// Ensure the remote directory exists
 	dirPath := filepath.Dir(remotePath)
-	remoteCmd := fmt.Sprintf("sudo mkdir -p '%s' && sudo rm -f '%s' && sudo cat > '%s'",
-		dirPath,
-		remotePath,
-		remotePath,
-	)
+	if err := sftpClient.MkdirAll(dirPath); err != nil {
+		return fmt.Errorf("failed to create remote directory: %w", err)
+	}
+
+	// Create or truncate the remote file
+	remoteFile, err := sftpClient.Create(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to create remote file: %w", err)
+	}
+	defer remoteFile.Close()
+
+	// Write the content to the remote file
+	if _, err := remoteFile.Write(content); err != nil {
+		return fmt.Errorf("failed to write content to remote file: %w", err)
+	}
+
+	// Set executable permissions if required
 	if executable {
-		remoteCmd += fmt.Sprintf(" && sudo chmod +x '%s'", remotePath)
-	}
-
-	// Start the command in the background
-	if err := session.Start(remoteCmd); err != nil {
-		stdin.Close()
-		return fmt.Errorf("failed to start remote command: %w", err)
-	}
-
-	// Write the content in a separate goroutine to avoid deadlocks
-	writeErrCh := make(chan error, 1)
-	go func() {
-		defer stdin.Close()
-		_, err := stdin.Write(content)
-		writeErrCh <- err
-	}()
-
-	// Wait for both the write to complete and the command to finish
-	if writeErr := <-writeErrCh; writeErr != nil {
-		l.Errorf("Failed to write content in session: %v", writeErr)
-		return fmt.Errorf("failed to write content in session: %w", writeErr)
-	}
-
-	// Wait for the command to complete
-	if err := session.Wait(); err != nil {
-		return fmt.Errorf("failed to wait for remote command: %w", err)
+		if err := sftpClient.Chmod(remotePath, 0700); err != nil {
+			return fmt.Errorf("failed to set executable permissions: %w", err)
+		}
 	}
 
 	return nil
