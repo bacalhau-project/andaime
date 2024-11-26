@@ -134,9 +134,40 @@ func getSSHClientConfig(user, host, privateKeyPath string) (*ssh.ClientConfig, e
 }
 
 func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
+	// Check if the key material is empty
+	if len(privateKeyMaterial) == 0 {
+		return nil, fmt.Errorf("SSH private key is empty")
+	}
+
+	// Attempt to parse the private key
 	privateKey, err := ssh.ParsePrivateKey([]byte(privateKeyMaterial))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %v", err)
+		// Provide more detailed error messages for common key parsing issues
+		switch {
+		case strings.Contains(err.Error(), "x509: malformed private key"):
+			return nil, fmt.Errorf("invalid private key format: malformed key")
+		case strings.Contains(err.Error(), "x509: unsupported key type"):
+			return nil, fmt.Errorf("unsupported private key type")
+		case strings.Contains(err.Error(), "x509: key is encrypted"):
+			return nil, fmt.Errorf("encrypted private key is not supported: remove passphrase")
+		case strings.Contains(err.Error(), "failed to parse private key"):
+			return nil, fmt.Errorf("failed to parse private key: incorrect format or permissions")
+		default:
+			return nil, fmt.Errorf("failed to parse private key: %v", err)
+		}
+	}
+
+	// Additional validation
+	if privateKey == nil {
+		return nil, fmt.Errorf("parsed private key is nil")
+	}
+
+	// Check key type
+	switch privateKey.PublicKey().Type() {
+	case "ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521":
+		// Supported key types
+	default:
+		return nil, fmt.Errorf("unsupported SSH key type: %s", privateKey.PublicKey().Type())
 	}
 
 	return privateKey, nil
