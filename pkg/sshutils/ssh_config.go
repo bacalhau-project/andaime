@@ -145,16 +145,43 @@ func (c *SSHConfig) SetSSHClient(client SSHClienter) {
 	c.SSHClient = client
 }
 
+func (c *SSHConfig) validateSSHConnection() error {
+	l := logger.Get()
+
+	// Validate host and port
+	if c.Host == "" {
+		return fmt.Errorf("host is empty")
+	}
+
+	if c.Port == 0 {
+		return fmt.Errorf("port is empty")
+	}
+
+	// Check if port is open
+	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		l.Debugf("Port %d is closed on host %s", c.Port, c.Host)
+		return fmt.Errorf("SSH port %d is closed on host %s: %v", c.Port, c.Host, err)
+	}
+	defer conn.Close()
+
+	// Validate SSH private key
+	if _, err := getPrivateKey(string(c.PrivateKeyMaterial)); err != nil {
+		l.Debugf("Invalid SSH private key: %v", err)
+		return fmt.Errorf("invalid SSH private key: %v", err)
+	}
+
+	return nil
+}
+
 func (c *SSHConfig) Connect() (SSHClienter, error) {
 	l := logger.Get()
 	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
 
-	if c.Host == "" {
-		return nil, fmt.Errorf("host is empty")
-	}
-
-	if c.Port == 0 {
-		return nil, fmt.Errorf("port is empty")
+	// Validate connection prerequisites
+	if err := c.validateSSHConnection(); err != nil {
+		return nil, err
 	}
 
 	var err error
@@ -181,14 +208,18 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 
 	if err != nil {
 		if strings.Contains(err.Error(), "connection refused") {
-			return nil, fmt.Errorf("failed to connect to SSH server: %v", err)
+			return nil, fmt.Errorf("SSH connection refused: check host, port, and firewall settings")
+		}
+
+		if strings.Contains(err.Error(), "no route to host") {
+			return nil, fmt.Errorf("no route to host: verify network connectivity")
 		}
 
 		if strings.Contains(err.Error(), "handshake failed") {
-			return nil, fmt.Errorf("failed to log in to SSH server: %v", err)
+			return nil, fmt.Errorf("SSH handshake failed: check username and private key authentication")
 		}
 
-		return nil, fmt.Errorf("failed to connect to SSH server: %v", err)
+		return nil, fmt.Errorf("SSH connection failed: %v", err)
 	}
 
 	c.SSHClient = client
