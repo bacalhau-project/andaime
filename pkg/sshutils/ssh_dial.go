@@ -1,6 +1,8 @@
 package sshutils
 
 import (
+	"context"
+
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
 
@@ -11,6 +13,11 @@ var SSHDialerFunc = NewSSHDial
 
 type SSHDialer interface {
 	Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
+	DialContext(
+		ctx context.Context,
+		network, addr string,
+		config *ssh.ClientConfig,
+	) (SSHClienter, error)
 }
 
 func NewSSHDial(host string, port int, config *ssh.ClientConfig) SSHDialer {
@@ -33,6 +40,33 @@ func (d *SSHDial) Dial(network, addr string, config *ssh.ClientConfig) (SSHClien
 	return d.DialCreator(network, addr, config)
 }
 
+func (d *SSHDial) DialContext(
+	ctx context.Context,
+	network, addr string,
+	config *ssh.ClientConfig,
+) (SSHClienter, error) {
+	// Create a channel to receive the dial result
+	type dialResult struct {
+		client SSHClienter
+		err    error
+	}
+	result := make(chan dialResult, 1)
+
+	// Start dialing in a goroutine
+	go func() {
+		client, err := d.Dial(network, addr, config)
+		result <- dialResult{client, err}
+	}()
+
+	// Wait for either context cancellation or dial completion
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-result:
+		return res.client, res.err
+	}
+}
+
 // Mock Functions
 
 // MockSSHDialer is a mock implementation of SSHDialer
@@ -43,6 +77,19 @@ type MockSSHDialer struct {
 // Dial is a mock implementation of the Dial method
 func (m *MockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
 	args := m.Called(network, addr, config)
+	if args.Get(1) != nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(SSHClienter), nil
+}
+
+// DialContext is a mock implementation of the DialContext method
+func (m *MockSSHDialer) DialContext(
+	ctx context.Context,
+	network, addr string,
+	config *ssh.ClientConfig,
+) (SSHClienter, error) {
+	args := m.Called(ctx, network, addr, config)
 	if args.Get(1) != nil {
 		return nil, args.Error(1)
 	}

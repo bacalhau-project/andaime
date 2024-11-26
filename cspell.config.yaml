@@ -1,10 +1,9 @@
 version: "0.2"
 ignorePaths:
-ignorePaths:
   - ".git/**"
   - ".github/**"
   - ".vscode/**"
-  - "!**/node_modules/**"
+  - "**/node_modules/**"
   - "**/dist/**"
   - "**/build/**"
   - "**/tmp/**"
@@ -18,7 +17,7 @@ ignorePaths:
   - "!cmd/**"
   - "!internal/**"
   - "!pkg/**"
-  - "!**/**/*.md"
+  - "!**/*.md"
 dictionaryDefinitions: []
 dictionaries: ["./.cspell/project-dictionary.txt"]
 ignoreWords: []

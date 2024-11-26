@@ -206,7 +206,10 @@ func (l *Logger) SetVerbose(verbose bool) {
 
 func (l *Logger) syncIfNeeded() {
 	if GlobalInstantSync {
-		_ = l.Sync()
+		if err := l.Sync(); err != nil {
+			// Log the error but don't fail, as this is a best-effort sync
+			fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
+		}
 	}
 }
 
@@ -398,7 +401,10 @@ func NewNopLogger() *Logger {
 // Panic handling
 func LogPanic(rec interface{}) {
 	stack := debug.Stack()
-	Get().ErrorWithFields("PANIC", zap.String("stack", string(stack)))
+	logger := Get()
+	logger.ErrorWithFields("PANIC", zap.String("stack", string(stack)))
+	// Ensure logs are flushed in case of panic
+	_ = logger.Sync()
 }
 
 func RecoverAndLog(f func()) {
@@ -420,6 +426,9 @@ type LogBuffer struct {
 
 // NewLogBuffer creates a new log buffer with specified size
 func NewLogBuffer(size int) *LogBuffer {
+	if size <= 0 {
+		size = 100 //nolint:mnd
+	}
 	return &LogBuffer{
 		lines: make([]string, 0, size),
 		size:  size,
@@ -513,6 +522,7 @@ func (tl *TestLogger) With(fields ...zap.Field) Loggerer {
 		t:       tl.t,
 		logs:    tl.logs,
 		logLock: tl.logLock, // Reuse the existing mutex
+		buffer:  tl.buffer,
 	}
 }
 

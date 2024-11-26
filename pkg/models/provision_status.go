@@ -32,10 +32,11 @@ type ProvisionProgress struct {
 
 // NewProvisionProgress creates a new progress tracker
 func NewProvisionProgress() *ProvisionProgress {
+	mu := sync.Mutex{}
 	return &ProvisionProgress{
 		CompletedSteps: make([]*ProvisionStep, 0),
-		TotalSteps:     0,
-		mutex:          &sync.Mutex{},
+		TotalSteps:     1,
+		mutex:          &mu,
 	}
 }
 
@@ -72,13 +73,13 @@ func (p *ProvisionProgress) GetProgress() float64 {
 	defer p.mutex.Unlock()
 
 	if p.TotalSteps == 0 {
-		return 0
+		return 1
 	}
 
 	completed := len(p.CompletedSteps)
 	if completed > p.TotalSteps {
-		return 100
+		return 100 //nolint:mnd
 	}
 
-	return float64(completed) / float64(p.TotalSteps) * 100
+	return float64(completed) / float64(p.TotalSteps) * 100 //nolint:mnd
 }

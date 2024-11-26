@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -156,9 +157,38 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 		return nil, fmt.Errorf("port is empty")
 	}
 
-	client, err := c.SSHDial.Dial("tcp", fmt.Sprintf("%s:%d", c.Host, c.Port), c.ClientConfig)
+	var err error
+	var client SSHClienter
+
+	for i := 0; i < SSHRetryAttempts; i++ {
+		l.Debugf("Attempt %d to connect via SSH\n", i+1)
+		client, err = c.SSHDial.Dial(
+			"tcp",
+			fmt.Sprintf("%s:%d", c.Host, c.Port),
+			c.ClientConfig,
+		)
+		if err == nil {
+			break
+		}
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			l.Debugf("timed out waiting to connect to SSH server\n")
+			continue
+		}
+
+		l.Error(err.Error())
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to SSH server: %w", err)
+		if strings.Contains(err.Error(), "connection refused") {
+			return nil, fmt.Errorf("failed to connect to SSH server: %v", err)
+		}
+
+		if strings.Contains(err.Error(), "handshake failed") {
+			return nil, fmt.Errorf("failed to log in to SSH server: %v", err)
+		}
+
+		return nil, fmt.Errorf("failed to connect to SSH server: %v", err)
 	}
 
 	c.SSHClient = client
