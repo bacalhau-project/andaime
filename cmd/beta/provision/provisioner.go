@@ -136,7 +136,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		StatusMessage: stepRegistry.GetStep(common_interface.SSHConnection).RenderStartMessage(),
 	})
 
-	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil {
+	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil { //nolint:mnd
 		progress.CurrentStep.Status = "Failed"
 		progress.CurrentStep.Error = err
 		errMsg := fmt.Sprintf("❌ SSH connection failed: %v", err)
@@ -452,7 +452,7 @@ func simulateDeployment(config *NodeConfig, updates chan<- *models.DisplayStatus
 		)
 		sendUpdate(
 			stepRegistry.GetStep(common_interface.ConfigurationApply).
-				RenderStartMessage(randNumOfSettings.Intn(20)),
+				RenderStartMessage(randNumOfSettings.Intn(20)), //nolint:mnd
 			false,
 		)
 		sendUpdate(

@@ -757,19 +757,6 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	return nil
 }
 
-func combineSettings(settings []models.BacalhauSettings) map[string]string {
-	combined := make(map[string]string)
-	for _, setting := range settings {
-		switch v := setting.Value.(type) {
-		case []string:
-			combined[setting.Key] = strings.Join(v, ",")
-		case string:
-			combined[setting.Key] = v
-		}
-	}
-	return combined
-}
-
 func applySettings(
 	ctx context.Context,
 	sshConfig sshutils.SSHConfiger,

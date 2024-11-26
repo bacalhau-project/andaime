@@ -2,9 +2,11 @@ package models
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,10 +34,22 @@ func (s *NodeStore) AddNode(node NodeInfo) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// Validate node
+	if err := node.Validate(); err != nil {
+		return fmt.Errorf("invalid node: %w", err)
+	}
+
 	// Read existing nodes
 	nodes, err := s.readNodes()
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read nodes: %w", err)
+	}
+
+	// Check for duplicates
+	for _, existing := range nodes.Nodes {
+		if existing.Name == node.Name && existing.NodeIP == node.NodeIP {
+			return fmt.Errorf("node with name %s and IP %s already exists", node.Name, node.NodeIP)
+		}
 	}
 
 	// Add new node
@@ -85,11 +99,11 @@ func (s *NodeStore) writeNodes(nodes *NodeInfoList) error {
 
 	// Write to temporary file first
 	tmpFile := s.filepath + ".tmp"
-	if err := os.MkdirAll(filepath.Dir(s.filepath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.filepath), fs.FileMode(syscall.S_IREAD|syscall.S_IWRITE|syscall.S_IEXEC)); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+	if err := os.WriteFile(tmpFile, data, fs.FileMode(os.O_RDONLY)); err != nil {
 		return fmt.Errorf("failed to write temporary file: %w", err)
 	}
 

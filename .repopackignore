@@ -1,7 +1,0 @@
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
-coverage.out
-internal/clouds/azure/azure_data.yaml
-internal/clouds/gcp/gcp_data.yaml

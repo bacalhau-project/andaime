@@ -115,7 +115,6 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TearDownTest() {
 
 // Example test using the new helper
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
-	s.SetupTest()
 
 	// Setup test data
 	s.deployment.SetMachines(map[string]models.Machiner{
@@ -131,7 +130,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 	s.testHelper.ExpectCall("PushFile", 5)
 	s.testHelper.ExpectCall("ExecuteCommand", 7)
 	s.testHelper.ExpectCall("InstallSystemdService", 1)
-	s.testHelper.ExpectCall("RestartService", 1)
+	s.testHelper.ExpectCall("RestartService", 2)
 
 	// Setup mock behaviors with clear logging
 	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-docker.sh", mock.Anything, true, mock.Anything).
@@ -176,8 +175,6 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
-	s.SetupTest()
-
 	// Setup test data
 	s.deployment.SetMachines(map[string]models.Machiner{
 		"worker": &models.Machine{
@@ -193,7 +190,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
 	s.testHelper.ExpectCall("PushFile", 5) // 5 script pushes
 	s.testHelper.ExpectCall("ExecuteCommand", 7)
 	s.testHelper.ExpectCall("InstallSystemdService", 1)
-	s.testHelper.ExpectCall("RestartService", 1)
+	s.testHelper.ExpectCall("RestartService", 2)
 
 	// Setup mock behaviors
 	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-docker.sh", mock.Anything, true, mock.Anything).

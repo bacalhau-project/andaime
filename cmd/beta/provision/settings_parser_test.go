@@ -28,7 +28,57 @@ func (s *SettingsParserTestSuite) TestParseSettings() {
 		expectedCount  int
 		expectedValues map[string]string
 	}{
-		// ... existing test cases ...
+		{
+			name:           "empty file",
+			fileContent:    "",
+			expectedCount:  0,
+			expectedValues: map[string]string{},
+		},
+		{
+			name:          "valid settings",
+			fileContent:   "key1:value1\nkey2:value2",
+			expectedCount: 2,
+			expectedValues: map[string]string{
+				"key1": "value1",
+				"key2": "value2",
+			},
+		},
+		{
+			name:          "malformed setting",
+			fileContent:   "invalid_line",
+			expectedError: "invalid format: missing key-value separator ':', content: invalid_line",
+		},
+		{
+			name:          "comment line",
+			fileContent:   "# This is a comment\nkey: value",
+			expectedCount: 1,
+			expectedValues: map[string]string{
+				"key": "value",
+			},
+		},
+		{
+			name:          "missing value",
+			fileContent:   "key:",
+			expectedError: "invalid value for key \"key\": empty value",
+		},
+		{
+			name:          "duplicate keys",
+			fileContent:   "key: value1\nkey: value2",
+			expectedCount: 2,
+			expectedValues: map[string]string{
+				"key": "value1",
+			},
+		},
+		{
+			name:          "special characters in keys and values (dash, underscore, period)",
+			fileContent:   "key-with-dash: value-with-dash\nkey.with.period: value.with.period\nkey_with_underscore: value_with_underscore",
+			expectedCount: 3,
+			expectedValues: map[string]string{
+				"key_with_underscore": "value_with_underscore",
+				"key-with-dash":       "value-with-dash",
+				"key.with.period":     "value.with.period",
+			},
+		},
 	}
 
 	for _, tt := range tests {

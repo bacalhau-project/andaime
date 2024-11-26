@@ -3,6 +3,7 @@ package common_interface
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -124,20 +125,25 @@ func (r *StepRegistry) GetStep(step ProvisioningStep) StepMessage {
 
 // GetAllSteps returns all steps in order
 func (r *StepRegistry) GetAllSteps() []ProvisioningStep {
-	// Create a map of order to step
-	orderMap := make(map[int]ProvisioningStep)
+	steps := make([]struct {
+		step  ProvisioningStep
+		order int
+	}, 0, len(r.steps))
+
 	for step, msg := range r.steps {
-		orderMap[msg.Order] = step
+		steps = append(steps, struct {
+			step  ProvisioningStep
+			order int
+		}{step, msg.Order})
 	}
 
-	// Create ordered slice
-	result := make([]ProvisioningStep, len(r.steps))
-	i := 0
-	for order := 1; order <= len(r.steps); order++ {
-		if step, exists := orderMap[order]; exists {
-			result[i] = step
-			i++
-		}
+	sort.Slice(steps, func(i, j int) bool {
+		return steps[i].order < steps[j].order
+	})
+
+	result := make([]ProvisioningStep, len(steps))
+	for i, s := range steps {
+		result[i] = s.step
 	}
 	return result
 }

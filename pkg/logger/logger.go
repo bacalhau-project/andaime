@@ -64,7 +64,7 @@ type TestLogger struct {
 	*Logger
 	t       *testing.T
 	logs    *[]string // Change to pointer
-	logLock sync.Mutex
+	logLock *sync.Mutex
 	buffer  *LogBuffer
 }
 
@@ -170,7 +170,7 @@ func createFileCore(level zap.AtomicLevel) (zapcore.Core, error) {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	logFile, err := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 		},
 		t:       tb.(*testing.T),
 		logs:    &logs,
-		logLock: sync.Mutex{},
+		logLock: &sync.Mutex{},
 	}
 }
 
@@ -511,7 +511,7 @@ func (tl *TestLogger) With(fields ...zap.Field) Loggerer {
 		Logger:  tl.Logger.With(fields...).(*Logger),
 		t:       tl.t,
 		logs:    tl.logs,
-		logLock: sync.Mutex{}, // Create new mutex instead of copying
+		logLock: tl.logLock, // Reuse the existing mutex
 	}
 }
 

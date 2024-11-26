@@ -48,4 +48,12 @@ Progress display must follow this format:
 ## Error Handling
 - Failed steps must be clearly marked with ❌
 - Error details must be logged
-- Partial deployments must be marked as incomplete in nodes.yml
+- Partial deployments must be marked as incomplete in `nodes.yml`
+- Error logging format must include timestamp, node IP, step name, and error message
+- Logs must be retained for a minimum of 30 days
+- Error notifications must be sent to the admin team via email
+- Example error message:
+    ```
+    ❌ Error provisioning base packages on <IP> at <timestamp>
+         Error: <detailed error message>
+    ```

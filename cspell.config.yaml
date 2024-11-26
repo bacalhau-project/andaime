@@ -1,7 +1,11 @@
 version: "0.2"
-ignorePaths: ["~", "vendor", ".vscode", ".venv"]
+ignorePaths:
+  - "**/**"
+  - "!cmd/**"
+  - "!internal/**"
+  - "!pkg/**"
+  - "!**/**/*.md"
 dictionaryDefinitions: []
-dictionaries: []
-words: []
+dictionaries: ["./.cspell/project-dictionary.txt"]
 ignoreWords: []
 import: []

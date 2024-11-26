@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 // NodeInfo represents the deployment information for a single node
 type NodeInfo struct {
 	Name              string `yaml:"name"`
@@ -15,4 +17,21 @@ type NodeInfo struct {
 // NodeInfoList represents a collection of node information
 type NodeInfoList struct {
 	Nodes []NodeInfo `yaml:"nodes"`
+}
+
+// Validate checks if the node information is valid
+func (n *NodeInfo) Validate() error {
+	if n.Name == "" {
+		return fmt.Errorf("node name is required")
+	}
+	if n.NodeIP == "" {
+		return fmt.Errorf("node IP address is required")
+	}
+	if n.SSHUsername == "" {
+		return fmt.Errorf("SSH username is required")
+	}
+	if n.SSHKeyPath == "" {
+		return fmt.Errorf("SSH key path is required")
+	}
+	return nil
 }

@@ -347,6 +347,10 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 		mock.Anything,
 		mock.Anything,
 		mock.Anything).Return(nil)
+	mockSSH.On("ExecuteCommand",
+		mock.Anything,
+		"hostname",
+	).Return("hostname", nil)
 	mockSSH.On("ExecuteCommand", mock.Anything, mock.Anything).Return(
 		"Permission denied: cannot execute command",
 		fmt.Errorf("command failed: permission denied"),

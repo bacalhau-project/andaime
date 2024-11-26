@@ -12,6 +12,7 @@ MIRRORS=(
     "http://mirror.cs.uchicago.edu/ubuntu/"
     "http://mirror.math.princeton.edu/pub/ubuntu/"
 )
+#shellcheck disable=SC2034
 BACKUP_MIRRORS=("${MIRRORS[@]}")
 CURRENT_MIRROR="$PRIMARY_MIRROR"
 
@@ -29,7 +30,7 @@ run_with_retries() {
     local -r -i max_attempts="$2"
     local -r cmd=("${@:3}")
     local attempt_num=1
-
+    
     while (( attempt_num <= max_attempts )); do
         if "${cmd[@]}"; then
             return 0
@@ -50,20 +51,13 @@ run_with_retries() {
 update_sources_list() {
     local mirror_url="$1"
     echo "Updating /etc/apt/sources.list to use mirror: $mirror_url"
-
+    
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup || error_exit "Failed to backup /etc/apt/sources.list"
-
+    
     sudo sed -i "s|http://[^ ]*ubuntu.com/ubuntu/|$mirror_url|g" /etc/apt/sources.list || {
         sudo mv /etc/apt/sources.list.backup /etc/apt/sources.list
         error_exit "Failed to update /etc/apt/sources.list with mirror: $mirror_url"
     }
-}
-
-# Function to restore the original sources.list from backup
-restore_sources_list() {
-    if sudo test -f /etc/apt/sources.list.backup; then
-        sudo mv /etc/apt/sources.list.backup /etc/apt/sources.list || echo "Failed to restore /etc/apt/sources.list from backup"
-    fi
 }
 
 # Trap to ensure sources.list is restored on exit
@@ -76,6 +70,7 @@ select_working_mirror() {
         echo "Trying mirror: $mirror"
         update_sources_list "$mirror"
         if run_with_retries "apt-get update" "$MAX_RETRIES" sudo apt-get update; then
+            #shellcheck disable=SC2034
             CURRENT_MIRROR="$mirror"
             echo "Successfully updated package list using mirror: $mirror"
             return 0
@@ -106,14 +101,14 @@ if [ -f "/usr/share/keyrings/docker-archive-keyring.gpg" ]; then
 fi
 
 run_with_retries "Add Docker GPG key" "$MAX_RETRIES" \
-    sh -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg' \
-    || error_exit "Failed to add Docker GPG key"
+sh -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg' \
+|| error_exit "Failed to add Docker GPG key"
 
 # Set up the Docker stable repository
 echo "Setting up Docker repository..."
 echo \
-  "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null || error_exit "Failed to add Docker repository"
+"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null || error_exit "Failed to add Docker repository"
 
 # Update package index again with retries
 echo "Updating package list after adding Docker repository..."

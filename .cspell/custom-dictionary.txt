@@ -83,6 +83,7 @@ controlplanesettings
 Cpus
 creack
 createdeployment
+daaronch
 datadir
 Deallocation
 Debugf
@@ -100,6 +101,7 @@ diskimage
 diskimagefamily
 dockerclient
 dockertypes
+downloaders
 downloadurlrequestretries
 downloadurlrequesttimeout
 dryrun
@@ -143,6 +145,7 @@ GCPVM
 gdamore
 genproto
 gerr
+gibibyte
 gochecknoglobals
 gochecknoinit
 gochecknoinits
@@ -225,9 +228,11 @@ mapstructure
 maxint
 maxjobexecutiontimeout
 maxretrycount
+mebibytes
 mgmt
 minjobexecutiontimeout
 mitchellh
+mktemp
 mmddhhmm
 mockprivatekey
 nakedret
@@ -281,6 +286,7 @@ publicip
 publicipaddress
 publicipaddresses
 pulumi
+puuid
 PVIP
 queuebackoff
 queuetimeout
@@ -344,6 +350,7 @@ testscript
 testuser
 testutil
 testutils
+tlsv
 tmpl
 tokenspath
 tostring
