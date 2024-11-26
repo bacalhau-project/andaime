@@ -109,13 +109,13 @@ func (s *NodeStore) writeNodes(nodes *NodeInfoList) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	if err := os.WriteFile(tmpFile, data, fs.FileMode(0600)); err != nil {
+	if err := os.WriteFile(tmpFile.Name(), data, fs.FileMode(0600)); err != nil {
 		return fmt.Errorf("failed to write temporary file: %w", err)
 	}
 
 	// Rename temporary file to actual file (atomic operation)
-	if err := os.Rename(tmpFile, s.filepath); err != nil {
-		os.Remove(tmpFile) // Clean up temp file if rename fails
+	if err := os.Rename(tmpFile.Name(), s.filepath); err != nil {
+		os.Remove(tmpFile.Name()) // Clean up temp file if rename fails
 		return fmt.Errorf("failed to save nodes file: %w", err)
 	}
 

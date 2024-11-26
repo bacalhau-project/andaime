@@ -68,6 +68,12 @@ type TestLogger struct {
 	buffer  *LogBuffer
 }
 
+type levelEnabler struct{}
+
+func (l levelEnabler) Enabled(level zapcore.Level) bool {
+	return level >= zapcore.DebugLevel
+}
+
 // Writer for test output
 type testingWriter struct {
 	tb zaptest.TestingT
@@ -371,9 +377,7 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 		zapcore.AddSync(&testingWriter{tb: tb}),
-		zapcore.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-			return lvl >= zapcore.DebugLevel
-		}),
+		levelEnabler{},
 	)
 	logs := make([]string, 0)
 	return &TestLogger{
@@ -383,7 +387,7 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 		},
 		t:       t,
 		logs:    &logs,
-		logLock: sync.Mutex{},
+		logLock: &sync.Mutex{},
 	}
 }
 

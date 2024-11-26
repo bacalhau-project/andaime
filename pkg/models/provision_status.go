@@ -1,7 +1,6 @@
 package models
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -67,20 +66,19 @@ func (p *ProvisionProgress) SetCurrentStep(step *ProvisionStep) {
 	p.CurrentStep = step
 }
 
-func (p *ProvisionProgress) GetProgress() (float64, error) {
+func (p *ProvisionProgress) GetProgress() float64 {
 	// Lock the mutex to ensure thread safety
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	if p.TotalSteps == 0 {
-		return 0, fmt.Errorf("invalid total steps: 0")
+		return 0
 	}
 
 	completed := len(p.CompletedSteps)
 	if completed > p.TotalSteps {
-		return 100, fmt.Errorf("completed steps (%d) exceed total steps (%d)",
-			completed, p.TotalSteps)
+		return 100
 	}
 
-	return float64(completed) / float64(p.TotalSteps) * 100, nil
+	return float64(completed) / float64(p.TotalSteps) * 100
 }

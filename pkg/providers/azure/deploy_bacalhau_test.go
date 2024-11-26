@@ -337,7 +337,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment(
 				case "Invalid JSON":
 					s.Contains(
 						err.Error(),
-						"failed to parse node list",
+						"failed to strip and parse JSON",
 						"Expected specific error message for invalid JSON",
 					)
 				}
