@@ -641,7 +641,7 @@ const fullValidConfigOutput = `
   {
     "Key": "JobDefaults.Batch.Task.Resources.Memory",
     "Value": "1Gb",
-    "Description": "Memory specifies the default amount of memory allocated to a task. It uses Kubernetes resource string format (e.g., \"256Mi\" for 256 megabytes). This value is used when the task hasn't explicitly set its memory requirement."
+"Description": "Memory specifies the default amount of memory allocated to a task. It uses Kubernetes resource string format (e.g., \"256Mi\" for 256 mebibytes). This value is used when the task hasn't explicitly set its memory requirement."
   },
   {
     "Key": "JobDefaults.Daemon.Priority",
@@ -711,7 +711,7 @@ const fullValidConfigOutput = `
   {
     "Key": "JobDefaults.Ops.Task.Resources.Disk",
     "Value": "",
-    "Description": "Disk specifies the default amount of disk space allocated to a task. It uses Kubernetes resource string format (e.g., \"1Gi\" for 1 gigabyte). This value is used when the task hasn't explicitly set its disk space requirement."
+"Description": "Disk specifies the default amount of disk space allocated to a task. It uses Kubernetes resource string format (e.g., \"1Gi\" for 1 gibibyte). This value is used when the task hasn't explicitly set its disk space requirement."
   },
   {
     "Key": "Orchestrator.Scheduler.HousekeepingTimeout",

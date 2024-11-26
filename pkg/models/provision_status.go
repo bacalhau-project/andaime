@@ -1,6 +1,9 @@
 package models
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // ProvisionStep represents a single step in the provisioning process
 type ProvisionStep struct {
@@ -64,10 +67,20 @@ func (p *ProvisionProgress) SetCurrentStep(step *ProvisionStep) {
 	p.CurrentStep = step
 }
 
-// GetProgress returns the current progress as a percentage
-func (p *ProvisionProgress) GetProgress() float64 {
+func (p *ProvisionProgress) GetProgress() (float64, error) {
 	// Lock the mutex to ensure thread safety
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	return float64(len(p.CompletedSteps)) / float64(p.TotalSteps) * 100
+
+	if p.TotalSteps == 0 {
+		return 0, fmt.Errorf("invalid total steps: 0")
+	}
+
+	completed := len(p.CompletedSteps)
+	if completed > p.TotalSteps {
+		return 100, fmt.Errorf("completed steps (%d) exceed total steps (%d)",
+			completed, p.TotalSteps)
+	}
+
+	return float64(completed) / float64(p.TotalSteps) * 100, nil
 }

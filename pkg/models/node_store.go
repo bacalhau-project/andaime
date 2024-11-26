@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -98,12 +97,19 @@ func (s *NodeStore) writeNodes(nodes *NodeInfoList) error {
 	}
 
 	// Write to temporary file first
-	tmpFile := s.filepath + ".tmp"
-	if err := os.MkdirAll(filepath.Dir(s.filepath), fs.FileMode(syscall.S_IREAD|syscall.S_IWRITE|syscall.S_IEXEC)); err != nil {
+	dir := filepath.Dir(s.filepath)
+	tmpFile, err := os.CreateTemp(dir, "nodes_*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath) // Clean up in case of errors
+
+	if err := os.MkdirAll(filepath.Dir(s.filepath), fs.FileMode(0700)); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	if err := os.WriteFile(tmpFile, data, fs.FileMode(os.O_RDONLY)); err != nil {
+	if err := os.WriteFile(tmpFile, data, fs.FileMode(0600)); err != nil {
 		return fmt.Errorf("failed to write temporary file: %w", err)
 	}
 

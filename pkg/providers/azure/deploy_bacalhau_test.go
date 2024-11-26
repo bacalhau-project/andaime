@@ -74,15 +74,19 @@ func (h *TestHelper) Reset() {
 	h.mockSSH.Calls = nil
 }
 
-// Update the suite's SetupTest method to initialize everything properly
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
 	s.ctx = context.Background()
+	if err := viper.BindEnv("general.project_prefix"); err != nil {
+		s.T().Fatalf("Failed to bind environment variable: %v", err)
+	}
 	viper.Set("general.project_prefix", "test-project")
 
 	// Create a fresh deployment for each test
 	var err error
 	s.deployment, err = models.NewDeployment()
-	s.NoError(err)
+	if err != nil {
+		s.T().Fatalf("Failed to create deployment: %v", err)
+	}
 	s.deployer = common.NewClusterDeployer(models.DeploymentTypeAzure)
 
 	// Create fresh mocks for each test
@@ -322,9 +326,23 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment(
 			err := s.deployer.VerifyBacalhauDeployment(s.ctx, s.testHelper.mockSSH, "0.0.0.0")
 
 			if tt.expectError {
-				s.Error(err)
+				s.Error(err, "Expected an error for case: %s", tt.name)
+				switch tt.name {
+				case "Empty node list":
+					s.Contains(
+						err.Error(),
+						"no Bacalhau nodes found",
+						"Expected specific error message for empty node list",
+					)
+				case "Invalid JSON":
+					s.Contains(
+						err.Error(),
+						"failed to parse node list",
+						"Expected specific error message for invalid JSON",
+					)
+				}
 			} else {
-				s.NoError(err)
+				s.NoError(err, "Expected no error for case: %s", tt.name)
 			}
 
 			s.testHelper.VerifyCalls()

@@ -157,23 +157,14 @@ func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
 
 func createFileCore(level zap.AtomicLevel) (zapcore.Core, error) {
 	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:        "time",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     "\n",
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     customTimeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
+		// ... encoder config ...
 	}
 
 	logFile, err := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
+	GlobalLogFile = logFile // Store for cleanup
 
 	return zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
@@ -371,10 +362,16 @@ func SetGlobalLogger(logger interface{}) {
 
 // Create new loggers
 func NewTestLogger(tb zaptest.TestingT) *TestLogger {
+	var t *testing.T
+	if tt, ok := tb.(*testing.T); ok {
+		t = tt
+	} else {
+		panic("tb does not implement *testing.T")
+	}
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 		zapcore.AddSync(&testingWriter{tb: tb}),
-		zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+		zapcore.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 			return lvl >= zapcore.DebugLevel
 		}),
 	)
@@ -384,9 +381,9 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 			Logger:  zap.New(core),
 			verbose: true,
 		},
-		t:       tb.(*testing.T),
+		t:       t,
 		logs:    &logs,
-		logLock: &sync.Mutex{},
+		logLock: sync.Mutex{},
 	}
 }
 
