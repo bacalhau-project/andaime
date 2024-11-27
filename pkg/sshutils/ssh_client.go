@@ -187,7 +187,10 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	done := make(chan error, 1)
 
 	l.Debug("Starting command execution monitoring")
-	l.Sync()
+	err = l.Sync()
+	if err != nil {
+		l.Errorf("Failed to sync logger: %v", err)
+	}
 
 	// Start monitoring stdout
 	go func() {

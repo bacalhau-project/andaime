@@ -79,17 +79,6 @@ func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 	s.mockDialer.AssertExpectations(s.T())
 }
 
-func (s *PkgSSHUtilsTestSuite) TestConnectInvalidDialerInfo() {
-	s.mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
-		Return(nil, fmt.Errorf("connection error"))
-
-	client, err := s.sshConfig.Connect()
-	s.Error(err)
-	s.Nil(client)
-	s.Contains(err.Error(), "connection error")
-	s.mockDialer.AssertExpectations(s.T())
-}
-
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	s.mockClient.On("NewSession").Return(s.mockSession, nil)
 	s.mockClient.On("IsConnected").Return(true)

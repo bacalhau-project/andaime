@@ -36,6 +36,9 @@ func (p *SettingsParser) WithMaxKeyLength(length int) *SettingsParser {
 
 // WithMaxValueLength sets the maximum allowed value length
 func (p *SettingsParser) WithMaxValueLength(length int) *SettingsParser {
+	if length <= 0 {
+		length = 0
+	}
 	p.maxValueLength = length
 	return p
 }
@@ -54,7 +57,7 @@ func (p *SettingsParser) ParseFile(filePath string) ([]models.BacalhauSettings, 
 	}
 	defer file.Close()
 
-	return p.parse(file)
+	return p.parseReader(file)
 }
 
 // ParseString parses settings from a string
@@ -63,14 +66,13 @@ func (p *SettingsParser) ParseString(content string) ([]models.BacalhauSettings,
 }
 
 // parse reads from a file and returns the parsed settings
-func (p *SettingsParser) parse(file *os.File) ([]models.BacalhauSettings, error) {
-	return p.parseReader(file)
-}
-
-// parseReader reads from any io.Reader and returns the parsed settings
 func (p *SettingsParser) parseReader(reader interface{}) ([]models.BacalhauSettings, error) {
+	r, ok := reader.(interface{ Read([]byte) (int, error) })
+	if !ok {
+		return nil, fmt.Errorf("invalid reader type: %T", reader)
+	}
 	var settings []models.BacalhauSettings
-	scanner := bufio.NewScanner(reader.(interface{ Read([]byte) (int, error) }))
+	scanner := bufio.NewScanner(r)
 	lineNum := 0
 
 	for scanner.Scan() {
@@ -102,7 +104,10 @@ func (p *SettingsParser) parseLine(line string, _ int) (models.BacalhauSettings,
 	// Split on first colon
 	parts := strings.SplitN(line, ":", 2) //nolint:mnd
 	if len(parts) != 2 {                  //nolint:mnd
-		return models.BacalhauSettings{}, fmt.Errorf("invalid format: missing key-value separator ':', content: %s", line)
+		return models.BacalhauSettings{}, fmt.Errorf(
+			"invalid format: missing key-value separator ':', content: %s",
+			line,
+		)
 	}
 
 	key := strings.TrimSpace(parts[0])
@@ -134,7 +139,9 @@ func (p *SettingsParser) validateKey(key string) error {
 		return fmt.Errorf("exceeds maximum length of %d", p.maxKeyLength)
 	}
 	if !p.keyPattern.MatchString(key) {
-		return fmt.Errorf("must contain only alphanumeric characters, underscores, dashes, and periods")
+		return fmt.Errorf(
+			"must contain only alphanumeric characters, underscores, dashes, and periods",
+		)
 	}
 	return nil
 }

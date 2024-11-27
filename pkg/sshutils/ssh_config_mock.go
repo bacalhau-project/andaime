@@ -225,7 +225,10 @@ func (m *MockSSHConfig) GetUser() string {
 
 func (m *MockSSHConfig) GetPrivateKeyMaterial() []byte {
 	args := m.Called()
-	return args.Get(0).([]byte)
+	if ret := args.Get(0); ret != nil {
+		return ret.([]byte)
+	}
+	return nil
 }
 
 func (m *MockSSHConfig) GetSSHDial() SSHDialer {
@@ -252,7 +255,10 @@ func (m *MockSSHConfig) SetSSHClienter(clienter SSHClienter) {
 
 func (m *MockSSHConfig) GetSSHClient() *ssh.Client {
 	args := m.Called()
-	return args.Get(0).(*ssh.Client)
+	if ret := args.Get(0); ret != nil {
+		return ret.(*ssh.Client)
+	}
+	return nil
 }
 
 func (m *MockSSHConfig) SetSSHClient(client *ssh.Client) {

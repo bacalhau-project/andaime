@@ -27,16 +27,15 @@ type ProvisionProgress struct {
 	CurrentStep    *ProvisionStep
 	CompletedSteps []*ProvisionStep
 	TotalSteps     int
-	mutex          *sync.Mutex
+	mutex          sync.Mutex
 }
 
 // NewProvisionProgress creates a new progress tracker
 func NewProvisionProgress() *ProvisionProgress {
-	mu := sync.Mutex{}
 	return &ProvisionProgress{
 		CompletedSteps: make([]*ProvisionStep, 0),
 		TotalSteps:     1,
-		mutex:          &mu,
+		mutex:          sync.Mutex{},
 	}
 }
 

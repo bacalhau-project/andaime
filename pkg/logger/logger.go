@@ -63,7 +63,7 @@ type Logger struct {
 type TestLogger struct {
 	*Logger
 	t       *testing.T
-	logs    *[]string // Change to pointer
+	logs    []string // Change to pointer
 	logLock *sync.Mutex
 	buffer  *LogBuffer
 }
@@ -213,34 +213,43 @@ func (l *Logger) syncIfNeeded() {
 	}
 }
 
-// Basic logging methods
+func (l *Logger) log(level zapcore.Level, msg string) {
+	formattedMsg := formatMessage(msg)
+	switch level {
+	case zapcore.DebugLevel:
+		l.Logger.Debug(formattedMsg)
+	case zapcore.InfoLevel:
+		l.Logger.Info(formattedMsg)
+	case zapcore.WarnLevel:
+		l.Logger.Warn(formattedMsg)
+	case zapcore.ErrorLevel:
+		l.Logger.Error(formattedMsg)
+	case zapcore.FatalLevel:
+		l.Logger.Fatal(formattedMsg)
+		return
+	}
+	globalLogBuffer.AddLine(formattedMsg)
+	l.syncIfNeeded()
+}
+
 func (l *Logger) Debug(msg string) {
-	formattedMsg := formatMessage(msg)
-	l.Logger.Debug(formattedMsg)
-	globalLogBuffer.AddLine(formattedMsg)
-	l.syncIfNeeded()
+	l.log(zapcore.DebugLevel, msg)
 }
+
 func (l *Logger) Info(msg string) {
-	formattedMsg := formatMessage(msg)
-	l.Logger.Info(formattedMsg)
-	globalLogBuffer.AddLine(formattedMsg)
-	l.syncIfNeeded()
+	l.log(zapcore.InfoLevel, msg)
 }
+
 func (l *Logger) Warn(msg string) {
-	formattedMsg := formatMessage(msg)
-	l.Logger.Warn(formattedMsg)
-	globalLogBuffer.AddLine(formattedMsg)
-	l.syncIfNeeded()
+	l.log(zapcore.WarnLevel, msg)
 }
+
 func (l *Logger) Error(msg string) {
-	formattedMsg := formatMessage(msg)
-	l.Logger.Error(formattedMsg)
-	globalLogBuffer.AddLine(formattedMsg)
-	l.syncIfNeeded()
+	l.log(zapcore.ErrorLevel, msg)
 }
+
 func (l *Logger) Fatal(msg string) {
-	formattedMsg := formatMessage(msg)
-	l.Logger.Fatal(formattedMsg)
+	l.log(zapcore.FatalLevel, msg)
 }
 
 // Formatted logging methods
@@ -289,34 +298,34 @@ func (l *Logger) ErrorWithFields(msg string, fields ...zap.Field) {
 func (tl *TestLogger) GetLogs() []string {
 	tl.logLock.Lock()
 	defer tl.logLock.Unlock()
-	return append([]string{}, *tl.logs...)
+	return append([]string{}, tl.logs...)
 }
 
 // Test logger methods with capture
 func (tl *TestLogger) Debug(msg string) {
 	tl.logLock.Lock()
-	*tl.logs = append(*tl.logs, msg)
+	tl.logs = append(tl.logs, msg)
 	tl.logLock.Unlock()
 	tl.Logger.Debug(msg)
 }
 
 func (tl *TestLogger) Info(msg string) {
 	tl.logLock.Lock()
-	*tl.logs = append(*tl.logs, msg)
+	tl.logs = append(tl.logs, msg)
 	tl.logLock.Unlock()
 	tl.Logger.Info(msg)
 }
 
 func (tl *TestLogger) Warn(msg string) {
 	tl.logLock.Lock()
-	*tl.logs = append(*tl.logs, msg)
+	tl.logs = append(tl.logs, msg)
 	tl.logLock.Unlock()
 	tl.Logger.Warn(msg)
 }
 
 func (tl *TestLogger) Error(msg string) {
 	tl.logLock.Lock()
-	*tl.logs = append(*tl.logs, msg)
+	tl.logs = append(tl.logs, msg)
 	tl.logLock.Unlock()
 	tl.Logger.Error(msg)
 }
@@ -389,7 +398,7 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 			verbose: true,
 		},
 		t:       t,
-		logs:    &logs,
+		logs:    logs,
 		logLock: &sync.Mutex{},
 	}
 }
@@ -484,7 +493,7 @@ func (tl *TestLogger) PrintLogs(t *testing.T) {
 	defer tl.logLock.Unlock()
 
 	t.Log("Captured logs:")
-	for i, log := range *tl.logs {
+	for i, log := range tl.logs {
 		if log != "" {
 			t.Logf("[%d] %s", i, log)
 		}
