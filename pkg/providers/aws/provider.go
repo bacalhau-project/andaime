@@ -376,11 +376,12 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 
 	// Save VPC ID to config immediately after creation
 	if m != nil && m.Deployment != nil {
-		viper.Set(fmt.Sprintf("%s.vpc_id", m.Deployment.ViperPath), p.VPCID)
+		deploymentPath := fmt.Sprintf("deployments.%s.aws", m.Deployment.UniqueID)
+		viper.Set(fmt.Sprintf("%s.vpc_id", deploymentPath), p.VPCID)
 		if err := viper.WriteConfig(); err != nil {
 			return fmt.Errorf("failed to save VPC ID to config: %w", err)
 		}
-		l.Infof("Saved VPC ID %s to config at %s.vpc_id", p.VPCID, m.Deployment.ViperPath)
+		l.Infof("Saved VPC ID %s to config at %s.vpc_id", p.VPCID, deploymentPath)
 	}
 
 	return nil
