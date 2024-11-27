@@ -160,7 +160,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 
 			display.GetGlobalModelFunc = func() *display.DisplayModel {
 				return &display.DisplayModel{
-					Deployment: deployment,
+					Deployment: suite.deployment,
 				}
 			}
 
@@ -197,15 +197,12 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 					Return(testdata.FakeNetworkInterface(), nil)
 				suite.mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
 					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
-
-					suite.mockSSHConfig.On("WaitForSSH",
-						mock.Anything,
-						mock.Anything,
-						mock.Anything,
-					).Return(nil)
-				}
+				suite.mockSSHConfig.On("WaitForSSH",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(nil)
 			}
-
 			// Execute the test
 			err := suite.azureProvider.CreateResources(suite.ctx)
 

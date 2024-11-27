@@ -115,11 +115,7 @@ func (r *StepRegistry) initializeDefaultSteps() {
 
 // RegisterStep adds or updates a step in the registry
 func (r *StepRegistry) RegisterStep(step ProvisioningStep, message StepMessage) {
-	if _, exists := r.steps[step]; exists {
-		r.steps[step] = message
-		return
-	}
-	panic(fmt.Sprintf("step %s not found in registry", step))
+	r.steps[step] = message
 }
 
 // GetStep retrieves a step from the registry

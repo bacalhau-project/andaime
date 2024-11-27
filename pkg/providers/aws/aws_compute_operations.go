@@ -15,7 +15,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -349,7 +348,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	}
 
 	if err := g.Wait(); err != nil {
-		l.Error("Failed to deploy VMs in parallel", zap.Error(err))
+		l.Errorf("Failed to deploy VMs in parallel: %v", err)
 		return err
 	}
 
@@ -406,9 +405,7 @@ func (p *AWSProvider) CreateVM(
 	})
 
 	if err != nil {
-		l.Error("Failed to create EC2 instance",
-			zap.String("machine", machine.GetName()),
-			zap.Error(err))
+		l.Errorf("Failed to create EC2 instance (%s): %v", machine.GetName(), err)
 		return nil, fmt.Errorf("failed to create EC2 instance: %w", err)
 	}
 
@@ -418,18 +415,14 @@ func (p *AWSProvider) CreateVM(
 	}
 	err = p.WaitUntilInstanceRunning(ctx, waiterInput)
 	if err != nil {
-		l.Error("Failed waiting for instance to be running",
-			zap.String("machine", machine.GetName()),
-			zap.Error(err))
+		l.Errorf("Failed waiting for instance to be running (%s): %v", machine.GetName(), err)
 		return nil, fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 
 	// Get instance details
 	describeResult, err := p.EC2Client.DescribeInstances(ctx, waiterInput)
 	if err != nil {
-		l.Error("Failed to describe instance",
-			zap.String("machine", machine.GetName()),
-			zap.Error(err))
+		l.Errorf("Failed to describe instance (%s): %v", machine.GetName(), err)
 		return nil, fmt.Errorf("failed to describe instance: %w", err)
 	}
 
