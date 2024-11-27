@@ -851,69 +851,96 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Starting destruction of AWS resources")
 
-	m := display.GetGlobalModelFunc()
-	if m != nil && m.Deployment != nil {
-		// Get VPC ID from config
-		vpcID := viper.GetString(fmt.Sprintf("%s.aws.vpc_id", m.Deployment.ViperPath))
-		if vpcID != "" {
-			l.Infof("Found VPC ID in config: %s", vpcID)
-			p.VPCID = vpcID
+	// Get all deployments from config
+	deployments := viper.GetStringMap("deployments")
+	for uniqueID, deploymentDetails := range deployments {
+		details, ok := deploymentDetails.(map[string]interface{})
+		if !ok || details["provider"] != "aws" {
+			continue
+		}
 
-			// Terminate any instances in the VPC
-			instances, err := p.EC2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
-				Filters: []ec2_types.Filter{
-					{
-						Name:   aws.String("vpc-id"),
-						Values: []string{vpcID},
-					},
+		awsDetails, ok := details["aws"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		vpcID, ok := awsDetails["vpc_id"].(string)
+		if !ok || vpcID == "" {
+			// No VPC ID, remove this deployment
+			delete(deployments, uniqueID)
+			continue
+		}
+
+		l.Infof("Checking VPC %s for deployment %s", vpcID, uniqueID)
+
+		// Check if VPC exists
+		input := &ec2.DescribeVpcsInput{
+			VpcIds: []string{vpcID},
+		}
+		result, err := p.EC2Client.DescribeVpcs(ctx, input)
+		if err != nil {
+			// VPC not found or error, remove deployment
+			delete(deployments, uniqueID)
+			continue
+		}
+
+		if len(result.Vpcs) == 0 {
+			// No VPC found, remove deployment
+			delete(deployments, uniqueID)
+			continue
+		}
+
+		// Terminate any instances in the VPC
+		instances, err := p.EC2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			Filters: []ec2_types.Filter{
+				{
+					Name:   aws.String("vpc-id"),
+					Values: []string{vpcID},
 				},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to describe instances: %w", err)
-			}
+			},
+		})
+		if err != nil {
+			l.Warnf("Failed to describe instances in VPC %s: %v", vpcID, err)
+			continue
+		}
 
-			// Terminate instances and wait for them to be terminated
-			for _, reservation := range instances.Reservations {
-				for _, instance := range reservation.Instances {
-					if instance.State.Name != ec2_types.InstanceStateNameTerminated {
-						l.Infof("Terminating instance %s", *instance.InstanceId)
-						_, err := p.EC2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
-							InstanceIds: []string{*instance.InstanceId},
-						})
-						if err != nil {
-							l.Warnf(
-								"Failed to terminate instance %s: %v",
-								*instance.InstanceId,
-								err,
-							)
-						}
+		// Terminate instances
+		for _, reservation := range instances.Reservations {
+			for _, instance := range reservation.Instances {
+				if instance.State.Name != ec2_types.InstanceStateNameTerminated {
+					l.Infof("Terminating instance %s", *instance.InstanceId)
+					_, err := p.EC2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+						InstanceIds: []string{*instance.InstanceId},
+					})
+					if err != nil {
+						l.Warnf(
+							"Failed to terminate instance %s: %v",
+							*instance.InstanceId,
+							err,
+						)
 					}
 				}
 			}
-
-			// Wait a bit for instances to start terminating
-			time.Sleep(5 * time.Second)
-
-			// Delete the VPC - this will automatically delete all dependent resources
-			_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
-				VpcId: aws.String(vpcID),
-			})
-			if err != nil {
-				return fmt.Errorf("failed to delete VPC: %w", err)
-			}
-
-			l.Infof("Successfully deleted VPC %s and all associated resources", vpcID)
 		}
 
-		// Remove VPC ID from config
-		viper.Set(fmt.Sprintf("%s.aws.vpc_id", m.Deployment.ViperPath), "")
-		if err := viper.WriteConfig(); err != nil {
-			l.Warnf("Failed to remove VPC ID from config: %v", err)
+		// Delete the VPC
+		_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
+			VpcId: aws.String(vpcID),
+		})
+		if err != nil {
+			l.Warnf("Failed to delete VPC %s: %v", vpcID, err)
+			continue
 		}
+
+		// Remove this deployment from config
+		delete(deployments, uniqueID)
 	}
 
-	// Clean up local state
-	p.VPCID = ""
+	// Update config
+	viper.Set("deployments", deployments)
+	if err := viper.WriteConfig(); err != nil {
+		l.Warnf("Failed to update config: %v", err)
+	}
 
 	return nil
 }
