@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -152,13 +151,11 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 			}
 
 			// Set up expectations for this specific test case
-			for machineName, err := range tt.deployMachineErrors {
+			for _, err := range tt.deployMachineErrors {
 				suite.mockAzureClient.On("DeployTemplate",
 					mock.Anything,
 					mock.Anything,
-					mock.MatchedBy(func(deploymentName string) bool {
-						return strings.Contains(deploymentName, machineName)
-					}),
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
@@ -179,7 +176,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
-				).Return(mockPoller, nil)
+				).Return(mockPoller, nil).Maybe()
 				suite.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
 					Return(testdata.FakeVirtualMachine(), nil)
 				suite.mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).

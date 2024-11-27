@@ -38,7 +38,7 @@ func SetupViper(deploymentType models.DeploymentType,
 		viper.Set("azure.subscription_id", "test-subscription-id")
 		viper.Set("azure.default_count_per_zone", 1)
 		viper.Set("azure.default_machine_type", "Standard_DS4_v2")
-		viper.Set("azure.default_disk_size_gb", 30)
+		viper.Set("azure.default_disk_size_gb", 30) //nolint:mnd
 		viper.Set("azure.resource_group_location", "eastus")
 		viper.Set("azure.machines", []map[string]interface{}{
 			{
@@ -67,7 +67,6 @@ func SetupViper(deploymentType models.DeploymentType,
 			},
 		})
 	}
-
 }
 
 func GenerateRandomLogEntry() string {

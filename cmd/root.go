@@ -147,7 +147,7 @@ func SetupRootCommand() *cobra.Command {
        including deploying and managing Bacalhau nodes across multiple cloud providers.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if verboseMode {
-				logger.SetLevel(logger.DEBUG)
+				logger.Get().SetVerbose(true)
 			}
 			return nil
 		},

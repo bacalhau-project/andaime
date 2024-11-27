@@ -102,12 +102,12 @@ func (m *DisplayModel) applyBatchedUpdates() {
 	if len(m.BatchedUpdates) == 0 {
 		return
 	}
-	logger.WriteToDebugLog(fmt.Sprintf("Applying %d batched updates", len(m.BatchedUpdates)))
+	logger.Get().Debug(fmt.Sprintf("Applying %d batched updates", len(m.BatchedUpdates)))
 	for _, update := range m.BatchedUpdates {
 		m.UpdateStatus(update.Status)
 	}
 	m.BatchedUpdates = nil
-	logger.WriteToDebugLog("Finished applying batched updates")
+	logger.Get().Debug("Finished applying batched updates")
 }
 
 // ProcessUpdate processes a single update action
