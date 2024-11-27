@@ -211,3 +211,13 @@ func FakeEC2DescribeRouteTablesOutput() *ec2.DescribeRouteTablesOutput {
 		},
 	}
 }
+
+func FakeEC2DescribeImagesOutput() *ec2.DescribeImagesOutput {
+	return &ec2.DescribeImagesOutput{
+		Images: []types.Image{
+			{
+				ImageId: aws.String("ami-12345"),
+			},
+		},
+	}
+}

@@ -3,7 +3,6 @@ package awsprovider
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -62,54 +61,6 @@ func (c *LiveEC2Client) DescribeImages(
 	optFns ...func(*ec2.Options),
 ) (*ec2.DescribeImagesOutput, error) {
 	return c.client.DescribeImages(ctx, params, optFns...)
-}
-
-// GetLatestUbuntuAMI returns the latest Ubuntu 22.04 LTS AMI ID for the specified architecture
-// arch should be either "x86_64" or "arm64"
-func (c *LiveEC2Client) GetLatestUbuntuAMI(ctx context.Context, arch string) (string, error) {
-	input := &ec2.DescribeImagesInput{
-		Filters: []types.Filter{
-			{
-				Name:   aws.String("name"),
-				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-*-server-*"},
-			},
-			{
-				Name:   aws.String("architecture"),
-				Values: []string{arch},
-			},
-			{
-				Name:   aws.String("virtualization-type"),
-				Values: []string{"hvm"},
-			},
-			{
-				Name:   aws.String("state"),
-				Values: []string{"available"},
-			},
-			{
-				Name:   aws.String("owner-id"),
-				Values: []string{"099720109477"}, // Canonical's AWS account ID
-			},
-		},
-	}
-
-	result, err := c.DescribeImages(ctx, input)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe images: %w", err)
-	}
-
-	if len(result.Images) == 0 {
-		return "", fmt.Errorf("no matching Ubuntu AMI found for architecture: %s", arch)
-	}
-
-	// Sort images by creation date (newest first)
-	sort.Slice(result.Images, func(i, j int) bool {
-		iTime, _ := time.Parse(time.RFC3339, *result.Images[i].CreationDate)
-		jTime, _ := time.Parse(time.RFC3339, *result.Images[j].CreationDate)
-		return iTime.After(jTime)
-	})
-
-	// Return the ID of the newest image
-	return *result.Images[0].ImageId, nil
 }
 
 func (c *LiveEC2Client) CreateVpc(
@@ -257,17 +208,32 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	for _, machine := range m.Deployment.GetMachines() {
 		machine := machine // Create local copy for goroutine
 		g.Go(func() error {
+			imageID, err := p.GetLatestUbuntuAMI(ctx, machine.GetLocation(), "amd64")
+			if err != nil {
+				mu.Lock()
+				machine.SetFailed(true)
+				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
+				mu.Unlock()
+				return fmt.Errorf("failed to get latest Ubuntu AMI: %w", err)
+			}
+			machine.SetImageID(imageID)
+
+			if machine.GetImageID() == "" {
+				mu.Lock()
+				machine.SetFailed(true)
+				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
+				mu.Unlock()
+				return fmt.Errorf("image ID is empty for VM %s", machine.GetName())
+			}
+
 			// Update initial machine state
 			machine.SetMachineResourceState("Instance", models.ResourceStatePending)
 			machine.SetMachineResourceState("Network", models.ResourceStatePending)
 			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
 
-			// Ensure we have an image ID
-			imageID := machine.GetImageID()
-
 			// Create and configure the VM
 			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
-				ImageId:      aws.String(imageID),
+				ImageId:      aws.String(machine.GetImageID()),
 				InstanceType: types.InstanceType(machine.GetType().ResourceString),
 				MinCount:     aws.Int32(1),
 				MaxCount:     aws.Int32(1),

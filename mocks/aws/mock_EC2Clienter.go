@@ -1132,6 +1132,64 @@ func (_c *MockEC2Clienter_DescribeVpcs_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// GetLatestUbuntuAMI provides a mock function with given fields: ctx, zone, arch
+func (_m *MockEC2Clienter) GetLatestUbuntuAMI(ctx context.Context, zone string, arch string) (string, error) {
+	ret := _m.Called(ctx, zone, arch)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLatestUbuntuAMI")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (string, error)); ok {
+		return rf(ctx, zone, arch)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = rf(ctx, zone, arch)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, zone, arch)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_GetLatestUbuntuAMI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestUbuntuAMI'
+type MockEC2Clienter_GetLatestUbuntuAMI_Call struct {
+	*mock.Call
+}
+
+// GetLatestUbuntuAMI is a helper method to define mock.On call
+//   - ctx context.Context
+//   - zone string
+//   - arch string
+func (_e *MockEC2Clienter_Expecter) GetLatestUbuntuAMI(ctx interface{}, zone interface{}, arch interface{}) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
+	return &MockEC2Clienter_GetLatestUbuntuAMI_Call{Call: _e.mock.On("GetLatestUbuntuAMI", ctx, zone, arch)}
+}
+
+func (_c *MockEC2Clienter_GetLatestUbuntuAMI_Call) Run(run func(ctx context.Context, zone string, arch string)) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_GetLatestUbuntuAMI_Call) Return(_a0 string, _a1 error) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_GetLatestUbuntuAMI_Call) RunAndReturn(run func(context.Context, string, string) (string, error)) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RunInstances provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) RunInstances(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
 	_va := make([]interface{}, len(optFns))

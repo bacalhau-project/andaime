@@ -328,7 +328,15 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 				mockEC2Client.On("DescribeSecurityGroups", mock.Anything, mock.AnythingOfType("*ec2.DescribeSecurityGroupsInput")).
 					Return(testdata.FakeEC2DescribeSecurityGroupsOutput(), nil)
 
-				s.awsProvider.SetEC2Client(mockEC2Client)
+				// Mock images operations
+				mockEC2Client.On(
+					"DescribeImages",
+					mock.Anything,
+					mock.AnythingOfType("*ec2.DescribeImagesInput"),
+				).
+					Return(testdata.FakeEC2DescribeImagesOutput(), nil)
+
+				s.awsProvider.EC2Client = mockEC2Client
 
 				aws_provider.NewAWSProviderFunc = func(
 					accountID string,

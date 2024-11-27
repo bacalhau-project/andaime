@@ -3,6 +3,7 @@ package awsprovider
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -1136,4 +1137,65 @@ func (p *AWSProvider) GetAccountID() string {
 
 func (p *AWSProvider) GetConfig() *aws.Config {
 	return p.Config
+}
+
+// GetLatestUbuntuAMI returns the latest Ubuntu 22.04 LTS AMI ID for the specified architecture
+// arch should be either "x86_64" or "arm64"
+func (p *AWSProvider) GetLatestUbuntuAMI(
+	ctx context.Context,
+	loc string,
+	arch string,
+) (string, error) {
+	c := p.GetEC2Client()
+
+	input := &ec2.DescribeImagesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("name"),
+				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-*-server-*"},
+			},
+			{
+				Name:   aws.String("architecture"),
+				Values: []string{arch},
+			},
+			{
+				Name:   aws.String("virtualization-type"),
+				Values: []string{"hvm"},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+			{
+				Name:   aws.String("owner-id"),
+				Values: []string{"099720109477"}, // Canonical's AWS account ID
+			},
+			{
+				Name:   aws.String("location"),
+				Values: []string{loc},
+			},
+		},
+	}
+
+	result, err := c.DescribeImages(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe images: %w", err)
+	}
+
+	if len(result.Images) == 0 {
+		return "", fmt.Errorf(
+			"no matching Ubuntu AMI found for location: '%s' and architecture: '%s'",
+			loc, arch,
+		)
+	}
+
+	// Sort images by creation date (newest first)
+	sort.Slice(result.Images, func(i, j int) bool {
+		iTime, _ := time.Parse(time.RFC3339, *result.Images[i].CreationDate)
+		jTime, _ := time.Parse(time.RFC3339, *result.Images[j].CreationDate)
+		return iTime.After(jTime)
+	})
+
+	// Return the ID of the newest image
+	return *result.Images[0].ImageId, nil
 }
