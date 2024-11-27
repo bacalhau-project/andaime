@@ -776,7 +776,14 @@ func parseResourceID(resourceID string) (string, error) {
 	return parts[8], nil
 }
 
+// UpdateCallback is a function type for status updates during deployment
+type UpdateCallback func(*models.DisplayStatus)
+
 func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
+	return p.DeployBacalhauWorkersWithCallback(ctx, func(*models.DisplayStatus) {})
+}
+
+func (p *AzureProvider) DeployBacalhauWorkersWithCallback(ctx context.Context, callback UpdateCallback) error {
 	m := display.GetGlobalModelFunc()
 	l := logger.Get()
 	var workerMachines []models.Machiner
@@ -795,5 +802,11 @@ func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
 		l.Debugf("Deploying workers %d to %d", i, end-1)
 	}
 	l.Info("All Bacalhau workers deployed successfully")
+	callback(&models.DisplayStatus{
+		ID:             "bacalhau-workers",
+		Type:           models.AzureResourceTypeVM,
+		StatusMessage:  "All workers deployed successfully",
+		DetailedStatus: "All workers deployed successfully",
+	})
 	return nil
 }

@@ -13,6 +13,7 @@ pip = { pkg-path = "python312Packages.pip" }
 go_1_23.pkg-path = "go_1_23"
 golangci-lint.pkg-path = "golangci-lint"
 just.pkg-path = "just"
+nodejs_22.pkg-path = "nodejs_20"
 
 # Set environment variables in the `[vars]` section. These variables may not
 # reference one another, and are added to the environment without first

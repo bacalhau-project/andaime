@@ -54,6 +54,7 @@ bubbletea
 BUHJ
 burkina
 cafile
+cbpts
 cenkalti
 centralus
 certfile
@@ -77,10 +78,12 @@ compinit
 computepb
 computestoragepath
 Configer
+containerd
 controlplanesettings
 Cpus
 creack
 createdeployment
+daaronch
 datadir
 Deallocation
 Debugf
@@ -98,6 +101,7 @@ diskimage
 diskimagefamily
 dockerclient
 dockertypes
+downloaders
 downloadurlrequestretries
 downloadurlrequesttimeout
 dryrun
@@ -141,6 +145,8 @@ GCPVM
 gdamore
 genproto
 gerr
+gibibyte
+gochecknoglobals
 gochecknoinit
 gochecknoinits
 goconst
@@ -207,6 +213,7 @@ loadbalancer
 locabs
 localpublisher
 logdebuginfointerval
+Loggerer
 loggingmode
 logrunningexecutionsinterval
 logstreamconfig
@@ -221,9 +228,11 @@ mapstructure
 maxint
 maxjobexecutiontimeout
 maxretrycount
+mebibytes
 mgmt
 minjobexecutiontimeout
 mitchellh
+mktemp
 mmddhhmm
 mockprivatekey
 nakedret
@@ -247,6 +256,7 @@ nolint
 nolintlint
 NOPASSWD
 northeurope
+nproc
 NSGID
 nsgs
 olekukonko
@@ -257,6 +267,7 @@ overaskforbidsfactor
 panicnil
 PBIP
 pdone
+pflag
 Pollerer
 practise
 predeclared
@@ -275,6 +286,7 @@ publicip
 publicipaddress
 publicipaddresses
 pulumi
+puuid
 PVIP
 queuebackoff
 queuetimeout
@@ -293,6 +305,7 @@ Retryable
 rgname
 rivo
 rtbassoc
+runewidth
 schollz
 Sdump
 secretkey
@@ -338,6 +351,7 @@ testscript
 testuser
 testutil
 testutils
+tlsv
 tmpl
 tokenspath
 tostring

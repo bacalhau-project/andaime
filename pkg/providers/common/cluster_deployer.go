@@ -15,10 +15,14 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/goroutine"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"golang.org/x/sync/errgroup"
 )
+
+// UpdateCallback is a function type for status updates during provisioning
+type UpdateCallback func(*models.DisplayStatus)
 
 // ClusterDeployer struct that implements ClusterDeployerInterface
 type ClusterDeployer struct {
@@ -233,9 +237,75 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 	machine models.Machiner,
 	bacalhauSettings []models.BacalhauSettings,
 ) error {
+	return cd.ProvisionBacalhauNodeWithCallback(
+		ctx,
+		sshConfig,
+		machine,
+		bacalhauSettings,
+		nil,
+	)
+}
+
+// sendStepUpdate is a helper function to send consistent status updates
+func (cd *ClusterDeployer) sendStepUpdate(
+	step common_interface.StepMessage,
+	callback UpdateCallback,
+	isComplete bool,
+	args ...interface{},
+) {
+	var msg string
+	if isComplete {
+		if len(args) > 0 {
+			msg = step.RenderDoneMessage(args...)
+		} else {
+			msg = step.RenderDoneMessage()
+		}
+	} else {
+		if len(args) > 0 {
+			msg = step.RenderStartMessage(args...)
+		} else {
+			msg = step.RenderStartMessage()
+		}
+	}
+
+	callback(&models.DisplayStatus{
+		StatusMessage: msg,
+		StageComplete: isComplete,
+	})
+}
+
+// sendErrorUpdate is a helper function to send error status updates
+func (cd *ClusterDeployer) sendErrorUpdate(
+	step common_interface.StepMessage,
+	callback UpdateCallback,
+	err error,
+	args ...interface{},
+) {
+	callback(&models.DisplayStatus{
+		StatusMessage: fmt.Sprintf("❌ %s: %v", fmt.Sprintf(step.StartMessage, args...), err),
+		StageComplete: false,
+	})
+}
+
+func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
+	ctx context.Context,
+	sshConfig sshutils.SSHConfiger,
+	machine models.Machiner,
+	bacalhauSettings []models.BacalhauSettings,
+	callback UpdateCallback,
+) error {
 	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	stepRegistry := common_interface.NewStepRegistry()
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
+	if callback == nil {
+		callback = func(status *models.DisplayStatus) {
+			fmt.Printf("\r%s", status.StatusMessage)
+		}
+	}
+
+	// Initial validation
 	if machine.GetNodeType() != models.BacalhauNodeTypeCompute &&
 		machine.GetNodeType() != models.BacalhauNodeTypeOrchestrator {
 		return cd.HandleDeploymentError(
@@ -250,51 +320,202 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 		return cd.HandleDeploymentError(ctx, machine, fmt.Errorf("no orchestrator IP found"))
 	}
 
-	l.Infof("Starting SSH provisioning for machine %s at IP %s:%d",
-		machine.GetName(), machine.GetPublicIP(), machine.GetSSHPort())
-
+	// Start provisioning
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeProvisioning),
+		callback,
+		false,
+		machine.GetName(),
+		machine.GetPublicIP(),
+	)
 	if err := cd.ProvisionMachine(ctx, sshConfig, machine); err != nil {
 		l.Errorf("Machine provisioning failed for %s: %v", machine.GetName(), err)
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.NodeProvisioning),
+			callback,
+			err,
+			machine.GetName(),
+			machine.GetPublicIP(),
+		)
 		return err
 	}
 	l.Infof("Machine provisioning completed successfully for %s", machine.GetName())
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeProvisioning),
+		callback,
+		true,
+	)
 
+	// Node configuration
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeConfiguration),
+		callback,
+		false,
+	)
 	if err := cd.SetupNodeConfigMetadata(ctx, machine, sshConfig); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.NodeConfiguration),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeConfiguration),
+		callback,
+		true,
+	)
 
+	// Bacalhau installation
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.BacalhauInstall),
+		callback,
+		false,
+	)
 	if err := cd.InstallBacalhau(ctx, sshConfig); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.BacalhauInstall),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.BacalhauInstall),
+		callback,
+		true,
+	)
 
+	// Run script installation
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceScript),
+		callback,
+		false,
+	)
 	if err := cd.InstallBacalhauRunScript(ctx, sshConfig); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.ServiceScript),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceScript),
+		callback,
+		true,
+	)
 
+	// Service setup
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.SystemdService),
+		callback,
+		false,
+	)
 	if err := cd.SetupBacalhauService(ctx, sshConfig); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.SystemdService),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.SystemdService),
+		callback,
+		true,
+	)
 
+	// Deployment verification
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeVerification),
+		callback,
+		false,
+	)
 	if err := cd.VerifyBacalhauDeployment(ctx, sshConfig, machine.GetOrchestratorIP()); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.NodeVerification),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.NodeVerification),
+		callback,
+		true,
+	)
 
-	if err := cd.ApplyBacalhauConfigs(ctx, sshConfig, bacalhauSettings); err != nil {
-		return cd.HandleDeploymentError(ctx, machine, err)
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ConfigurationApply),
+		callback,
+		false,
+		len(bacalhauSettings),
+	)
+
+	// Configuration application
+	if len(bacalhauSettings) > 0 {
+		if err := cd.ApplyBacalhauConfigs(ctx, sshConfig, bacalhauSettings); err != nil {
+			cd.sendErrorUpdate(
+				stepRegistry.GetStep(common_interface.ConfigurationApply),
+				callback,
+				err,
+			)
+			return cd.HandleDeploymentError(ctx, machine, err)
+		}
 	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ConfigurationApply),
+		callback,
+		true,
+	)
 
-	if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
-		return cd.HandleDeploymentError(ctx, machine, err)
-	}
+	// Restart service after applying configurations
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceRestart),
+		callback,
+		false,
+	)
 
-	// One final restart to make sure everything is ok
 	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+		cd.sendErrorUpdate(
+			stepRegistry.GetStep(common_interface.ServiceRestart),
+			callback,
+			err,
+		)
 		return cd.HandleDeploymentError(ctx, machine, err)
 	}
+
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.ServiceRestart),
+		callback,
+		true,
+	)
+
+	// Custom script execution
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.RunningCustomScript),
+		callback,
+		false,
+	)
+	if m.Deployment.CustomScriptPath != "" {
+		if err := cd.ExecuteCustomScript(ctx, sshConfig, machine); err != nil {
+			cd.sendErrorUpdate(
+				stepRegistry.GetStep(common_interface.RunningCustomScript),
+				callback,
+				err,
+			)
+			return cd.HandleDeploymentError(ctx, machine, err)
+		}
+	}
+	cd.sendStepUpdate(
+		stepRegistry.GetStep(common_interface.RunningCustomScript),
+		callback,
+		true,
+	)
 
 	l.Infof("Bacalhau node deployed successfully on machine: %s", machine.GetName())
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateSucceeded)
-
 	machine.SetComplete()
 
 	return nil
@@ -439,6 +660,7 @@ func (cd *ClusterDeployer) SetupBacalhauService(
 		return fmt.Errorf("failed to install Bacalhau systemd service: %w", err)
 	}
 
+	// Always restart after service installation
 	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 		return fmt.Errorf("failed to restart Bacalhau service: %w", err)
 	}
@@ -533,19 +755,6 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 
 	l.Info("Bacalhau configurations applied and verified")
 	return nil
-}
-
-func combineSettings(settings []models.BacalhauSettings) map[string]string {
-	combined := make(map[string]string)
-	for _, setting := range settings {
-		switch v := setting.Value.(type) {
-		case []string:
-			combined[setting.Key] = strings.Join(v, ",")
-		case string:
-			combined[setting.Key] = v
-		}
-	}
-	return combined
 }
 
 func applySettings(
@@ -717,3 +926,5 @@ func (cd *ClusterDeployer) WaitForAllMachinesToReachState(
 		}
 	}
 }
+
+var _ common_interface.ClusterDeployerer = &ClusterDeployer{}

@@ -9,6 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
 	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
+	"github.com/bacalhau-project/andaime/cmd/beta/provision"
 	"github.com/bacalhau-project/andaime/internal"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +35,7 @@ func GetBetaCmd() *cobra.Command {
 	betaCmd.AddCommand(gcp.GetGCPCmd())
 	betaCmd.AddCommand(aws.GetAwsCmd())
 	betaCmd.AddCommand(internal.GetGenerateCloudDataCmd())
+	betaCmd.AddCommand(provision.GetProvisionNodeCmd())
 
 	return betaCmd
 }

@@ -1,7 +1,24 @@
 version: "0.2"
-ignorePaths: ["~", "vendor", ".vscode", ".venv"]
+ignorePaths:
+  - ".git/**"
+  - ".github/**"
+  - ".vscode/**"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/tmp/**"
+  - "**/temp/**"
+  - "**/logs/**"
+  - "**/coverage/**"
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/__tests__/**"
+  - "**/__mocks__/**"
+  - "!cmd/**"
+  - "!internal/**"
+  - "!pkg/**"
+  - "!**/*.md"
 dictionaryDefinitions: []
-dictionaries: []
-words: []
+dictionaries: ["./.cspell/project-dictionary.txt"]
 ignoreWords: []
 import: []

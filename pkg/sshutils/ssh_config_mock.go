@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/crypto/ssh"
 )
 
 // ExpectedSSHBehavior holds the expected outcomes for SSH methods
@@ -185,10 +186,6 @@ func (m *MockSSHConfig) Connect() (SSHClienter, error) {
 	return args.Get(0).(SSHClienter), args.Error(1)
 }
 
-func (m *MockSSHConfig) SetSSHClient(sshclient SSHClienter) {
-	m.Called(sshclient)
-}
-
 func (m *MockSSHConfig) Close() error { return nil }
 
 func (m *MockSSHConfig) WaitForSSH(
@@ -209,6 +206,63 @@ func (m *MockSSHConfig) StartService(
 
 func (m *MockSSHConfig) GetLastOutput() string {
 	return m.lastOutput
+}
+
+func (m *MockSSHConfig) GetHost() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *MockSSHConfig) GetPort() int {
+	args := m.Called()
+	return args.Int(0)
+}
+
+func (m *MockSSHConfig) GetUser() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *MockSSHConfig) GetPrivateKeyMaterial() []byte {
+	args := m.Called()
+	if ret := args.Get(0); ret != nil {
+		return ret.([]byte)
+	}
+	return nil
+}
+
+func (m *MockSSHConfig) GetSSHDial() SSHDialer {
+	args := m.Called()
+	return args.Get(0).(SSHDialer)
+}
+
+func (m *MockSSHConfig) SetSSHDial(dialer SSHDialer) {
+	m.Called(dialer)
+}
+
+func (m *MockSSHConfig) SetValidateSSHConnection(callback func() error) {
+	m.Called(callback)
+}
+
+func (m *MockSSHConfig) GetSSHClienter() SSHClienter {
+	args := m.Called()
+	return args.Get(0).(SSHClienter)
+}
+
+func (m *MockSSHConfig) SetSSHClienter(clienter SSHClienter) {
+	m.Called(clienter)
+}
+
+func (m *MockSSHConfig) GetSSHClient() *ssh.Client {
+	args := m.Called()
+	if ret := args.Get(0); ret != nil {
+		return ret.(*ssh.Client)
+	}
+	return nil
+}
+
+func (m *MockSSHConfig) SetSSHClient(client *ssh.Client) {
+	m.Called(client)
 }
 
 var _ SSHConfiger = &MockSSHConfig{}

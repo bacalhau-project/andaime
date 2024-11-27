@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -155,57 +154,49 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 				}
 			}
 
-			if len(tt.deployMachineErrors) > 0 {
-				// For error cases, only set up the failing expectations
-				for machineName, err := range tt.deployMachineErrors {
-					suite.mockAzureClient.On("DeployTemplate",
-						mock.Anything, // context
-						mock.Anything, // resource group
-						mock.MatchedBy(func(deploymentName string) bool {
-							return strings.Contains(deploymentName, machineName)
-						}),
-						mock.Anything,
-						mock.Anything,
-						mock.Anything,
-					).Return(nil, err).Once()
+			// Set up a new mock Azure client for each test case
+			suite.mockAzureClient = new(azure_mocks.MockAzureClienter)
+			suite.azureProvider.SetAzureClient(suite.mockAzureClient)
+
+			display.GetGlobalModelFunc = func() *display.DisplayModel {
+				return &display.DisplayModel{
+					Deployment: deployment,
 				}
-			} else {
-				// For success cases, set up all the success expectations
-				for range suite.deployment.Machines {
-					mockPoller := new(MockPoller)
-					mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-						Return(armresources.DeploymentsClientCreateOrUpdateResponse{
-							DeploymentExtended: testdata.FakeDeployment(),
-						}, nil)
+			}
 
-					suite.mockAzureClient.On("DeployTemplate",
-						mock.Anything,
-						mock.Anything,
-						mock.MatchedBy(func(name string) bool {
-							return strings.HasPrefix(name, "deployment-")
-						}),
-						mock.Anything,
-						mock.Anything,
-						mock.Anything,
-					).Return(mockPoller, nil)
+			// Set up expectations for this specific test case
+			for _, err := range tt.deployMachineErrors {
+				suite.mockAzureClient.On("DeployTemplate",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(nil, err).Once()
+			}
 
-					suite.mockAzureClient.On("GetVirtualMachine",
-						mock.Anything,
-						mock.AnythingOfType("string"),
-						mock.AnythingOfType("string"),
-					).Return(testdata.FakeVirtualMachine(), nil)
+			if len(tt.deployMachineErrors) == 0 {
+				mockPoller := new(MockPoller)
+				mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
+					Return(armresources.DeploymentsClientCreateOrUpdateResponse{
+						DeploymentExtended: testdata.FakeDeployment(),
+					}, nil)
 
-					suite.mockAzureClient.On("GetNetworkInterface",
-						mock.Anything,
-						mock.Anything,
-						mock.Anything,
-					).Return(testdata.FakeNetworkInterface(), nil)
-
-					suite.mockAzureClient.On("GetPublicIPAddress",
-						mock.Anything,
-						mock.Anything,
-						mock.Anything,
-					).Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
+				suite.mockAzureClient.On("DeployTemplate",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(mockPoller, nil).Maybe()
+				suite.mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
+					Return(testdata.FakeVirtualMachine(), nil)
+				suite.mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
+					Return(testdata.FakeNetworkInterface(), nil)
+				suite.mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
+					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
 
 					suite.mockSSHConfig.On("WaitForSSH",
 						mock.Anything,
