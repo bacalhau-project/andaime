@@ -441,6 +441,11 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 		return fmt.Errorf("failed to get availability zones: %w", err)
 	}
 
+	l.Info("Create Security Groups...")
+	if err := p.createSecurityGroup(ctx); err != nil {
+		return fmt.Errorf("failed to create security groups: %w", err)
+	}
+
 	// Create subnets across availability zones
 	l.Info("Creating subnets...")
 	for i, az := range zones.AvailabilityZones {
@@ -592,6 +597,53 @@ func (p *AWSProvider) createVPCWithRetry(ctx context.Context) error {
 	// Wait for VPC to be available
 	logger.Get().Info("Waiting for VPC to be available...")
 	return p.waitForVPCAvailable(ctx)
+}
+
+func (p *AWSProvider) createSecurityGroup(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Creating security groups...")
+	sgOutput, err := p.GetEC2Client().CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+		GroupName: aws.String("andaime-sg"),
+		VpcId:     aws.String(p.VPCID),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeSecurityGroup,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String("andaime-sg")},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create security group: %w", err)
+	}
+
+	sgRules := []ec2_types.IpPermission{}
+	allowedPorts := []int{22, 1234, 1235, 4222}
+	for _, port := range allowedPorts {
+		sgRules = append(sgRules, ec2_types.IpPermission{
+			IpProtocol: aws.String("tcp"),
+			FromPort:   aws.Int32(int32(port)),
+			ToPort:     aws.Int32(int32(port)),
+			IpRanges: []ec2_types.IpRange{
+				{
+					CidrIp: aws.String("0.0.0.0/0"),
+				},
+			},
+		})
+	}
+
+	_, err = p.GetEC2Client().
+		AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
+			GroupId:       sgOutput.GroupId,
+			IpPermissions: sgRules,
+		})
+	if err != nil {
+		return fmt.Errorf("failed to authorize security group ingress: %w", err)
+	}
+	p.SecurityGroupID = *sgOutput.GroupId
+
+	return nil
 }
 
 // saveInfrastructureToConfig saves all infrastructure IDs to the configuration
@@ -1169,10 +1221,6 @@ func (p *AWSProvider) GetLatestUbuntuAMI(
 			{
 				Name:   aws.String("owner-id"),
 				Values: []string{"099720109477"}, // Canonical's AWS account ID
-			},
-			{
-				Name:   aws.String("location"),
-				Values: []string{loc},
 			},
 		},
 	}
