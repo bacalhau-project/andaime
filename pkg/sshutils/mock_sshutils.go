@@ -7,6 +7,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/crypto/ssh"
 )
 
 type MockSSHClient struct {
@@ -41,6 +42,11 @@ func (m *MockSSHClient) Close() error {
 func (m *MockSSHClient) IsConnected() bool {
 	args := m.Called()
 	return args.Bool(0)
+}
+
+func (m *MockSSHClient) GetClient() *ssh.Client {
+	args := m.Called()
+	return args.Get(0).(*ssh.Client)
 }
 
 func GetTypedMockClient(t *testing.T, log *logger.Logger) (*MockSSHClient, SSHConfiger) {

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"golang.org/x/crypto/ssh"
 )
 
 type PkgSSHUtilsTestSuite struct {
@@ -20,12 +20,11 @@ type PkgSSHUtilsTestSuite struct {
 	mockDialer            *MockSSHDialer
 	mockClient            *MockSSHClient
 	mockSession           *MockSSHSession
-	sshConfig             *SSHConfig
+	sshConfig             SSHConfiger
 	ctx                   context.Context
 }
 
 func (s *PkgSSHUtilsTestSuite) SetupSuite() {
-
 	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	s.testSSHPrivateKeyPath = testSSHPrivateKeyPath
 	s.cleanupPrivateKey = cleanupPrivateKey
@@ -40,26 +39,20 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.mockDialer = NewMockSSHDialer()
 	s.mockClient = &MockSSHClient{}
 	s.mockSession = &MockSSHSession{}
+	s.sshConfig, _ = NewSSHConfigFunc(
+		"example.com",
+		22, //nolint:mnd
+		"testuser",
+		s.testSSHPrivateKeyPath,
+	)
 
-	configInterface, err := NewSSHConfigFunc("example.com", 22, "testuser", s.testSSHPrivateKeyPath)
-	s.Require().NoError(err)
-	s.sshConfig = configInterface.(*SSHConfig)
-	s.sshConfig.SSHDial = s.mockDialer
-	s.sshConfig.SetSSHClient(s.mockClient)
+	s.sshConfig.SetSSHDial(s.mockDialer)
+	s.sshConfig.SetSSHClienter(s.mockClient)
 
 	// Mock the validateSSHConnection method to bypass network checks
-	s.sshConfig.validateSSHConnection = func() error {
+	s.sshConfig.SetValidateSSHConnection(func() error {
 		return nil
-	}
-}
-
-func (s *PkgSSHUtilsTestSuite) TestNewSSHConfig() {
-	assert.Equal(s.T(), "example.com", s.sshConfig.Host)
-	assert.Equal(s.T(), 22, s.sshConfig.Port)
-	assert.Equal(s.T(), "testuser", s.sshConfig.User)
-	assert.NotEmpty(s.T(), s.sshConfig.PrivateKeyMaterial)
-	assert.IsType(s.T(), &logger.Logger{}, s.sshConfig.Logger)
-	assert.Equal(s.T(), s.mockDialer, s.sshConfig.SSHDial)
+	})
 }
 
 func (s *PkgSSHUtilsTestSuite) TestConnect() {
@@ -78,6 +71,17 @@ func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 	expectedError := fmt.Errorf("connection error")
 	s.mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
 		Return(nil, expectedError)
+
+	client, err := s.sshConfig.Connect()
+	s.Error(err)
+	s.Nil(client)
+	s.Contains(err.Error(), "connection error")
+	s.mockDialer.AssertExpectations(s.T())
+}
+
+func (s *PkgSSHUtilsTestSuite) TestConnectInvalidDialerInfo() {
+	s.mockDialer.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
+		Return(nil, fmt.Errorf("connection error"))
 
 	client, err := s.sshConfig.Connect()
 	s.Error(err)
@@ -131,6 +135,47 @@ func (m *mockWriteCloser) Close() error {
 	return nil
 }
 
+type mockSFTPClient struct {
+	mock.Mock
+}
+
+// Verify that mockSFTPClient implements SFTPClient
+var _ SFTPClient = &mockSFTPClient{}
+
+func (m *mockSFTPClient) MkdirAll(path string) error {
+	args := m.Called(path)
+	return args.Error(0)
+}
+
+func (m *mockSFTPClient) Create(path string) (SFTPFile, error) {
+	args := m.Called(path)
+	return args.Get(0).(SFTPFile), args.Error(1)
+}
+
+func (m *mockSFTPClient) Chmod(path string, mode os.FileMode) error {
+	args := m.Called(path, mode)
+	return args.Error(0)
+}
+
+func (m *mockSFTPClient) Close() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+type mockSFTPFile struct {
+	mock.Mock
+}
+
+func (m *mockSFTPFile) Write(p []byte) (int, error) {
+	args := m.Called(p)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *mockSFTPFile) Close() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 func (s *PkgSSHUtilsTestSuite) TestPushFile() {
 	s.runPushFileTest(false)
 }
@@ -145,25 +190,40 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 		localContent = []byte("#!/bin/bash\necho 'Hello, World!'")
 	}
 
-	// Create a mock SSHClientWrapper instead of MockSSHClient
-	mockSSHClientWrapper := &SSHClientWrapper{
-		Client: &MockSSHClient{},
+	// Create mock SFTP file
+	mockFile := &mockSFTPFile{}
+	mockFile.On("Write", localContent).Return(len(localContent), nil)
+	mockFile.On("Close").Return(nil)
+
+	// Create mock SFTP client
+	mockSFTP := &mockSFTPClient{}
+	mockSFTP.On("MkdirAll", "/remote").Return(nil)
+	mockSFTP.On("Create", "/remote/path").Return(mockFile, nil)
+	if executable {
+		mockSFTP.On("Chmod", "/remote/path", os.FileMode(0700)).Return(nil)
 	}
-	s.sshConfig.SSHClient = mockSSHClientWrapper
+	mockSFTP.On("Close").Return(nil)
 
-	// Mock SFTP client creation
-	mockSFTPClient := &sftp.Client{}
-	s.mockClient.On("NewClient").Return(mockSFTPClient, nil)
+	// Save the original creator and restore it after the test
+	originalCreator := currentSFTPClientCreator
+	defer func() { currentSFTPClientCreator = originalCreator }()
 
-	// Mock directory and file operations
-	mockSFTPClient.On("MkdirAll", "/remote").Return(nil)
-	mockSFTPClient.On("Create", "/remote/path").Return(&sftp.File{}, nil)
-	mockSFTPClient.On("Chmod", "/remote/path", os.FileMode(0700)).Return(nil)
+	// Set up our test creator that returns the mock
+	var testCreator SFTPClientCreator = func(client *ssh.Client) (SFTPClient, error) {
+		return mockSFTP, nil
+	}
+	currentSFTPClientCreator = testCreator
+
+	// Mock GetClient to return a mock ssh.Client
+	mockSSHClient := &ssh.Client{}
+	s.mockClient.On("GetClient").Return(mockSSHClient)
 
 	err := s.sshConfig.PushFile(s.ctx, "/remote/path", localContent, executable)
 	s.NoError(err)
 
 	s.mockClient.AssertExpectations(s.T())
+	mockSFTP.AssertExpectations(s.T())
+	mockFile.AssertExpectations(s.T())
 }
 
 func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {

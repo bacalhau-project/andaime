@@ -3,6 +3,7 @@ package sshutils
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -32,10 +33,16 @@ type SSHConfig struct {
 	SSHPublicKeyReader    func(path string) ([]byte, error)
 	ClientConfig          *ssh.ClientConfig
 	InsecureIgnoreHostKey bool
+
+	ValidateSSHConnectionFunc func() error
 }
 
 type SSHConfiger interface {
-	SetSSHClient(client SSHClienter)
+	GetSSHClienter() SSHClienter
+	SetSSHClienter(client SSHClienter)
+	GetSSHClient() *ssh.Client
+	SetSSHClient(client *ssh.Client)
+
 	Connect() (SSHClienter, error)
 	WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error
 	ExecuteCommand(ctx context.Context, command string) (string, error)
@@ -51,6 +58,14 @@ type SSHConfiger interface {
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
 	StartService(ctx context.Context, serviceName string) error
 	RestartService(ctx context.Context, serviceName string) error
+
+	GetHost() string
+	GetPort() int
+	GetUser() string
+	GetPrivateKeyMaterial() []byte
+	GetSSHDial() SSHDialer
+	SetSSHDial(dialer SSHDialer)
+	SetValidateSSHConnection(func() error)
 }
 
 var NewSSHConfigFunc = NewSSHConfig
@@ -164,17 +179,17 @@ func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
 
 	// Check key type
 	switch privateKey.PublicKey().Type() {
-	case "ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521":
+	case "ssh-rsa",
+		"ssh-ed25519",
+		"ecdsa-sha2-nistp256",
+		"ecdsa-sha2-nistp384",
+		"ecdsa-sha2-nistp521":
 		// Supported key types
 	default:
 		return nil, fmt.Errorf("unsupported SSH key type: %s", privateKey.PublicKey().Type())
 	}
 
 	return privateKey, nil
-}
-
-func (c *SSHConfig) SetSSHClient(client SSHClienter) {
-	c.SSHClient = client
 }
 
 func (c *SSHConfig) validateSSHConnection() error {
@@ -212,7 +227,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
 
 	// Validate connection prerequisites
-	if err := c.validateSSHConnection(); err != nil {
+	if err := c.ValidateSSHConnectionFunc(); err != nil {
 		return nil, err
 	}
 
@@ -377,12 +392,75 @@ func (c *SSHConfig) PushFile(
 	)
 }
 
-// PushFile copies a local file to the remote server.
-// It takes the local file path and the remote file path as arguments.
-// The file is copied over an SSH session using sftp.
-// It returns an error if any step of the process fails.
+// SFTPFile interface defines the file operations we need
+type SFTPFile interface {
+	io.WriteCloser
+}
 
-// Refactor the PushFileWithCallback method
+// SFTPClient interface defines the SFTP operations we need
+type SFTPClient interface {
+	MkdirAll(path string) error
+	Create(path string) (SFTPFile, error)
+	Chmod(path string, mode os.FileMode) error
+	Close() error
+}
+
+// SFTPClientCreator is a function type for creating SFTP clients
+type SFTPClientCreator func(client *ssh.Client) (SFTPClient, error)
+
+// Default SFTP client creator that uses the real sftp.NewClient
+var defaultSFTPClientCreator = func(client *ssh.Client) (SFTPClient, error) {
+	return &sftpClientWrapper{client: client}, nil
+}
+
+// Current SFTP client creator - can be overridden in tests
+var currentSFTPClientCreator = defaultSFTPClientCreator
+
+// sftpClientWrapper wraps the real sftp.Client to implement our interface
+type sftpClientWrapper struct {
+	client *ssh.Client
+	sftp   *sftp.Client
+}
+
+func (w *sftpClientWrapper) init() error {
+	if w.sftp == nil {
+		client, err := sftp.NewClient(w.client)
+		if err != nil {
+			return err
+		}
+		w.sftp = client
+	}
+	return nil
+}
+
+func (w *sftpClientWrapper) MkdirAll(path string) error {
+	if err := w.init(); err != nil {
+		return err
+	}
+	return w.sftp.MkdirAll(path)
+}
+
+func (w *sftpClientWrapper) Create(path string) (SFTPFile, error) {
+	if err := w.init(); err != nil {
+		return nil, err
+	}
+	return w.sftp.Create(path)
+}
+
+func (w *sftpClientWrapper) Chmod(path string, mode os.FileMode) error {
+	if err := w.init(); err != nil {
+		return err
+	}
+	return w.sftp.Chmod(path, mode)
+}
+
+func (w *sftpClientWrapper) Close() error {
+	if w.sftp != nil {
+		return w.sftp.Close()
+	}
+	return nil
+}
+
 func (c *SSHConfig) PushFileWithCallback(
 	ctx context.Context,
 	remotePath string,
@@ -393,20 +471,26 @@ func (c *SSHConfig) PushFileWithCallback(
 	l := logger.Get()
 	l.Infof("Pushing file to: %s", remotePath)
 
-	// Create a new SFTP client
-	sftpClient, err := sftp.NewClient(c.SSHClient.(*SSHClientWrapper).Client)
+	// Get the SSH client
+	sshClient := c.GetSSHClient()
+	if sshClient == nil {
+		return fmt.Errorf("SSH client is nil")
+	}
+
+	// Create a new SFTP client using the current creator
+	sftpClient, err := currentSFTPClientCreator(sshClient)
 	if err != nil {
 		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
 	defer sftpClient.Close()
 
-	// Ensure the remote directory exists
-	dirPath := filepath.Dir(remotePath)
-	if err := sftpClient.MkdirAll(dirPath); err != nil {
-		return fmt.Errorf("failed to create remote directory: %w", err)
+	// Create the parent directory if it doesn't exist
+	parentDir := filepath.Dir(remotePath)
+	if err := sftpClient.MkdirAll(parentDir); err != nil {
+		return fmt.Errorf("failed to create parent directory: %w", err)
 	}
 
-	// Create or truncate the remote file
+	// Create the remote file
 	remoteFile, err := sftpClient.Create(remotePath)
 	if err != nil {
 		return fmt.Errorf("failed to create remote file: %w", err)
@@ -415,13 +499,13 @@ func (c *SSHConfig) PushFileWithCallback(
 
 	// Write the content to the remote file
 	if _, err := remoteFile.Write(content); err != nil {
-		return fmt.Errorf("failed to write content to remote file: %w", err)
+		return fmt.Errorf("failed to write to remote file: %w", err)
 	}
 
-	// Set executable permissions if required
+	// If the file should be executable, set the permissions
 	if executable {
 		if err := sftpClient.Chmod(remotePath, 0700); err != nil {
-			return fmt.Errorf("failed to set executable permissions: %w", err)
+			return fmt.Errorf("failed to set file permissions: %w", err)
 		}
 	}
 
@@ -476,4 +560,49 @@ func (c *SSHConfig) manageService(_ context.Context, serviceName, action string)
 	}
 
 	return nil
+}
+
+func (c *SSHConfig) GetHost() string {
+	return c.Host
+}
+
+func (c *SSHConfig) GetPort() int {
+	return c.Port
+}
+
+func (c *SSHConfig) GetUser() string {
+	return c.User
+}
+
+func (c *SSHConfig) GetPrivateKeyMaterial() []byte {
+	return c.PrivateKeyMaterial
+}
+
+func (c *SSHConfig) GetSSHDial() SSHDialer {
+	return c.SSHDial
+}
+
+func (c *SSHConfig) SetSSHDial(dialer SSHDialer) {
+	c.SSHDial = dialer
+}
+
+func (c *SSHConfig) SetValidateSSHConnection(fn func() error) {
+	c.ValidateSSHConnectionFunc = fn
+}
+
+func (c *SSHConfig) GetSSHClienter() SSHClienter { return c.SSHClient }
+
+func (c *SSHConfig) SetSSHClienter(client SSHClienter) {
+	c.SSHClient = client
+}
+
+func (c *SSHConfig) GetSSHClient() *ssh.Client {
+	if c.SSHClient == nil {
+		return nil
+	}
+	return c.SSHClient.GetClient()
+}
+
+func (c *SSHConfig) SetSSHClient(client *ssh.Client) {
+	c.SetSSHClienter(&SSHClientWrapper{Client: client})
 }

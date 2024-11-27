@@ -16,6 +16,7 @@ type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
 	IsConnected() bool
 	Close() error
+	GetClient() *ssh.Client
 }
 
 // SSHClient struct definition
@@ -43,6 +44,15 @@ func (cl *SSHClient) IsConnected() bool {
 	return cl.Client != nil && cl.Client.IsConnected()
 }
 
+func (cl *SSHClient) GetClient() *ssh.Client {
+	if cl.Client == nil {
+		return nil
+	}
+	return cl.Client.GetClient()
+}
+
+// SSHClientWrapper is a thin wrapper around an *ssh.Client that allows us to
+// satisfy the SSHClienter interface.
 type SSHClientWrapper struct {
 	*ssh.Client
 }
@@ -99,6 +109,10 @@ func (w *SSHClientWrapper) IsConnected() bool {
 
 	l.Debug("SSH connection test successful")
 	return true
+}
+
+func (w *SSHClientWrapper) GetClient() *ssh.Client {
+	return w.Client
 }
 
 type SSHSessionWrapper struct {

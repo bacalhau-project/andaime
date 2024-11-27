@@ -74,6 +74,11 @@ type MockSSHDialer struct {
 	mock.Mock
 }
 
+// MockSSHClient is a mock implementation of SSHClienter
+type MockSFTPClient struct {
+	mock.Mock
+}
+
 // Dial is a mock implementation of the Dial method
 func (m *MockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
 	args := m.Called(network, addr, config)
@@ -101,8 +106,15 @@ func NewMockSSHDialer() *MockSSHDialer {
 	return &MockSSHDialer{}
 }
 
+func NewMockSFTPClient() *MockSFTPClient {
+	return &MockSFTPClient{}
+}
+
 func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
-	_, cleanupPublicKey, testSSHPrivateKeyPath, cleanupPrivateKey := internal_testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	_,
+		cleanupPublicKey,
+		testSSHPrivateKeyPath,
+		cleanupPrivateKey := internal_testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 	defer cleanupPublicKey()
 	defer cleanupPrivateKey()
 
@@ -115,8 +127,8 @@ func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
 	if err != nil {
 		panic(err)
 	}
-	config := configInterface.(SSHConfiger)
-	config.SetSSHClient(&MockSSHClient{})
+	config := configInterface
+	config.SetSSHClienter(&MockSSHClient{})
 
 	mockClient := &MockSSHClient{}
 	return mockClient, config
