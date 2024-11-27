@@ -91,14 +91,6 @@ func (w *SSHClientWrapper) IsConnected() bool {
 	}
 	defer session.Close()
 
-	// Try to create a new session
-	session, err = w.Client.NewSession()
-	if err != nil {
-		l.Debugf("Failed to create SSH session: %v", err)
-		return false
-	}
-	defer session.Close()
-
 	// Run a simple command to check if the connection is alive
 	l.Debug("Testing SSH connection with 'echo' command")
 	err = session.Run("echo")
