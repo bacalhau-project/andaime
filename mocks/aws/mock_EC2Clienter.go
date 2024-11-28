@@ -170,6 +170,80 @@ func (_c *MockEC2Clienter_AttachInternetGateway_Call) RunAndReturn(run func(cont
 	return _c
 }
 
+// AuthorizeSecurityGroupIngress provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) AuthorizeSecurityGroupIngress(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AuthorizeSecurityGroupIngress")
+	}
+
+	var r0 *ec2.AuthorizeSecurityGroupIngressOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.AuthorizeSecurityGroupIngressInput, ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.AuthorizeSecurityGroupIngressInput, ...func(*ec2.Options)) *ec2.AuthorizeSecurityGroupIngressOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.AuthorizeSecurityGroupIngressOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.AuthorizeSecurityGroupIngressInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_AuthorizeSecurityGroupIngress_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthorizeSecurityGroupIngress'
+type MockEC2Clienter_AuthorizeSecurityGroupIngress_Call struct {
+	*mock.Call
+}
+
+// AuthorizeSecurityGroupIngress is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.AuthorizeSecurityGroupIngressInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) AuthorizeSecurityGroupIngress(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call {
+	return &MockEC2Clienter_AuthorizeSecurityGroupIngress_Call{Call: _e.mock.On("AuthorizeSecurityGroupIngress",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call) Run(run func(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.AuthorizeSecurityGroupIngressInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call) Return(_a0 *ec2.AuthorizeSecurityGroupIngressOutput, _a1 error) *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call) RunAndReturn(run func(context.Context, *ec2.AuthorizeSecurityGroupIngressInput, ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)) *MockEC2Clienter_AuthorizeSecurityGroupIngress_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateInternetGateway provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) CreateInternetGateway(ctx context.Context, params *ec2.CreateInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateInternetGatewayOutput, error) {
 	_va := make([]interface{}, len(optFns))
@@ -388,6 +462,80 @@ func (_c *MockEC2Clienter_CreateRouteTable_Call) Return(_a0 *ec2.CreateRouteTabl
 }
 
 func (_c *MockEC2Clienter_CreateRouteTable_Call) RunAndReturn(run func(context.Context, *ec2.CreateRouteTableInput, ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error)) *MockEC2Clienter_CreateRouteTable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CreateSecurityGroup provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) CreateSecurityGroup(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSecurityGroup")
+	}
+
+	var r0 *ec2.CreateSecurityGroupOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.CreateSecurityGroupInput, ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.CreateSecurityGroupInput, ...func(*ec2.Options)) *ec2.CreateSecurityGroupOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.CreateSecurityGroupOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.CreateSecurityGroupInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_CreateSecurityGroup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSecurityGroup'
+type MockEC2Clienter_CreateSecurityGroup_Call struct {
+	*mock.Call
+}
+
+// CreateSecurityGroup is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.CreateSecurityGroupInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) CreateSecurityGroup(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_CreateSecurityGroup_Call {
+	return &MockEC2Clienter_CreateSecurityGroup_Call{Call: _e.mock.On("CreateSecurityGroup",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_CreateSecurityGroup_Call) Run(run func(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_CreateSecurityGroup_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.CreateSecurityGroupInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_CreateSecurityGroup_Call) Return(_a0 *ec2.CreateSecurityGroupOutput, _a1 error) *MockEC2Clienter_CreateSecurityGroup_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_CreateSecurityGroup_Call) RunAndReturn(run func(context.Context, *ec2.CreateSecurityGroupInput, ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)) *MockEC2Clienter_CreateSecurityGroup_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1058,6 +1206,154 @@ func (_c *MockEC2Clienter_DescribeRouteTables_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// DescribeSecurityGroups provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeSecurityGroups(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeSecurityGroups")
+	}
+
+	var r0 *ec2.DescribeSecurityGroupsOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) *ec2.DescribeSecurityGroupsOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeSecurityGroupsOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DescribeSecurityGroups_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeSecurityGroups'
+type MockEC2Clienter_DescribeSecurityGroups_Call struct {
+	*mock.Call
+}
+
+// DescribeSecurityGroups is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DescribeSecurityGroupsInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DescribeSecurityGroups(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeSecurityGroups_Call {
+	return &MockEC2Clienter_DescribeSecurityGroups_Call{Call: _e.mock.On("DescribeSecurityGroups",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DescribeSecurityGroups_Call) Run(run func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeSecurityGroups_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DescribeSecurityGroupsInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeSecurityGroups_Call) Return(_a0 *ec2.DescribeSecurityGroupsOutput, _a1 error) *MockEC2Clienter_DescribeSecurityGroups_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeSecurityGroups_Call) RunAndReturn(run func(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)) *MockEC2Clienter_DescribeSecurityGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DescribeSubnets provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeSubnets(ctx context.Context, params *ec2.DescribeSubnetsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeSubnets")
+	}
+
+	var r0 *ec2.DescribeSubnetsOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) *ec2.DescribeSubnetsOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeSubnetsOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DescribeSubnets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeSubnets'
+type MockEC2Clienter_DescribeSubnets_Call struct {
+	*mock.Call
+}
+
+// DescribeSubnets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DescribeSubnetsInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DescribeSubnets(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeSubnets_Call {
+	return &MockEC2Clienter_DescribeSubnets_Call{Call: _e.mock.On("DescribeSubnets",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DescribeSubnets_Call) Run(run func(ctx context.Context, params *ec2.DescribeSubnetsInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeSubnets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DescribeSubnetsInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeSubnets_Call) Return(_a0 *ec2.DescribeSubnetsOutput, _a1 error) *MockEC2Clienter_DescribeSubnets_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeSubnets_Call) RunAndReturn(run func(context.Context, *ec2.DescribeSubnetsInput, ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error)) *MockEC2Clienter_DescribeSubnets_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DescribeVpcs provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) DescribeVpcs(ctx context.Context, params *ec2.DescribeVpcsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
 	_va := make([]interface{}, len(optFns))
@@ -1128,64 +1424,6 @@ func (_c *MockEC2Clienter_DescribeVpcs_Call) Return(_a0 *ec2.DescribeVpcsOutput,
 }
 
 func (_c *MockEC2Clienter_DescribeVpcs_Call) RunAndReturn(run func(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error)) *MockEC2Clienter_DescribeVpcs_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetLatestUbuntuAMI provides a mock function with given fields: ctx, zone, arch
-func (_m *MockEC2Clienter) GetLatestUbuntuAMI(ctx context.Context, zone string, arch string) (string, error) {
-	ret := _m.Called(ctx, zone, arch)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetLatestUbuntuAMI")
-	}
-
-	var r0 string
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (string, error)); ok {
-		return rf(ctx, zone, arch)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
-		r0 = rf(ctx, zone, arch)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, zone, arch)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockEC2Clienter_GetLatestUbuntuAMI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestUbuntuAMI'
-type MockEC2Clienter_GetLatestUbuntuAMI_Call struct {
-	*mock.Call
-}
-
-// GetLatestUbuntuAMI is a helper method to define mock.On call
-//   - ctx context.Context
-//   - zone string
-//   - arch string
-func (_e *MockEC2Clienter_Expecter) GetLatestUbuntuAMI(ctx interface{}, zone interface{}, arch interface{}) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
-	return &MockEC2Clienter_GetLatestUbuntuAMI_Call{Call: _e.mock.On("GetLatestUbuntuAMI", ctx, zone, arch)}
-}
-
-func (_c *MockEC2Clienter_GetLatestUbuntuAMI_Call) Run(run func(ctx context.Context, zone string, arch string)) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *MockEC2Clienter_GetLatestUbuntuAMI_Call) Return(_a0 string, _a1 error) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockEC2Clienter_GetLatestUbuntuAMI_Call) RunAndReturn(run func(context.Context, string, string) (string, error)) *MockEC2Clienter_GetLatestUbuntuAMI_Call {
 	_c.Call.Return(run)
 	return _c
 }

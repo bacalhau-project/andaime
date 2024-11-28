@@ -295,6 +295,10 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 					Return(testdata.FakeEC2CreateVpcOutput(), nil)
 				mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
 					Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
+				mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
+					Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil)
+				mockEC2Client.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.AnythingOfType("*ec2.AuthorizeSecurityGroupIngressInput")).
+					Return(testdata.FakeAuthorizeSecurityGroupIngressOutput(), nil)
 				mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
 					Return(testdata.FakeEC2DescribeAvailabilityZonesOutput(), nil)
 				mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).

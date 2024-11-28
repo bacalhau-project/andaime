@@ -141,6 +141,12 @@ func FakeEC2DescribeSecurityGroupsOutput() *ec2.DescribeSecurityGroupsOutput {
 	}
 }
 
+func FakeAuthorizeSecurityGroupIngressOutput() *ec2.AuthorizeSecurityGroupIngressOutput {
+	return &ec2.AuthorizeSecurityGroupIngressOutput{
+		Return: aws.Bool(true),
+	}
+}
+
 func FakeEC2CreateInternetGatewayOutput() *ec2.CreateInternetGatewayOutput {
 	return &ec2.CreateInternetGatewayOutput{
 		InternetGateway: &types.InternetGateway{

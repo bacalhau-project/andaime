@@ -49,17 +49,27 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 
 	ctx := cmd.Context()
 	var cancel context.CancelFunc
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel = context.WithCancel(ctx)
 	defer cancel()
 
+	// Initialize AWS provider
 	awsProvider, err := initializeAWSProvider()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
 
+	// Create the deployment
 	deployment, err := prepareDeployment(ctx, awsProvider)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to prepare deployment: %w", err)
+	}
+
+	// Write the VPC ID to config as soon as it's created
+	if err := writeVPCIDToConfig(deployment); err != nil {
+		return fmt.Errorf("failed to write VPC ID to config: %w", err)
 	}
 
 	// Ensure EC2 client is initialized
@@ -82,11 +92,12 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 			Warn(fmt.Sprintf("Failed to initialize display: %v. Continuing without interactive display.", err))
 	}
 
-	err = startResourcePolling(ctx, awsProvider)
-	if err != nil {
+	// Start resource polling
+	if err := startResourcePolling(ctx, awsProvider); err != nil {
 		return fmt.Errorf("failed to start resource polling: %w", err)
 	}
 
+	// Run the deployment asynchronously
 	deploymentErr := runDeploymentAsync(ctx, awsProvider, cancel)
 
 	// Only cancel if there's an actual deployment error
@@ -288,6 +299,26 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 	l.Info("Deployment finalized")
 	time.Sleep(RetryTimeout)
 	prog.Quit()
+
+	return nil
+}
+
+func writeVPCIDToConfig(deployment *models.Deployment) error {
+	// Get the current deployment from config
+	deploymentKey := fmt.Sprintf("deployments.aws.%s", deployment.Name)
+	currentDeployment := viper.GetStringMap(deploymentKey)
+	if currentDeployment == nil {
+		currentDeployment = make(map[string]interface{})
+	}
+
+	// Update the VPC ID
+	currentDeployment["vpc_id"] = deployment.AWS.VPCID
+
+	// Write back to config
+	viper.Set(deploymentKey, currentDeployment)
+	if err := viper.WriteConfig(); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
 
 	return nil
 }

@@ -111,6 +111,14 @@ func (c *LiveEC2Client) DescribeSecurityGroups(
 	return c.client.DescribeSecurityGroups(ctx, params, optFns...)
 }
 
+func (c *LiveEC2Client) AuthorizeSecurityGroupIngress(
+	ctx context.Context,
+	params *ec2.AuthorizeSecurityGroupIngressInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
+	return c.client.AuthorizeSecurityGroupIngress(ctx, params, optFns...)
+}
+
 func (c *LiveEC2Client) DescribeSubnets(
 	ctx context.Context,
 	params *ec2.DescribeSubnetsInput,
@@ -208,7 +216,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	for _, machine := range m.Deployment.GetMachines() {
 		machine := machine // Create local copy for goroutine
 		g.Go(func() error {
-			imageID, err := p.GetLatestUbuntuAMI(ctx, machine.GetLocation(), "amd64")
+			imageID, err := p.GetLatestUbuntuAMI(ctx, machine.GetLocation(), "x86_64")
 			if err != nil {
 				mu.Lock()
 				machine.SetFailed(true)

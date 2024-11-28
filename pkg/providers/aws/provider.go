@@ -862,7 +862,6 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 
 		awsDetails, ok := details["aws"].(map[string]interface{})
 		if !ok {
-			delete(deployments, uniqueID)
 			continue
 		}
 
@@ -892,20 +891,6 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 			continue
 		}
 
-		// Check if VPC is empty (no instances, subnets, etc.)
-		subnets, err := p.EC2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
-			Filters: []ec2_types.Filter{
-				{
-					Name:   aws.String("vpc-id"),
-					Values: []string{vpcID},
-				},
-			},
-		})
-		if err != nil {
-			l.Warnf("Failed to describe subnets in VPC %s: %v", vpcID, err)
-			continue
-		}
-
 		// Terminate any instances in the VPC
 		instances, err := p.EC2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 			Filters: []ec2_types.Filter{
@@ -917,19 +902,6 @@ func (p *AWSProvider) Destroy(ctx context.Context) error {
 		})
 		if err != nil {
 			l.Warnf("Failed to describe instances in VPC %s: %v", vpcID, err)
-			continue
-		}
-
-		// If no subnets or instances, delete the VPC
-		if len(subnets.Subnets) == 0 && len(instances.Reservations) == 0 {
-			l.Infof("VPC %s is empty, deleting", vpcID)
-			_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
-				VpcId: aws.String(vpcID),
-			})
-			if err != nil {
-				l.Warnf("Failed to delete empty VPC %s: %v", vpcID, err)
-			}
-			delete(deployments, uniqueID)
 			continue
 		}
 
