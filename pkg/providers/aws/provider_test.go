@@ -142,6 +142,15 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 			RouteTable: &types.RouteTable{RouteTableId: aws.String(FAKE_RTB_ID)},
 		}, nil)
 
+	// Mock security group creation
+	suite.mockAWSClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
+		Return(&ec2.CreateSecurityGroupOutput{
+			GroupId: aws.String("sg-12345"),
+		}, nil)
+
+	suite.mockAWSClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
+		Return(&ec2.AuthorizeSecurityGroupIngressOutput{}, nil)
+
 	// Mock remaining network setup with detailed logging
 	suite.mockAWSClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
