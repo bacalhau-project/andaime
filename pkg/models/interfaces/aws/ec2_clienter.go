@@ -43,6 +43,21 @@ type EC2Clienter interface {
 		params *ec2.DescribeVpcsInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeVpcsOutput, error)
+	CreateSecurityGroup(
+		ctx context.Context,
+		params *ec2.CreateSecurityGroupInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.CreateSecurityGroupOutput, error)
+	DescribeSecurityGroups(
+		ctx context.Context,
+		params *ec2.DescribeSecurityGroupsInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeSecurityGroupsOutput, error)
+	AuthorizeSecurityGroupIngress(
+		ctx context.Context,
+		params *ec2.AuthorizeSecurityGroupIngressInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
 	CreateInternetGateway(
 		ctx context.Context,
 		params *ec2.CreateInternetGatewayInput,
