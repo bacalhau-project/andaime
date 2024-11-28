@@ -125,11 +125,20 @@ func getDeployments() ([]ConfigDeployment, error) {
 		deployments = append(deployments, awsDeployments...)
 	}
 
-	sort.Slice(deployments, func(i, j int) bool {
-		return deployments[i].Name < deployments[j].Name
+	// Filter out deployments with empty VPC IDs
+	var validDeployments []ConfigDeployment
+	for _, dep := range deployments {
+		vpcID := viper.GetString(fmt.Sprintf("%s.vpc_id", dep.FullViperKey))
+		if vpcID != "" {
+			validDeployments = append(validDeployments, dep)
+		}
+	}
+
+	sort.Slice(validDeployments, func(i, j int) bool {
+		return validDeployments[i].Name < validDeployments[j].Name
 	})
 
-	return deployments, nil
+	return validDeployments, nil
 }
 
 func extractAwsDeployments(uniqueID string, details interface{}) ([]ConfigDeployment, error) {

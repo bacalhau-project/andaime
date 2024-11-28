@@ -108,4 +108,9 @@ type EC2Clienter interface {
 		params *ec2.DeleteSubnetInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DeleteSubnetOutput, error)
+	DescribeSubnets(
+		ctx context.Context,
+		params *ec2.DescribeSubnetsInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeSubnetsOutput, error)
 }
