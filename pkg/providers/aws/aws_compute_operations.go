@@ -245,7 +245,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 				InstanceType: types.InstanceType(machine.GetType().ResourceString),
 				MinCount:     aws.Int32(1),
 				MaxCount:     aws.Int32(1),
-				KeyName:      aws.String(m.Deployment.GetSSHKeyName()),
+				KeyName:      aws.String(viper.GetString("aws.key_pair_name")),
 				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
 					{
 						DeviceIndex:              aws.Int32(0),

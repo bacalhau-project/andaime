@@ -133,6 +133,7 @@ Override or supplement configuration via environment variables:
 export AWS_ACCESS_KEY_ID=your_aws_key
 export AWS_SECRET_ACCESS_KEY=your_aws_secret
 export GCP_PROJECT_ID=your_gcp_project
+export ANDAIME_AWS_KEY_PAIR_NAME=andaime-local-key
 
 # Cluster Configuration
 export ANDAIME_PROJECT_NAME="my-bacalhau-cluster"
@@ -152,7 +153,8 @@ andaime create \
   --orchestrator-nodes 1 \
   --compute-nodes 3 \
   --instance-type t3.medium \
-  --target-regions us-east-1,us-west-2
+  --target-regions us-east-1,us-west-2 \
+  --aws-key-pair-name andaime-local-key
 ```
 
 ### Configuration Precedence
