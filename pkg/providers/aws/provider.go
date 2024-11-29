@@ -660,46 +660,18 @@ func (p *AWSProvider) createSecurityGroup(ctx context.Context) error {
 	return nil
 }
 
-func (p *AWSProvider) importSSHKeyPair(ctx context.Context, sshPublicKeyPath string) error {
+func (p *AWSProvider) importSSHKeyPair(ctx context.Context, sshPublicKeyPath string) (string, error) {
 	l := logger.Get()
-	l.Info("Importing SSH key pair...")
+	l.Info("Reading SSH public key...")
 
 	// Read the public key file
 	publicKeyBytes, err := os.ReadFile(sshPublicKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read SSH public key: %w", err)
+		return "", fmt.Errorf("failed to read SSH public key: %w", err)
 	}
 
-	// Generate a unique key pair name with a timestamp and random suffix
-	timestamp := time.Now().Format("20060102-150405")
-	randomSuffix := generateRandomString(6)
-	keyPairName := fmt.Sprintf("andaime-%s-%s-%s", 
-		filepath.Base(sshPublicKeyPath), 
-		timestamp, 
-		randomSuffix,
-	)
-
-	// Import the key pair
-	_, err = p.EC2Client.ImportKeyPair(ctx, &ec2.ImportKeyPairInput{
-		KeyName:           aws.String(keyPairName),
-		PublicKeyMaterial: publicKeyBytes,
-		TagSpecifications: []ec2_types.TagSpecification{
-			{
-				ResourceType: ec2_types.ResourceTypeKeyPair,
-				Tags: []ec2_types.Tag{
-					{Key: aws.String("Name"), Value: aws.String(keyPairName)},
-					{Key: aws.String("Andaime"), Value: aws.String("true")},
-					{Key: aws.String("Timestamp"), Value: aws.String(timestamp)},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to import key pair: %w", err)
-	}
-
-	l.Infof("Imported SSH key pair with name %s", keyPairName)
-	return nil
+	l.Infof("Read SSH public key from %s", sshPublicKeyPath)
+	return string(publicKeyBytes), nil
 }
 
 // generateRandomString creates a random string of specified length

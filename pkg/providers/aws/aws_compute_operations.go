@@ -2,6 +2,7 @@ package awsprovider
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sync"
 	"time"
@@ -205,7 +206,7 @@ const (
 )
 
 // DeployVMsInParallel deploys multiple VMs in parallel and waits for SSH connectivity
-func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, sshKeyName string) error {
+func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, sshPublicKey string) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
@@ -240,12 +241,23 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, sshKeyName string
 			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
 
 			// Create and configure the VM
+			// Prepare user data to inject SSH public key
+			userData := fmt.Sprintf(`#!/bin/bash
+mkdir -p /home/ubuntu/.ssh
+echo "%s" >> /home/ubuntu/.ssh/authorized_keys
+chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+chmod 700 /home/ubuntu/.ssh
+chmod 600 /home/ubuntu/.ssh/authorized_keys
+`, sshPublicKey)
+
+			userDataEncoded := base64.StdEncoding.EncodeToString([]byte(userData))
+
 			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
 				ImageId:      aws.String(machine.GetImageID()),
 				InstanceType: types.InstanceType(machine.GetType().ResourceString),
 				MinCount:     aws.Int32(1),
 				MaxCount:     aws.Int32(1),
-				KeyName:      aws.String(sshKeyName),
+				UserData:     aws.String(userDataEncoded),
 				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
 					{
 						DeviceIndex:              aws.Int32(0),
