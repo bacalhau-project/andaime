@@ -29,15 +29,6 @@ import (
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
-	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
-	"github.com/bacalhau-project/andaime/pkg/display"
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
-	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/cenkalti/backoff/v4"
 )
 
 const (
