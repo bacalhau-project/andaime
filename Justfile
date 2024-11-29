@@ -19,7 +19,7 @@ test:
 # Build binary
 build:
     mkdir -p build
-    go build -o build/andaime ./cmd/andaime
+    go build -o build/andaime .
 
 # Build release artifacts for multiple platforms
 build-release:
