@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"golang.org/x/sync/errgroup"
+	"github.com/smithy-lang/smithy-go"
 )
 
 // LiveEC2Client implements the EC2Clienter interface
@@ -274,6 +277,12 @@ chmod 440 /etc/sudoers.d/%[1]s
 
 			userDataEncoded := base64.StdEncoding.EncodeToString([]byte(userData))
 
+			l.Debugf("Attempting to create instance with the following configuration:")
+			l.Debugf("Image ID: %s", machine.GetImageID())
+			l.Debugf("Instance Type: %s", machine.GetType().ResourceString)
+			l.Debugf("Subnet ID: %s", p.PublicSubnetIDs[0])
+			l.Debugf("Security Group ID: %s", p.SecurityGroupID)
+
 			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
 				ImageId:      aws.String(machine.GetImageID()),
 				InstanceType: types.InstanceType(machine.GetType().ResourceString),
@@ -305,6 +314,18 @@ chmod 440 /etc/sudoers.d/%[1]s
 					},
 				},
 			})
+			
+			if err != nil {
+				l.Errorf("Detailed error creating instance: %+v", err)
+				// If it's an AWS error, try to extract more details
+				if awsErr, ok := err.(*smithy.OperationError); ok {
+					l.Errorf("AWS Operation Error: %v", awsErr)
+					if responseError, ok := awsErr.Unwrap().(*http.Response); ok {
+						body, _ := io.ReadAll(responseError.Body)
+						l.Errorf("Response Body: %s", string(body))
+					}
+				}
+			}
 			if err != nil {
 				mu.Lock()
 				machine.SetFailed(true)
