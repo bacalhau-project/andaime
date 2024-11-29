@@ -18,17 +18,16 @@ func (p *AWSProvider) DestroyResources(ctx context.Context, vpcID string) error 
 		l.Info("Empty VPC ID provided, cleaning up configuration")
 		// Find the deployment in config that has an empty vpc_id
 		deployments := viper.GetStringMap("deployments.aws")
-		for name, deployment := range deployments {
+		for uniqueID, deployment := range deployments {
 			if d, ok := deployment.(map[string]interface{}); ok {
 				if vpcID, exists := d["vpc_id"]; exists && (vpcID == "" || vpcID == nil) {
-					// Remove the vpc_id field
+					// Just remove the vpc_id field
 					delete(d, "vpc_id")
-					viper.Set("deployments.aws."+name, d)
+					viper.Set(fmt.Sprintf("deployments.aws.%s", uniqueID), d)
 					if err := viper.WriteConfig(); err != nil {
 						return fmt.Errorf("failed to update config file: %w", err)
 					}
-					l.Info("Successfully removed empty VPC ID from config")
-					return nil
+					l.Infof("Successfully removed vpc_id from deployment %s", uniqueID)
 				}
 			}
 		}

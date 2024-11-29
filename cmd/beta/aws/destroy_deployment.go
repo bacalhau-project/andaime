@@ -57,20 +57,10 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Filter out deployments with empty VPC IDs
-	var validDeployments []ConfigDeployment
-	for _, dep := range deployments {
-		if viper.GetString(fmt.Sprintf("%s.aws.vpc_id", dep.FullViperKey)) != "" {
-			validDeployments = append(validDeployments, dep)
-		}
-	}
-
-	if len(validDeployments) == 0 {
+	if len(deployments) == 0 {
 		fmt.Println("No deployments found to destroy")
 		return nil
 	}
-
-	deployments = validDeployments
 
 	if flags.destroyAll {
 		return destroyAllDeployments(cmd.Context(), deployments, flags.dryRun)
@@ -125,20 +115,11 @@ func getDeployments() ([]ConfigDeployment, error) {
 		deployments = append(deployments, awsDeployments...)
 	}
 
-	// Filter out deployments with empty VPC IDs
-	var validDeployments []ConfigDeployment
-	for _, dep := range deployments {
-		vpcID := viper.GetString(fmt.Sprintf("%s.vpc_id", dep.FullViperKey))
-		if vpcID != "" {
-			validDeployments = append(validDeployments, dep)
-		}
-	}
-
-	sort.Slice(validDeployments, func(i, j int) bool {
-		return validDeployments[i].Name < validDeployments[j].Name
+	sort.Slice(deployments, func(i, j int) bool {
+		return deployments[i].Name < deployments[j].Name
 	})
 
-	return validDeployments, nil
+	return deployments, nil
 }
 
 func extractAwsDeployments(uniqueID string, details interface{}) ([]ConfigDeployment, error) {
@@ -153,6 +134,18 @@ func extractAwsDeployments(uniqueID string, details interface{}) ([]ConfigDeploy
 		return nil, nil // Not an AWS deployment, skip
 	}
 
+	// If this is a deployment without a VPC ID, it won't have stack details
+	if _, hasVpcID := awsDetails["vpc_id"]; hasVpcID {
+		deployments = append(deployments, ConfigDeployment{
+			Name:         uniqueID,
+			Type:         models.DeploymentTypeAWS,
+			UniqueID:     uniqueID,
+			FullViperKey: fmt.Sprintf("deployments.%s", uniqueID),
+		})
+		return deployments, nil
+	}
+
+	// Handle deployments with stack details
 	for stackName, stackDetails := range awsDetails {
 		stackMap, ok := stackDetails.(map[string]interface{})
 		if !ok {

@@ -40,12 +40,13 @@ deployments:
 
 	// Call destroy
 	err = provider.DestroyResources(context.Background(), "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the VPC ID is removed from config
 	viper.ReadInConfig() // Reload config
 	deployments := viper.GetStringMap("deployments.aws")
-	deployment := deployments["test-deployment"].(map[string]interface{})
+	deployment, ok := deployments["test-deployment"].(map[string]interface{})
+	require.True(t, ok, "test-deployment should exist")
 	_, exists := deployment["vpc_id"]
 	assert.False(t, exists, "vpc_id should be removed from config")
 }

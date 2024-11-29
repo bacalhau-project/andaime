@@ -604,8 +604,9 @@ func (p *AWSProvider) createSecurityGroup(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating security groups...")
 	sgOutput, err := p.GetEC2Client().CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
-		GroupName: aws.String("andaime-sg"),
-		VpcId:     aws.String(p.VPCID),
+		GroupName:   aws.String("andaime-sg"),
+		VpcId:      aws.String(p.VPCID),
+		Description: aws.String("Security group for Andaime deployments"),
 		TagSpecifications: []ec2_types.TagSpecification{
 			{
 				ResourceType: ec2_types.ResourceTypeSecurityGroup,
