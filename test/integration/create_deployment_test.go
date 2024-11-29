@@ -51,6 +51,7 @@ type IntegrationTestSuite struct {
 	suite.Suite
 	viperConfigFile       string
 	cleanup               func()
+	testSSHUser           string
 	testSSHPublicKeyPath  string
 	testSSHPrivateKeyPath string
 	mockClusterDeployer   *common_mock.MockClusterDeployerer
@@ -62,7 +63,10 @@ type IntegrationTestSuite struct {
 
 func (s *IntegrationTestSuite) SetupSuite() {
 	os.Setenv("ANDAIME_TEST_MODE", "true")
-	publicKeyPath, cleanupPublicKey, privateKeyPath, cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+	publicKeyPath,
+		cleanupPublicKey,
+		privateKeyPath,
+		cleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 
 	s.testSSHPublicKeyPath = publicKeyPath
 	s.testSSHPrivateKeyPath = privateKeyPath
@@ -125,6 +129,7 @@ func (s *IntegrationTestSuite) TearDownTest() {
 
 func (s *IntegrationTestSuite) setupCommonConfig() {
 	viper.Set("general.project_prefix", fmt.Sprintf("test-%d", time.Now().UnixNano()))
+	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_public_key_path", s.testSSHPublicKeyPath)
 	viper.Set("general.ssh_private_key_path", s.testSSHPrivateKeyPath)
 	viper.Set("general.custom_script_path", localScriptPath)

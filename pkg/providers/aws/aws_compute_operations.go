@@ -206,7 +206,7 @@ const (
 )
 
 // DeployVMsInParallel deploys multiple VMs in parallel and waits for SSH connectivity
-func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, sshPublicKey string) error {
+func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
@@ -240,15 +240,37 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, sshPublicKey stri
 			machine.SetMachineResourceState("Network", models.ResourceStatePending)
 			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
 
+			sshUser := m.Deployment.SSHUser
+			sshPublicKeyMaterial := m.Deployment.SSHPublicKeyMaterial
+
+			if sshUser == "" {
+				return fmt.Errorf("SSH user is not specified in deployment")
+			}
+
+			if sshPublicKeyMaterial == "" {
+				return fmt.Errorf("SSH public key material is not specified in deployment")
+			}
+
 			// Create and configure the VM
 			// Prepare user data to inject SSH public key
 			userData := fmt.Sprintf(`#!/bin/bash
-mkdir -p /home/ubuntu/.ssh
-echo "%s" >> /home/ubuntu/.ssh/authorized_keys
-chown -R ubuntu:ubuntu /home/ubuntu/.ssh
-chmod 700 /home/ubuntu/.ssh
-chmod 600 /home/ubuntu/.ssh/authorized_keys
-`, sshPublicKey)
+
+# Create user if it doesn't exist
+if ! id "%[1]s" &>/dev/null; then
+    useradd -m -s /bin/bash "%[1]s"
+fi
+
+# Set up SSH directory and authorized_keys
+mkdir -p /home/%[1]s/.ssh
+echo "%[2]s" >> /home/%[1]s/.ssh/authorized_keys
+chown -R %[1]s:%[1]s /home/%[1]s/.ssh
+chmod 700 /home/%[1]s/.ssh
+chmod 600 /home/%[1]s/.ssh/authorized_keys
+
+# Add user to sudoers with NOPASSWD
+echo '%[1]s ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/%[1]s
+chmod 440 /etc/sudoers.d/%[1]s
+`, sshUser, sshPublicKeyMaterial)
 
 			userDataEncoded := base64.StdEncoding.EncodeToString([]byte(userData))
 

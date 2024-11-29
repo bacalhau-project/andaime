@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -24,11 +23,7 @@ import (
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/cenkalti/backoff/v4"
-)
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
+	"github.com/spf13/viper"
 )
 
 const (
@@ -426,18 +421,13 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 //
 // Returns:
 //   - error: Returns an error if any step of the infrastructure creation fails
-func (p *AWSProvider) CreateInfrastructure(ctx context.Context, sshPublicKeyPath string) error {
+func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l := logger.Get()
 	l.Info("Creating AWS infrastructure...")
 
 	// Create VPC with retry on limits exceeded
 	if err := p.createVPCWithRetry(ctx); err != nil {
 		return fmt.Errorf("failed to create VPC: %w", err)
-	}
-
-	// Import SSH key pair
-	if err := p.importSSHKeyPair(ctx, sshPublicKeyPath); err != nil {
-		return fmt.Errorf("failed to import SSH key pair: %w", err)
 	}
 
 	// Get available availability zones
@@ -617,7 +607,7 @@ func (p *AWSProvider) createSecurityGroup(ctx context.Context) error {
 	l.Info("Creating security groups...")
 	sgOutput, err := p.GetEC2Client().CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
 		GroupName:   aws.String("andaime-sg"),
-		VpcId:      aws.String(p.VPCID),
+		VpcId:       aws.String(p.VPCID),
 		Description: aws.String("Security group for Andaime deployments"),
 		TagSpecifications: []ec2_types.TagSpecification{
 			{
@@ -660,7 +650,10 @@ func (p *AWSProvider) createSecurityGroup(ctx context.Context) error {
 	return nil
 }
 
-func (p *AWSProvider) importSSHKeyPair(ctx context.Context, sshPublicKeyPath string) (string, error) {
+func (p *AWSProvider) importSSHKeyPair(
+	ctx context.Context,
+	sshPublicKeyPath string,
+) (string, error) {
 	l := logger.Get()
 	l.Info("Reading SSH public key...")
 
