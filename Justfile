@@ -26,5 +26,3 @@ build-release:
     mkdir -p dist
     GOOS=linux GOARCH=amd64 go build -o dist/andaime_linux_amd64 .
     GOOS=darwin GOARCH=amd64 go build -o dist/andaime_darwin_amd64 .
-    GOOS=darwin GOARCH=arm64 go build -o dist/andaime_darwin_arm64 .
-    GOOS=windows GOARCH=amd64 go build -o dist/andaime_windows_amd64.exe .

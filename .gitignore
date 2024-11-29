@@ -41,3 +41,5 @@ repopack-andaime.txt
 local_custom_script.sh
 
 edera-orch.pem
+
+dist/
