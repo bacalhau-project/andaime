@@ -13,6 +13,11 @@ type EC2Clienter interface {
 		params *ec2.RunInstancesInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.RunInstancesOutput, error)
+	ImportKeyPair(
+		ctx context.Context,
+		params *ec2.ImportKeyPairInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.ImportKeyPairOutput, error)
 	DescribeInstances(
 		ctx context.Context,
 		params *ec2.DescribeInstancesInput,

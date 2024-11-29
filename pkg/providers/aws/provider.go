@@ -3,6 +3,8 @@ package awsprovider
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +23,6 @@ import (
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -419,13 +420,18 @@ func (p *AWSProvider) CreateVpc(ctx context.Context) error {
 //
 // Returns:
 //   - error: Returns an error if any step of the infrastructure creation fails
-func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
+func (p *AWSProvider) CreateInfrastructure(ctx context.Context, sshPublicKeyPath string) error {
 	l := logger.Get()
 	l.Info("Creating AWS infrastructure...")
 
 	// Create VPC with retry on limits exceeded
 	if err := p.createVPCWithRetry(ctx); err != nil {
 		return fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	// Import SSH key pair
+	if err := p.importSSHKeyPair(ctx, sshPublicKeyPath); err != nil {
+		return fmt.Errorf("failed to import SSH key pair: %w", err)
 	}
 
 	// Get available availability zones
@@ -645,6 +651,46 @@ func (p *AWSProvider) createSecurityGroup(ctx context.Context) error {
 	}
 	p.SecurityGroupID = *sgOutput.GroupId
 
+	return nil
+}
+
+func (p *AWSProvider) importSSHKeyPair(ctx context.Context, sshPublicKeyPath string) error {
+	l := logger.Get()
+	l.Info("Importing SSH key pair...")
+
+	// Read the public key file
+	publicKeyBytes, err := os.ReadFile(sshPublicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH public key: %w", err)
+	}
+
+	// Generate a unique key pair name based on the file name
+	keyPairName := fmt.Sprintf("andaime-%s", filepath.Base(sshPublicKeyPath))
+
+	// Import the key pair
+	_, err = p.EC2Client.ImportKeyPair(ctx, &ec2.ImportKeyPairInput{
+		KeyName:           aws.String(keyPairName),
+		PublicKeyMaterial: publicKeyBytes,
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeKeyPair,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String(keyPairName)},
+					{Key: aws.String("Andaime"), Value: aws.String("true")},
+				},
+			},
+		},
+	})
+	if err != nil {
+		// Check if the key pair already exists
+		if strings.Contains(err.Error(), "InvalidKeyPair.Duplicate") {
+			l.Warn("Key pair already exists, skipping import")
+			return nil
+		}
+		return fmt.Errorf("failed to import key pair: %w", err)
+	}
+
+	l.Infof("Imported SSH key pair with name %s", keyPairName)
 	return nil
 }
 

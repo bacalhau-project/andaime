@@ -205,7 +205,7 @@ const (
 )
 
 // DeployVMsInParallel deploys multiple VMs in parallel and waits for SSH connectivity
-func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
+func (p *AWSProvider) DeployVMsInParallel(ctx context.Context, sshKeyName string) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()
 
@@ -245,7 +245,7 @@ func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
 				InstanceType: types.InstanceType(machine.GetType().ResourceString),
 				MinCount:     aws.Int32(1),
 				MaxCount:     aws.Int32(1),
-				KeyName:      aws.String(viper.GetString("aws.key_pair_name")),
+				KeyName:      aws.String(sshKeyName),
 				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
 					{
 						DeviceIndex:              aws.Int32(0),
