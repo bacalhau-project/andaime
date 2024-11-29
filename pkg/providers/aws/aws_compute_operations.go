@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
-	"net/http"
 	"sync"
 	"time"
 
@@ -320,9 +318,9 @@ chmod 440 /etc/sudoers.d/%[1]s
 				// If it's an AWS error, try to extract more details
 				if awsErr, ok := err.(*smithy.OperationError); ok {
 					l.Errorf("AWS Operation Error: %v", awsErr)
-					if responseError, ok := awsErr.Unwrap().(*http.Response); ok {
-						body, _ := io.ReadAll(responseError.Body)
-						l.Errorf("Response Body: %s", string(body))
+					// Safely handle error details
+					if unwrappedErr := awsErr.Unwrap(); unwrappedErr != nil {
+						l.Errorf("Underlying Error: %v", unwrappedErr)
 					}
 				}
 			}
