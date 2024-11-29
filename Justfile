@@ -24,7 +24,7 @@ build:
 # Build release artifacts for multiple platforms
 build-release:
     mkdir -p dist
-    GOOS=linux GOARCH=amd64 go build -o dist/andaime_linux_amd64 ./cmd/andaime
-    GOOS=darwin GOARCH=amd64 go build -o dist/andaime_darwin_amd64 ./cmd/andaime
-    GOOS=darwin GOARCH=arm64 go build -o dist/andaime_darwin_arm64 ./cmd/andaime
-    GOOS=windows GOARCH=amd64 go build -o dist/andaime_windows_amd64.exe ./cmd/andaime
+    GOOS=linux GOARCH=amd64 go build -o dist/andaime_linux_amd64 .
+    GOOS=darwin GOARCH=amd64 go build -o dist/andaime_darwin_amd64 .
+    GOOS=darwin GOARCH=arm64 go build -o dist/andaime_darwin_arm64 .
+    GOOS=windows GOARCH=amd64 go build -o dist/andaime_windows_amd64.exe .
