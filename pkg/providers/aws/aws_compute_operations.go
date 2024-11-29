@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"golang.org/x/sync/errgroup"
-	"github.com/smithy-lang/smithy-go"
 )
 
 // LiveEC2Client implements the EC2Clienter interface
@@ -314,7 +314,7 @@ chmod 440 /etc/sudoers.d/%[1]s
 					},
 				},
 			})
-			
+
 			if err != nil {
 				l.Errorf("Detailed error creating instance: %+v", err)
 				// If it's an AWS error, try to extract more details
