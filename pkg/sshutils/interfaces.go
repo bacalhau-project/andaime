@@ -50,13 +50,13 @@ type SSHConfiger interface {
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
 	StartService(ctx context.Context, serviceName string) error
 	RestartService(ctx context.Context, serviceName string) error
-	RestartService(ctx context.Context, serviceName string) error
 }
 
 // SSHClienter defines the interface for SSH client operations
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
 	Close() error
+	GetClient() *ssh.Client
 }
 
 // SSHSessioner defines the interface for SSH session operations
@@ -64,6 +64,9 @@ type SSHSessioner interface {
 	Run(cmd string) error
 	CombinedOutput(cmd string) ([]byte, error)
 	Close() error
+	StdinPipe() (io.WriteCloser, error)
+	Start(cmd string) error
+	Wait() error
 }
 
 // SSHDialer defines the interface for SSH dialing operations
@@ -88,9 +91,36 @@ func (w *SSHClientWrapper) Close() error {
 	return nil
 }
 
+func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {
+	if w.Client == nil {
+		return nil, fmt.Errorf("SSH client is nil")
+	}
+	session, err := w.Client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	return &SSHSessionWrapper{Session: session}, nil
+}
+
+func (w *SSHClientWrapper) GetClient() *ssh.Client {
+	return w.Client
+}
+
 // SSHSessionWrapper wraps an ssh.Session
 type SSHSessionWrapper struct {
 	Session *ssh.Session
+}
+
+func (s *SSHSessionWrapper) StdinPipe() (io.WriteCloser, error) {
+	return s.Session.StdinPipe()
+}
+
+func (s *SSHSessionWrapper) Start(cmd string) error {
+	return s.Session.Start(cmd)
+}
+
+func (s *SSHSessionWrapper) Wait() error {
+	return s.Session.Wait()
 }
 
 // SSHError represents an SSH command execution error with output

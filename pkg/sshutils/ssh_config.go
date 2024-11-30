@@ -237,15 +237,30 @@ func (c *SSHConfig) PushFile(
 	}
 	defer session.Close()
 
-	// Use CombinedOutput to execute a command that writes the file
 	mode := "644"
 	if executable {
 		mode = "755"
 	}
-	cmd := fmt.Sprintf("cat > %s && chmod %s %s", remotePath, mode, remotePath)
-	
-	err = session.Run(cmd)
+
+	stdin, err := session.StdinPipe()
 	if err != nil {
+		return err
+	}
+
+	cmd := fmt.Sprintf("cat > %s && chmod %s %s", remotePath, mode, remotePath)
+	if err := session.Start(cmd); err != nil {
+		return fmt.Errorf("failed to start file push: %w", err)
+	}
+
+	if _, err := stdin.Write(content); err != nil {
+		return fmt.Errorf("failed to write file content: %w", err)
+	}
+
+	if err := stdin.Close(); err != nil {
+		return fmt.Errorf("failed to close stdin: %w", err)
+	}
+
+	if err := session.Wait(); err != nil {
 		return fmt.Errorf("failed to push file: %w", err)
 	}
 
@@ -347,6 +362,14 @@ func (c *SSHConfig) InstallSystemdService(
 	}
 
 	return nil
+}
+
+func (c *SSHConfig) StartService(ctx context.Context, serviceName string) error {
+	return c.ExecuteCommand(ctx, fmt.Sprintf("systemctl start %s", serviceName))
+}
+
+func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) error {
+	return c.ExecuteCommand(ctx, fmt.Sprintf("systemctl restart %s", serviceName))
 }
 
 // Removed type declarations
