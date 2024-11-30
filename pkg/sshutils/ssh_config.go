@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -252,7 +253,7 @@ func (c *SSHConfig) PushFile(
 		return err
 	}
 
-	cmd := fmt.Sprintf("cat > %s && chmod %s %s", remotePath, mode, remotePath)
+	cmd := fmt.Sprintf("cat > %s && chmod %s %s", remotePath, fileMode, remotePath)
 	if err := session.Start(cmd); err != nil {
 		return fmt.Errorf("failed to start file push: %w", err)
 	}
@@ -280,53 +281,43 @@ func (c *SSHConfig) PushFileWithCallback(
 	executable bool,
 	callback func(int64, int64),
 ) error {
-	session, err := c.SSHClient.NewSession()
+	// Get SFTP client
+	sftpClient, err := DefaultSFTPClientCreator(c.SSHClient.GetClient())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
-	defer session.Close()
+	defer sftpClient.Close()
+
+	// Create remote file
+	remoteFile, err := sftpClient.Create(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to create remote file: %w", err)
+	}
+	defer remoteFile.Close()
 
 	totalSize := int64(len(content))
 	var written int64
 
+	// Write file contents in chunks
 	for written < totalSize {
 		chunkSize := int64(4096)
 		if written+chunkSize > totalSize {
 			chunkSize = totalSize - written
 		}
 
-		fileMode := "644"
-		if executable {
-			fileMode = "755"
-		}
-		cmd := fmt.Sprintf("cat > %s", remotePath)
-		
-		stdin, err := session.StdinPipe()
+		n, err := remoteFile.Write(content[written : written+chunkSize])
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to write to remote file: %w", err)
 		}
 
-		err = session.Start(cmd)
-		if err != nil {
-			return err
-		}
-
-		_, err = stdin.Write(content[written : written+chunkSize])
-		if err != nil {
-			return err
-		}
-
-		written += chunkSize
+		written += int64(n)
 		callback(written, totalSize)
+	}
 
-		err = stdin.Close()
-		if err != nil {
-			return err
-		}
-
-		err = session.Wait()
-		if err != nil {
-			return err
+	// Set file permissions if executable
+	if executable {
+		if err := sftpClient.Chmod(remotePath, 0755); err != nil {
+			return fmt.Errorf("failed to set executable permissions: %w", err)
 		}
 	}
 
@@ -357,12 +348,16 @@ func (c *SSHConfig) InstallSystemdService(
 		return err
 	}
 
-	if err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl daemon-reload")); err != nil {
+	if out, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl daemon-reload")); err != nil {
 		return err
+	} else {
+		logger.Get().Infof("systemctl daemon-reload output: %s", out)
 	}
 
-	if err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl enable %s", serviceName)); err != nil {
+	if out, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl enable %s", serviceName)); err != nil {
 		return err
+	} else {
+		logger.Get().Infof("systemctl enable %s output: %s", serviceName, out)
 	}
 
 	return nil
@@ -452,4 +447,12 @@ func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 	return privateKey, nil
+}
+
+func currentSFTPClientCreator(client *ssh.Client) (*sftp.Client, error) {
+	conn, err := client.Dial()
+	if err != nil {
+		return nil, err
+	}
+	return sftp.NewClient(conn)
 }

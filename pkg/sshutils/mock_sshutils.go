@@ -5,6 +5,8 @@ import (
 	"io"
 	"testing"
 
+	"time"
+
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
@@ -12,8 +14,6 @@ import (
 
 type MockSSHClient struct {
 	mock.Mock
-	Session SSHSessioner
-	Dialer  SSHDialer
 }
 
 func (m *MockSSHClient) PushFile(
@@ -27,10 +27,10 @@ func (m *MockSSHClient) PushFile(
 }
 
 func (m *MockSSHClient) NewSession() (SSHSessioner, error) {
-	if m.Session != nil {
-		return m.Session, nil
-	}
 	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(SSHSessioner), args.Error(1)
 }
 
@@ -46,6 +46,9 @@ func (m *MockSSHClient) IsConnected() bool {
 
 func (m *MockSSHClient) GetClient() *ssh.Client {
 	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
 	return args.Get(0).(*ssh.Client)
 }
 
@@ -92,21 +95,33 @@ func (m *MockSSHSession) Run(cmd string) error {
 
 func (m *MockSSHSession) CombinedOutput(cmd string) ([]byte, error) {
 	args := m.Called(cmd)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]byte), args.Error(1)
 }
 
 func (m *MockSSHSession) StdinPipe() (io.WriteCloser, error) {
 	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(io.WriteCloser), args.Error(1)
 }
 
 func (m *MockSSHSession) StdoutPipe() (io.Reader, error) {
 	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(io.Reader), args.Error(1)
 }
 
 func (m *MockSSHSession) StderrPipe() (io.Reader, error) {
 	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(io.Reader), args.Error(1)
 }
 
@@ -126,3 +141,104 @@ func (m *MockSSHSession) Wait() error {
 }
 
 var _ SSHSessioner = &MockSSHSession{}
+
+type MockSSHConfig struct {
+	mock.Mock
+}
+
+func (m *MockSSHConfig) Connect() (SSHClienter, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(SSHClienter), args.Error(1)
+}
+
+func (m *MockSSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
+	args := m.Called(ctx, retry, timeout)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) GetHost() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *MockSSHConfig) GetPort() int {
+	args := m.Called()
+	return args.Int(0)
+}
+
+func (m *MockSSHConfig) GetUser() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *MockSSHConfig) GetPrivateKeyMaterial() []byte {
+	args := m.Called()
+	return args.Get(0).([]byte)
+}
+
+func (m *MockSSHConfig) GetSSHDial() SSHDialer {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(SSHDialer)
+}
+
+func (m *MockSSHConfig) SetSSHDial(dialer SSHDialer) {
+	m.Called(dialer)
+}
+
+func (m *MockSSHConfig) GetSSHClienter() SSHClienter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(SSHClienter)
+}
+
+func (m *MockSSHConfig) SetSSHClienter(client SSHClienter) {
+	m.Called(client)
+}
+
+func (m *MockSSHConfig) GetSSHClient() *ssh.Client {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*ssh.Client)
+}
+
+func (m *MockSSHConfig) SetSSHClient(client *ssh.Client) {
+	m.Called(client)
+}
+
+func (m *MockSSHConfig) SetValidateSSHConnection(fn func() error) {
+	m.Called(fn)
+}
+
+type MockSSHDialer struct {
+	mock.Mock
+}
+
+func (m *MockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
+	args := m.Called(network, addr, config)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(SSHClienter), args.Error(1)
+}
+
+func (m *MockSSHDialer) DialContext(
+	ctx context.Context,
+	network, addr string,
+	config *ssh.ClientConfig,
+) (SSHClienter, error) {
+	args := m.Called(ctx, network, addr, config)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(SSHClienter), args.Error(1)
+}
