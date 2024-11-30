@@ -277,20 +277,14 @@ func (m *MockSSHConfig) PushFileWithCallback(
 	return args.Error(0)
 }
 
-func (m *MockSSHConfig) RestartService(
-	ctx context.Context,
-	servicePath string,
-) error {
+func (m *MockSSHConfig) RestartService(ctx context.Context, servicePath string) (string, error) {
 	args := m.Called(ctx, servicePath)
-	return args.Error(0)
+	return args.String(0), args.Error(1)
 }
 
-func (m *MockSSHConfig) StartService(
-	ctx context.Context,
-	servicePath string,
-) error {
+func (m *MockSSHConfig) StartService(ctx context.Context, servicePath string) (string, error) {
 	args := m.Called(ctx, servicePath)
-	return args.Error(0)
+	return args.String(0), args.Error(1)
 }
 
 type MockSSHDialer struct {
