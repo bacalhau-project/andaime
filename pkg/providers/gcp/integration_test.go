@@ -325,8 +325,9 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 			Times: 3,
 		},
 		RestartServiceExpectation: &sshutils.Expectation{
-			Error: nil,
-			Times: 6,
+			Output: "",
+			Error:  nil,
+			Times:  6,
 		},
 	}
 
