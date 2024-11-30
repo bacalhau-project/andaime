@@ -2,6 +2,7 @@ package sshutils
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
@@ -20,45 +21,43 @@ type SSHDialer interface {
 	) (SSHClienter, error)
 }
 
+type sshDial struct {
+	host   string
+	port   int
+	config *ssh.ClientConfig
+}
+
 func NewSSHDial(host string, port int, config *ssh.ClientConfig) SSHDialer {
-	return &SSHDial{
-		DialCreator: func(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
-			client, err := ssh.Dial(network, addr, config)
-			if err != nil {
-				return nil, err
-			}
-			return &SSHClientWrapper{Client: client}, nil
-		},
+	return &sshDial{
+		host:   host,
+		port:   port,
+		config: config,
 	}
 }
 
-type SSHDial struct {
-	DialCreator func(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
+func (s *sshDial) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
+	client, err := ssh.Dial(network, addr, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial: %w", err)
+	}
+	return &SSHClientWrapper{Client: client}, nil
 }
 
-func (d *SSHDial) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
-	return d.DialCreator(network, addr, config)
-}
-
-func (d *SSHDial) DialContext(
-	ctx context.Context,
-	network, addr string,
-	config *ssh.ClientConfig,
-) (SSHClienter, error) {
-	// Create a channel to receive the dial result
+func (s *sshDial) DialContext(ctx context.Context, network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
 	type dialResult struct {
 		client SSHClienter
 		err    error
 	}
+
 	result := make(chan dialResult, 1)
 
 	// Start dialing in a goroutine
 	go func() {
-		client, err := d.Dial(network, addr, config)
+		client, err := s.Dial(network, addr, config)
 		result <- dialResult{client, err}
 	}()
 
-	// Wait for either context cancellation or dial completion
+	// Wait for either dial completion or context cancellation
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -69,26 +68,18 @@ func (d *SSHDial) DialContext(
 
 // Mock Functions
 
-// MockSSHDialer is a mock implementation of SSHDialer
+// MockSSHDialer is a mock implementation of SSHDialer for testing
 type MockSSHDialer struct {
-	mock.Mock
+	DialFunc func(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
 }
 
-// MockSSHClient is a mock implementation of SSHClienter
-type MockSFTPClient struct {
-	mock.Mock
-}
-
-// Dial is a mock implementation of the Dial method
 func (m *MockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
-	args := m.Called(network, addr, config)
-	if args.Get(1) != nil {
-		return nil, args.Error(1)
+	if m.DialFunc != nil {
+		return m.DialFunc(network, addr, config)
 	}
-	return args.Get(0).(SSHClienter), nil
+	return nil, nil
 }
 
-// DialContext is a mock implementation of the DialContext method
 func (m *MockSSHDialer) DialContext(
 	ctx context.Context,
 	network, addr string,
