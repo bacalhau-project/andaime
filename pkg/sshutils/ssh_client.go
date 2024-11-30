@@ -11,41 +11,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// SSHClienter defines the interface for SSH client operations
-type SSHClienter interface {
-	NewSession() (SSHSessioner, error)
-	Close() error
-}
-
-// SSHSessioner defines the interface for SSH session operations
-type SSHSessioner interface {
-	Run(cmd string) error
-	CombinedOutput(cmd string) ([]byte, error)
-	Close() error
-}
-
-// SSHClientWrapper wraps an ssh.Client
-type SSHClientWrapper struct {
-	Client *ssh.Client
-}
-
-func (c *SSHClientWrapper) NewSession() (SSHSessioner, error) {
-	session, err := c.Client.NewSession()
-	if err != nil {
-		return nil, err
-	}
-	return &SSHSessionWrapper{Session: session}, nil
-}
-
-func (c *SSHClientWrapper) Close() error {
-	return c.Client.Close()
-}
-
-// SSHSessionWrapper wraps an ssh.Session
-type SSHSessionWrapper struct {
-	Session *ssh.Session
-}
-
 func (s *SSHSessionWrapper) Run(cmd string) error {
 	l := logger.Get()
 	if s.Session == nil {
@@ -263,34 +228,4 @@ func (s *SSHSessionWrapper) Close() error {
 	return nil
 }
 
-// SSHError represents an SSH command execution error with output
-type SSHError struct {
-	Cmd    string
-	Output string
-	Err    error
-}
-
-func (e *SSHError) Error() string {
-	return fmt.Sprintf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %v",
-		e.Cmd, e.Output, e.Err)
-}
-
-// MockSSHClient is a mock implementation of SSHClienter for testing
-type MockSSHClient struct {
-	NewSessionFunc func() (SSHSessioner, error)
-	CloseFunc     func() error
-}
-
-func (m *MockSSHClient) NewSession() (SSHSessioner, error) {
-	if m.NewSessionFunc != nil {
-		return m.NewSessionFunc()
-	}
-	return nil, nil
-}
-
-func (m *MockSSHClient) Close() error {
-	if m.CloseFunc != nil {
-		return m.CloseFunc()
-	}
-	return nil
-}
+// Removed type declarations
