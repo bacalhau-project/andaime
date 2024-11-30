@@ -3,6 +3,7 @@ package sshutils
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -24,6 +25,7 @@ type SSHConfiger interface {
 	// SSH client management
 	GetSSHClient() *ssh.Client
 	SetSSHClient(client *ssh.Client)
+	SetSSHClienter(client SSHClienter)
 
 	// Dialer configuration
 	GetSSHDial() SSHDialer

@@ -183,6 +183,11 @@ func (c *SSHConfig) SetSSHClient(client *ssh.Client) {
 	c.SSHClient = &SSHClientWrapper{Client: client}
 }
 
+// SetSSHClienter sets the SSH client
+func (c *SSHConfig) SetSSHClienter(client SSHClienter) {
+	c.SSHClient = client
+}
+
 // Close closes the SSH connection
 func (c *SSHConfig) Close() error {
 	if c.SSHClient != nil {
@@ -237,9 +242,9 @@ func (c *SSHConfig) PushFile(
 	}
 	defer session.Close()
 
-	mode := "644"
+	fileMode := "644"
 	if executable {
-		mode = "755"
+		fileMode = "755"
 	}
 
 	stdin, err := session.StdinPipe()
@@ -290,10 +295,9 @@ func (c *SSHConfig) PushFileWithCallback(
 			chunkSize = totalSize - written
 		}
 
-		// Use CombinedOutput to execute a command that writes the file
-		mode := "644"
+		fileMode := "644"
 		if executable {
-			mode = "755"
+			fileMode = "755"
 		}
 		cmd := fmt.Sprintf("cat > %s", remotePath)
 		
