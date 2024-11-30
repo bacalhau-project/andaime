@@ -78,8 +78,9 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.mockSSHConfig.On("RestartService",
 		mock.Anything,
 		mock.Anything,
+		mock.Anything,
 	).
-		Return(nil).
+		Return("", nil).
 		Maybe()
 	cbpts.mockSSHConfig.On("InstallBacalhau",
 		mock.Anything,

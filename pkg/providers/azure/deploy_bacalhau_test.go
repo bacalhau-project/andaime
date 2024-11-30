@@ -167,7 +167,8 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 
 	s.testHelper.OnCall("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-	s.testHelper.OnCall("RestartService", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.testHelper.OnCall("RestartService", mock.Anything, mock.Anything, mock.Anything).
+		Return("", nil)
 	s.testHelper.OnCall("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	// Run the test
@@ -227,7 +228,8 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
 
 	s.testHelper.OnCall("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-	s.testHelper.OnCall("RestartService", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.testHelper.OnCall("RestartService", mock.Anything, mock.Anything, mock.Anything).
+		Return("", nil)
 	s.testHelper.OnCall("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	// Run the test

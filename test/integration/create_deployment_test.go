@@ -437,7 +437,7 @@ func (s *IntegrationTestSuite) setupMockSSHConfig() {
 		Return(nil)
 	s.mockSSHConfig.On("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil)
-	s.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return(nil)
+	s.mockSSHConfig.On("RestartService", mock.Anything, mock.Anything).Return("", nil)
 	s.mockSSHConfig.On("WaitForSSH",
 		mock.Anything,
 		mock.Anything,
