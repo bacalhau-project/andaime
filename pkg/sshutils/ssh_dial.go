@@ -12,14 +12,7 @@ import (
 
 var SSHDialerFunc = NewSSHDial
 
-type SSHDialer interface {
-	Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
-	DialContext(
-		ctx context.Context,
-		network, addr string,
-		config *ssh.ClientConfig,
-	) (SSHClienter, error)
-}
+// SSHDialer is now defined in interfaces.go
 
 type sshDial struct {
 	host   string

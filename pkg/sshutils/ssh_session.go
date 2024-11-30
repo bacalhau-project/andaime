@@ -7,16 +7,7 @@ import (
 	"strings"
 )
 
-type SSHSessioner interface {
-	Run(cmd string) error
-	Start(cmd string) error
-	Wait() error
-	Close() error
-	StdinPipe() (io.WriteCloser, error)
-	StdoutPipe() (io.Reader, error)
-	StderrPipe() (io.Reader, error)
-	CombinedOutput(cmd string) ([]byte, error)
-}
+// SSHSessioner is now defined in interfaces.go
 
 // ValidateSSHPublicKey checks if the provided SSH public key is valid
 func ValidateSSHPublicKey(key string) error {
