@@ -59,40 +59,8 @@ func (s *sshDial) DialContext(ctx context.Context, network, addr string, config 
 	}
 }
 
-// Mock Functions
-
-// MockSSHDialer is a mock implementation of SSHDialer for testing
-type MockSSHDialer struct {
-	DialFunc func(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
-}
-
-func (m *MockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
-	if m.DialFunc != nil {
-		return m.DialFunc(network, addr, config)
-	}
-	return nil, nil
-}
-
-func (m *MockSSHDialer) DialContext(
-	ctx context.Context,
-	network, addr string,
-	config *ssh.ClientConfig,
-) (SSHClienter, error) {
-	args := m.Called(ctx, network, addr, config)
-	if args.Get(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(SSHClienter), nil
-}
-
-// NewMockSSHDialer returns a MockSSHDialer with a default implementation
-func NewMockSSHDialer() *MockSSHDialer {
-	return &MockSSHDialer{}
-}
-
-func NewMockSFTPClient() *MockSFTPClient {
-	return &MockSFTPClient{}
-}
+// Removed duplicate MockSSHDialer declaration
+// These methods are now defined in mock_sshutils.go
 
 func NewMockSSHClient(dialer SSHDialer) (*MockSSHClient, SSHConfiger) {
 	_,

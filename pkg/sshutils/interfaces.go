@@ -50,6 +50,7 @@ type SSHConfiger interface {
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
 	StartService(ctx context.Context, serviceName string) error
 	RestartService(ctx context.Context, serviceName string) error
+	RestartService(ctx context.Context, serviceName string) error
 }
 
 // SSHClienter defines the interface for SSH client operations
@@ -78,6 +79,13 @@ type SSHDialer interface {
 // SSHClientWrapper wraps an ssh.Client
 type SSHClientWrapper struct {
 	Client *ssh.Client
+}
+
+func (w *SSHClientWrapper) Close() error {
+	if w.Client != nil {
+		return w.Client.Close()
+	}
+	return nil
 }
 
 // SSHSessionWrapper wraps an ssh.Session

@@ -200,11 +200,7 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 	defer session.Close()
 
 	output, err := session.CombinedOutput(command)
-	if err != nil {
-		return "", err
-	}
-
-	return string(output), nil
+	return string(output), err
 }
 
 // ExecuteCommandWithCallback executes a command over SSH with output callback
@@ -241,20 +237,16 @@ func (c *SSHConfig) PushFile(
 	}
 	defer session.Close()
 
-	remoteFile, err := session.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
-	if err != nil {
-		return err
-	}
-	defer remoteFile.Close()
-
-	if _, err := remoteFile.Write(content); err != nil {
-		return err
-	}
-
+	// Use CombinedOutput to execute a command that writes the file
+	mode := "644"
 	if executable {
-		if err := remoteFile.Chmod(0755); err != nil {
-			return err
-		}
+		mode = "755"
+	}
+	cmd := fmt.Sprintf("cat > %s && chmod %s %s", remotePath, mode, remotePath)
+	
+	err = session.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to push file: %w", err)
 	}
 
 	return nil
@@ -274,12 +266,6 @@ func (c *SSHConfig) PushFileWithCallback(
 	}
 	defer session.Close()
 
-	remoteFile, err := session.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
-	if err != nil {
-		return err
-	}
-	defer remoteFile.Close()
-
 	totalSize := int64(len(content))
 	var written int64
 
@@ -289,17 +275,38 @@ func (c *SSHConfig) PushFileWithCallback(
 			chunkSize = totalSize - written
 		}
 
-		_, err := remoteFile.Write(content[written : written+chunkSize])
+		// Use CombinedOutput to execute a command that writes the file
+		mode := "644"
+		if executable {
+			mode = "755"
+		}
+		cmd := fmt.Sprintf("cat > %s", remotePath)
+		
+		stdin, err := session.StdinPipe()
+		if err != nil {
+			return err
+		}
+
+		err = session.Start(cmd)
+		if err != nil {
+			return err
+		}
+
+		_, err = stdin.Write(content[written : written+chunkSize])
 		if err != nil {
 			return err
 		}
 
 		written += chunkSize
 		callback(written, totalSize)
-	}
 
-	if executable {
-		if err := remoteFile.Chmod(0755); err != nil {
+		err = stdin.Close()
+		if err != nil {
+			return err
+		}
+
+		err = session.Wait()
+		if err != nil {
 			return err
 		}
 	}
