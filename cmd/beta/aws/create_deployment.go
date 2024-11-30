@@ -118,13 +118,6 @@ func initializeAWSProvider() (*aws_provider.AWSProvider, error) {
 		)
 	}
 
-	region := viper.GetString("aws.region")
-	if region == "" {
-		return nil, fmt.Errorf(
-			"AWS region is required. Set aws.region in config",
-		)
-	}
-
 	awsProvider, err := aws_provider.NewAWSProviderFunc(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
@@ -157,7 +150,7 @@ func prepareDeployment(
 	m.Deployment.SetMachines(machines)
 	m.Deployment.SetLocations(locations)
 
-	return nil, nil
+	return m.Deployment, nil
 }
 
 func startResourcePolling(ctx context.Context, awsProvider *aws_provider.AWSProvider) error {

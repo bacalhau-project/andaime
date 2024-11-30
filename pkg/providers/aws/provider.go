@@ -576,6 +576,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 
 	// Save VPC ID to config immediately after creation
 	if model := display.GetGlobalModelFunc(); model != nil && model.Deployment != nil {
+		p.ConfigMutex.Lock()
 		deploymentPath := fmt.Sprintf("deployments.%s", model.Deployment.UniqueID)
 		viper.Set(fmt.Sprintf("%s.aws.regions.%s.vpc_id",
 			deploymentPath, region),
@@ -587,6 +588,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 				m.Deployment.AWS.RegionalResources.VPCs[region].VPCID,
 				deploymentPath)
 		}
+		p.ConfigMutex.Unlock()
 	}
 
 	l.Debugf("Regional VPC (Region: %s) created successfully with ID %s",

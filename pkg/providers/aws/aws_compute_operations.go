@@ -315,6 +315,10 @@ func (p *AWSProvider) DeployVMsInParallel(
 		}
 	}
 
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

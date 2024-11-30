@@ -72,6 +72,11 @@ func IsValidAWSRegion(region string) bool {
 		return false
 	}
 
+	// Convert from possible zone to region
+	if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
+		region = region[:len(region)-1]
+	}
+
 	for _, loc := range awsData.Locations {
 		if strings.EqualFold(loc, region) {
 			return true
@@ -95,6 +100,11 @@ func IsValidAWSInstanceType(region, instanceType string) bool {
 	if err != nil {
 		l.Warnf("Failed to unmarshal AWS data: %v", err)
 		return false
+	}
+
+	// Convert from possible zone to region
+	if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
+		region = region[:len(region)-1]
 	}
 
 	instanceTypes, exists := awsData.VMSizes[region]

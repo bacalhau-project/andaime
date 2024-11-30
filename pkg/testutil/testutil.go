@@ -66,7 +66,6 @@ func SetupViper(deploymentType models.DeploymentType,
 			},
 		})
 	} else if deploymentType == models.DeploymentTypeAWS {
-		viper.Set("aws.region", "us-east-1")
 		viper.Set("aws.account_id", "1234567890")
 	}
 }

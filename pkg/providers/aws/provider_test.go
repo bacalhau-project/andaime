@@ -78,7 +78,6 @@ func (suite *PkgProvidersAWSProviderSuite) TearDownSuite() {
 func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	viper, err := pkg_testutil.InitializeTestViper(testdata.TestAWSConfig)
 	require.NoError(suite.T(), err)
-	viper.Set("aws.region", FAKE_REGION)
 	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
 
 	// Create a properly initialized AWS provider
