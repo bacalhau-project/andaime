@@ -39,6 +39,10 @@ func (c *defaultSFTPClient) Create(path string) (io.WriteCloser, error) {
 	return c.Client.Create(path)
 }
 
+func (c *defaultSFTPClient) Open(path string) (io.ReadCloser, error) {
+	return c.Client.Open(path)
+}
+
 // NewSFTPClient creates a new SFTP client from an SSH client
 func NewSFTPClient(client *ssh.Client) (SFTPClienter, error) {
 	sftpClient, err := sftp.NewClient(client)

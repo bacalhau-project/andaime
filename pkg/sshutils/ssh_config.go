@@ -450,9 +450,5 @@ func getPrivateKey(privateKeyMaterial string) (ssh.Signer, error) {
 }
 
 func currentSFTPClientCreator(client *ssh.Client) (*sftp.Client, error) {
-	conn, err := client.Dial()
-	if err != nil {
-		return nil, err
-	}
-	return sftp.NewClient(conn)
+	return sftp.NewClient(client)
 }
