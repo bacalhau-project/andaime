@@ -368,9 +368,9 @@ func (c *SSHConfig) StartService(ctx context.Context, serviceName string) error 
 	return err
 }
 
-func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) error {
-	_, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl restart %s", serviceName))
-	return err
+func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (string, error) {
+	output, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl restart %s", serviceName))
+	return output, err
 }
 
 // Removed type declarations
