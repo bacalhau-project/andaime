@@ -11,116 +11,39 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// SSHClienter interface defines the methods we need for SSH operations
+// SSHClienter defines the interface for SSH client operations
 type SSHClienter interface {
 	NewSession() (SSHSessioner, error)
-	IsConnected() bool
 	Close() error
-	GetClient() *ssh.Client
 }
 
-// SSHClient struct definition
-type SSHClient struct {
-	SSHClientConfig *ssh.ClientConfig
-	Client          SSHClienter
-	Dialer          SSHDialer
+// SSHSessioner defines the interface for SSH session operations
+type SSHSessioner interface {
+	Run(cmd string) error
+	CombinedOutput(cmd string) ([]byte, error)
+	Close() error
 }
 
-func (cl *SSHClient) NewSession() (SSHSessioner, error) {
-	if cl.Client == nil {
-		return nil, fmt.Errorf("SSH client not connected")
-	}
-	return cl.Client.NewSession()
-}
-
-func (cl *SSHClient) Close() error {
-	if cl.Client == nil {
-		return nil
-	}
-	return cl.Client.Close()
-}
-
-func (cl *SSHClient) IsConnected() bool {
-	return cl.Client != nil && cl.Client.IsConnected()
-}
-
-func (cl *SSHClient) GetClient() *ssh.Client {
-	if cl.Client == nil {
-		return nil
-	}
-	return cl.Client.GetClient()
-}
-
-// SSHClientWrapper is a thin wrapper around an *ssh.Client that allows us to
-// satisfy the SSHClienter interface.
+// SSHClientWrapper wraps an ssh.Client
 type SSHClientWrapper struct {
-	*ssh.Client
+	Client *ssh.Client
 }
 
-func (w *SSHClientWrapper) NewSession() (SSHSessioner, error) {
-	session, err := w.Client.NewSession()
+func (c *SSHClientWrapper) NewSession() (SSHSessioner, error) {
+	session, err := c.Client.NewSession()
 	if err != nil {
 		return nil, err
 	}
 	return &SSHSessionWrapper{Session: session}, nil
 }
 
-func (w *SSHClientWrapper) Close() error {
-	return w.Client.Close()
+func (c *SSHClientWrapper) Close() error {
+	return c.Client.Close()
 }
 
-func (w *SSHClientWrapper) IsConnected() bool {
-	l := logger.Get()
-	if w.Client == nil {
-		l.Debug("SSH client is nil")
-		return false
-	}
-
-	// Check if the underlying network connection is still alive
-	session, err := w.Client.NewSession()
-	if err != nil {
-		l.Debugf("Failed to create new session, connection may be dead: %v", err)
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			l.Error("SSH connection has been closed")
-		} else if strings.Contains(err.Error(), "i/o timeout") {
-			l.Error("SSH connection timed out")
-		} else {
-			l.Errorf("Unexpected SSH error: %v", err)
-		}
-		return false
-	}
-	defer session.Close()
-
-	// Run a simple command to check if the connection is alive
-	l.Debug("Testing SSH connection with 'echo' command")
-	err = session.Run("echo")
-	if err != nil {
-		l.Debugf("SSH connection test failed: %v", err)
-		return false
-	}
-
-	l.Debug("SSH connection test successful")
-	return true
-}
-
-func (w *SSHClientWrapper) GetClient() *ssh.Client {
-	return w.Client
-}
-
+// SSHSessionWrapper wraps an ssh.Session
 type SSHSessionWrapper struct {
 	Session *ssh.Session
-}
-
-// SSHError represents an SSH command execution error with output
-type SSHError struct {
-	Cmd    string
-	Output string
-	Err    error
-}
-
-func (e *SSHError) Error() string {
-	return fmt.Sprintf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %v",
-		e.Cmd, e.Output, e.Err)
 }
 
 func (s *SSHSessionWrapper) Run(cmd string) error {
@@ -329,12 +252,8 @@ func (s *SSHSessionWrapper) handleFileTransfer(cmd, wrappedCmd string) error {
 	return s.Session.Wait()
 }
 
-func (s *SSHSessionWrapper) Start(cmd string) error {
-	return s.Session.Start(cmd)
-}
-
-func (s *SSHSessionWrapper) Wait() error {
-	return s.Session.Wait()
+func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
+	return s.Session.CombinedOutput(cmd)
 }
 
 func (s *SSHSessionWrapper) Close() error {
@@ -344,25 +263,34 @@ func (s *SSHSessionWrapper) Close() error {
 	return nil
 }
 
-func (s *SSHSessionWrapper) StdinPipe() (io.WriteCloser, error) {
-	return s.Session.StdinPipe()
+// SSHError represents an SSH command execution error with output
+type SSHError struct {
+	Cmd    string
+	Output string
+	Err    error
 }
 
-func (s *SSHSessionWrapper) StdoutPipe() (io.Reader, error) {
-	return s.Session.StdoutPipe()
+func (e *SSHError) Error() string {
+	return fmt.Sprintf("SSH command failed:\nCommand: %s\nOutput: %s\nError: %v",
+		e.Cmd, e.Output, e.Err)
 }
 
-func (s *SSHSessionWrapper) StderrPipe() (io.Reader, error) {
-	return s.Session.StderrPipe()
+// MockSSHClient is a mock implementation of SSHClienter for testing
+type MockSSHClient struct {
+	NewSessionFunc func() (SSHSessioner, error)
+	CloseFunc     func() error
 }
 
-func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
-	if s.Session == nil {
-		return nil, fmt.Errorf("ssh session is nil")
+func (m *MockSSHClient) NewSession() (SSHSessioner, error) {
+	if m.NewSessionFunc != nil {
+		return m.NewSessionFunc()
 	}
-	output, err := s.Session.CombinedOutput(cmd)
-	if err != nil {
-		return output, err
+	return nil, nil
+}
+
+func (m *MockSSHClient) Close() error {
+	if m.CloseFunc != nil {
+		return m.CloseFunc()
 	}
-	return output, nil
+	return nil
 }
