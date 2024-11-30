@@ -1,21 +1,20 @@
-package awsprovider
+package aws
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -25,7 +24,7 @@ type LiveEC2Client struct {
 }
 
 // NewEC2Client creates a new EC2 client
-func NewEC2Client(ctx context.Context) (EC2Clienter, error) {
+func NewEC2Client(ctx context.Context) (aws_interface.EC2Clienter, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -201,262 +200,370 @@ func (c *LiveEC2Client) DescribeVpcs(
 	return c.client.DescribeVpcs(ctx, params, optFns...)
 }
 
+func (c *LiveEC2Client) DescribeRegions(
+	ctx context.Context,
+	params *ec2.DescribeRegionsInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeRegionsOutput, error) {
+	return c.client.DescribeRegions(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) ModifyVpcAttribute(
+	ctx context.Context,
+	params *ec2.ModifyVpcAttributeInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.ModifyVpcAttributeOutput, error) {
+	return c.client.ModifyVpcAttribute(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DisassociateRouteTable(
+	ctx context.Context,
+	params *ec2.DisassociateRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DisassociateRouteTableOutput, error) {
+	return c.client.DisassociateRouteTable(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DeleteRouteTable(
+	ctx context.Context,
+	params *ec2.DeleteRouteTableInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DeleteRouteTableOutput, error) {
+	return c.client.DeleteRouteTable(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DescribeInternetGateways(
+	ctx context.Context,
+	params *ec2.DescribeInternetGatewaysInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DescribeInternetGatewaysOutput, error) {
+	return c.client.DescribeInternetGateways(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DetachInternetGateway(
+	ctx context.Context,
+	params *ec2.DetachInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DetachInternetGatewayOutput, error) {
+	return c.client.DetachInternetGateway(ctx, params, optFns...)
+}
+
+func (c *LiveEC2Client) DeleteInternetGateway(
+	ctx context.Context,
+	params *ec2.DeleteInternetGatewayInput,
+	optFns ...func(*ec2.Options),
+) (*ec2.DeleteInternetGatewayOutput, error) {
+	return c.client.DeleteInternetGateway(ctx, params, optFns...)
+}
+
 const (
 	SSHRetryInterval = 10 * time.Second
 	MaxRetries       = 30
 )
 
-// DeployVMsInParallel deploys multiple VMs in parallel and waits for SSH connectivity
-func (p *AWSProvider) DeployVMsInParallel(ctx context.Context) error {
-	l := logger.Get()
+func (p *AWSProvider) DeployVMsInParallel(
+	ctx context.Context,
+) error {
 	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	deployment := m.Deployment
 
-	var g errgroup.Group
-	var mu sync.Mutex
+	eg := errgroup.Group{}
 
-	// Deploy all VMs in parallel
-	for _, machine := range m.Deployment.GetMachines() {
-		machine := machine // Create local copy for goroutine
-		g.Go(func() error {
-			imageID, err := p.GetLatestUbuntuAMI(ctx, machine.GetLocation(), "x86_64")
-			if err != nil {
-				mu.Lock()
-				machine.SetFailed(true)
-				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
-				mu.Unlock()
-				return fmt.Errorf("failed to get latest Ubuntu AMI: %w", err)
-			}
-			machine.SetImageID(imageID)
-
-			if machine.GetImageID() == "" {
-				mu.Lock()
-				machine.SetFailed(true)
-				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
-				mu.Unlock()
-				return fmt.Errorf("image ID is empty for VM %s", machine.GetName())
-			}
-
-			// Update initial machine state
-			machine.SetMachineResourceState("Instance", models.ResourceStatePending)
-			machine.SetMachineResourceState("Network", models.ResourceStatePending)
-			machine.SetMachineResourceState("SSH", models.ResourceStatePending)
-
-			sshUser := m.Deployment.SSHUser
-			sshPublicKeyMaterial := m.Deployment.SSHPublicKeyMaterial
-
-			if sshUser == "" {
-				return fmt.Errorf("SSH user is not specified in deployment")
-			}
-
-			if sshPublicKeyMaterial == "" {
-				return fmt.Errorf("SSH public key material is not specified in deployment")
-			}
-
-			// Create and configure the VM
-			// Prepare user data to inject SSH public key
-			userData := fmt.Sprintf(`#!/bin/bash
-
-# Create user if it doesn't exist
-if ! id "%[1]s" &>/dev/null; then
-    useradd -m -s /bin/bash "%[1]s"
-fi
-
-# Set up SSH directory and authorized_keys
-mkdir -p /home/%[1]s/.ssh
-echo "%[2]s" >> /home/%[1]s/.ssh/authorized_keys
-chown -R %[1]s:%[1]s /home/%[1]s/.ssh
-chmod 700 /home/%[1]s/.ssh
-chmod 600 /home/%[1]s/.ssh/authorized_keys
-
-# Add user to sudoers with NOPASSWD
-echo '%[1]s ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/%[1]s
-chmod 440 /etc/sudoers.d/%[1]s
-`, sshUser, sshPublicKeyMaterial)
-
-			userDataEncoded := base64.StdEncoding.EncodeToString([]byte(userData))
-
-			l.Debugf("Attempting to create instance with the following configuration:")
-			l.Debugf("Image ID: %s", machine.GetImageID())
-			l.Debugf("Instance Type: %s", machine.GetType().ResourceString)
-			l.Debugf("Subnet ID: %s", p.PublicSubnetIDs[0])
-			l.Debugf("Security Group ID: %s", p.SecurityGroupID)
-
-			runResult, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
-				ImageId:      aws.String(machine.GetImageID()),
-				InstanceType: types.InstanceType(machine.GetType().ResourceString),
-				MinCount:     aws.Int32(1),
-				MaxCount:     aws.Int32(1),
-				UserData:     aws.String(userDataEncoded),
-				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
-					{
-						DeviceIndex:              aws.Int32(0),
-						AssociatePublicIpAddress: aws.Bool(true),
-						DeleteOnTermination:      aws.Bool(true),
-						SubnetId:                 aws.String(p.PublicSubnetIDs[0]),
-						Groups:                   []string{p.SecurityGroupID},
-					},
-				},
-				TagSpecifications: []types.TagSpecification{
-					{
-						ResourceType: types.ResourceTypeInstance,
-						Tags: []types.Tag{
-							{
-								Key:   aws.String("Name"),
-								Value: aws.String(machine.GetName()),
-							},
-							{
-								Key:   aws.String("Project"),
-								Value: aws.String("andaime"),
-							},
-						},
-					},
-				},
-			})
-
-			if err != nil {
-				l.Errorf("Detailed error creating instance: %+v", err)
-				// If it's an AWS error, try to extract more details
-				if awsErr, ok := err.(*smithy.OperationError); ok {
-					l.Errorf("AWS Operation Error: %v", awsErr)
-					// Safely handle error details
-					if unwrappedErr := awsErr.Unwrap(); unwrappedErr != nil {
-						l.Errorf("Underlying Error: %v", unwrappedErr)
-					}
-				}
-			}
-			if err != nil {
-				mu.Lock()
-				machine.SetFailed(true)
-				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
-				mu.Unlock()
-				return fmt.Errorf("failed to create VM %s: %w", machine.GetName(), err)
-			}
-
-			// Wait for instance to be running
-			waiterInput := &ec2.DescribeInstancesInput{
-				InstanceIds: []string{*runResult.Instances[0].InstanceId},
-			}
-			if err := p.WaitUntilInstanceRunning(ctx, waiterInput); err != nil {
-				mu.Lock()
-				machine.SetFailed(true)
-				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
-				mu.Unlock()
-				return fmt.Errorf("failed waiting for instance to be running: %w", err)
-			}
-
-			// Get instance details
-			describeResult, err := p.EC2Client.DescribeInstances(ctx, waiterInput)
-			if err != nil {
-				mu.Lock()
-				machine.SetFailed(true)
-				machine.SetMachineResourceState("Instance", models.ResourceStateFailed)
-				mu.Unlock()
-				return fmt.Errorf("failed to describe instance: %w", err)
-			}
-
-			instance := describeResult.Reservations[0].Instances[0]
-			machine.SetMachineResourceState("Instance", models.ResourceStateSucceeded)
-			machine.SetPublicIP(*instance.PublicIpAddress)
-			machine.SetPrivateIP(*instance.PrivateIpAddress)
-
-			// Wait for SSH connectivity
-			if err := p.waitForSSHConnectivity(ctx, machine); err != nil {
-				mu.Lock()
-				machine.SetFailed(true)
-				machine.SetMachineResourceState("SSH", models.ResourceStateFailed)
-				mu.Unlock()
-				return fmt.Errorf("SSH connectivity failed for VM %s: %w", machine.GetName(), err)
-			}
-
-			machine.SetMachineResourceState("SSH", models.ResourceStateSucceeded)
-			machine.SetMachineResourceState("Network", models.ResourceStateSucceeded)
-			return nil
-		})
+	// Group machines by region
+	machinesByRegion := make(map[string][]models.Machiner)
+	for _, machine := range deployment.Machines {
+		region := machine.GetLocation()
+		if region == "" {
+			continue
+		}
+		// Convert zone to region if necessary
+		if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
+			region = region[:len(region)-1]
+		}
+		machinesByRegion[region] = append(machinesByRegion[region], machine)
 	}
 
-	if err := g.Wait(); err != nil {
-		l.Errorf("Failed to deploy VMs in parallel: %v", err)
-		return err
+	// Deploy machines in each region
+	for region, machines := range machinesByRegion {
+		vpc, exists := deployment.AWS.RegionalResources.VPCs[region]
+		if !exists {
+			return fmt.Errorf("VPC not found for region %s", region)
+		}
+
+		// Create EC2 client for the region
+		ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+		if err != nil {
+			return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
+		}
+
+		// Deploy machines in parallel within each region
+		for _, machine := range machines {
+			eg.Go(func() error {
+				if err := p.deployVM(ctx, ec2Client, machine, vpc); err != nil {
+					return fmt.Errorf(
+						"failed to deploy VM %s in region %s: %w",
+						machine.GetName(),
+						region,
+						err,
+					)
+				}
+				return nil
+			})
+		}
 	}
 
 	return nil
 }
 
-// CreateVM creates a new EC2 instance with the specified configuration
-func (p *AWSProvider) CreateVM(
+func (p *AWSProvider) deployVM(
 	ctx context.Context,
+	ec2Client aws_interface.EC2Clienter,
 	machine models.Machiner,
-) (*types.Instance, error) {
-	l := logger.Get()
-	m := display.GetGlobalModelFunc()
+	vpc *models.AWSVPC,
+) error {
+	// Get AMI ID for the region
+	amiID, err := p.getLatestAMI(ctx, ec2Client)
+	if err != nil {
+		return fmt.Errorf("failed to get latest AMI: %w", err)
+	}
 
-	// Update status for creating instance
-	m.UpdateStatus(models.NewDisplayStatusWithText(
-		machine.GetName(),
-		models.AWSResourceTypeInstance,
-		models.ResourceStatePending,
-		"Creating EC2 instance",
-	))
-
-	// Create the instance
-	instance, err := p.EC2Client.RunInstances(ctx, &ec2.RunInstancesInput{
-		ImageId:      aws.String(machine.GetImageID()),
-		InstanceType: types.InstanceType(machine.GetType().ResourceString),
+	// Create instance
+	runResult, err := ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
+		ImageId:      aws.String(amiID),
+		InstanceType: ec2_types.InstanceTypeT2Micro,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
-		KeyName:      aws.String(m.Deployment.SSHKeyName),
-		NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
+		NetworkInterfaces: []ec2_types.InstanceNetworkInterfaceSpecification{
 			{
 				DeviceIndex:              aws.Int32(0),
+				SubnetId:                 aws.String(vpc.SubnetID),
+				Groups:                   []string{vpc.SecurityGroupID},
 				AssociatePublicIpAddress: aws.Bool(true),
-				DeleteOnTermination:      aws.Bool(true),
-				SubnetId:                 aws.String(p.PublicSubnetIDs[0]),
-				Groups:                   []string{p.SecurityGroupID},
 			},
 		},
-		TagSpecifications: []types.TagSpecification{
+		TagSpecifications: []ec2_types.TagSpecification{
 			{
-				ResourceType: types.ResourceTypeInstance,
-				Tags: []types.Tag{
+				ResourceType: ec2_types.ResourceTypeInstance,
+				Tags: []ec2_types.Tag{
 					{
 						Key:   aws.String("Name"),
 						Value: aws.String(machine.GetName()),
-					},
-					{
-						Key:   aws.String("Project"),
-						Value: aws.String("andaime"),
 					},
 				},
 			},
 		},
 	})
-
 	if err != nil {
-		l.Errorf("Failed to create EC2 instance (%s): %v", machine.GetName(), err)
-		return nil, fmt.Errorf("failed to create EC2 instance: %w", err)
+		return fmt.Errorf("failed to run instance: %w", err)
 	}
 
 	// Wait for instance to be running
-	waiterInput := &ec2.DescribeInstancesInput{
-		InstanceIds: []string{*instance.Instances[0].InstanceId},
-	}
-	err = p.WaitUntilInstanceRunning(ctx, waiterInput)
-	if err != nil {
-		l.Errorf("Failed waiting for instance to be running (%s): %v", machine.GetName(), err)
-		return nil, fmt.Errorf("failed waiting for instance to be running: %w", err)
+	waiter := ec2.NewInstanceRunningWaiter(ec2Client)
+	if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{*runResult.Instances[0].InstanceId},
+	}, 5*time.Minute); err != nil {
+		return fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 
 	// Get instance details
-	describeResult, err := p.EC2Client.DescribeInstances(ctx, waiterInput)
+	describeResult, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{*runResult.Instances[0].InstanceId},
+	})
 	if err != nil {
-		l.Errorf("Failed to describe instance (%s): %v", machine.GetName(), err)
-		return nil, fmt.Errorf("failed to describe instance: %w", err)
+		return fmt.Errorf("failed to describe instance: %w", err)
 	}
 
-	return &describeResult.Reservations[0].Instances[0], nil
+	instance := describeResult.Reservations[0].Instances[0]
+	machine.SetPublicIP(*instance.PublicIpAddress)
+	machine.SetPrivateIP(*instance.PrivateIpAddress)
+
+	return nil
 }
 
-// waitForSSHConnectivity polls a VM until SSH is available or max retries are reached
+func (p *AWSProvider) getLatestAMI(
+	ctx context.Context,
+	ec2Client aws_interface.EC2Clienter,
+) (string, error) {
+	result, err := ec2Client.DescribeImages(ctx, &ec2.DescribeImagesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("name"),
+				Values: []string{"amzn2-ami-hvm-*-x86_64-gp2"},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+		Owners: []string{"amazon"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe images: %w", err)
+	}
+
+	// Find the latest AMI
+	var latestImage *ec2_types.Image
+	for i := range result.Images {
+		if latestImage == nil || *result.Images[i].CreationDate > *latestImage.CreationDate {
+			latestImage = &result.Images[i]
+		}
+	}
+
+	if latestImage == nil {
+		return "", fmt.Errorf("no AMI found")
+	}
+
+	return *latestImage.ImageId, nil
+}
+
+func (p *AWSProvider) createRegionalInfrastructure(
+	ctx context.Context,
+	region string,
+	client aws_interface.EC2Clienter,
+) (*models.AWSVPC, error) {
+	vpc := &models.AWSVPC{}
+
+	// Create VPC
+	createVpcOutput, err := client.CreateVpc(ctx, &ec2.CreateVpcInput{
+		CidrBlock: aws.String("10.0.0.0/16"),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeVpc,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(fmt.Sprintf("andaime-vpc-%s", region)),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VPC in region %s: %w", region, err)
+	}
+	vpc.VPCID = *createVpcOutput.Vpc.VpcId
+
+	// Create security group
+	sgOutput, err := client.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+		GroupName:   aws.String(fmt.Sprintf("andaime-sg-%s", region)),
+		VpcId:       aws.String(vpc.VPCID),
+		Description: aws.String("Security group for Andaime deployments"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create security group: %w", err)
+	}
+	vpc.SecurityGroupID = *sgOutput.GroupId
+
+	// Configure security group rules
+	sgRules := []ec2_types.IpPermission{}
+	allowedPorts := []int32{22, 1234, 1235, 4222}
+	for _, port := range allowedPorts {
+		sgRules = append(sgRules, ec2_types.IpPermission{
+			IpProtocol: aws.String("tcp"),
+			FromPort:   aws.Int32(port),
+			ToPort:     aws.Int32(port),
+			IpRanges: []ec2_types.IpRange{
+				{CidrIp: aws.String("0.0.0.0/0")},
+			},
+		})
+	}
+
+	_, err = client.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
+		GroupId:       aws.String(vpc.SecurityGroupID),
+		IpPermissions: sgRules,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to authorize security group ingress: %w", err)
+	}
+
+	// Create subnets
+	zones, err := client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get availability zones: %w", err)
+	}
+
+	for i, az := range zones.AvailabilityZones {
+		// Create public subnet
+		publicSubnet, err := client.CreateSubnet(ctx, &ec2.CreateSubnetInput{
+			VpcId:            aws.String(vpc.VPCID),
+			CidrBlock:        aws.String(fmt.Sprintf("10.0.%d.0/24", i*2)), //nolint:mnd
+			AvailabilityZone: az.ZoneName,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create public subnet: %w", err)
+		}
+		vpc.PublicSubnetIDs = append(vpc.PublicSubnetIDs, *publicSubnet.Subnet.SubnetId)
+	}
+
+	// Create and attach internet gateway
+	igw, err := client.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create internet gateway: %w", err)
+	}
+	vpc.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
+
+	_, err = client.AttachInternetGateway(ctx, &ec2.AttachInternetGatewayInput{
+		InternetGatewayId: aws.String(vpc.InternetGatewayID),
+		VpcId:             aws.String(vpc.VPCID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach internet gateway: %w", err)
+	}
+
+	// Create and configure route table
+	rt, err := client.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{
+		VpcId: aws.String(vpc.VPCID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create route table: %w", err)
+	}
+	vpc.PublicRouteTableID = *rt.RouteTable.RouteTableId
+
+	// Add route to internet gateway
+	_, err = client.CreateRoute(ctx, &ec2.CreateRouteInput{
+		RouteTableId:         aws.String(vpc.PublicRouteTableID),
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+		GatewayId:            aws.String(vpc.InternetGatewayID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create route to internet gateway: %w", err)
+	}
+
+	// Associate public subnets with route table
+	for _, subnetID := range vpc.PublicSubnetIDs {
+		_, err = client.AssociateRouteTable(ctx, &ec2.AssociateRouteTableInput{
+			RouteTableId: aws.String(vpc.PublicRouteTableID),
+			SubnetId:     aws.String(subnetID),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to associate subnet with route table: %w", err)
+		}
+	}
+
+	return vpc, nil
+}
+
+func (p *AWSProvider) saveRegionalVPCToConfig(region string,
+	vpc *models.AWSVPC) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	deploymentPath := fmt.Sprintf("deployments.%s.aws.regions.%s", m.Deployment.UniqueID, region)
+	viper.Set(fmt.Sprintf("%s.vpc_id", deploymentPath), vpc.VPCID)
+	viper.Set(fmt.Sprintf("%s.security_group_id", deploymentPath), vpc.SecurityGroupID)
+	viper.Set(fmt.Sprintf("%s.public_subnet_ids", deploymentPath), vpc.PublicSubnetIDs)
+	viper.Set(fmt.Sprintf("%s.private_subnet_ids", deploymentPath), vpc.PrivateSubnetIDs)
+	viper.Set(fmt.Sprintf("%s.internet_gateway_id", deploymentPath), vpc.InternetGatewayID)
+	viper.Set(fmt.Sprintf("%s.public_route_table_id", deploymentPath), vpc.PublicRouteTableID)
+
+	return viper.WriteConfig()
+}
+
 func (p *AWSProvider) waitForSSHConnectivity(ctx context.Context, machine models.Machiner) error {
 	l := logger.Get()
 	m := display.GetGlobalModelFunc()

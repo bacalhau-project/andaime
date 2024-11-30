@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -21,8 +21,8 @@ func TestDestroyWithEmptyVPCID(t *testing.T) {
 deployments:
   aws:
     test-deployment:
-      vpc_id: ""
       region: "us-west-2"
+      vpc_id: ""
       instance_type: "t2.micro"
 `)
 
@@ -39,14 +39,12 @@ deployments:
 	provider := &AWSProvider{}
 
 	// Call destroy
-	err = provider.DestroyResources(context.Background(), "")
+	err = provider.Destroy(context.Background(), "")
 	require.NoError(t, err)
 
-	// Verify the VPC ID is removed from config
+	// Verify the deployment is removed from config
 	viper.ReadInConfig() // Reload config
 	deployments := viper.GetStringMap("deployments.aws")
-	deployment, ok := deployments["test-deployment"].(map[string]interface{})
-	require.True(t, ok, "test-deployment should exist")
-	_, exists := deployment["vpc_id"]
-	assert.False(t, exists, "vpc_id should be removed from config")
+	_, exists := deployments["test-deployment"]
+	assert.False(t, exists, "test-deployment should be removed from config")
 }

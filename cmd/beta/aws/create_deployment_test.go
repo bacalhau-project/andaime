@@ -19,10 +19,14 @@ func TestWriteVPCIDToConfig(t *testing.T) {
 	// Create test configuration
 	config := []byte(`
 deployments:
-  aws:
-    test-deployment:
-      region: "us-west-2"
-      instance_type: "t2.micro"
+  test-deployment:
+    provider: "aws"
+    aws:
+      account_id: "test-account-id"
+      regions:
+        us-west-2:
+          vpc_id: ""
+          security_group_id: ""
 `)
 
 	err := os.WriteFile(configFile, config, 0644)
@@ -36,24 +40,46 @@ deployments:
 
 	// Create test deployment
 	deployment := &models.Deployment{
-		Name: "test-deployment",
-		AWS: &models.AWSConfig{
-			VPCID: "vpc-12345",
+		UniqueID:       "test-deployment",
+		DeploymentType: models.DeploymentTypeAWS,
+		AWS: &models.AWSDeployment{
+			AccountID: "test-account-id",
+			RegionalResources: &models.RegionalResources{
+				VPCs: map[string]*models.AWSVPC{
+					"us-west-2": {
+						VPCID:           "vpc-12345",
+						SecurityGroupID: "sg-12345",
+					},
+				},
+			},
 		},
 	}
 
-	// Write VPC ID to config
-	err = writeVPCIDToConfig(deployment)
+	// Write deployment to config
+	err = deployment.UpdateViperConfig()
 	require.NoError(t, err)
 
-	// Verify the VPC ID was written correctly
+	// Verify the configuration was written correctly
 	viper.ReadInConfig() // Reload config
-	deploymentFromViper := viper.GetStringMap("deployments.aws")
 
-	assert.Equal(
-		t,
-		deployment.AWS.VPCID,
-		deploymentFromViper["test-deployment"].(map[string]interface{})["vpc_id"],
-		"vpc_id should be written to config",
+	// Check AWS account ID
+	assert.Equal(t,
+		"test-account-id",
+		viper.GetString("deployments.test-deployment.aws.account_id"),
+		"AWS account ID should be written to config",
+	)
+
+	// Check VPC ID
+	assert.Equal(t,
+		"vpc-12345",
+		viper.GetString("deployments.test-deployment.aws.regions.us-west-2.vpc_id"),
+		"VPC ID should be written to config",
+	)
+
+	// Check security group ID
+	assert.Equal(t,
+		"sg-12345",
+		viper.GetString("deployments.test-deployment.aws.regions.us-west-2.security_group_id"),
+		"Security group ID should be written to config",
 	)
 }

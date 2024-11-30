@@ -1,5 +1,5 @@
 //nolint:lll
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -108,4 +108,9 @@ type EC2Clienter interface {
 		params *ec2.DescribeRouteTablesInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeRouteTablesOutput, error)
+	ModifyVpcAttribute(
+		ctx context.Context,
+		params *ec2.ModifyVpcAttributeInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.ModifyVpcAttributeOutput, error)
 }

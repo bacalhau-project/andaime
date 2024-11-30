@@ -10,7 +10,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -82,7 +82,6 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
 
-	m.Deployment.AWS.Region = awsProvider.GetRegion()
 	m.Deployment.AWS.AccountID = awsProvider.GetAccountID()
 
 	// Add error handling for TTY initialization
@@ -110,7 +109,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	return deploymentErr
 }
 
-func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
+func initializeAWSProvider() (*aws_provider.AWSProvider, error) {
 	// Try environment variables first, then fall back to viper config
 	accountID := viper.GetString("aws.account_id")
 	if accountID == "" {
@@ -126,7 +125,7 @@ func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
 		)
 	}
 
-	awsProvider, err := awsprovider.NewAWSProviderFunc(accountID, region)
+	awsProvider, err := aws_provider.NewAWSProviderFunc(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize AWS provider: %w", err)
 	}
@@ -135,9 +134,14 @@ func initializeAWSProvider() (*awsprovider.AWSProvider, error) {
 
 func prepareDeployment(
 	ctx context.Context,
-	awsProvider *awsprovider.AWSProvider,
+	awsProvider *aws_provider.AWSProvider,
 ) (*models.Deployment, error) {
-	deployment, err := awsProvider.PrepareDeployment(ctx)
+	m := display.GetGlobalModelFunc()
+	if m == nil {
+		return nil, fmt.Errorf("display model is nil")
+	}
+
+	err := awsProvider.PrepareDeployment(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare deployment: %w", err)
 	}
@@ -150,13 +154,13 @@ func prepareDeployment(
 		}
 		return nil, fmt.Errorf("failed to process machines config: %w", err)
 	}
-	deployment.SetMachines(machines)
-	deployment.SetLocations(locations)
+	m.Deployment.SetMachines(machines)
+	m.Deployment.SetLocations(locations)
 
-	return deployment, nil
+	return nil, nil
 }
 
-func startResourcePolling(ctx context.Context, awsProvider *awsprovider.AWSProvider) error {
+func startResourcePolling(ctx context.Context, awsProvider *aws_provider.AWSProvider) error {
 	l := logger.Get()
 	err := awsProvider.StartResourcePolling(ctx)
 	if err != nil {
@@ -167,7 +171,7 @@ func startResourcePolling(ctx context.Context, awsProvider *awsprovider.AWSProvi
 
 func runDeploymentAsync(
 	ctx context.Context,
-	awsProvider *awsprovider.AWSProvider,
+	awsProvider *aws_provider.AWSProvider,
 	cancel context.CancelFunc,
 ) error {
 	l := logger.Get()
@@ -211,7 +215,7 @@ func runDeploymentAsync(
 	return deploymentErr
 }
 
-func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) error {
+func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) error {
 	l := logger.Get()
 	prog := display.GetGlobalProgramFunc()
 	m := display.GetGlobalModelFunc()
@@ -304,6 +308,10 @@ func runDeployment(ctx context.Context, awsProvider *awsprovider.AWSProvider) er
 }
 
 func writeVPCIDToConfig(deployment *models.Deployment) error {
+	if deployment == nil || deployment.AWS == nil {
+		return fmt.Errorf("deployment or AWS config is nil")
+	}
+
 	// Get the current deployment from config
 	deploymentKey := fmt.Sprintf("deployments.aws.%s", deployment.Name)
 	currentDeployment := viper.GetStringMap(deploymentKey)
@@ -312,7 +320,7 @@ func writeVPCIDToConfig(deployment *models.Deployment) error {
 	}
 
 	// Update the VPC ID
-	currentDeployment["vpc_id"] = deployment.AWS.VPCID
+	currentDeployment["account_id"] = deployment.AWS.AccountID
 
 	// Write back to config
 	viper.Set(deploymentKey, currentDeployment)
@@ -371,9 +379,7 @@ func writeConfig() {
 			viper.Set(deploymentPath, map[string]interface{}{
 				"provider": "aws",
 				"aws": map[string]interface{}{
-					"region":     m.Deployment.AWS.Region,
 					"account_id": m.Deployment.AWS.AccountID,
-					"vpc_id":     m.Deployment.AWS.VPCID,
 				},
 				"machines": machines,
 			})

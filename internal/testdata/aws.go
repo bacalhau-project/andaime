@@ -1,16 +1,21 @@
 package testdata
 
 import (
+	"fmt"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
-func FakeEC2DescribeAvailabilityZonesOutput() *ec2.DescribeAvailabilityZonesOutput {
+func FakeEC2DescribeAvailabilityZonesOutput(region string) *ec2.DescribeAvailabilityZonesOutput {
 	return &ec2.DescribeAvailabilityZonesOutput{
 		AvailabilityZones: []types.AvailabilityZone{
 			{
-				ZoneName: aws.String("us-east-1a"),
+				ZoneName: aws.String(fmt.Sprintf("%sa", region)),
+			},
+			{
+				ZoneName: aws.String(fmt.Sprintf("%sb", region)),
 			},
 		},
 	}
@@ -226,4 +231,32 @@ func FakeEC2DescribeImagesOutput() *ec2.DescribeImagesOutput {
 			},
 		},
 	}
+}
+
+func FakeEC2DescribeRegionsOutput() *ec2.DescribeRegionsOutput {
+	return &ec2.DescribeRegionsOutput{
+		Regions: []types.Region{
+			{
+				RegionName: aws.String("us-east-1"),
+			},
+			{
+				RegionName: aws.String("us-east-2"),
+			},
+		},
+	}
+}
+
+func FakeEC2DescribeVpcAttributeOutput() *ec2.DescribeVpcAttributeOutput {
+	return &ec2.DescribeVpcAttributeOutput{
+		EnableDnsSupport: &types.AttributeBooleanValue{
+			Value: aws.Bool(true),
+		},
+		EnableDnsHostnames: &types.AttributeBooleanValue{
+			Value: aws.Bool(true),
+		},
+	}
+}
+
+func FakeEC2ModifyVpcAttributeOutput() *ec2.ModifyVpcAttributeOutput {
+	return &ec2.ModifyVpcAttributeOutput{}
 }

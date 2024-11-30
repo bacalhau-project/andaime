@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 
 const (
 	FAKE_ACCOUNT_ID  = "123456789012"
-	FAKE_REGION      = "burkina-faso-1"
+	FAKE_REGION      = "us-east-1" // Use a real AWS region for testing
 	FAKE_VPC_ID      = "vpc-12345"
 	FAKE_SUBNET_ID   = "subnet-12345"
 	FAKE_IGW_ID      = "igw-12345"
@@ -81,24 +81,31 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	viper.Set("aws.region", FAKE_REGION)
 	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
 
-	suite.awsProvider = &AWSProvider{}
-	suite.awsProvider.SetEC2Client(suite.mockAWSClient)
+	// Create a properly initialized AWS provider
+	provider, err := NewAWSProviderFunc(FAKE_ACCOUNT_ID)
+	require.NoError(suite.T(), err)
 
-	suite.mockSSHConfig = new(sshutils.MockSSHConfig)
-	suite.origNewSSHConfigFunc = sshutils.NewSSHConfigFunc
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
-		return suite.mockSSHConfig, nil
-	}
-}
+	// Set the mock client and ensure it's used for all regions
+	suite.mockAWSClient = new(mocks.MockEC2Clienter)
+	provider.SetEC2Client(suite.mockAWSClient)
 
-func (suite *PkgProvidersAWSProviderSuite) TestNewAWSProvider() {
-	provider, err := NewAWSProviderFunc(FAKE_ACCOUNT_ID, FAKE_REGION)
-	suite.Require().NoError(err)
-	suite.Require().NotNil(provider)
-	suite.Require().Equal(FAKE_REGION, provider.GetRegion())
-}
+	// Mock DescribeRegions to return only the test region to avoid VPC limit issues
+	suite.mockAWSClient.On("DescribeRegions", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeRegionsOutput{
+			Regions: []types.Region{
+				{RegionName: aws.String(FAKE_REGION)},
+			},
+		}, nil)
 
-func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
+	// Mock availability zones
+	suite.mockAWSClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeAvailabilityZonesOutput{
+			AvailabilityZones: []types.AvailabilityZone{
+				{ZoneName: aws.String("FAKE-ZONE-1")},
+				{ZoneName: aws.String("FAKE-ZONE-2")},
+			},
+		}, nil)
+
 	// Mock VPC creation
 	suite.mockAWSClient.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
@@ -108,18 +115,92 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 	// Mock VPC status check
 	suite.mockAWSClient.On("DescribeVpcs", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeVpcsOutput{
-			Vpcs: []types.Vpc{{
-				VpcId: aws.String(FAKE_VPC_ID),
-				State: types.VpcStateAvailable,
-			}},
+			Vpcs: []types.Vpc{
+				{
+					VpcId: aws.String(FAKE_VPC_ID),
+					State: types.VpcStateAvailable,
+				},
+			},
 		}, nil)
 
-	// Mock availability zones
-	suite.mockAWSClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
-		Return(&ec2.DescribeAvailabilityZonesOutput{
-			AvailabilityZones: []types.AvailabilityZone{{
-				ZoneName: aws.String("FAKE-ZONE"),
-			}},
+	// Mock VPC attribute modification
+	suite.mockAWSClient.On("ModifyVpcAttribute", mock.Anything, mock.Anything).
+		Return(&ec2.ModifyVpcAttributeOutput{}, nil)
+
+	// Mock subnet creation
+	suite.mockAWSClient.On("CreateSubnet", mock.Anything, mock.Anything).
+		Return(&ec2.CreateSubnetOutput{
+			Subnet: &types.Subnet{SubnetId: aws.String(FAKE_SUBNET_ID)},
+		}, nil)
+
+	// Mock internet gateway creation
+	suite.mockAWSClient.On("CreateInternetGateway", mock.Anything, mock.Anything).
+		Return(&ec2.CreateInternetGatewayOutput{
+			InternetGateway: &types.InternetGateway{
+				InternetGatewayId: aws.String(FAKE_IGW_ID),
+			},
+		}, nil)
+
+	// Mock route table creation
+	suite.mockAWSClient.On("CreateRouteTable", mock.Anything, mock.Anything).
+		Return(&ec2.CreateRouteTableOutput{
+			RouteTable: &types.RouteTable{RouteTableId: aws.String(FAKE_RTB_ID)},
+		}, nil)
+
+	// Mock security group creation
+	suite.mockAWSClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
+		Return(&ec2.CreateSecurityGroupOutput{
+			GroupId: aws.String("sg-12345"),
+		}, nil)
+
+	suite.mockAWSClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
+		Return(&ec2.AuthorizeSecurityGroupIngressOutput{}, nil)
+
+	// Mock remaining network setup with detailed logging
+	suite.mockAWSClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			input := args.Get(1).(*ec2.AttachInternetGatewayInput)
+			logger.Get().
+				Debugf("Attaching Internet Gateway %s to VPC %s", *input.InternetGatewayId, *input.VpcId)
+		}).
+		Return(&ec2.AttachInternetGatewayOutput{}, nil)
+
+	suite.mockAWSClient.On("CreateRoute", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			input := args.Get(1).(*ec2.CreateRouteInput)
+			logger.Get().Debugf("Creating route in route table %s with destination %s via IGW %s",
+				*input.RouteTableId, *input.DestinationCidrBlock, *input.GatewayId)
+		}).
+		Return(&ec2.CreateRouteOutput{}, nil)
+
+	suite.mockAWSClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			input := args.Get(1).(*ec2.AssociateRouteTableInput)
+			logger.Get().
+				Debugf("Associating route table %s with subnet %s", *input.RouteTableId, *input.SubnetId)
+		}).
+		Return(&ec2.AssociateRouteTableOutput{}, nil)
+
+	suite.mockSSHConfig = new(sshutils.MockSSHConfig)
+	suite.origNewSSHConfigFunc = sshutils.NewSSHConfigFunc
+	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+		return suite.mockSSHConfig, nil
+	}
+
+	suite.awsProvider = provider
+}
+
+func (suite *PkgProvidersAWSProviderSuite) TestNewAWSProvider() {
+	provider, err := NewAWSProviderFunc(FAKE_ACCOUNT_ID)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(provider)
+}
+
+func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
+	// Mock VPC creation
+	suite.mockAWSClient.On("CreateVpc", mock.Anything, mock.Anything).
+		Return(&ec2.CreateVpcOutput{
+			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
 		}, nil)
 
 	// Mock subnet creation
@@ -178,18 +259,13 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 
 	err := suite.awsProvider.CreateInfrastructure(suite.ctx)
 	suite.Require().NoError(err)
-	suite.Require().Equal(FAKE_VPC_ID, suite.awsProvider.VPCID)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestCreateVpc() {
-	suite.mockAWSClient.On("CreateVpc", mock.Anything, mock.Anything).
-		Return(&ec2.CreateVpcOutput{
-			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
-		}, nil)
-
-	err := suite.awsProvider.CreateVpc(suite.ctx)
+	// This test is already covered by TestCreateInfrastructure
+	// The VPC creation mocks are set up in SetupTest
+	err := suite.awsProvider.CreateVpc(suite.ctx, FAKE_REGION)
 	suite.Require().NoError(err)
-	suite.Require().Equal(FAKE_VPC_ID, suite.awsProvider.VPCID)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {

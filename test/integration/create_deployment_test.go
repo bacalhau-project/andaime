@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,11 +13,17 @@ import (
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/bacalhau-project/andaime/cmd/beta/azure"
+	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -25,20 +32,20 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 
-	"github.com/bacalhau-project/andaime/cmd/beta/aws"
-	"github.com/bacalhau-project/andaime/cmd/beta/azure"
-	"github.com/bacalhau-project/andaime/cmd/beta/gcp"
+	common_mock "github.com/bacalhau-project/andaime/mocks/common"
 
 	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
 	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
-	common_mock "github.com/bacalhau-project/andaime/mocks/common"
 	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
-
+	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 
-	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
+	aws_cmd "github.com/bacalhau-project/andaime/cmd/beta/aws"
+	azure_cmd "github.com/bacalhau-project/andaime/cmd/beta/azure"
+	gcp_cmd "github.com/bacalhau-project/andaime/cmd/beta/gcp"
 )
 
 var (
@@ -103,17 +110,19 @@ func (s *IntegrationTestSuite) SetupTest() {
 	s.Require().NoError(err)
 
 	var configContent string
-	if viper.GetString("general.deployment_type") == "gcp" {
+	switch viper.GetString("general.deployment_type") {
+	case string(models.DeploymentTypeGCP):
 		configContent, err = testdata.ReadTestGCPConfig()
-		s.Require().NoError(err)
-	} else {
+	case string(models.DeploymentTypeAWS):
+		configContent, err = testdata.ReadTestAWSConfig()
+	default:
 		configContent, err = testdata.ReadTestAzureConfig()
-		s.Require().NoError(err)
 	}
+	s.Require().NoError(err)
 	os.WriteFile(f.Name(), []byte(configContent), 0o644)
 
 	s.viperConfigFile = f.Name()
-	viper.SetConfigFile(s.viperConfigFile) // Also set it for Viper directly
+	viper.SetConfigFile(s.viperConfigFile)
 
 	s.setupCommonConfig()
 	s.setupMockClusterDeployer()
@@ -125,6 +134,10 @@ func (s *IntegrationTestSuite) TearDownTest() {
 		_ = os.Remove(s.viperConfigFile)
 		s.viperConfigFile = ""
 	}
+}
+
+func TestIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(IntegrationTestSuite))
 }
 
 func (s *IntegrationTestSuite) setupCommonConfig() {
@@ -184,28 +197,25 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 			},
 		})
 	case models.DeploymentTypeAWS:
+		viper.Set("general.deployment_type", "aws")
 		viper.Set("aws.account_id", "123456789012")
-		viper.Set("aws.region", "us-west-2")
 		viper.Set("aws.default_count_per_zone", 1)
 		viper.Set("aws.default_machine_type", "t3.medium")
 		viper.Set("aws.default_disk_size_gb", 30)
-		viper.Set("aws.machines", []interface{}{
-			map[string]interface{}{
-				"location": "us-west-2",
-				"parameters": map[string]interface{}{
-					"count":         1,
-					"orchestrator":  true,
-					"instance_type": "t3.medium",
+
+		// Configure multi-region deployment
+		regions := []string{"us-west-2", "us-east-1"}
+		for _, region := range regions {
+			viper.Set(fmt.Sprintf("aws.regions.%s.vpc_id", region), "")
+			viper.Set(fmt.Sprintf("aws.regions.%s.security_group_id", region), "")
+			viper.Set(fmt.Sprintf("aws.regions.%s.machines", region), map[string]interface{}{
+				fmt.Sprintf("test-machine-%s", region): map[string]interface{}{
+					"name":         fmt.Sprintf("test-machine-%s", region),
+					"location":     fmt.Sprintf("%sa", region), // Use first AZ in region
+					"orchestrator": region == regions[0],       // First region gets orchestrator
 				},
-			},
-			map[string]interface{}{
-				"location": "us-east-1",
-				"parameters": map[string]interface{}{
-					"count":         1,
-					"instance_type": "t3.medium",
-				},
-			},
-		})
+			})
+		}
 	}
 }
 
@@ -257,252 +267,542 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 	tests := []struct {
 		name     string
 		provider models.DeploymentType
+		setup    func() (*cobra.Command, error)
 	}{
-		{"aws", models.DeploymentTypeAWS},
-		{"azure", models.DeploymentTypeAzure},
-		{"gcp", models.DeploymentTypeGCP},
+		{
+			name:     "aws",
+			provider: models.DeploymentTypeAWS,
+			setup:    s.setupAWSTest,
+		},
+		{
+			name:     "azure",
+			provider: models.DeploymentTypeAzure,
+			setup:    s.setupAzureTest,
+		},
+		{
+			name:     "gcp",
+			provider: models.DeploymentTypeGCP,
+			setup:    s.setupGCPTest,
+		},
 	}
 
-	var err error
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			s.SetupTest()
 			s.setupProviderConfig(tt.provider)
+			s.setupDeploymentModel(tt.name, tt.provider)
 
-			deploymentName := fmt.Sprintf("test-deployment-%s-%d", tt.name, time.Now().UnixNano())
-			viper.Set("general.project_prefix", deploymentName)
+			cmd, err := tt.setup()
+			s.Require().NoError(err)
 
-			m := display.GetGlobalModelFunc()
-			m.Deployment = &models.Deployment{
-				DeploymentType: tt.provider,
-				Name:           deploymentName,
-			}
+			err = s.executeDeployment(cmd, tt.provider)
+			s.Require().NoError(err)
 
-			var createDeploymentCmd *cobra.Command
+			s.verifyDeploymentResult(tt.provider)
+		})
+	}
+}
 
-			switch tt.provider {
-			case models.DeploymentTypeAWS:
-				createDeploymentCmd = aws.GetAwsCreateDeploymentCmd()
-				createDeploymentCmd.SetContext(context.Background())
+func (s *IntegrationTestSuite) setupDeploymentModel(
+	testName string,
+	provider models.DeploymentType,
+) {
+	deploymentName := fmt.Sprintf("test-deployment-%s-%d", testName, time.Now().UnixNano())
+	viper.Set("general.project_prefix", deploymentName)
 
-				s.awsProvider, err = aws_provider.NewAWSProviderFunc(
-					viper.GetString("aws.account_id"),
-					viper.GetString("aws.region"),
-				)
-				s.Require().NoError(err)
+	m := display.GetGlobalModelFunc()
+	m.Deployment = &models.Deployment{
+		DeploymentType: provider,
+		Name:           deploymentName,
+	}
+}
 
-				mockEC2Client := new(aws_mock.MockEC2Clienter)
+func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
+	cmd := aws_cmd.GetAwsCreateDeploymentCmd()
+	cmd.SetContext(context.Background())
 
-				// Mock EC2 operations
-				// Mock VPC operations
-				// Mock VPC and networking operations
-				mockEC2Client.On("CreateVpc", mock.Anything, mock.AnythingOfType("*ec2.CreateVpcInput")).
-					Return(testdata.FakeEC2CreateVpcOutput(), nil)
-				mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
-					Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
-				mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
-					Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil)
-				mockEC2Client.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.AnythingOfType("*ec2.AuthorizeSecurityGroupIngressInput")).
-					Return(testdata.FakeAuthorizeSecurityGroupIngressOutput(), nil)
-				mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
-					Return(testdata.FakeEC2DescribeAvailabilityZonesOutput(), nil)
-				mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
-					Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
-				mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
-					Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil)
-				mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
-					Return(testdata.FakeEC2CreateRouteTableOutput(), nil)
-				mockEC2Client.On("CreateRoute", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteInput")).
-					Return(testdata.FakeEC2CreateRouteOutput(), nil)
-				mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.AssociateRouteTableInput")).
-					Return(testdata.FakeEC2AssociateRouteTableOutput(), nil)
-				mockEC2Client.On("DescribeRouteTables", mock.Anything, mock.AnythingOfType("*ec2.DescribeRouteTablesInput")).
-					Return(testdata.FakeEC2DescribeRouteTablesOutput(), nil)
+	var err error
+	s.awsProvider, err = aws_provider.NewAWSProviderFunc(viper.GetString("aws.account_id"))
+	if err != nil {
+		return nil, err
+	}
 
-				// Mock instance operations
-				mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
-					Return(testdata.FakeEC2DescribeInstancesOutput(), nil)
-				mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
-					Return(testdata.FakeEC2RunInstancesOutput(), nil)
+	mockEC2Client := new(aws_mock.MockEC2Clienter)
+	s.setupAWSMocks(mockEC2Client)
+	s.awsProvider.EC2Client = mockEC2Client
 
-				// Mock subnet operations
-				mockEC2Client.On("CreateSubnet", mock.Anything, mock.AnythingOfType("*ec2.CreateSubnetInput")).
-					Return(testdata.FakeEC2CreateSubnetOutput(), nil)
-				mockEC2Client.On("DescribeSubnets", mock.Anything, mock.AnythingOfType("*ec2.DescribeSubnetsInput")).
-					Return(testdata.FakeEC2DescribeSubnetsOutput(), nil)
+	aws_provider.NewAWSProviderFunc = func(accountID string) (*aws_provider.AWSProvider, error) {
+		return s.awsProvider, nil
+	}
 
-				// Mock security group operations
-				mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
-					Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil)
-				mockEC2Client.On("DescribeSecurityGroups", mock.Anything, mock.AnythingOfType("*ec2.DescribeSecurityGroupsInput")).
-					Return(testdata.FakeEC2DescribeSecurityGroupsOutput(), nil)
+	return cmd, nil
+}
 
-				// Mock images operations
-				mockEC2Client.On(
-					"DescribeImages",
-					mock.Anything,
-					mock.AnythingOfType("*ec2.DescribeImagesInput"),
-				).
-					Return(testdata.FakeEC2DescribeImagesOutput(), nil)
+func (s *IntegrationTestSuite) setupAWSMocks(mockEC2Client *aws_mock.MockEC2Clienter) {
+	// VPC and Networking mocks
+	mockEC2Client.On("CreateVpc", mock.Anything, mock.AnythingOfType("*ec2.CreateVpcInput")).
+		Return(testdata.FakeEC2CreateVpcOutput(), nil)
+	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
+		Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
+	mockEC2Client.On("ModifyVpcAttribute", mock.Anything, mock.AnythingOfType("*ec2.ModifyVpcAttributeInput")).
+		Return(testdata.FakeEC2ModifyVpcAttributeOutput(), nil)
+	mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
+		Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil)
+	mockEC2Client.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.AnythingOfType("*ec2.AuthorizeSecurityGroupIngressInput")).
+		Return(testdata.FakeAuthorizeSecurityGroupIngressOutput(), nil)
+	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
+		Return(func(ctx context.Context, params *ec2.DescribeAvailabilityZonesInput) *ec2.DescribeAvailabilityZonesOutput {
+			region := aws.String(params.Filters[0].Values[0])
+			return testdata.FakeEC2DescribeAvailabilityZonesOutput(*region)
+		}, nil)
 
-				s.awsProvider.EC2Client = mockEC2Client
+	s.setupAWSRoutingMocks(mockEC2Client)
+	s.setupAWSInstanceMocks(mockEC2Client)
+	s.setupAWSSubnetMocks(mockEC2Client)
+}
 
-				aws_provider.NewAWSProviderFunc = func(
-					accountID string,
-					region string,
-				) (*aws_provider.AWSProvider, error) {
-					return s.awsProvider, nil
-				}
+func (s *IntegrationTestSuite) setupAWSRoutingMocks(mockEC2Client *aws_mock.MockEC2Clienter) {
+	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
+		Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
+	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
+		Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil)
+	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
+		Return(testdata.FakeEC2CreateRouteTableOutput(), nil)
+	mockEC2Client.On("CreateRoute", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteInput")).
+		Return(testdata.FakeEC2CreateRouteOutput(), nil)
+	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.AssociateRouteTableInput")).
+		Return(testdata.FakeEC2AssociateRouteTableOutput(), nil)
+	mockEC2Client.On("DescribeRouteTables", mock.Anything, mock.AnythingOfType("*ec2.DescribeRouteTablesInput")).
+		Return(testdata.FakeEC2DescribeRouteTablesOutput(), nil)
+	mockEC2Client.On("DescribeRegions", mock.Anything, mock.AnythingOfType("*ec2.DescribeRegionsInput")).
+		Return(testdata.FakeEC2DescribeRegionsOutput(), nil)
+}
 
-				err = aws.ExecuteCreateDeployment(createDeploymentCmd, []string{})
-				s.Require().NoError(err)
-			case models.DeploymentTypeAzure:
-				createDeploymentCmd = azure.GetAzureCreateDeploymentCmd()
-				createDeploymentCmd.SetContext(context.Background())
+func (s *IntegrationTestSuite) setupAWSInstanceMocks(mockEC2Client *aws_mock.MockEC2Clienter) {
+	mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
+		Return(testdata.FakeEC2DescribeInstancesOutput(), nil)
+	mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
+		Return(testdata.FakeEC2RunInstancesOutput(), nil)
+	mockEC2Client.On("DescribeImages", mock.Anything, mock.AnythingOfType("*ec2.DescribeImagesInput")).
+		Return(testdata.FakeEC2DescribeImagesOutput(), nil)
+}
 
-				s.azureProvider, err = azure_provider.NewAzureProviderFunc(
-					context.Background(),
-					viper.GetString("azure.subscription_id"),
-				)
-				s.Require().NoError(err)
+func (s *IntegrationTestSuite) setupAWSSubnetMocks(mockEC2Client *aws_mock.MockEC2Clienter) {
+	mockEC2Client.On("CreateSubnet", mock.Anything, mock.AnythingOfType("*ec2.CreateSubnetInput")).
+		Return(testdata.FakeEC2CreateSubnetOutput(), nil)
+	mockEC2Client.On("DescribeSubnets", mock.Anything, mock.AnythingOfType("*ec2.DescribeSubnetsInput")).
+		Return(testdata.FakeEC2DescribeSubnetsOutput(), nil)
+}
 
-				mockPoller := new(MockPoller)
-				mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
-					Return(armresources.DeploymentsClientCreateOrUpdateResponse{
-						DeploymentExtended: testdata.FakeDeployment(),
-					}, nil)
+func (s *IntegrationTestSuite) setupAzureTest() (*cobra.Command, error) {
+	cmd := azure.GetAzureCreateDeploymentCmd()
+	cmd.SetContext(context.Background())
 
-				mockAzureClient := new(azure_mock.MockAzureClienter)
-				mockAzureClient.On("ValidateMachineType",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(true, nil)
-				mockAzureClient.On("GetOrCreateResourceGroup",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(testdata.FakeResourceGroup(), nil)
-				mockAzureClient.On("DeployTemplate",
-					mock.Anything,
-					mock.Anything,
-					mock.MatchedBy(func(s string) bool {
-						return strings.HasPrefix(s, "deployment-") ||
-							strings.HasPrefix(s, "machine-")
-					}),
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(mockPoller, nil)
-				mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
-					Return(testdata.FakeVirtualMachine(), nil)
-				mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
-					Return(testdata.FakeNetworkInterface(), nil)
-				mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
-					Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
+	var err error
+	s.azureProvider, err = azure_provider.NewAzureProviderFunc(
+		context.Background(),
+		viper.GetString("azure.subscription_id"),
+	)
+	if err != nil {
+		return nil, err
+	}
 
-				azure_provider.NewAzureProviderFunc = func(
-					ctx context.Context,
-					subscriptionID string,
-				) (*azure_provider.AzureProvider, error) {
-					return s.azureProvider, nil
-				}
+	mockPoller := new(MockPoller)
+	mockAzureClient := new(azure_mock.MockAzureClienter)
+	s.setupAzureMocks(mockAzureClient, mockPoller)
 
-				azure_provider.NewAzureClientFunc = func(
-					subscriptionID string,
-				) (azure_interface.AzureClienter, error) {
-					return mockAzureClient, nil
-				}
+	azure_provider.NewAzureProviderFunc = func(ctx context.Context, subscriptionID string) (*azure_provider.AzureProvider, error) {
+		return s.azureProvider, nil
+	}
 
-				err = azure.ExecuteCreateDeployment(createDeploymentCmd, []string{})
-				s.Require().NoError(err)
-			case models.DeploymentTypeGCP:
-				createDeploymentCmd = gcp.GetGCPCreateDeploymentCmd()
-				createDeploymentCmd.SetContext(context.Background())
+	azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interface.AzureClienter, error) {
+		return mockAzureClient, nil
+	}
 
-				mockGCPClient := new(gcp_mock.MockGCPClienter)
-				mockGCPClient.On("IsAPIEnabled", mock.Anything, mock.Anything, mock.Anything).
-					Return(true, nil)
-				mockGCPClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
-					Return(true, nil)
-				mockGCPClient.On("EnsureProject",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return("test-1292-gcp", nil)
-				mockGCPClient.On("EnableAPI",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(nil)
-				mockGCPClient.On("CreateVPCNetwork",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(nil)
-				mockGCPClient.On("ListAddresses", mock.Anything, mock.Anything, mock.Anything).
-					Return([]*computepb.Address{testdata.FakeGCPIPAddress()}, nil)
-				mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).
-					Return(nil)
-				mockGCPClient.On("CreateFirewallRules",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(nil)
-				mockGCPClient.On("CreateVM",
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-					mock.Anything,
-				).Return(testdata.FakeGCPInstance(), nil)
+	return cmd, nil
+}
 
-				s.gcpProvider, err = gcp_provider.NewGCPProvider(
-					context.Background(),
-					viper.GetString("gcp.organization_id"),
-					viper.GetString("gcp.billing_account_id"),
-				)
-				s.Require().NoError(err)
+func (s *IntegrationTestSuite) setupAzureMocks(
+	mockAzureClient *azure_mock.MockAzureClienter,
+	mockPoller *MockPoller,
+) {
+	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
+		Return(armresources.DeploymentsClientCreateOrUpdateResponse{
+			DeploymentExtended: testdata.FakeDeployment(),
+		}, nil)
 
-				s.gcpProvider.SetGCPClient(mockGCPClient)
+	mockAzureClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+	mockAzureClient.On("GetOrCreateResourceGroup", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeResourceGroup(), nil)
+	mockAzureClient.On("DeployTemplate",
+		mock.Anything,
+		mock.Anything,
+		mock.MatchedBy(func(s string) bool {
+			return strings.HasPrefix(s, "deployment-") ||
+				strings.HasPrefix(s, "machine-")
+		}),
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(mockPoller, nil)
+	mockAzureClient.On("GetVirtualMachine", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeVirtualMachine(), nil)
+	mockAzureClient.On("GetNetworkInterface", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeNetworkInterface(), nil)
+	mockAzureClient.On("GetPublicIPAddress", mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakePublicIPAddress("20.30.40.50"), nil)
+}
 
-				gcp_provider.NewGCPProviderFunc = func(
-					ctx context.Context,
-					organizationID string,
-					billingAccountID string,
-				) (*gcp_provider.GCPProvider, error) {
-					return s.gcpProvider, nil
-				}
+func (s *IntegrationTestSuite) setupGCPTest() (*cobra.Command, error) {
+	cmd := gcp.GetGCPCreateDeploymentCmd()
+	cmd.SetContext(context.Background())
 
-				err = gcp.ExecuteCreateDeployment(createDeploymentCmd, []string{})
-				s.Require().NoError(err)
-			}
+	mockGCPClient := new(gcp_mock.MockGCPClienter)
+	s.setupGCPMocks(mockGCPClient)
 
-			// Have to pull it again because it's out of sync
-			m = display.GetGlobalModelFunc()
-			s.NotEmpty(m.Deployment.Name)
-			s.Equal(
-				strings.ToLower(string(tt.provider)),
-				strings.ToLower(string(m.Deployment.DeploymentType)),
+	var err error
+	s.gcpProvider, err = gcp_provider.NewGCPProvider(
+		context.Background(),
+		viper.GetString("gcp.organization_id"),
+		viper.GetString("gcp.billing_account_id"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s.gcpProvider.SetGCPClient(mockGCPClient)
+
+	gcp_provider.NewGCPProviderFunc = func(ctx context.Context, organizationID string, billingAccountID string) (*gcp_provider.GCPProvider, error) {
+		return s.gcpProvider, nil
+	}
+
+	return cmd, nil
+}
+
+func (s *IntegrationTestSuite) setupGCPMocks(mockGCPClient *gcp_mock.MockGCPClienter) {
+	mockGCPClient.On("IsAPIEnabled", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+	mockGCPClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil)
+	mockGCPClient.On("EnsureProject", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return("test-1292-gcp", nil)
+	mockGCPClient.On("EnableAPI", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockGCPClient.On("CreateVPCNetwork", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockGCPClient.On("ListAddresses", mock.Anything, mock.Anything, mock.Anything).
+		Return([]*computepb.Address{testdata.FakeGCPIPAddress()}, nil)
+	mockGCPClient.On("CreateIP", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockGCPClient.On("CreateFirewallRules", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	mockGCPClient.On("CreateVM", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(testdata.FakeGCPInstance(), nil)
+}
+
+func (s *IntegrationTestSuite) executeDeployment(
+	cmd *cobra.Command,
+	provider models.DeploymentType,
+) error {
+	switch provider {
+	case models.DeploymentTypeAWS:
+		return aws_cmd.ExecuteCreateDeployment(cmd, []string{})
+	case models.DeploymentTypeAzure:
+		return azure_cmd.ExecuteCreateDeployment(cmd, []string{})
+	case models.DeploymentTypeGCP:
+		return gcp_cmd.ExecuteCreateDeployment(cmd, []string{})
+	default:
+		return fmt.Errorf("unsupported provider: %s", provider)
+	}
+}
+
+func (s *IntegrationTestSuite) verifyDeploymentResult(provider models.DeploymentType) {
+	m := display.GetGlobalModelFunc()
+	s.NotEmpty(m.Deployment.Name)
+	s.Equal(
+		strings.ToLower(string(provider)),
+		strings.ToLower(string(m.Deployment.DeploymentType)),
+	)
+	s.NotEmpty(m.Deployment.Machines)
+	s.Equal(s.testSSHPublicKeyPath, m.Deployment.SSHPublicKeyPath)
+	s.Equal(s.testSSHPrivateKeyPath, m.Deployment.SSHPrivateKeyPath)
+
+	switch provider {
+	case models.DeploymentTypeAzure:
+		s.Equal("4a45a76b-5754-461d-84a1-f5e47b0a7198", m.Deployment.Azure.SubscriptionID)
+	case models.DeploymentTypeGCP:
+		s.Equal("test-1292-gcp", m.Deployment.GCP.ProjectID)
+		s.Equal("org-1234567890", m.Deployment.GCP.OrganizationID)
+	case models.DeploymentTypeAWS:
+		// Verify that VPCs exist in the configured regions
+		s.NotEmpty(m.Deployment.AWS.RegionalResources.VPCs)
+		for region, vpc := range m.Deployment.AWS.RegionalResources.VPCs {
+			s.NotEmpty(vpc.VPCID, "VPC ID should not be empty for region %s", region)
+			s.NotEmpty(
+				vpc.SecurityGroupID,
+				"Security Group ID should not be empty for region %s",
+				region,
 			)
-			s.NotEmpty(m.Deployment.Machines)
-			s.Equal(s.testSSHPublicKeyPath, m.Deployment.SSHPublicKeyPath)
-			s.Equal(s.testSSHPrivateKeyPath, m.Deployment.SSHPrivateKeyPath)
+		}
+	}
+}
 
-			if tt.provider == models.DeploymentTypeAzure {
-				s.Equal("4a45a76b-5754-461d-84a1-f5e47b0a7198", m.Deployment.Azure.SubscriptionID)
-			} else if tt.provider == models.DeploymentTypeGCP {
-				s.Equal("test-1292-gcp", m.Deployment.GCP.ProjectID)
-				s.Equal("org-1234567890", m.Deployment.GCP.OrganizationID)
-			} else if tt.provider == models.DeploymentTypeAWS {
-				s.Equal("us-west-2", m.Deployment.AWS.Region)
+func TestCreateDeployment(t *testing.T) {
+	tests := []struct {
+		name          string
+		provider      models.DeploymentType
+		setupFunc     func(t *testing.T) *models.Deployment
+		validateFunc  func(t *testing.T, deployment *models.Deployment)
+		expectedError bool
+		errorContains string
+	}{
+		{
+			name:     "AWS Deployment - Multi Region",
+			provider: models.DeploymentTypeAWS,
+			setupFunc: func(t *testing.T) *models.Deployment {
+				tempDir := t.TempDir()
+				configFile := filepath.Join(tempDir, "config.yaml")
+
+				config := []byte(`
+deployments:
+  test-aws-multi-region:
+    provider: "aws"
+    aws:
+      account_id: "123456789012"
+      regions:
+        us-west-2:
+          vpc_id: ""
+          security_group_id: ""
+          machines:
+            test-machine-1:
+              name: "test-machine-1"
+              public_ip: ""
+              private_ip: ""
+              orchestrator: false
+        us-east-1:
+          vpc_id: ""
+          security_group_id: ""
+          machines:
+            test-machine-2:
+              name: "test-machine-2"
+              public_ip: ""
+              private_ip: ""
+              orchestrator: false
+`)
+
+				err := os.WriteFile(configFile, config, 0644)
+				require.NoError(t, err)
+
+				viper.Reset()
+				viper.SetConfigFile(configFile)
+				err = viper.ReadInConfig()
+				require.NoError(t, err)
+
+				deployment := &models.Deployment{
+					UniqueID:       "test-aws-multi-region",
+					Name:           "test-aws-multi-region",
+					DeploymentType: models.DeploymentTypeAWS,
+					AWS: &models.AWSDeployment{
+						AccountID: "123456789012",
+						RegionalResources: &models.RegionalResources{
+							VPCs:    make(map[string]*models.AWSVPC),
+							Clients: make(map[string]aws_interface.EC2Clienter),
+						},
+					},
+					Machines: map[string]models.Machiner{
+						"test-machine-1": &models.Machine{
+							Name:     "test-machine-1",
+							Location: "us-west-2a",
+						},
+						"test-machine-2": &models.Machine{
+							Name:     "test-machine-2",
+							Location: "us-east-1a",
+						},
+					},
+				}
+				return deployment
+			},
+			validateFunc: func(t *testing.T, deployment *models.Deployment) {
+				assert.NotNil(t, deployment)
+				assert.Equal(t, models.DeploymentTypeAWS, deployment.DeploymentType)
+				assert.NotEmpty(t, deployment.AWS.AccountID)
+				assert.NotNil(t, deployment.AWS.RegionalResources)
+				assert.NotEmpty(t, deployment.AWS.RegionalResources.VPCs)
+
+				regions := map[string]bool{
+					"us-west-2": false,
+					"us-east-1": false,
+				}
+				for region, vpc := range deployment.AWS.RegionalResources.VPCs {
+					regions[region] = true
+					assert.NotEmpty(
+						t,
+						vpc.VPCID,
+						"VPC ID should not be empty for region %s",
+						region,
+					)
+					assert.NotEmpty(
+						t,
+						vpc.SecurityGroupID,
+						"Security Group ID should not be empty for region %s",
+						region,
+					)
+				}
+				for region, found := range regions {
+					assert.True(t, found, "Expected VPC in region %s", region)
+				}
+
+				for _, machine := range deployment.Machines {
+					assert.NotEmpty(t, machine.GetPublicIP())
+					assert.NotEmpty(t, machine.GetPrivateIP())
+				}
+			},
+			expectedError: false,
+		},
+		{
+			name:     "Azure Deployment",
+			provider: models.DeploymentTypeAzure,
+			setupFunc: func(t *testing.T) *models.Deployment {
+				tempDir := t.TempDir()
+				configFile := filepath.Join(tempDir, "config.yaml")
+
+				config := []byte(`
+deployments:
+  test-azure:
+    provider: "azure"
+    azure:
+      subscription_id: "test-subscription"
+      resource_group_name: "test-rg"
+      machines:
+        test-machine-1:
+          name: "test-machine-1"
+          public_ip: ""
+          private_ip: ""
+          orchestrator: false
+`)
+
+				err := os.WriteFile(configFile, config, 0644)
+				require.NoError(t, err)
+
+				viper.Reset()
+				viper.SetConfigFile(configFile)
+				err = viper.ReadInConfig()
+				require.NoError(t, err)
+
+				deployment := &models.Deployment{
+					UniqueID:       "test-azure",
+					Name:           "test-azure",
+					DeploymentType: models.DeploymentTypeAzure,
+					Azure: &models.AzureConfig{
+						SubscriptionID:    "test-subscription",
+						ResourceGroupName: "test-rg",
+					},
+					Machines: map[string]models.Machiner{
+						"test-machine-1": &models.Machine{
+							Name:     "test-machine-1",
+							Location: "eastus",
+						},
+					},
+				}
+				return deployment
+			},
+			validateFunc: func(t *testing.T, deployment *models.Deployment) {
+				assert.NotNil(t, deployment)
+				assert.Equal(t, models.DeploymentTypeAzure, deployment.DeploymentType)
+				assert.NotEmpty(t, deployment.Azure.ResourceGroupName)
+				assert.NotEmpty(t, deployment.Azure.SubscriptionID)
+				for _, machine := range deployment.Machines {
+					assert.NotEmpty(t, machine.GetPublicIP())
+					assert.NotEmpty(t, machine.GetPrivateIP())
+				}
+			},
+			expectedError: false,
+		},
+		{
+			name:     "GCP Deployment",
+			provider: models.DeploymentTypeGCP,
+			setupFunc: func(t *testing.T) *models.Deployment {
+				tempDir := t.TempDir()
+				configFile := filepath.Join(tempDir, "config.yaml")
+
+				config := []byte(`
+deployments:
+  test-gcp:
+    provider: "gcp"
+    gcp:
+      project_id: "test-project"
+      organization_id: "test-org"
+      machines:
+        test-machine-1:
+          name: "test-machine-1"
+          public_ip: ""
+          private_ip: ""
+          orchestrator: false
+`)
+
+				err := os.WriteFile(configFile, config, 0644)
+				require.NoError(t, err)
+
+				viper.Reset()
+				viper.SetConfigFile(configFile)
+				err = viper.ReadInConfig()
+				require.NoError(t, err)
+
+				deployment := &models.Deployment{
+					UniqueID:       "test-gcp",
+					Name:           "test-gcp",
+					DeploymentType: models.DeploymentTypeGCP,
+					GCP: &models.GCPConfig{
+						ProjectID:      "test-project",
+						OrganizationID: "test-org",
+					},
+					Machines: map[string]models.Machiner{
+						"test-machine-1": &models.Machine{
+							Name:     "test-machine-1",
+							Location: "us-central1-a",
+						},
+					},
+				}
+				return deployment
+			},
+			validateFunc: func(t *testing.T, deployment *models.Deployment) {
+				assert.NotNil(t, deployment)
+				assert.Equal(t, models.DeploymentTypeGCP, deployment.DeploymentType)
+				assert.NotEmpty(t, deployment.GCP.ProjectID)
+				assert.NotEmpty(t, deployment.GCP.OrganizationID)
+				for _, machine := range deployment.Machines {
+					assert.NotEmpty(t, machine.GetPublicIP())
+					assert.NotEmpty(t, machine.GetPrivateIP())
+				}
+			},
+			expectedError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deployment := tt.setupFunc(t)
+			err := deployment.UpdateViperConfig()
+			assert.NoError(t, err)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+			if tt.validateFunc != nil {
+				tt.validateFunc(t, deployment)
 			}
 		})
 	}
 }
 
+// MockPoller implementation for Azure deployment polling
 type MockPoller struct {
 	mock.Mock
 }
@@ -535,8 +835,4 @@ func (m *MockPoller) Done() bool {
 func (m *MockPoller) Poll(ctx context.Context) (*http.Response, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(*http.Response), args.Error(1)
-}
-
-func TestIntegrationSuite(t *testing.T) {
-	suite.Run(t, new(IntegrationTestSuite))
 }

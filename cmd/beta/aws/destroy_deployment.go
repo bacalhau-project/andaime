@@ -13,7 +13,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -277,7 +277,7 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 	if dryRun {
 		fmt.Printf("   -- Dry run: Would destroy AWS resources for VPC %s\n", dep.ID)
 	} else {
-		err = awsProvider.DestroyResources(ctx, dep.ID)
+		err = awsProvider.Destroy(ctx, dep.ID)
 		if err != nil {
 			return fmt.Errorf("failed to destroy AWS deployment %s: %w", dep.Name, err)
 		}
@@ -292,10 +292,9 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 	return nil
 }
 
-func createAwsProvider() (*awsprovider.AWSProvider, error) {
+func createAwsProvider() (*aws_provider.AWSProvider, error) {
 	accountID := viper.GetString("aws.account_id")
-	region := viper.GetString("aws.region")
-	provider, err := awsprovider.NewAWSProviderFunc(accountID, region)
+	provider, err := aws_provider.NewAWSProviderFunc(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AWS provider: %w", err)
 	}

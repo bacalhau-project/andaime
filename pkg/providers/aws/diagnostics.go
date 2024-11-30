@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -48,7 +48,6 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 	// Print Provider Configuration
 	l.Info("\nProvider Configuration:")
 	l.Infof("  Account ID: %s", p.AccountID)
-	l.Infof("  Region: %s", p.Region)
 
 	// Print AWS Credentials
 	l.Info("\nAWS Credentials:")
@@ -120,8 +119,10 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 
 // Helper function to mask sensitive strings
 func maskString(s string) string {
-	if len(s) <= 4 {
+	visibleLength := 4
+
+	if len(s) <= visibleLength { //nolint:mnd
 		return strings.Repeat("*", len(s))
 	}
-	return s[:4] + strings.Repeat("*", len(s)-4)
+	return s[:visibleLength] + strings.Repeat("*", len(s)-visibleLength)
 }

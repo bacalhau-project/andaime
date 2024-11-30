@@ -37,6 +37,7 @@ awsprovider
 awss
 awsssm
 AWSVM
+AWSVPC
 azcore
 azidentity
 azurepackage
@@ -268,6 +269,7 @@ panicnil
 PBIP
 pdone
 pflag
+polandcentral
 Pollerer
 practise
 predeclared

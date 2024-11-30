@@ -688,6 +688,154 @@ func (_c *MockEC2Clienter_CreateVpc_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// DeleteInternetGateway provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DeleteInternetGateway(ctx context.Context, params *ec2.DeleteInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteInternetGateway")
+	}
+
+	var r0 *ec2.DeleteInternetGatewayOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteInternetGatewayInput, ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteInternetGatewayInput, ...func(*ec2.Options)) *ec2.DeleteInternetGatewayOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteInternetGatewayOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteInternetGatewayInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DeleteInternetGateway_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteInternetGateway'
+type MockEC2Clienter_DeleteInternetGateway_Call struct {
+	*mock.Call
+}
+
+// DeleteInternetGateway is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DeleteInternetGatewayInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DeleteInternetGateway(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DeleteInternetGateway_Call {
+	return &MockEC2Clienter_DeleteInternetGateway_Call{Call: _e.mock.On("DeleteInternetGateway",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DeleteInternetGateway_Call) Run(run func(ctx context.Context, params *ec2.DeleteInternetGatewayInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DeleteInternetGateway_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DeleteInternetGatewayInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteInternetGateway_Call) Return(_a0 *ec2.DeleteInternetGatewayOutput, _a1 error) *MockEC2Clienter_DeleteInternetGateway_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteInternetGateway_Call) RunAndReturn(run func(context.Context, *ec2.DeleteInternetGatewayInput, ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error)) *MockEC2Clienter_DeleteInternetGateway_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteRouteTable provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DeleteRouteTable(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteRouteTable")
+	}
+
+	var r0 *ec2.DeleteRouteTableOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteRouteTableInput, ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteRouteTableInput, ...func(*ec2.Options)) *ec2.DeleteRouteTableOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteRouteTableOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteRouteTableInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DeleteRouteTable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteRouteTable'
+type MockEC2Clienter_DeleteRouteTable_Call struct {
+	*mock.Call
+}
+
+// DeleteRouteTable is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DeleteRouteTableInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DeleteRouteTable(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DeleteRouteTable_Call {
+	return &MockEC2Clienter_DeleteRouteTable_Call{Call: _e.mock.On("DeleteRouteTable",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DeleteRouteTable_Call) Run(run func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DeleteRouteTable_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DeleteRouteTableInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteRouteTable_Call) Return(_a0 *ec2.DeleteRouteTableOutput, _a1 error) *MockEC2Clienter_DeleteRouteTable_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DeleteRouteTable_Call) RunAndReturn(run func(context.Context, *ec2.DeleteRouteTableInput, ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error)) *MockEC2Clienter_DeleteRouteTable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteSecurityGroup provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) DeleteSecurityGroup(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
 	_va := make([]interface{}, len(optFns))
@@ -1132,6 +1280,154 @@ func (_c *MockEC2Clienter_DescribeInstances_Call) RunAndReturn(run func(context.
 	return _c
 }
 
+// DescribeInternetGateways provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeInternetGateways(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeInternetGateways")
+	}
+
+	var r0 *ec2.DescribeInternetGatewaysOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) *ec2.DescribeInternetGatewaysOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeInternetGatewaysOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DescribeInternetGateways_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeInternetGateways'
+type MockEC2Clienter_DescribeInternetGateways_Call struct {
+	*mock.Call
+}
+
+// DescribeInternetGateways is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DescribeInternetGatewaysInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DescribeInternetGateways(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeInternetGateways_Call {
+	return &MockEC2Clienter_DescribeInternetGateways_Call{Call: _e.mock.On("DescribeInternetGateways",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DescribeInternetGateways_Call) Run(run func(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeInternetGateways_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DescribeInternetGatewaysInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeInternetGateways_Call) Return(_a0 *ec2.DescribeInternetGatewaysOutput, _a1 error) *MockEC2Clienter_DescribeInternetGateways_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeInternetGateways_Call) RunAndReturn(run func(context.Context, *ec2.DescribeInternetGatewaysInput, ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)) *MockEC2Clienter_DescribeInternetGateways_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DescribeRegions provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DescribeRegions(ctx context.Context, params *ec2.DescribeRegionsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRegionsOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeRegions")
+	}
+
+	var r0 *ec2.DescribeRegionsOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeRegionsInput, ...func(*ec2.Options)) (*ec2.DescribeRegionsOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeRegionsInput, ...func(*ec2.Options)) *ec2.DescribeRegionsOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeRegionsOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeRegionsInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DescribeRegions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DescribeRegions'
+type MockEC2Clienter_DescribeRegions_Call struct {
+	*mock.Call
+}
+
+// DescribeRegions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DescribeRegionsInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DescribeRegions(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DescribeRegions_Call {
+	return &MockEC2Clienter_DescribeRegions_Call{Call: _e.mock.On("DescribeRegions",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DescribeRegions_Call) Run(run func(ctx context.Context, params *ec2.DescribeRegionsInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DescribeRegions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DescribeRegionsInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeRegions_Call) Return(_a0 *ec2.DescribeRegionsOutput, _a1 error) *MockEC2Clienter_DescribeRegions_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DescribeRegions_Call) RunAndReturn(run func(context.Context, *ec2.DescribeRegionsInput, ...func(*ec2.Options)) (*ec2.DescribeRegionsOutput, error)) *MockEC2Clienter_DescribeRegions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DescribeRouteTables provides a mock function with given fields: ctx, params, optFns
 func (_m *MockEC2Clienter) DescribeRouteTables(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
 	_va := make([]interface{}, len(optFns))
@@ -1424,6 +1720,228 @@ func (_c *MockEC2Clienter_DescribeVpcs_Call) Return(_a0 *ec2.DescribeVpcsOutput,
 }
 
 func (_c *MockEC2Clienter_DescribeVpcs_Call) RunAndReturn(run func(context.Context, *ec2.DescribeVpcsInput, ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error)) *MockEC2Clienter_DescribeVpcs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DetachInternetGateway provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DetachInternetGateway(ctx context.Context, params *ec2.DetachInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DetachInternetGateway")
+	}
+
+	var r0 *ec2.DetachInternetGatewayOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DetachInternetGatewayInput, ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DetachInternetGatewayInput, ...func(*ec2.Options)) *ec2.DetachInternetGatewayOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DetachInternetGatewayOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DetachInternetGatewayInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DetachInternetGateway_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DetachInternetGateway'
+type MockEC2Clienter_DetachInternetGateway_Call struct {
+	*mock.Call
+}
+
+// DetachInternetGateway is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DetachInternetGatewayInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DetachInternetGateway(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DetachInternetGateway_Call {
+	return &MockEC2Clienter_DetachInternetGateway_Call{Call: _e.mock.On("DetachInternetGateway",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DetachInternetGateway_Call) Run(run func(ctx context.Context, params *ec2.DetachInternetGatewayInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DetachInternetGateway_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DetachInternetGatewayInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DetachInternetGateway_Call) Return(_a0 *ec2.DetachInternetGatewayOutput, _a1 error) *MockEC2Clienter_DetachInternetGateway_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DetachInternetGateway_Call) RunAndReturn(run func(context.Context, *ec2.DetachInternetGatewayInput, ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error)) *MockEC2Clienter_DetachInternetGateway_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DisassociateRouteTable provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) DisassociateRouteTable(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DisassociateRouteTable")
+	}
+
+	var r0 *ec2.DisassociateRouteTableOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DisassociateRouteTableInput, ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DisassociateRouteTableInput, ...func(*ec2.Options)) *ec2.DisassociateRouteTableOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisassociateRouteTableOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DisassociateRouteTableInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_DisassociateRouteTable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DisassociateRouteTable'
+type MockEC2Clienter_DisassociateRouteTable_Call struct {
+	*mock.Call
+}
+
+// DisassociateRouteTable is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.DisassociateRouteTableInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) DisassociateRouteTable(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_DisassociateRouteTable_Call {
+	return &MockEC2Clienter_DisassociateRouteTable_Call{Call: _e.mock.On("DisassociateRouteTable",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_DisassociateRouteTable_Call) Run(run func(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_DisassociateRouteTable_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.DisassociateRouteTableInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_DisassociateRouteTable_Call) Return(_a0 *ec2.DisassociateRouteTableOutput, _a1 error) *MockEC2Clienter_DisassociateRouteTable_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_DisassociateRouteTable_Call) RunAndReturn(run func(context.Context, *ec2.DisassociateRouteTableInput, ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error)) *MockEC2Clienter_DisassociateRouteTable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ModifyVpcAttribute provides a mock function with given fields: ctx, params, optFns
+func (_m *MockEC2Clienter) ModifyVpcAttribute(ctx context.Context, params *ec2.ModifyVpcAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error) {
+	_va := make([]interface{}, len(optFns))
+	for _i := range optFns {
+		_va[_i] = optFns[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, params)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ModifyVpcAttribute")
+	}
+
+	var r0 *ec2.ModifyVpcAttributeOutput
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.ModifyVpcAttributeInput, ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error)); ok {
+		return rf(ctx, params, optFns...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.ModifyVpcAttributeInput, ...func(*ec2.Options)) *ec2.ModifyVpcAttributeOutput); ok {
+		r0 = rf(ctx, params, optFns...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.ModifyVpcAttributeOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.ModifyVpcAttributeInput, ...func(*ec2.Options)) error); ok {
+		r1 = rf(ctx, params, optFns...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockEC2Clienter_ModifyVpcAttribute_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ModifyVpcAttribute'
+type MockEC2Clienter_ModifyVpcAttribute_Call struct {
+	*mock.Call
+}
+
+// ModifyVpcAttribute is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params *ec2.ModifyVpcAttributeInput
+//   - optFns ...func(*ec2.Options)
+func (_e *MockEC2Clienter_Expecter) ModifyVpcAttribute(ctx interface{}, params interface{}, optFns ...interface{}) *MockEC2Clienter_ModifyVpcAttribute_Call {
+	return &MockEC2Clienter_ModifyVpcAttribute_Call{Call: _e.mock.On("ModifyVpcAttribute",
+		append([]interface{}{ctx, params}, optFns...)...)}
+}
+
+func (_c *MockEC2Clienter_ModifyVpcAttribute_Call) Run(run func(ctx context.Context, params *ec2.ModifyVpcAttributeInput, optFns ...func(*ec2.Options))) *MockEC2Clienter_ModifyVpcAttribute_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]func(*ec2.Options), len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(*ec2.Options))
+			}
+		}
+		run(args[0].(context.Context), args[1].(*ec2.ModifyVpcAttributeInput), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *MockEC2Clienter_ModifyVpcAttribute_Call) Return(_a0 *ec2.ModifyVpcAttributeOutput, _a1 error) *MockEC2Clienter_ModifyVpcAttribute_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockEC2Clienter_ModifyVpcAttribute_Call) RunAndReturn(run func(context.Context, *ec2.ModifyVpcAttributeInput, ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error)) *MockEC2Clienter_ModifyVpcAttribute_Call {
 	_c.Call.Return(run)
 	return _c
 }
