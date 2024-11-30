@@ -1,12 +1,7 @@
 package sshutils
 
 import (
-	"encoding/json"
-	"fmt"
-	"time"
-
 	"github.com/stretchr/testify/mock"
-	"golang.org/x/crypto/ssh"
 )
 
 // ExpectedSSHBehavior holds the expected outcomes for SSH methods

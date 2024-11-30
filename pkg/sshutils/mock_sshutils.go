@@ -223,6 +223,76 @@ func (m *MockSSHConfig) SetValidateSSHConnection(fn func() error) {
 	m.Called(fn)
 }
 
+func (m *MockSSHConfig) Close() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) ExecuteCommand(ctx context.Context, cmd string) (string, error) {
+	args := m.Called(ctx, cmd)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockSSHConfig) ExecuteCommandWithCallback(
+	ctx context.Context,
+	cmd string,
+	f func(string),
+) (string, error) {
+	args := m.Called(ctx, cmd, f)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockSSHConfig) InstallSystemdService(
+	ctx context.Context,
+	servicePath string,
+	serviceContent string,
+) error {
+	args := m.Called(ctx, servicePath, serviceContent)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) RemoveSystemdService(ctx context.Context, servicePath string) error {
+	args := m.Called(ctx, servicePath)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) PushFile(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+) error {
+	args := m.Called(ctx, remotePath, content, executable)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) PushFileWithCallback(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+	callback func(int64, int64),
+) error {
+	args := m.Called(ctx, remotePath, content, executable, callback)
+	return args.Error(0)
+}
+
+func (m *MockSSHConfig) RestartService(
+	ctx context.Context,
+	servicePath string,
+) (string, error) {
+	args := m.Called(ctx, servicePath)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockSSHConfig) StartService(
+	ctx context.Context,
+	servicePath string,
+) (string, error) {
+	args := m.Called(ctx, servicePath)
+	return args.String(0), args.Error(1)
+}
+
 type MockSSHDialer struct {
 	mock.Mock
 }

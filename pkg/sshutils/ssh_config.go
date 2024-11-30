@@ -363,11 +363,11 @@ func (c *SSHConfig) InstallSystemdService(
 	return nil
 }
 
-func (c *SSHConfig) StartService(ctx context.Context, serviceName string) error {
+func (c *SSHConfig) StartService(ctx context.Context, serviceName string) (string, error) {
 	return c.ExecuteCommand(ctx, fmt.Sprintf("systemctl start %s", serviceName))
 }
 
-func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) error {
+func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (string, error) {
 	return c.ExecuteCommand(ctx, fmt.Sprintf("systemctl restart %s", serviceName))
 }
 
