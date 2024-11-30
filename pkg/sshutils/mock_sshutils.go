@@ -53,7 +53,12 @@ func (m *MockSSHClient) GetClient() *ssh.Client {
 }
 
 func GetTypedMockClient(t *testing.T, log *logger.Logger) (*MockSSHClient, SSHConfiger) {
-	mockSSHClient, sshConfig := NewMockSSHClient(NewMockSSHDialer())
+	mockSSHClient := &MockSSHClient{}
+	sshConfig, err := NewSSHConfig("example.com", 22, "testuser", "/path/to/key")
+	if err != nil {
+		t.Fatalf("Failed to create mock SSH config: %v", err)
+	}
+	sshConfig.SetSSHClienter(mockSSHClient)
 	return mockSSHClient, sshConfig
 }
 
