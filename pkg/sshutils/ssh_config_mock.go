@@ -10,6 +10,7 @@ type ExpectedSSHBehavior struct {
 	ExecuteCommandExpectations       []ExecuteCommandExpectation
 	InstallSystemdServiceExpectation *Expectation
 	RestartServiceExpectation        *Expectation
+	StartServiceExpectation          *Expectation
 }
 
 type PushFileExpectation struct {
@@ -93,6 +94,18 @@ func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) *MockSSHConfig {
 		call.Return(behavior.RestartServiceExpectation.Error)
 		if behavior.RestartServiceExpectation.Times > 0 {
 			call.Times(behavior.RestartServiceExpectation.Times)
+		}
+	}
+
+	if behavior.StartServiceExpectation != nil {
+		call := mockSSHConfig.On(
+			"StartService",
+			mock.Anything, // ctx
+			mock.Anything, // serviceName
+		)
+		call.Return(behavior.StartServiceExpectation.Error)
+		if behavior.StartServiceExpectation.Times > 0 {
+			call.Times(behavior.StartServiceExpectation.Times)
 		}
 	}
 
