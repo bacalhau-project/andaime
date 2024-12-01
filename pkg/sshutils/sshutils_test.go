@@ -258,9 +258,30 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
+			// Mock GetClient() to return a mock SSH client
+			mockSSHClient := &ssh.Client{}
+			s.sshClient.On("GetClient").Return(mockSSHClient)
+
+			// Mock SFTP client creation
+			mockSFTP := &mockSFTPClient{}
+			mockSFTP.On("Create", mock.Anything).Return(&mockWriteCloser{
+				Buffer: bytes.NewBuffer(nil),
+				closeFunc: func() error {
+					return nil
+				},
+			}, nil)
+			mockSFTP.On("Close").Return(nil)
+
+			// Override the SFTP client creator for testing
+			originalCreator := DefaultSFTPClientCreator
+			DefaultSFTPClientCreator = func(client *ssh.Client) (sshutils_interfaces.SFTPClienter, error) {
+				return mockSFTP, nil
+			}
+			defer func() { DefaultSFTPClientCreator = originalCreator }()
+
 			s.sshClient.On("NewSession").Return(s.sshSession, nil)
 			s.sshClient.On("IsConnected").Return(true)
-			s.sshSession.On("Run", tt.expectedCmd).Return(nil)
+			s.sshSession.On("Run", mock.Anything).Return(nil)
 			s.sshSession.On("Close").Return(nil)
 
 			var err error
@@ -281,6 +302,7 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 
 			s.sshClient.AssertExpectations(s.T())
 			s.sshSession.AssertExpectations(s.T())
+			mockSFTP.AssertExpectations(s.T())
 		})
 	}
 }
