@@ -71,15 +71,7 @@ type SSHSessioner interface {
 	Wait() error
 }
 
-// SSHDialer defines the interface for SSH dialing operations
-type SSHDialer interface {
-	Dial(network, addr string, config *ssh.ClientConfig) (SSHClienter, error)
-	DialContext(
-		ctx context.Context,
-		network, addr string,
-		config *ssh.ClientConfig,
-	) (SSHClienter, error)
-}
+// SSHDialer has been removed to break import cycle
 
 // SSHClientWrapper wraps an ssh.Client
 type SSHClientWrapper struct {

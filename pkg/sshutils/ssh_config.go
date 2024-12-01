@@ -23,7 +23,7 @@ type SSHConfig struct {
 	Timeout                   time.Duration
 	Logger                    *logger.Logger
 	SSHClient                 SSHClienter
-	SSHDial                   SSHDialer
+	// SSHDial has been removed
 	SSHPrivateKeyReader       func(path string) ([]byte, error)
 	SSHPublicKeyReader        func(path string) ([]byte, error)
 	ClientConfig              *ssh.ClientConfig
@@ -92,7 +92,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 
 	for i := 0; i < SSHRetryAttempts; i++ {
 		l.Debugf("Attempt %d to connect via SSH\n", i+1)
-		client, err = c.SSHDial.Dial(
+		client, err = dialSSH(
 			"tcp",
 			fmt.Sprintf("%s:%d", c.Host, c.Port),
 			c.ClientConfig,
@@ -155,15 +155,7 @@ func (c *SSHConfig) GetPrivateKeyMaterial() []byte {
 	return c.PrivateKeyMaterial
 }
 
-// GetSSHDial returns the SSH dialer
-func (c *SSHConfig) GetSSHDial() SSHDialer {
-	return c.SSHDial
-}
-
-// SetSSHDial sets the SSH dialer
-func (c *SSHConfig) SetSSHDial(dialer SSHDialer) {
-	c.SSHDial = dialer
-}
+// SSHDial methods removed to break import cycle
 
 // SetValidateSSHConnection sets the validation function
 func (c *SSHConfig) SetValidateSSHConnection(fn func() error) {
@@ -374,9 +366,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 
 // Removed type declarations
 
-type defaultSSHDialer struct{}
-
-func (d *defaultSSHDialer) Dial(
+func dialSSH(
 	network, addr string,
 	config *ssh.ClientConfig,
 ) (SSHClienter, error) {
@@ -387,7 +377,7 @@ func (d *defaultSSHDialer) Dial(
 	return &SSHClientWrapper{Client: client}, nil
 }
 
-func (d *defaultSSHDialer) DialContext(
+func dialSSHContext(
 	ctx context.Context,
 	network, addr string,
 	config *ssh.ClientConfig,
@@ -400,7 +390,7 @@ func (d *defaultSSHDialer) DialContext(
 	result := make(chan dialResult, 1)
 
 	go func() {
-		client, err := d.Dial(network, addr, config)
+		client, err := dialSSH(network, addr, config)
 		result <- dialResult{client, err}
 	}()
 
