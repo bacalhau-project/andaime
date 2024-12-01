@@ -6,13 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/provision"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -25,9 +26,9 @@ type CmdBetaProvisionTestSuite struct {
 	cleanupPublicKey      func()
 	cleanupPrivateKey     func()
 	tmpDir                string
-	mockSSHConfig         *sshutils.MockSSHConfig
+	mockSSHConfig         *ssh_mock.MockSSHConfiger
 	mockClusterDeployer   *common_mock.MockClusterDeployerer
-	origNewSSHConfigFunc  func(string, int, string, string) (sshutils.SSHConfiger, error)
+	origNewSSHConfigFunc  func(string, int, string, string) (sshutils_interfaces.SSHConfiger, error)
 	testLogger            *logger.TestLogger // Add testLogger field
 }
 
@@ -52,11 +53,14 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	logger.SetGlobalLogger(cbpts.testLogger)
 
 	// Create new mocks for each test
-	cbpts.mockSSHConfig = new(sshutils.MockSSHConfig)
+	cbpts.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
 	cbpts.mockClusterDeployer = new(common_mock.MockClusterDeployerer)
 
 	// Set up the mock SSH config function
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 		return cbpts.mockSSHConfig, nil
 	}
 
@@ -317,27 +321,13 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 	cbpts.NoError(err)
 }
 
-type MockSSHConfig struct {
-	mock.Mock
-}
-
-func (m *MockSSHConfig) WaitForSSH(ctx context.Context, retries int, timeout time.Duration) error {
-	args := m.Called(ctx, retries, timeout)
-	return args.Error(0)
-}
-
-func (m *MockSSHConfig) ExecuteCommand(cmd string) (string, error) {
-	args := m.Called(cmd)
-	return args.String(0), args.Error(1)
-}
-
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	// Setup test logger to capture output
 	logCapture := logger.NewTestLogger(cbpts.T())
 	logger.SetGlobalLogger(logCapture)
 
 	// Create a mock SSH config
-	mockSSH := new(sshutils.MockSSHConfig)
+	mockSSH := new(ssh_mock.MockSSHConfiger)
 
 	// Setup the mock to pass SSH wait but fail command execution
 	mockSSH.On("WaitForSSH", mock.Anything,
@@ -381,7 +371,10 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 		Machine:   testMachine,
 	}
 
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 		return mockSSH, nil
 	}
 

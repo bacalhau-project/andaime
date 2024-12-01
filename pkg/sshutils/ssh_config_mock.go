@@ -1,6 +1,8 @@
 package sshutils
 
 import (
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -37,8 +39,8 @@ type Expectation struct {
 }
 
 // NewMockSSHConfigWithBehavior creates a mock SSHConfig based on the expected behavior
-func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) *MockSSHConfig {
-	mockSSHConfig := new(MockSSHConfig)
+func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) sshutils_interfaces.SSHConfiger {
+	mockSSHConfig := new(ssh_mock.MockSSHConfiger)
 
 	for _, exp := range behavior.PushFileExpectations {
 		call := mockSSHConfig.On(

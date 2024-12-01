@@ -4,8 +4,10 @@ import (
 	"context"
 	"testing"
 
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -15,20 +17,20 @@ import (
 
 // TestHelper encapsulates common test setup and verification
 type TestHelper struct {
-	t            *testing.T
-	mockSSH      *sshutils.MockSSHConfig
-	expectedCall map[string]int   // tracks expected calls per method
-	actualCalls  map[string]int   // tracks actual calls per method
-	callArgs     map[string][]any // stores arguments per call for verification
+	t             *testing.T
+	mockSSHConfig *ssh_mock.MockSSHConfiger
+	expectedCall  map[string]int   // tracks expected calls per method
+	actualCalls   map[string]int   // tracks actual calls per method
+	callArgs      map[string][]any // stores arguments per call for verification
 }
 
-func NewTestHelper(t *testing.T, mockSSH *sshutils.MockSSHConfig) *TestHelper {
+func NewTestHelper(t *testing.T, mockSSHConfig *ssh_mock.MockSSHConfiger) *TestHelper {
 	return &TestHelper{
-		t:            t,
-		mockSSH:      mockSSH,
-		expectedCall: make(map[string]int),
-		actualCalls:  make(map[string]int),
-		callArgs:     make(map[string][]any),
+		t:             t,
+		mockSSHConfig: mockSSHConfig,
+		expectedCall:  make(map[string]int),
+		actualCalls:   make(map[string]int),
+		callArgs:      make(map[string][]any),
 	}
 }
 
@@ -40,7 +42,7 @@ func (h *TestHelper) ExpectCall(method string, times int, args ...any) {
 
 // OnCall sets up a mock call with verification
 func (h *TestHelper) OnCall(method string, args ...any) *mock.Call {
-	return h.mockSSH.On(method, args...).Run(func(args mock.Arguments) {
+	return h.mockSSHConfig.On(method, args...).Run(func(args mock.Arguments) {
 		h.actualCalls[method]++
 		h.t.Logf("Called %s (%d/%d times)", method, h.actualCalls[method], h.expectedCall[method])
 	})
@@ -70,8 +72,8 @@ func (h *TestHelper) Reset() {
 	h.expectedCall = make(map[string]int)
 	h.actualCalls = make(map[string]int)
 	h.callArgs = make(map[string][]any)
-	h.mockSSH.ExpectedCalls = nil
-	h.mockSSH.Calls = nil
+	h.mockSSHConfig.ExpectedCalls = nil
+	h.mockSSHConfig.Calls = nil
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
@@ -90,12 +92,15 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
 	s.deployer = common.NewClusterDeployer(models.DeploymentTypeAzure)
 
 	// Create fresh mocks for each test
-	mockSSH := sshutils.NewMockSSHConfigWithBehavior(sshutils.ExpectedSSHBehavior{})
-	s.testHelper = NewTestHelper(s.T(), mockSSH)
+	mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(sshutils.ExpectedSSHBehavior{})
+	s.testHelper = NewTestHelper(s.T(), mockSSHConfig.(*ssh_mock.MockSSHConfiger))
 
 	// Reset the global SSH config function for each test
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
-		return mockSSH, nil
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
+		return mockSSHConfig, nil
 	}
 
 	// Reset the global model function for each test
@@ -265,7 +270,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata()
 	err := s.deployer.SetupNodeConfigMetadata(
 		s.ctx,
 		s.deployment.GetMachine("test"),
-		s.testHelper.mockSSH,
+		s.testHelper.mockSSHConfig,
 	)
 	s.NoError(err)
 
@@ -285,7 +290,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestInstallBacalhau() {
 	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh", mock.Anything).
 		Return("", nil)
 
-	err := s.deployer.InstallBacalhau(s.ctx, s.testHelper.mockSSH)
+	err := s.deployer.InstallBacalhau(s.ctx, s.testHelper.mockSSHConfig)
 	s.NoError(err)
 
 	s.testHelper.VerifyCalls()
@@ -325,7 +330,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment(
 			s.testHelper.OnCall("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0", mock.Anything).
 				Return(tt.nodeListOutput, nil)
 
-			err := s.deployer.VerifyBacalhauDeployment(s.ctx, s.testHelper.mockSSH, "0.0.0.0")
+			err := s.deployer.VerifyBacalhauDeployment(s.ctx, s.testHelper.mockSSHConfig, "0.0.0.0")
 
 			if tt.expectError {
 				s.Error(err, "Expected an error for case: %s", tt.name)

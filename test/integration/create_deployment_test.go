@@ -35,8 +35,12 @@ import (
 	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
 	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
 	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
@@ -60,7 +64,7 @@ type IntegrationTestSuite struct {
 	testSSHPublicKeyPath  string
 	testSSHPrivateKeyPath string
 	mockClusterDeployer   *common_mock.MockClusterDeployerer
-	mockSSHConfig         *sshutils.MockSSHConfig
+	mockSSHConfig         *ssh_mock.MockSSHConfiger
 	azureProvider         *azure_provider.AzureProvider
 	gcpProvider           *gcp_provider.GCPProvider
 	awsProvider           *aws_provider.AWSProvider
@@ -95,7 +99,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	}
 
 	s.mockClusterDeployer = new(common_mock.MockClusterDeployerer)
-	s.mockSSHConfig = new(sshutils.MockSSHConfig)
+	s.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
 }
 
 func (s *IntegrationTestSuite) TearDownSuite() {
@@ -444,7 +448,10 @@ func (s *IntegrationTestSuite) setupMockSSHConfig() {
 		mock.Anything,
 	).Return(nil)
 
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
 		return s.mockSSHConfig, nil
 	}
 }

@@ -12,9 +12,11 @@ import (
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -32,7 +34,7 @@ type PkgProvidersAzureIntegrationTest struct {
 	origGetGlobalModelFunc func() *display.DisplayModel
 	testDisplayModel       *display.DisplayModel
 	mockAzureClient        *azure_mocks.MockAzureClienter
-	mockSSHConfig          *sshutils.MockSSHConfig
+	mockSSHConfig          *ssh_mock.MockSSHConfiger
 	cleanup                func()
 }
 
@@ -325,8 +327,11 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		},
 	}
 
-	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior)
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior).(*ssh_mock.MockSSHConfiger)
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
 		return s.mockSSHConfig, nil
 	}
 

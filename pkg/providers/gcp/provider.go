@@ -23,8 +23,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
 var NewGCPProviderFunc = NewGCPProviderFactory
@@ -81,7 +81,7 @@ type GCPProvider struct {
 	ClusterDeployer     common_interface.ClusterDeployerer
 	CleanupClient       func()
 	Config              *viper.Viper
-	SSHClient           sshutils.SSHClienter
+	SSHClient           sshutils_interface.SSHClienter
 	SSHUser             string
 	SSHPort             int
 	updateQueue         chan display.UpdateAction

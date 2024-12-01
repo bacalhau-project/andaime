@@ -3,26 +3,26 @@ package sshutils
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
 // SSHConfig holds the configuration for SSH connections
 type SSHConfig struct {
-	Host                      string
-	Port                      int
-	User                      string
-	SSHPrivateKeyPath         string
-	PrivateKeyMaterial        []byte
-	Timeout                   time.Duration
-	Logger                    *logger.Logger
-	SSHClient                 SSHClienter
+	Host               string
+	Port               int
+	User               string
+	SSHPrivateKeyPath  string
+	PrivateKeyMaterial []byte
+	Timeout            time.Duration
+	Logger             *logger.Logger
+	SSHClient          sshutils_interfaces.SSHClienter
 	// SSHDial has been removed
 	SSHPrivateKeyReader       func(path string) ([]byte, error)
 	SSHPublicKeyReader        func(path string) ([]byte, error)
@@ -40,7 +40,7 @@ func NewSSHConfig(
 	port int,
 	user string,
 	sshPrivateKeyPath string,
-) (SSHConfiger, error) {
+) (sshutils_interfaces.SSHConfiger, error) {
 	l := logger.Get()
 	l.Debugf("Creating new SSH config for %s@%s:%d", user, host, port)
 
@@ -78,7 +78,7 @@ func NewSSHConfig(
 	return config, nil
 }
 
-func (c *SSHConfig) Connect() (SSHClienter, error) {
+func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 	l := logger.Get()
 	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
 
@@ -88,7 +88,7 @@ func (c *SSHConfig) Connect() (SSHClienter, error) {
 	}
 
 	var err error
-	var client SSHClienter
+	var client sshutils_interfaces.SSHClienter
 
 	for i := 0; i < SSHRetryAttempts; i++ {
 		l.Debugf("Attempt %d to connect via SSH\n", i+1)
@@ -176,7 +176,7 @@ func (c *SSHConfig) SetSSHClient(client *ssh.Client) {
 }
 
 // SetSSHClienter sets the SSH client
-func (c *SSHConfig) SetSSHClienter(client SSHClienter) {
+func (c *SSHConfig) SetSSHClienter(client sshutils_interfaces.SSHClienter) {
 	c.SSHClient = client
 }
 
@@ -321,7 +321,7 @@ func (c *SSHConfig) InstallSystemdService(
 	serviceName string,
 	serviceContent string,
 ) error {
-	tmpFile, err := ioutil.TempFile("", "systemd-service-")
+	tmpFile, err := os.CreateTemp("", "systemd-service-")
 	if err != nil {
 		return err
 	}
@@ -369,7 +369,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 func dialSSH(
 	network, addr string,
 	config *ssh.ClientConfig,
-) (SSHClienter, error) {
+) (sshutils_interfaces.SSHClienter, error) {
 	client, err := ssh.Dial(network, addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
@@ -381,9 +381,9 @@ func dialSSHContext(
 	ctx context.Context,
 	network, addr string,
 	config *ssh.ClientConfig,
-) (SSHClienter, error) {
+) (sshutils_interfaces.SSHClienter, error) {
 	type dialResult struct {
-		client SSHClienter
+		client sshutils_interfaces.SSHClienter
 		err    error
 	}
 

@@ -9,10 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	mocks "github.com/bacalhau-project/andaime/mocks/aws"
+	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	pkg_testutil "github.com/bacalhau-project/andaime/pkg/testutil"
 	"github.com/spf13/viper"
@@ -39,11 +41,11 @@ type PkgProvidersAWSProviderSuite struct {
 	testSSHPrivateKeyPath  string
 	cleanupPublicKey       func()
 	cleanupPrivateKey      func()
-	mockAWSClient          *mocks.MockEC2Clienter
+	mockAWSClient          *aws_mocks.MockEC2Clienter
 	awsProvider            *AWSProvider
 	origGetGlobalModelFunc func() *display.DisplayModel
-	origNewSSHConfigFunc   func(string, int, string, string) (sshutils.SSHConfiger, error)
-	mockSSHConfig          *sshutils.MockSSHConfig
+	origNewSSHConfigFunc   func(string, int, string, string) (sshutils_interface.SSHConfiger, error)
+	mockSSHConfig          *ssh_mock.MockSSHConfiger
 }
 
 func (suite *PkgProvidersAWSProviderSuite) SetupSuite() {
@@ -53,7 +55,7 @@ func (suite *PkgProvidersAWSProviderSuite) SetupSuite() {
 		suite.testSSHPrivateKeyPath,
 		suite.cleanupPrivateKey = testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 
-	suite.mockAWSClient = new(mocks.MockEC2Clienter)
+	suite.mockAWSClient = new(aws_mocks.MockEC2Clienter)
 	suite.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
 		deployment, err := models.NewDeployment()
@@ -85,7 +87,7 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 
 	// Set the mock client and ensure it's used for all regions
-	suite.mockAWSClient = new(mocks.MockEC2Clienter)
+	suite.mockAWSClient = new(aws_mocks.MockEC2Clienter)
 	provider.SetEC2Client(suite.mockAWSClient)
 
 	// Mock DescribeRegions to return only the test region to avoid VPC limit issues
@@ -180,9 +182,12 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 		}).
 		Return(&ec2.AssociateRouteTableOutput{}, nil)
 
-	suite.mockSSHConfig = new(sshutils.MockSSHConfig)
+	suite.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
 	suite.origNewSSHConfigFunc = sshutils.NewSSHConfigFunc
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
 		return suite.mockSSHConfig, nil
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ const (
 
 // Provisioner handles the node provisioning process
 type Provisioner struct {
-	SSHConfig      sshutils.SSHConfiger
+	SSHConfig      sshutils_interfaces.SSHConfiger
 	Config         *NodeConfig
 	Machine        models.Machiner
 	SettingsParser *SettingsParser
@@ -240,7 +241,7 @@ func (p *Provisioner) GetMachine() models.Machiner {
 }
 
 // GetSSHConfig returns the configured SSH configuration
-func (p *Provisioner) GetSSHConfig() sshutils.SSHConfiger {
+func (p *Provisioner) GetSSHConfig() sshutils_interfaces.SSHConfiger {
 	return p.SSHConfig
 }
 
