@@ -3,7 +3,6 @@ package sshutils
 import (
 	"encoding/base64"
 	"fmt"
-	"io"
 	"strings"
 )
 

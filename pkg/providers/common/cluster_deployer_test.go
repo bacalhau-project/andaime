@@ -191,7 +191,7 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 			},
 		},
 		InstallSystemdServiceExpectation: &sshutils.Expectation{Error: nil, Times: 2},
-		RestartServiceExpectation:        &sshutils.Expectation{Output: "", Error: nil, Times: 4},
+		RestartServiceExpectation:        &sshutils.Expectation{Error: nil, Times: 4},
 	}
 
 	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {

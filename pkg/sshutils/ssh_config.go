@@ -45,13 +45,12 @@ func NewSSHConfig(
 	l.Debugf("Creating new SSH config for %s@%s:%d", user, host, port)
 
 	config := &SSHConfig{
-		Host:                host,
-		Port:                port,
-		User:                user,
-		SSHPrivateKeyPath:   sshPrivateKeyPath,
-		Logger:              l,
-		SSHDial:             &defaultSSHDialer{},
-		SSHPrivateKeyReader: ioutil.ReadFile,
+		Host:              host,
+		Port:              port,
+		User:              user,
+		SSHPrivateKeyPath: sshPrivateKeyPath,
+		Logger:            l,
+		SSHDial:           &defaultSSHDialer{},
 		ValidateSSHConnectionFunc: func() error {
 			if host == "" {
 				return fmt.Errorf("host cannot be empty")
@@ -363,9 +362,9 @@ func (c *SSHConfig) InstallSystemdService(
 	return nil
 }
 
-func (c *SSHConfig) StartService(ctx context.Context, serviceName string) error {
-	_, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl start %s", serviceName))
-	return err
+func (c *SSHConfig) StartService(ctx context.Context, serviceName string) (string, error) {
+	output, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl start %s", serviceName))
+	return output, err
 }
 
 func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (string, error) {
@@ -421,7 +420,7 @@ func getSSHClientConfig(user, host, privateKeyPath string) (*ssh.ClientConfig, e
 		return nil, fmt.Errorf("private key path is empty")
 	}
 
-	privateKeyBytes, err := ioutil.ReadFile(privateKeyPath)
+	privateKeyBytes, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key: %w", err)
 	}

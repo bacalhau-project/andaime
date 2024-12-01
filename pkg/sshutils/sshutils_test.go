@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 
@@ -36,7 +37,6 @@ func (s *PkgSSHUtilsTestSuite) SetupSuite() {
 
 func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.mockDialer = NewMockSSHDialer()
 	s.mockClient = &MockSSHClient{}
 	s.mockSession = &MockSSHSession{}
 	s.sshConfig, _ = NewSSHConfigFunc(
@@ -128,17 +128,28 @@ type mockSFTPClient struct {
 	mock.Mock
 }
 
-// Verify that mockSFTPClient implements SFTPClient
-var _ SFTPClient = &mockSFTPClient{}
+// Verify that mockSFTPClient implements SFTPClienter
+var _ SFTPClienter = &mockSFTPClient{}
+
+func (m *mockSFTPClient) Create(path string) (io.WriteCloser, error) {
+	args := m.Called(path)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(io.WriteCloser), args.Error(1)
+}
+
+func (m *mockSFTPClient) Open(path string) (io.ReadCloser, error) {
+	args := m.Called(path)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(io.ReadCloser), args.Error(1)
+}
 
 func (m *mockSFTPClient) MkdirAll(path string) error {
 	args := m.Called(path)
 	return args.Error(0)
-}
-
-func (m *mockSFTPClient) Create(path string) (SFTPFile, error) {
-	args := m.Called(path)
-	return args.Get(0).(SFTPFile), args.Error(1)
 }
 
 func (m *mockSFTPClient) Chmod(path string, mode os.FileMode) error {
@@ -147,20 +158,6 @@ func (m *mockSFTPClient) Chmod(path string, mode os.FileMode) error {
 }
 
 func (m *mockSFTPClient) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-type mockSFTPFile struct {
-	mock.Mock
-}
-
-func (m *mockSFTPFile) Write(p []byte) (int, error) {
-	args := m.Called(p)
-	return args.Int(0), args.Error(1)
-}
-
-func (m *mockSFTPFile) Close() error {
 	args := m.Called()
 	return args.Error(0)
 }
@@ -179,29 +176,31 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 		localContent = []byte("#!/bin/bash\necho 'Hello, World!'")
 	}
 
-	// Create mock SFTP file
-	mockFile := &mockSFTPFile{}
-	mockFile.On("Write", localContent).Return(len(localContent), nil)
-	mockFile.On("Close").Return(nil)
+	// Create mock write closer
+	mockFile := &mockWriteCloser{
+		Buffer: bytes.NewBuffer(nil),
+		closeFunc: func() error {
+			return nil
+		},
+	}
 
 	// Create mock SFTP client
 	mockSFTP := &mockSFTPClient{}
-	mockSFTP.On("MkdirAll", "/remote").Return(nil)
 	mockSFTP.On("Create", "/remote/path").Return(mockFile, nil)
 	if executable {
-		mockSFTP.On("Chmod", "/remote/path", os.FileMode(0700)).Return(nil)
+		mockSFTP.On("Chmod", "/remote/path", os.FileMode(0755)).Return(nil)
 	}
 	mockSFTP.On("Close").Return(nil)
 
 	// Save the original creator and restore it after the test
-	originalCreator := currentSFTPClientCreator
-	defer func() { currentSFTPClientCreator = originalCreator }()
+	originalCreator := DefaultSFTPClientCreator
+	defer func() { DefaultSFTPClientCreator = originalCreator }()
 
 	// Set up our test creator that returns the mock
-	var testCreator SFTPClientCreator = func(client *ssh.Client) (SFTPClient, error) {
+	var testCreator SFTPClientCreator = func(client *ssh.Client) (SFTPClienter, error) {
 		return mockSFTP, nil
 	}
-	currentSFTPClientCreator = testCreator
+	DefaultSFTPClientCreator = testCreator
 
 	// Mock GetClient to return a mock ssh.Client
 	mockSSHClient := &ssh.Client{}
@@ -210,9 +209,11 @@ func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
 	err := s.sshConfig.PushFile(s.ctx, "/remote/path", localContent, executable)
 	s.NoError(err)
 
+	// Verify the content was written correctly
+	s.Equal(string(localContent), mockFile.String())
+
 	s.mockClient.AssertExpectations(s.T())
 	mockSFTP.AssertExpectations(s.T())
-	mockFile.AssertExpectations(s.T())
 }
 
 func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {

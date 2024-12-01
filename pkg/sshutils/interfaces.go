@@ -50,7 +50,7 @@ type SSHConfiger interface {
 
 	// Service management
 	InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error
-	StartService(ctx context.Context, serviceName string) error
+	StartService(ctx context.Context, serviceName string) (string, error)
 	RestartService(ctx context.Context, serviceName string) (string, error)
 }
 

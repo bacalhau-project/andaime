@@ -477,13 +477,15 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 		false,
 	)
 
-	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+	if out, err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 		cd.sendErrorUpdate(
 			stepRegistry.GetStep(common_interface.ServiceRestart),
 			callback,
 			err,
 		)
 		return cd.HandleDeploymentError(ctx, machine, err)
+	} else {
+		l.Infof("Bacalhau service restarted: %s", out)
 	}
 
 	cd.sendStepUpdate(
@@ -661,8 +663,10 @@ func (cd *ClusterDeployer) SetupBacalhauService(
 	}
 
 	// Always restart after service installation
-	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+	if out, err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 		return fmt.Errorf("failed to restart Bacalhau service: %w", err)
+	} else {
+		logger.Get().Infof("Bacalhau service restarted: %s", out)
 	}
 
 	return nil

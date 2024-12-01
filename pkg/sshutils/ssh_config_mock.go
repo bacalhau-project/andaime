@@ -111,5 +111,3 @@ func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) *MockSSHConfig {
 
 	return mockSSHConfig
 }
-
-// MockSSHConfig is now defined in mock_sshutils.go

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
 
 	internal_testutil "github.com/bacalhau-project/andaime/internal/testutil"
@@ -36,7 +35,11 @@ func (s *sshDial) Dial(network, addr string, config *ssh.ClientConfig) (SSHClien
 	return &SSHClientWrapper{Client: client}, nil
 }
 
-func (s *sshDial) DialContext(ctx context.Context, network, addr string, config *ssh.ClientConfig) (SSHClienter, error) {
+func (s *sshDial) DialContext(
+	ctx context.Context,
+	network, addr string,
+	config *ssh.ClientConfig,
+) (SSHClienter, error) {
 	type dialResult struct {
 		client SSHClienter
 		err    error
