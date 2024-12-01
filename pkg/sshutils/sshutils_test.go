@@ -54,16 +54,22 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.sshConfig.SetValidateSSHConnection(func() error {
 		return nil
 	})
+
+	// Add default mock expectations for common methods
+	s.sshClient.On("IsConnected").Return(true)
+	s.sshClient.On("NewSession").Return(s.sshSession, nil)
+	s.sshSession.On("Close").Return(nil)
 }
 
 func (s *PkgSSHUtilsTestSuite) TestConnect() {
+	mockSSHClient := &ssh.Client{}
 	s.sshClient.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
-		Return(s.sshClient, nil)
+		Return(&SSHClientWrapper{Client: mockSSHClient}, nil)
 
 	client, err := s.sshConfig.Connect()
 	s.NoError(err)
 	s.NotNil(client)
-	s.IsType(&ssh.Client{}, client)
+	s.IsType(&SSHClientWrapper{}, client)
 
 	s.sshClient.AssertExpectations(s.T())
 }
@@ -76,7 +82,7 @@ func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 	client, err := s.sshConfig.Connect()
 	s.Error(err)
 	s.Nil(client)
-	s.Contains(err.Error(), "connection error")
+	s.Contains(err.Error(), "failed to dial")
 	s.sshClient.AssertExpectations(s.T())
 }
 
@@ -96,7 +102,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommandWithRetry() {
-	s.sshClient.On("NewSession").Return(s.sshSession, nil)
+	s.sshClient.On("NewSession").Return(s.sshSession, nil).Times(2)
 	s.sshClient.On("IsConnected").Return(true)
 	expectedOutput := []byte("command output")
 	s.sshSession.On("CombinedOutput", "ls -l").
