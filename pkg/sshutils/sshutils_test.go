@@ -59,12 +59,22 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.sshClient.On("IsConnected").Return(true)
 	s.sshClient.On("NewSession").Return(s.sshSession, nil)
 	s.sshSession.On("Close").Return(nil)
+	s.sshSession.On("StdinPipe").Return(&mockWriteCloser{
+		Buffer: bytes.NewBuffer(nil),
+		closeFunc: func() error {
+			return nil
+		},
+	}, nil)
+	s.sshSession.On("Start", mock.Anything).Return(nil)
+	s.sshSession.On("Wait").Return(nil)
+	s.sshSession.On("CombinedOutput", mock.Anything).Return([]byte(""), nil)
 }
 
 func (s *PkgSSHUtilsTestSuite) TestConnect() {
 	mockSSHClient := &ssh.Client{}
 	s.sshClient.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
-		Return(&SSHClientWrapper{Client: mockSSHClient}, nil)
+		Return(&SSHClientWrapper{Client: mockSSHClient}, nil).Once()
+	s.sshClient.On("GetClient").Return(mockSSHClient).Once()
 
 	client, err := s.sshConfig.Connect()
 	s.NoError(err)
@@ -77,7 +87,7 @@ func (s *PkgSSHUtilsTestSuite) TestConnect() {
 func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 	expectedError := fmt.Errorf("connection error")
 	s.sshClient.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
-		Return(nil, expectedError)
+		Return(nil, expectedError).Once()
 
 	client, err := s.sshConfig.Connect()
 	s.Error(err)
@@ -87,11 +97,8 @@ func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
-	s.sshClient.On("NewSession").Return(s.sshSession, nil)
-	s.sshClient.On("IsConnected").Return(true)
 	expectedOutput := []byte("command output")
-	s.sshSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil)
-	s.sshSession.On("Close").Return(nil)
+	s.sshSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
 
 	actualResult, err := s.sshConfig.ExecuteCommand(s.ctx, "ls -l")
 	s.NoError(err)
@@ -102,13 +109,10 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommandWithRetry() {
-	s.sshClient.On("NewSession").Return(s.sshSession, nil).Times(2)
-	s.sshClient.On("IsConnected").Return(true)
 	expectedOutput := []byte("command output")
 	s.sshSession.On("CombinedOutput", "ls -l").
 		Return([]byte{}, fmt.Errorf("temporary error")).Once().
 		On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
-	s.sshSession.On("Close").Return(nil).Times(2)
 
 	actualResult, err := s.sshConfig.ExecuteCommand(s.ctx, "ls -l")
 	s.NoError(err)
@@ -260,7 +264,7 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 		s.Run(tt.name, func() {
 			// Mock GetClient() to return a mock SSH client
 			mockSSHClient := &ssh.Client{}
-			s.sshClient.On("GetClient").Return(mockSSHClient)
+			s.sshClient.On("GetClient").Return(mockSSHClient).Once()
 
 			// Mock SFTP client creation
 			mockSFTP := &mockSFTPClient{}
@@ -269,8 +273,9 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 				closeFunc: func() error {
 					return nil
 				},
-			}, nil)
-			mockSFTP.On("Close").Return(nil)
+			}, nil).Once()
+			mockSFTP.On("Close").Return(nil).Once()
+			mockSFTP.On("Chmod", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			// Override the SFTP client creator for testing
 			originalCreator := DefaultSFTPClientCreator
@@ -279,17 +284,16 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 			}
 			defer func() { DefaultSFTPClientCreator = originalCreator }()
 
-			s.sshClient.On("NewSession").Return(s.sshSession, nil)
-			s.sshClient.On("IsConnected").Return(true)
-			s.sshSession.On("Run", mock.Anything).Return(nil)
-			s.sshSession.On("Close").Return(nil)
+			s.sshSession.On("CombinedOutput", mock.Anything).Return([]byte(""), nil).Maybe()
 
 			var err error
 			switch op := tt.operation.(type) {
 			case func(context.Context, string, string) error:
 				err = op(s.ctx, tt.serviceName, tt.serviceContent)
 			case func(context.Context, string) error:
-				err = op(s.ctx, tt.serviceName)
+				output, execErr := op(s.ctx, tt.serviceName)
+				s.NoError(execErr)
+				s.NotEmpty(output)
 			default:
 				s.Fail("Unexpected operation type")
 			}
