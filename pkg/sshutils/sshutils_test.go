@@ -291,9 +291,8 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 			case func(context.Context, string, string) error:
 				err = op(s.ctx, tt.serviceName, tt.serviceContent)
 			case func(context.Context, string) error:
-				output, execErr := op(s.ctx, tt.serviceName)
-				s.NoError(execErr)
-				s.NotEmpty(output)
+				err = op(s.ctx, tt.serviceName)
+				s.NoError(err)
 			default:
 				s.Fail("Unexpected operation type")
 			}
