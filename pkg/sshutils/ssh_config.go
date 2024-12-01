@@ -50,7 +50,7 @@ func NewSSHConfig(
 		User:              user,
 		SSHPrivateKeyPath: sshPrivateKeyPath,
 		Logger:            l,
-		SSHDial:           &defaultSSHDialer{},
+		// SSHDial has been removed
 		ValidateSSHConnectionFunc: func() error {
 			if host == "" {
 				return fmt.Errorf("host cannot be empty")
