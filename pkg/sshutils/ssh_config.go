@@ -321,32 +321,38 @@ func (c *SSHConfig) InstallSystemdService(
 	serviceName string,
 	serviceContent string,
 ) error {
-	tmpFile, err := os.CreateTemp("", "systemd-service-")
+	// Create SFTP client
+	sftpClient, err := DefaultSFTPClientCreator(c.SSHClient.GetClient())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer sftpClient.Close()
 
-	if _, err := tmpFile.Write([]byte(serviceContent)); err != nil {
-		return err
+	// Construct remote path
+	remotePath := filepath.Join("/etc/systemd/system", serviceName)
+
+	// Create remote file
+	remoteFile, err := sftpClient.Create(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to create remote systemd service file: %w", err)
+	}
+	defer remoteFile.Close()
+
+	// Write service content
+	if _, err := remoteFile.Write([]byte(serviceContent)); err != nil {
+		return fmt.Errorf("failed to write service content: %w", err)
 	}
 
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	if err := c.PushFile(ctx, filepath.Join("/etc/systemd/system", serviceName), []byte(serviceContent), false); err != nil {
-		return err
-	}
-
-	if out, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl daemon-reload")); err != nil {
-		return err
+	// Reload systemd daemon
+	if out, err := c.ExecuteCommand(ctx, "systemctl daemon-reload"); err != nil {
+		return fmt.Errorf("failed to reload systemd daemon: %w", err)
 	} else {
 		logger.Get().Infof("systemctl daemon-reload output: %s", out)
 	}
 
+	// Enable service
 	if out, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl enable %s", serviceName)); err != nil {
-		return err
+		return fmt.Errorf("failed to enable service: %w", err)
 	} else {
 		logger.Get().Infof("systemctl enable %s output: %s", serviceName, out)
 	}
