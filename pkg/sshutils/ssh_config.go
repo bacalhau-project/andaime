@@ -103,49 +103,74 @@ var DialSSHFunc = dialSSH
 
 func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 	l := logger.Get()
-	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
+	l.Infof("🔐 Attempting SSH Connection: %s@%s:%d", c.User, c.Host, c.Port)
 
-	// Validate connection prerequisites
+	// Extensive connection validation
 	if err := c.ValidateSSHConnectionFunc(); err != nil {
-		l.Errorf("SSH connection validation failed: %v", err)
-		return nil, err
+		l.Errorf("❌ SSH Connection Validation Failed: %v", err)
+		return nil, fmt.Errorf("SSH connection validation error: %w", err)
 	}
+
+	// Log detailed connection parameters
+	l.Debugf("🔍 Connection Parameters:\n" +
+		"  Host: %s\n" +
+		"  Port: %d\n" +
+		"  User: %s\n" +
+		"  Private Key Path: %s\n" +
+		"  Timeout: %v\n" +
+		"  Retry Attempts: %d",
+		c.Host, c.Port, c.User, c.SSHPrivateKeyPath, 
+		c.Timeout, SSHRetryAttempts)
 
 	var err error
 	var client sshutils_interfaces.SSHClienter
 
-	for i := 0; i < SSHRetryAttempts; i++ {
-		l.Debugf("Attempt %d to connect via SSH to %s:%d", i+1, c.Host, c.Port)
-		
-		// Add more detailed logging about connection parameters
-		l.Debugf("Connection details - User: %s, Port: %d, Private Key: %s", 
-			c.User, c.Port, c.SSHPrivateKeyPath)
+	for attempt := 1; attempt <= SSHRetryAttempts; attempt++ {
+		l.Debugf("🔄 Connection Attempt %d/%d", attempt, SSHRetryAttempts)
 
-		client, err = DialSSHFunc(
+		// Create context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+		defer cancel()
+
+		client, err = dialSSHContext(
+			ctx,
 			"tcp",
 			fmt.Sprintf("%s:%d", c.Host, c.Port),
 			c.ClientConfig,
 		)
+
 		if err == nil {
-			l.Infof("Successfully established SSH connection to %s:%d", c.Host, c.Port)
-			break
+			l.Infof("✅ Successfully established SSH connection to %s:%d", c.Host, c.Port)
+			c.SSHClient = client
+			return client, nil
 		}
 
-		l.Errorf("SSH connection attempt %d failed: %v", i+1, err)
+		// Log specific error details
+		l.Errorf("❌ SSH Connection Attempt %d Failed: %v", attempt, err)
+		
+		// Detailed error type logging
+		switch {
+		case os.IsTimeout(err):
+			l.Errorf("🕒 Connection Timeout: Network or SSH service might be unresponsive")
+		case strings.Contains(err.Error(), "connection refused"):
+			l.Errorf("🚫 Connection Refused: Check firewall, SSH service status")
+		case strings.Contains(err.Error(), "no route to host"):
+			l.Errorf("🌐 Network Unreachable: Check network connectivity")
+		case strings.Contains(err.Error(), "invalid key"):
+			l.Errorf("🔑 SSH Key Authentication Failed: Verify private key")
+		}
 
-		if i < SSHRetryAttempts-1 {
-			l.Debugf("Retrying SSH connection in %v", SSHRetryDelay)
-			time.Sleep(SSHRetryDelay)
+		if attempt < SSHRetryAttempts {
+			backoffTime := time.Duration(attempt*2) * time.Second
+			l.Debugf("⏳ Waiting %v before next attempt", backoffTime)
+			time.Sleep(backoffTime)
 		}
 	}
 
-	if err != nil {
-		l.Errorf("Failed to connect to SSH server after %d attempts: %v", SSHRetryAttempts, err)
-		return nil, fmt.Errorf("failed to connect after %d attempts: %w", SSHRetryAttempts, err)
-	}
-
-	c.SSHClient = client
-	return client, nil
+	finalErr := fmt.Errorf("❌ SSH Connection Failed after %d attempts: %w", 
+		SSHRetryAttempts, err)
+	l.Errorf(finalErr.Error())
+	return nil, finalErr
 }
 
 func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
@@ -379,23 +404,37 @@ func dialSSHContext(
 	network, addr string,
 	config *ssh.ClientConfig,
 ) (sshutils_interfaces.SSHClienter, error) {
+	l := logger.Get()
+	l.Debugf("🌐 Initiating SSH Dial Context: %s, %s", network, addr)
+
 	type dialResult struct {
 		client sshutils_interfaces.SSHClienter
 		err    error
 	}
 
 	result := make(chan dialResult, 1)
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		client, err := dialSSH(network, addr, config)
 		result <- dialResult{client, err}
 	}()
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		l.Errorf("❌ SSH Dial Context Cancelled: %v", ctx.Err())
+		return nil, fmt.Errorf("SSH dial context cancelled: %w", ctx.Err())
 	case res := <-result:
-		return res.client, res.err
+		if res.err != nil {
+			l.Errorf("❌ SSH Dial Failed: %v", res.err)
+			return nil, fmt.Errorf("SSH dial error: %w", res.err)
+		}
+		l.Debugf("✅ SSH Dial Successful")
+		return res.client, nil
+	case <-time.After(config.Timeout):
+		l.Errorf("⏰ SSH Dial Timeout after %v", config.Timeout)
+		return nil, fmt.Errorf("SSH dial timeout after %v", config.Timeout)
 	}
 }
 
