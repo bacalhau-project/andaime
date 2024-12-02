@@ -88,6 +88,13 @@ func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
 	return output, nil
 }
 
+func (s *SSHSessionWrapper) Close() error {
+	if s.Session == nil {
+		return nil
+	}
+	return s.Session.Close()
+}
+
 // SSHError represents an SSH command execution error with output
 type SSHError struct {
 	Cmd    string
