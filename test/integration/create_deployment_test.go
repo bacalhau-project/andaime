@@ -260,10 +260,10 @@ func (s *IntegrationTestSuite) setupDeploymentModel(
 		// Initialize VPC maps for each region
 		regions := []string{"us-west-2", "us-east-1"}
 		for _, region := range regions {
-			m.Deployment.AWS.RegionalResources.VPCs[region] = &models.AWSVPC{
+			m.Deployment.AWS.RegionalResources.SetVPC(region, &models.AWSVPC{
 				VPCID:           fmt.Sprintf("vpc-%s", region),
 				SecurityGroupID: fmt.Sprintf("sg-%s", region),
-			}
+			})
 		}
 	case models.DeploymentTypeAzure:
 		m.Deployment.Azure = &models.AzureConfig{

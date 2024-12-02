@@ -319,6 +319,7 @@ serviceusage
 serviceusagepb
 sess
 Sessioner
+SetSGID
 sigchanyzer
 sirupsen
 Skus

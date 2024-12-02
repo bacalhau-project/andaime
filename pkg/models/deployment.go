@@ -124,10 +124,10 @@ func NewDeployment() (*Deployment, error) {
 		UniqueID:               uniqueID,
 		Azure:                  &AzureConfig{},
 		GCP:                    &GCPConfig{},
-		AWS:                    &AWSDeployment{},
 		Tags:                   make(map[string]string),
 		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
 	}
+	deployment.InitializeAWSDeployment()
 
 	timestamp := time.Now().Format("01021504") // mmddhhmm
 	if deployment.DeploymentType == DeploymentTypeGCP {
@@ -145,13 +145,21 @@ func NewDeployment() (*Deployment, error) {
 				MaximumGCPUniqueProjectIDLength,
 			)
 		}
-
-		l.Debugf("Ensuring project: %s", uniqueProjectID)
-
 		deployment.SetProjectID(uniqueProjectID)
 	}
 
 	return deployment, nil
+}
+
+func (d *Deployment) InitializeAWSDeployment() *AWSDeployment {
+	if d.AWS == nil {
+		d.AWS = &AWSDeployment{}
+		d.AWS.RegionalResources = &RegionalResources{}
+		d.AWS.RegionalResources.VPCs = make(map[string]*AWSVPC)
+		d.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+	}
+
+	return d.AWS
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
@@ -438,6 +446,18 @@ func (r *RegionalResources) SetVPC(region string, vpc *AWSVPC) {
 		r.VPCs = make(map[string]*AWSVPC)
 	}
 	r.VPCs[region] = vpc
+}
+
+func (r *RegionalResources) SetSGID(region string, sgID string) {
+	r.Lock()
+	defer r.Unlock()
+	if r.VPCs == nil {
+		r.VPCs = make(map[string]*AWSVPC)
+	}
+	if r.VPCs[region] == nil {
+		r.VPCs[region] = &AWSVPC{}
+	}
+	r.VPCs[region].SecurityGroupID = sgID
 }
 
 type RegionalVPC struct {

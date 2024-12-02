@@ -78,6 +78,8 @@ func NewSSHConfig(
 	return config, nil
 }
 
+var DialSSHFunc = dialSSH
+
 func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 	l := logger.Get()
 	l.Infof("Connecting to SSH server: %s:%d", c.Host, c.Port)
@@ -92,7 +94,7 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 
 	for i := 0; i < SSHRetryAttempts; i++ {
 		l.Debugf("Attempt %d to connect via SSH\n", i+1)
-		client, err = dialSSH(
+		client, err = DialSSHFunc(
 			"tcp",
 			fmt.Sprintf("%s:%d", c.Host, c.Port),
 			c.ClientConfig,
@@ -190,14 +192,7 @@ func (c *SSHConfig) Close() error {
 
 // ExecuteCommand executes a command over SSH and returns its output
 func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
-	session, err := c.SSHClient.NewSession()
-	if err != nil {
-		return "", err
-	}
-	defer session.Close()
-
-	output, err := session.CombinedOutput(command)
-	return string(output), err
+	return c.ExecuteCommandWithCallback(ctx, command, func(output string) {})
 }
 
 // ExecuteCommandWithCallback executes a command over SSH with output callback
@@ -228,40 +223,7 @@ func (c *SSHConfig) PushFile(
 	content []byte,
 	executable bool,
 ) error {
-	session, err := c.SSHClient.NewSession()
-	if err != nil {
-		return err
-	}
-	defer session.Close()
-
-	fileMode := "644"
-	if executable {
-		fileMode = "755"
-	}
-
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		return err
-	}
-
-	cmd := fmt.Sprintf("cat > %s && chmod %s %s", remotePath, fileMode, remotePath)
-	if err := session.Start(cmd); err != nil {
-		return fmt.Errorf("failed to start file push: %w", err)
-	}
-
-	if _, err := stdin.Write(content); err != nil {
-		return fmt.Errorf("failed to write file content: %w", err)
-	}
-
-	if err := stdin.Close(); err != nil {
-		return fmt.Errorf("failed to close stdin: %w", err)
-	}
-
-	if err := session.Wait(); err != nil {
-		return fmt.Errorf("failed to push file: %w", err)
-	}
-
-	return nil
+	return c.PushFileWithCallback(ctx, remotePath, content, executable, func(int64, int64) {})
 }
 
 // PushFileWithCallback pushes a file with progress callback
@@ -291,7 +253,7 @@ func (c *SSHConfig) PushFileWithCallback(
 
 	// Write file contents in chunks
 	for written < totalSize {
-		chunkSize := int64(4096)
+		chunkSize := int64(4096) //nolint:mnd
 		if written+chunkSize > totalSize {
 			chunkSize = totalSize - written
 		}
@@ -369,8 +331,6 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 	output, err := c.ExecuteCommand(ctx, fmt.Sprintf("systemctl restart %s", serviceName))
 	return output, err
 }
-
-// Removed type declarations
 
 func dialSSH(
 	network, addr string,

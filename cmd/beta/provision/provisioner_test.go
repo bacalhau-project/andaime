@@ -68,9 +68,11 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
 		Maybe()
-	cbpts.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil).Maybe()
 	cbpts.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
+		Maybe()
+	cbpts.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
+		Return("", nil).
 		Maybe()
 	cbpts.mockSSHConfig.On("InstallSystemdService",
 		mock.Anything,
@@ -195,7 +197,7 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvision() {
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"sudo docker run hello-world",
-	).Return("Hello from Docker!", nil).Once()
+	).Return(models.ExpectedDockerOutput, nil).Once()
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"bacalhau node list --output json --api-host 0.0.0.0",
@@ -240,7 +242,7 @@ setting.two: "value2"
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"sudo docker run hello-world",
-	).Return("Hello from Docker!", nil).Once()
+	).Return(models.ExpectedDockerOutput, nil).Once()
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"bacalhau node list --output json --api-host 0.0.0.0",
@@ -286,39 +288,49 @@ invalid-setting
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
+	// Define expected behavior
+	behavior := sshutils.ExpectedSSHBehavior{
+		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+			{
+				Cmd:    "sudo docker run hello-world",
+				Times:  1,
+				Output: models.ExpectedDockerOutput,
+				Error:  nil,
+			},
+			{
+				Cmd:    "bacalhau node list --output json --api-host",
+				Times:  1,
+				Output: `[{"id": "12D"}]`,
+				Error:  nil,
+			},
+		},
+	}
+
+	// Rest of the test remains the same
+	mockSSH := sshutils.NewMockSSHConfigWithBehavior(behavior)
+
+	origNewSSHConfigFunc := sshutils.NewSSHConfigFunc
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
+		return mockSSH, nil
+	}
+	defer func() { sshutils.NewSSHConfigFunc = origNewSSHConfigFunc }()
+
 	config := &provision.NodeConfig{
 		IPAddress:  "192.168.1.1",
 		Username:   "testuser",
 		PrivateKey: cbpts.testSSHPrivateKeyPath,
 	}
 
-	originalCalls := cbpts.mockSSHConfig.ExpectedCalls
-	// Clear existing ExecuteCommand expectations
-	cbpts.mockSSHConfig.ExpectedCalls = nil
-
-	// Add our specific expectation first
-	cbpts.mockSSHConfig.On("ExecuteCommand",
-		mock.Anything,
-		"sudo docker run hello-world",
-	).Return("Hello from Docker!", nil).Once()
-	cbpts.mockSSHConfig.On("ExecuteCommand",
-		mock.Anything,
-		"bacalhau node list --output json --api-host 0.0.0.0",
-	).Return(`[{"id":"1234567890"}]`, nil).Once()
-	cbpts.mockSSHConfig.On("ExecuteCommand",
-		mock.Anything,
-		"sudo bacalhau config list --output json",
-	).Return(`[]`, nil).Once()
-
-	cbpts.mockSSHConfig.ExpectedCalls = append(cbpts.mockSSHConfig.ExpectedCalls,
-		originalCalls...)
-
 	p, err := provision.NewProvisioner(config)
 	cbpts.Require().NoError(err)
-	p.SetClusterDeployer(cbpts.mockClusterDeployer)
 
 	err = p.Provision(context.Background())
 	cbpts.NoError(err)
+
+	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {

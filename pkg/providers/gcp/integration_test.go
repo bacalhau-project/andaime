@@ -167,156 +167,155 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 			{
 				Dst:              "/tmp/get-node-config-metadata.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-docker.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-core-packages.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-bacalhau.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-run-bacalhau.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/custom_script.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
-				FileContents:     localCustomScriptContent,
 				Times:            3,
 			},
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
 				Cmd:              "sudo /tmp/get-node-config-metadata.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-docker.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo docker run hello-world",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "Hello from Docker!",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-core-packages.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-bacalhau.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-run-bacalhau.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "bacalhau node list --output json --api-host 0.0.0.0",
-				ProgressCallback: mock.Anything,
-				Output:           `[{"id": "node1"}]`,
+				ProgressCallback: func(int64, int64) {},
+				Output:           `[{"id":"12D3KooWRTzN7HfmjoUB3WNSCUEm8rDqFqJqmmGwvvcSqyh5vxpq","host":{"name":"orchestrator","address":"10.0.0.1"},"labels":{"andaime_role":"orchestrator"},"compute":{"executors":["docker"],"concurrency":10},"status":{"state":"ready","time":"2024-04-01T10:00:00Z"}}]`,
 				Error:            nil,
 				Times:            1,
 			},
 			{
 				Cmd:              "bacalhau node list --output json --api-host 35.200.100.100",
-				ProgressCallback: mock.Anything,
-				Output:           `[{"id": "node1"}]`,
+				ProgressCallback: func(int64, int64) {},
+				Output:           `[{"id":"12D3KooWRTzN7HfmjoUB3WNSCUEm8rDqFqJqmmGwvvcSqyh5vxpq","host":{"name":"orchestrator","address":"35.200.100.100"},"labels":{"andaime_role":"orchestrator"},"compute":{"executors":["docker"],"concurrency":10},"status":{"state":"ready","time":"2024-04-01T10:00:00Z"}}]`,
 				Error:            nil,
 				Times:            2,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.interval'='15s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.infoupdateinterval'='16s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.resourceupdateinterval'='17s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout'='18s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'jobadmissioncontrol.acceptnetworkedjobs'='true'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo bacalhau config list --output json",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "[]",
 				Error:            nil,
 				Times:            3,
@@ -348,14 +347,7 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Set up SSH mock expectations before running the test
-	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) {
-			// Simulate a small delay to mimic real SSH behavior
-			time.Sleep(100 * time.Millisecond)
-		}).
-		Return(nil).
-		Times(3)
+	models.ExpectedDockerOutput = ""
 
 	s.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {

@@ -3,7 +3,6 @@ package sshutils
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -19,7 +18,12 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 	}
 
 	l.Infof("Executing SSH command: %s", cmd)
-	defer l.Sync() // Ensure logs are flushed
+	defer func() {
+		err := l.Sync() // Ensure logs are flushed
+		if err != nil {
+			l.Errorf("Failed to sync logger: %v", err)
+		}
+	}()
 
 	// Wrap the command in sudo bash -c to handle all parts in one go, with proper escaping
 	escapedCmd := strings.Replace(cmd, "'", "'\"'\"'", -1)
@@ -33,11 +37,6 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 			session.Close()
 		}
 	}()
-
-	// For file transfer commands that contain a pipe, handle them separately
-	if strings.Contains(wrappedCmd, "cat >") {
-		return s.handleFileTransfer(cmd, wrappedCmd)
-	}
 
 	// Set up pipes for stdout and stderr
 	stdout, err := session.StdoutPipe()
@@ -142,79 +141,6 @@ func (s *SSHSessionWrapper) Run(cmd string) error {
 			}
 		}
 	}
-}
-
-// handleFileTransfer handles the special case of file transfer commands
-func (s *SSHSessionWrapper) handleFileTransfer(cmd, wrappedCmd string) error {
-	l := logger.Get()
-	stdin, err := s.Session.StdinPipe()
-	if err != nil {
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to get stdin pipe: %w", err),
-		}
-	}
-
-	var stderrBuf strings.Builder
-	stderr, err := s.Session.StderrPipe()
-	if err != nil {
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to get stderr pipe: %w", err),
-		}
-	}
-
-	// Copy stderr in background
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			l.Infof("stderr: %s", line)
-			stderrBuf.WriteString(line + "\n")
-		}
-	}()
-
-	if err := s.Session.Start(wrappedCmd); err != nil {
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to start command: %w", err),
-		}
-	}
-
-	// Extract and write content
-	parts := strings.Split(cmd, ">")
-	if len(parts) < 2 {
-		l.Error("Invalid file transfer command format")
-		return fmt.Errorf("invalid file transfer command format")
-	}
-
-	content := strings.TrimSpace(parts[1])
-	if idx := strings.Index(content, "&&"); idx != -1 {
-		content = strings.TrimSpace(content[:idx])
-	}
-
-	l.Debugf("Attempting to write content (length: %d) to remote file", len(content))
-
-	written, err := io.WriteString(stdin, content)
-	if err != nil {
-		l.Errorf("Failed to write content: %v", err)
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to write content: %w", err),
-		}
-	}
-	l.Debugf("Successfully wrote %d bytes", written)
-
-	if err := stdin.Close(); err != nil {
-		l.Errorf("Error closing stdin: %v", err)
-		return &SSHError{
-			Cmd: cmd,
-			Err: fmt.Errorf("failed to close stdin: %w", err),
-		}
-	}
-	l.Debug("Successfully closed stdin")
-
-	return s.Session.Wait()
 }
 
 func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {

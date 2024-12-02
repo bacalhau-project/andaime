@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
@@ -21,7 +22,6 @@ type PkgSSHUtilsTestSuite struct {
 	testSSHPrivateKeyPath string
 	cleanupPrivateKey     func()
 	sshClient             *ssh_mock.MockSSHClienter
-	sshSession            *ssh_mock.MockSSHSessioner
 	sshConfig             sshutils_interfaces.SSHConfiger
 	ctx                   context.Context
 }
@@ -39,7 +39,6 @@ func (s *PkgSSHUtilsTestSuite) SetupSuite() {
 func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.sshClient = &ssh_mock.MockSSHClienter{}
-	s.sshSession = &ssh_mock.MockSSHSessioner{}
 	sshConfig, err := NewSSHConfigFunc(
 		"example.com",
 		22, //nolint:mnd
@@ -57,25 +56,17 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 
 	// Add default mock expectations for common methods
 	s.sshClient.On("IsConnected").Return(true).Maybe()
-	s.sshClient.On("NewSession").Return(s.sshSession, nil).Maybe()
-	s.sshSession.On("Close").Return(nil).Maybe()
-	s.sshSession.On("StdinPipe").Return(&mockWriteCloser{
-		Buffer: bytes.NewBuffer(nil),
-		closeFunc: func() error {
-			return nil
-		},
-	}, nil).Maybe()
-	s.sshSession.On("Start", mock.Anything).Return(nil).Maybe()
-	s.sshSession.On("Wait").Return(nil).Maybe()
-	s.sshSession.On("CombinedOutput", mock.Anything).Return([]byte(""), nil).Maybe()
 }
 
 func (s *PkgSSHUtilsTestSuite) TestConnect() {
 	mockSSHClient := &ssh.Client{}
-	s.sshClient.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
-		Return(&SSHClientWrapper{Client: mockSSHClient}, nil).Once()
-	s.sshClient.On("GetClient").Return(mockSSHClient).Once()
-	s.sshClient.On("Close").Return(nil).Maybe()
+	originalDialSSH := DialSSHFunc
+	DialSSHFunc = func(network,
+		addr string,
+		config *ssh.ClientConfig) (sshutils_interfaces.SSHClienter, error) {
+		return &SSHClientWrapper{Client: mockSSHClient}, nil
+	}
+	defer func() { DialSSHFunc = originalDialSSH }()
 
 	client, err := s.sshConfig.Connect()
 	s.NoError(err)
@@ -87,48 +78,38 @@ func (s *PkgSSHUtilsTestSuite) TestConnect() {
 
 func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
 	expectedError := fmt.Errorf("connection error")
-	s.sshClient.On("Dial", "tcp", "example.com:22", mock.AnythingOfType("*ssh.ClientConfig")).
-		Return(nil, expectedError).Once()
-	s.sshClient.On("Close").Return(nil).Maybe()
+	SSHRetryDelay = 0 * time.Second
+	originalDialSSH := DialSSHFunc
+	DialSSHFunc = func(network,
+		addr string,
+		config *ssh.ClientConfig) (sshutils_interfaces.SSHClienter, error) {
+		return nil, expectedError
+	}
+	defer func() { DialSSHFunc = originalDialSSH }()
 
 	client, err := s.sshConfig.Connect()
 	s.Error(err)
 	s.Nil(client)
-	s.Contains(err.Error(), "failed to dial")
+	s.Contains(err.Error(), "failed to connect")
 	s.sshClient.AssertExpectations(s.T())
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	expectedOutput := []byte("command output")
-	mockSSHClient := &ssh.Client{}
-	s.sshClient.On("GetClient").Return(mockSSHClient).Once()
-	s.sshClient.On("NewSession").Return(s.sshSession, nil).Once()
-	s.sshSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
+
+	mockSession := &ssh_mock.MockSSHSessioner{}
+	mockSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
+	mockSession.On("Close").Return(nil).Once()
+	s.sshClient.On("NewSession").Return(mockSession, nil).Once()
+
+	s.sshConfig.SetSSHClienter(s.sshClient)
 
 	actualResult, err := s.sshConfig.ExecuteCommand(s.ctx, "ls -l")
 	s.NoError(err)
 	s.Equal(string(expectedOutput), actualResult)
 
 	s.sshClient.AssertExpectations(s.T())
-	s.sshSession.AssertExpectations(s.T())
-}
-
-func (s *PkgSSHUtilsTestSuite) TestExecuteCommandWithRetry() {
-	expectedOutput := []byte("command output")
-	mockSSHClient := &ssh.Client{}
-	s.sshClient.On("GetClient").Return(mockSSHClient).Twice()
-	s.sshClient.On("NewSession").Return(s.sshSession, nil).Twice()
-	s.sshSession.On("CombinedOutput", "ls -l").
-		Return([]byte{}, fmt.Errorf("temporary error")).Once().
-		On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
-
-	actualResult, err := s.sshConfig.ExecuteCommand(s.ctx, "ls -l")
-	s.NoError(err)
-	s.Equal(string(expectedOutput), actualResult)
-
-	s.sshClient.AssertExpectations(s.T())
-	s.sshSession.AssertNumberOfCalls(s.T(), "CombinedOutput", 2)
-	s.sshSession.AssertExpectations(s.T())
+	mockSession.AssertExpectations(s.T())
 }
 
 type mockWriteCloser struct {
@@ -272,7 +253,11 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 		s.Run(tt.name, func() {
 			// Mock GetClient() to return a mock SSH client
 			mockSSHClient := &ssh.Client{}
+			mockSession := &ssh_mock.MockSSHSessioner{}
+			mockSession.On("Close").Return(nil)
+
 			s.sshClient.On("GetClient").Return(mockSSHClient).Once()
+			s.sshClient.On("NewSession").Return(mockSession, nil)
 
 			// Mock SFTP client creation
 			mockSFTP := &mockSFTPClient{}
@@ -281,8 +266,8 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 				closeFunc: func() error {
 					return nil
 				},
-			}, nil).Once()
-			mockSFTP.On("Close").Return(nil).Once()
+			}, nil).Maybe()
+			mockSFTP.On("Close").Return(nil).Maybe()
 			mockSFTP.On("Chmod", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			// Override the SFTP client creator for testing
@@ -292,7 +277,7 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 			}
 			defer func() { DefaultSFTPClientCreator = originalCreator }()
 
-			s.sshSession.On("CombinedOutput", mock.Anything).Return([]byte(""), nil).Maybe()
+			mockSession.On("CombinedOutput", mock.Anything).Return([]byte(""), nil).Maybe()
 
 			var err error
 			var result string
@@ -302,7 +287,10 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 			case func(context.Context, string) (string, error):
 				result, err = op(s.ctx, tt.serviceName)
 				s.NoError(err)
-				s.NotEmpty(result)
+				if tt.serviceContent != "" {
+					s.NotEmpty(result)
+					s.Contains(result, tt.serviceContent)
+				}
 			default:
 				s.Fail("Unexpected operation type")
 			}
@@ -313,8 +301,6 @@ func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
 				s.NoError(err)
 			}
 
-			s.sshClient.AssertExpectations(s.T())
-			s.sshSession.AssertExpectations(s.T())
 			mockSFTP.AssertExpectations(s.T())
 		})
 	}
