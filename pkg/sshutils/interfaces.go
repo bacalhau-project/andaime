@@ -45,11 +45,47 @@ func (s *SSHSessionWrapper) StdinPipe() (io.WriteCloser, error) {
 }
 
 func (s *SSHSessionWrapper) Start(cmd string) error {
-	return s.Session.Start(cmd)
+	if s.Session == nil {
+		return fmt.Errorf("SSH session is nil")
+	}
+	err := s.Session.Start(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to start SSH command: %w", err)
+	}
+	return nil
 }
 
 func (s *SSHSessionWrapper) Wait() error {
-	return s.Session.Wait()
+	if s.Session == nil {
+		return fmt.Errorf("SSH session is nil")
+	}
+	err := s.Session.Wait()
+	if err != nil {
+		return fmt.Errorf("error waiting for SSH command to complete: %w", err)
+	}
+	return nil
+}
+
+func (s *SSHSessionWrapper) Run(cmd string) error {
+	if s.Session == nil {
+		return fmt.Errorf("SSH session is nil")
+	}
+	err := s.Session.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to run SSH command: %w", err)
+	}
+	return nil
+}
+
+func (s *SSHSessionWrapper) CombinedOutput(cmd string) ([]byte, error) {
+	if s.Session == nil {
+		return nil, fmt.Errorf("SSH session is nil")
+	}
+	output, err := s.Session.CombinedOutput(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get combined output of SSH command: %w", err)
+	}
+	return output, nil
 }
 
 // SSHError represents an SSH command execution error with output
