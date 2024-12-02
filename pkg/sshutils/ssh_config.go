@@ -107,6 +107,7 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 
 	// Validate connection prerequisites
 	if err := c.ValidateSSHConnectionFunc(); err != nil {
+		l.Errorf("SSH connection validation failed: %v", err)
 		return nil, err
 	}
 
@@ -114,23 +115,32 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 	var client sshutils_interfaces.SSHClienter
 
 	for i := 0; i < SSHRetryAttempts; i++ {
-		l.Debugf("Attempt %d to connect via SSH\n", i+1)
+		l.Debugf("Attempt %d to connect via SSH to %s:%d", i+1, c.Host, c.Port)
+		
+		// Add more detailed logging about connection parameters
+		l.Debugf("Connection details - User: %s, Port: %d, Private Key: %s", 
+			c.User, c.Port, c.SSHPrivateKeyPath)
+
 		client, err = DialSSHFunc(
 			"tcp",
 			fmt.Sprintf("%s:%d", c.Host, c.Port),
 			c.ClientConfig,
 		)
 		if err == nil {
+			l.Infof("Successfully established SSH connection to %s:%d", c.Host, c.Port)
 			break
 		}
 
+		l.Errorf("SSH connection attempt %d failed: %v", i+1, err)
+
 		if i < SSHRetryAttempts-1 {
-			l.Debugf("Failed to connect, retrying in %v: %v\n", SSHRetryDelay, err)
+			l.Debugf("Retrying SSH connection in %v", SSHRetryDelay)
 			time.Sleep(SSHRetryDelay)
 		}
 	}
 
 	if err != nil {
+		l.Errorf("Failed to connect to SSH server after %d attempts: %v", SSHRetryAttempts, err)
 		return nil, fmt.Errorf("failed to connect after %d attempts: %w", SSHRetryAttempts, err)
 	}
 
