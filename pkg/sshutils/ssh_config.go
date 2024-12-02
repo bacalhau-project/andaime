@@ -30,6 +30,27 @@ type SSHConfig struct {
 	ValidateSSHConnectionFunc func() error
 }
 
+// SSHClientWrapper implements SSHClienter interface
+type SSHClientWrapper struct {
+	Client *ssh.Client
+}
+
+func (w *SSHClientWrapper) NewSession() (sshutils_interfaces.SSHSessioner, error) {
+	session, err := w.Client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	return &SSHSessionWrapper{Session: session}, nil
+}
+
+func (w *SSHClientWrapper) Close() error {
+	return w.Client.Close()
+}
+
+func (w *SSHClientWrapper) GetClient() *ssh.Client {
+	return w.Client
+}
+
 // NewSSHConfigFunc is the function used to create new SSH configurations
 // This can be overridden for testing
 var NewSSHConfigFunc = NewSSHConfig
