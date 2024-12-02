@@ -3,7 +3,6 @@ package sshutils
 import (
 	"io"
 
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"golang.org/x/crypto/ssh"
 )
 
