@@ -93,7 +93,13 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
 
 	// Create fresh mocks for each test
 	mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(sshutils.ExpectedSSHBehavior{})
-	s.testHelper = NewTestHelper(s.T(), mockSSHConfig.(*ssh_mock.MockSSHConfiger))
+	mockSSHConfigTyped := mockSSHConfig.(*ssh_mock.MockSSHConfiger)
+	
+	// Clear any previous mock expectations
+	mockSSHConfigTyped.ExpectedCalls = nil
+	mockSSHConfigTyped.Calls = nil
+
+	s.testHelper = NewTestHelper(s.T(), mockSSHConfigTyped)
 
 	// Reset the global SSH config function for each test
 	sshutils.NewSSHConfigFunc = func(host string,
