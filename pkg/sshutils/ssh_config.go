@@ -123,6 +123,15 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 		c.Host, c.Port, c.User, c.SSHPrivateKeyPath,
 		c.Timeout, SSHRetryAttempts)
 
+	// Additional debug logging
+	l.Debugf("🕵️ Checking SSH private key file: %s", c.SSHPrivateKeyPath)
+	keyBytes, err := os.ReadFile(c.SSHPrivateKeyPath)
+	if err != nil {
+		l.Errorf("❌ Failed to read SSH private key: %v", err)
+		return nil, fmt.Errorf("failed to read SSH private key: %w", err)
+	}
+	l.Debugf("🔑 SSH private key read successfully, length: %d bytes", len(keyBytes))
+
 	var err error
 	var client sshutils_interfaces.SSHClienter
 
