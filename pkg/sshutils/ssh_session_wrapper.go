@@ -9,6 +9,7 @@ import (
 // SSHSessionWrapper implements SSHSessioner interface
 type SSHSessionWrapper struct {
 	Session *ssh.Session
+	Client  *ssh.Client  // Add a reference to the SSH client
 }
 
 func (s *SSHSessionWrapper) Run(cmd string) error {
