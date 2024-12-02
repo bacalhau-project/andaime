@@ -154,7 +154,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 		Return(nil)
 
 	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo docker run hello-world", mock.Anything).
-		Return("Hello from Docker!", nil)
+		Return(models.ExpectedDockerOutput, nil)
 	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh", mock.Anything).
 		Return("", nil)
 	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh", mock.Anything).
