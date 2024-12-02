@@ -104,9 +104,26 @@ func (p *AWSProvider) getOrCreateEC2Client(
 	ctx context.Context,
 	region string,
 ) (aws_interface.EC2Clienter, error) {
+	// If no global model, create a temporary EC2 client
+	if display.GetGlobalModelFunc() == nil {
+		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+		}
+		return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
+	}
+
 	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return nil, fmt.Errorf("global model or deployment is nil")
+	if m.Deployment == nil {
+		m.Deployment = &models.Deployment{}
+	}
+
+	if m.Deployment.AWS == nil {
+		m.Deployment.AWS = &models.AWSDeployment{
+			RegionalResources: &models.RegionalResources{
+				Clients: make(map[string]aws_interface.EC2Clienter),
+			},
+		}
 	}
 
 	if m.Deployment.AWS.RegionalResources.Clients == nil {
@@ -129,6 +146,9 @@ func (p *AWSProvider) getOrCreateEC2Client(
 	} else {
 		ec2Client = &LiveEC2Client{client: ec2.NewFromConfig(cfg)}
 	}
+
+	// Store the client in the regional resources
+	m.Deployment.AWS.RegionalResources.Clients[region] = ec2Client
 	return ec2Client, nil
 }
 
