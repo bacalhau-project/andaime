@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -112,14 +113,14 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 	}
 
 	// Log detailed connection parameters
-	l.Debugf("🔍 Connection Parameters:\n" +
-		"  Host: %s\n" +
-		"  Port: %d\n" +
-		"  User: %s\n" +
-		"  Private Key Path: %s\n" +
-		"  Timeout: %v\n" +
+	l.Debugf("🔍 Connection Parameters:\n"+
+		"  Host: %s\n"+
+		"  Port: %d\n"+
+		"  User: %s\n"+
+		"  Private Key Path: %s\n"+
+		"  Timeout: %v\n"+
 		"  Retry Attempts: %d",
-		c.Host, c.Port, c.User, c.SSHPrivateKeyPath, 
+		c.Host, c.Port, c.User, c.SSHPrivateKeyPath,
 		c.Timeout, SSHRetryAttempts)
 
 	var err error
@@ -147,7 +148,7 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 
 		// Log specific error details
 		l.Errorf("❌ SSH Connection Attempt %d Failed: %v", attempt, err)
-		
+
 		// Detailed error type logging
 		switch {
 		case os.IsTimeout(err):
@@ -167,7 +168,7 @@ func (c *SSHConfig) Connect() (sshutils_interfaces.SSHClienter, error) {
 		}
 	}
 
-	finalErr := fmt.Errorf("❌ SSH Connection Failed after %d attempts: %w", 
+	finalErr := fmt.Errorf("❌ SSH Connection Failed after %d attempts: %w",
 		SSHRetryAttempts, err)
 	l.Errorf(finalErr.Error())
 	return nil, finalErr
