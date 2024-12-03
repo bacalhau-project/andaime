@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
@@ -58,40 +57,51 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.sshClient.On("IsConnected").Return(true).Maybe()
 }
 
+// At the top of your test file
+type mockSSHDialer struct {
+	dialFunc func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)
+}
+
+func (m *mockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	return m.dialFunc(network, addr, config)
+}
+
+// Update your TestConnect function
 func (s *PkgSSHUtilsTestSuite) TestConnect() {
-	mockSSHClient := &ssh.Client{}
-	originalDialSSH := DialSSHFunc
-	DialSSHFunc = func(network,
-		addr string,
-		config *ssh.ClientConfig) (sshutils_interfaces.SSHClienter, error) {
-		return &SSHClientWrapper{Client: mockSSHClient}, nil
+	sshConfig := s.sshConfig.(*SSHConfig) // Type assert to concrete type
+	mockClient := &ssh.Client{}
+	mockDialer := &mockSSHDialer{
+		dialFunc: func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+			s.Equal("tcp", network)
+			s.Equal(fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port), addr)
+			s.Equal(sshConfig.ClientConfig, config)
+			return mockClient, nil
+		},
 	}
-	defer func() { DialSSHFunc = originalDialSSH }()
+	sshConfig.dialer = mockDialer
 
 	client, err := s.sshConfig.Connect()
 	s.NoError(err)
 	s.NotNil(client)
 	s.IsType(&SSHClientWrapper{}, client)
-
-	s.sshClient.AssertExpectations(s.T())
+	s.Equal(mockClient, client.(*SSHClientWrapper).Client)
 }
 
+// Update your TestConnectFailure function
 func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
-	expectedError := fmt.Errorf("connection error")
-	SSHRetryDelay = 0 * time.Second
-	originalDialSSH := DialSSHFunc
-	DialSSHFunc = func(network,
-		addr string,
-		config *ssh.ClientConfig) (sshutils_interfaces.SSHClienter, error) {
-		return nil, expectedError
+	sshConfig := s.sshConfig.(*SSHConfig) // Type assert to concrete type
+	expectedErr := fmt.Errorf("mock dial error")
+	mockDialer := &mockSSHDialer{
+		dialFunc: func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+			return nil, expectedErr
+		},
 	}
-	defer func() { DialSSHFunc = originalDialSSH }()
+	sshConfig.dialer = mockDialer
 
 	client, err := s.sshConfig.Connect()
 	s.Error(err)
 	s.Nil(client)
-	s.Contains(err.Error(), "failed to connect")
-	s.sshClient.AssertExpectations(s.T())
+	s.Contains(err.Error(), expectedErr.Error())
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {

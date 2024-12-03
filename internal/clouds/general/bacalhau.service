@@ -3,14 +3,15 @@ Description=Bacalhau Compute Node
 After=network.target
 
 [Service]
-Type=forking
+Type=simple
 User=root
 Group=root
 EnvironmentFile=/etc/node-config
 ExecStart=/root/run_bacalhau.sh start
 ExecStop=/root/run_bacalhau.sh stop
-Restart=on-failure
+Restart=always
 RestartSec=5
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target

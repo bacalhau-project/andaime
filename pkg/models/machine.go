@@ -646,6 +646,13 @@ func (mach *Machine) installService(
 		return err
 	}
 
+	// Connect to the remote host
+	if _, err := sshConfig.Connect(); err != nil {
+		l.Errorf("Error connecting to remote host: %v", err)
+		return err
+	}
+	defer sshConfig.Close()
+
 	scriptBytes, err := scriptGetter()
 	if err != nil {
 		return err

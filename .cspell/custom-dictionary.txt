@@ -269,6 +269,7 @@ panicnil
 PBIP
 pdone
 pflag
+pkill
 polandcentral
 Pollerer
 practise

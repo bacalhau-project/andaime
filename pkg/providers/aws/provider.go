@@ -1090,7 +1090,7 @@ func (p *AWSProvider) cleanupSecurityGroups(ctx context.Context, vpcID string) e
 	}
 
 	for _, sg := range sgs.SecurityGroups {
-		if aws.ToString(sg.GroupName) != "default" {
+		if aws.ToString(sg.GroupName) != DefaultName {
 			_, err := p.EC2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
 				GroupId: sg.GroupId,
 			})
@@ -1361,7 +1361,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			}
 
 			for _, sg := range sgs.SecurityGroups {
-				if aws.ToString(sg.GroupName) != "default" {
+				if aws.ToString(sg.GroupName) != DefaultName {
 					_, err := p.EC2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
 						GroupId: sg.GroupId,
 					})

@@ -127,9 +127,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestNewProvisioner() {
 		{
 			name: "valid config",
 			config: &provision.NodeConfig{
-				IPAddress:  "192.168.1.1",
-				Username:   "testuser",
-				PrivateKey: cbpts.testSSHPrivateKeyPath,
+				IPAddress:      "192.168.1.1",
+				Username:       "testuser",
+				PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 			},
 			expectError: false,
 		},
@@ -142,8 +142,8 @@ func (cbpts *CmdBetaProvisionTestSuite) TestNewProvisioner() {
 		{
 			name: "missing IP",
 			config: &provision.NodeConfig{
-				Username:   "testuser",
-				PrivateKey: cbpts.testSSHPrivateKeyPath,
+				Username:       "testuser",
+				PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 			},
 			expectError: true,
 			errorMsg:    "IP address is required",
@@ -151,8 +151,8 @@ func (cbpts *CmdBetaProvisionTestSuite) TestNewProvisioner() {
 		{
 			name: "missing username",
 			config: &provision.NodeConfig{
-				IPAddress:  "192.168.1.1",
-				PrivateKey: cbpts.testSSHPrivateKeyPath,
+				IPAddress:      "192.168.1.1",
+				PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 			},
 			expectError: true,
 			errorMsg:    "username is required",
@@ -184,9 +184,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestNewProvisioner() {
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvision() {
 	config := &provision.NodeConfig{
-		IPAddress:  "192.168.1.1",
-		Username:   "testuser",
-		PrivateKey: cbpts.testSSHPrivateKeyPath,
+		IPAddress:      "192.168.1.1",
+		Username:       "testuser",
+		PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 	}
 
 	originalCalls := cbpts.mockSSHConfig.ExpectedCalls
@@ -230,7 +230,7 @@ setting.two: "value2"
 	config := &provision.NodeConfig{
 		IPAddress:            "192.168.1.1",
 		Username:             "testuser",
-		PrivateKey:           cbpts.testSSHPrivateKeyPath,
+		PrivateKeyPath:       cbpts.testSSHPrivateKeyPath,
 		BacalhauSettingsPath: settingsFile,
 	}
 
@@ -274,7 +274,7 @@ invalid-setting
 	config := &provision.NodeConfig{
 		IPAddress:            "192.168.1.1",
 		Username:             "testuser",
-		PrivateKey:           cbpts.testSSHPrivateKeyPath,
+		PrivateKeyPath:       cbpts.testSSHPrivateKeyPath,
 		BacalhauSettingsPath: settingsFile,
 	}
 
@@ -319,9 +319,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 	defer func() { sshutils.NewSSHConfigFunc = origNewSSHConfigFunc }()
 
 	config := &provision.NodeConfig{
-		IPAddress:  "192.168.1.1",
-		Username:   "testuser",
-		PrivateKey: cbpts.testSSHPrivateKeyPath,
+		IPAddress:      "192.168.1.1",
+		Username:       "testuser",
+		PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 	}
 
 	p, err := provision.NewProvisioner(config)
@@ -361,9 +361,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 
 	// Create a provisioner with test configuration
 	config := &provision.NodeConfig{
-		IPAddress:  "192.168.1.100",
-		Username:   "testuser",
-		PrivateKey: "/path/to/key",
+		IPAddress:      "192.168.1.100",
+		Username:       "testuser",
+		PrivateKeyPath: "/path/to/key",
 	}
 
 	testMachine, err := models.NewMachine(

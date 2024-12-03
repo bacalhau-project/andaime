@@ -170,7 +170,7 @@ func (p *AWSProvider) destroyRegionalResources(
 		l.Warnf("Failed to describe security groups: %v", err)
 	} else {
 		for _, sg := range sgs.SecurityGroups {
-			if *sg.GroupName != "default" {
+			if aws.ToString(sg.GroupName) != DefaultName {
 				_, err := client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
 					GroupId: sg.GroupId,
 				})

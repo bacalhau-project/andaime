@@ -10,6 +10,7 @@ import (
 const (
 	EC2InstanceType  = "EC2"
 	SpotInstanceType = "Spot"
+	DefaultName      = "default"
 )
 
 type EC2Clienter interface {

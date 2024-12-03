@@ -24,6 +24,7 @@ const (
 	MaxRetries     = 5
 	RetryDelay     = 10 * time.Second
 	marginSpaces   = "   "
+	SSHRetryCount  = 10 // Number of SSH connection retries
 )
 
 // Provisioner handles the node provisioning process
@@ -49,7 +50,7 @@ func NewProvisioner(config *NodeConfig) (*Provisioner, error) {
 		config.IPAddress,
 		DefaultSSHPort,
 		config.Username,
-		config.PrivateKey,
+		config.PrivateKeyPath,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSH config: %w", err)
@@ -76,7 +77,7 @@ func validateNodeConfig(config *NodeConfig) error {
 	if config.Username == "" {
 		return fmt.Errorf("username is required")
 	}
-	if config.PrivateKey == "" {
+	if config.PrivateKeyPath == "" {
 		return fmt.Errorf("private key is required")
 	}
 	return nil
@@ -86,7 +87,7 @@ func validateNodeConfig(config *NodeConfig) error {
 func createMachineInstance(config *NodeConfig) (models.Machiner, error) {
 	machine := models.Machine{}
 	machine.SetSSHUser(config.Username)
-	machine.SetSSHPrivateKeyPath(config.PrivateKey)
+	machine.SetSSHPrivateKeyPath(config.PrivateKeyPath)
 	machine.SetSSHPort(DefaultSSHPort)
 	machine.SetPublicIP(config.IPAddress)
 	machine.SetOrchestratorIP("")
@@ -137,7 +138,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		StatusMessage: stepRegistry.GetStep(common_interface.SSHConnection).RenderStartMessage(),
 	})
 
-	if err := p.SSHConfig.WaitForSSH(ctx, 3, SSHTimeOut); err != nil { //nolint:mnd
+	if err := p.SSHConfig.WaitForSSH(ctx, SSHRetryCount, SSHTimeOut); err != nil { //nolint:mnd
 		progress.CurrentStep.Status = "Failed"
 		progress.CurrentStep.Error = err
 		errMsg := fmt.Sprintf("❌ SSH connection failed: %v", err)
@@ -208,8 +209,13 @@ func (p *Provisioner) ProvisionWithCallback(
 // handleProvisionError processes and formats provisioning errors
 func handleProvisionError(err error, config *NodeConfig, l *logger.Logger) error {
 	var cmdOutput string
-	if sshErr, ok := err.(*sshutils.SSHError); ok {
-		cmdOutput = sshErr.Output
+
+	type outputError interface {
+		Output() string
+	}
+
+	if outputErr, ok := err.(outputError); ok {
+		cmdOutput = outputErr.Output()
 	}
 
 	l.Errorf("Provisioning failed with error: %v", err)
@@ -220,7 +226,7 @@ func handleProvisionError(err error, config *NodeConfig, l *logger.Logger) error
 	l.Debugf("Full error context:\nIP: %s\nUser: %s\nPrivate Key Path: %s\nError: %v",
 		config.IPAddress,
 		config.Username,
-		config.PrivateKey,
+		config.PrivateKeyPath,
 		err)
 
 	if cmdOutput != "" {
@@ -228,11 +234,10 @@ func handleProvisionError(err error, config *NodeConfig, l *logger.Logger) error
 			"failed to provision Bacalhau node:\nIP: %s\nCommand Output: %s\nError Details: %w",
 			config.IPAddress,
 			cmdOutput,
-			err,
-		)
+			err)
 	}
-	return fmt.Errorf("failed to provision Bacalhau node:\nIP: %s\nError Details: %w",
-		config.IPAddress, err)
+
+	return err
 }
 
 // GetMachine returns the configured machine instance
@@ -268,17 +273,26 @@ func (p *Provisioner) ParseSettings(filePath string) ([]models.BacalhauSettings,
 // testMode is used to run the provisioner in test mode
 var testMode bool
 
-// ProvisionCmd represents the provision command
-var ProvisionCmd = &cobra.Command{
-	Use:   "provision",
-	Short: "Provision a new node",
-	RunE:  runProvision,
-}
-
 func runProvision(cmd *cobra.Command, args []string) error {
+	// Get configuration from flags
+	config := &NodeConfig{
+		IPAddress:            cmd.Flag("ip").Value.String(),
+		Username:             cmd.Flag("user").Value.String(),
+		PrivateKeyPath:       cmd.Flag("key").Value.String(),
+		OrchestratorIP:       cmd.Flag("orchestrator").Value.String(),
+		BacalhauSettingsPath: cmd.Flag("bacalhau-settings").Value.String(),
+	}
+
+	cmd.Flags().BoolVar(&testMode, "test", false,
+		"Run in test mode (simulation only)")
+
 	// Validate configuration
-	if err := config.Validate(); err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
+	if allErrs := config.Validate(); len(allErrs) > 0 {
+		fmt.Println("Invalid configuration:")
+		for _, err := range allErrs {
+			fmt.Println(err)
+		}
+		return fmt.Errorf("invalid configuration")
 	}
 
 	// Create new provisioner
@@ -302,7 +316,7 @@ func runProvision(cmd *cobra.Command, args []string) error {
 `,
 		config.IPAddress,
 		config.Username,
-		config.PrivateKey,
+		config.PrivateKeyPath,
 	)
 
 	// Create a channel for progress updates
