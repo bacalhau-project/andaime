@@ -2,12 +2,15 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
+
+	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 )
 
 type ServiceState int
@@ -75,7 +78,7 @@ type Deployment struct {
 	DeploymentType         DeploymentType
 	Azure                  *AzureConfig
 	GCP                    *GCPConfig
-	AWS                    *AWSConfig
+	AWS                    *AWSDeployment
 	Machines               map[string]Machiner
 	UniqueID               string
 	StartTime              time.Time
@@ -89,6 +92,7 @@ type Deployment struct {
 	SSHPublicKeyMaterial   string
 	SSHPrivateKeyPath      string
 	SSHPrivateKeyMaterial  string
+	SSHKeyName             string
 	OrchestratorIP         string
 	Tags                   map[string]string
 	ProjectServiceAccounts map[string]ServiceAccountInfo
@@ -120,10 +124,10 @@ func NewDeployment() (*Deployment, error) {
 		UniqueID:               uniqueID,
 		Azure:                  &AzureConfig{},
 		GCP:                    &GCPConfig{},
-		AWS:                    &AWSConfig{},
 		Tags:                   make(map[string]string),
 		ProjectServiceAccounts: make(map[string]ServiceAccountInfo),
 	}
+	deployment.InitializeAWSDeployment()
 
 	timestamp := time.Now().Format("01021504") // mmddhhmm
 	if deployment.DeploymentType == DeploymentTypeGCP {
@@ -141,13 +145,21 @@ func NewDeployment() (*Deployment, error) {
 				MaximumGCPUniqueProjectIDLength,
 			)
 		}
-
-		l.Debugf("Ensuring project: %s", uniqueProjectID)
-
 		deployment.SetProjectID(uniqueProjectID)
 	}
 
 	return deployment, nil
+}
+
+func (d *Deployment) InitializeAWSDeployment() *AWSDeployment {
+	if d.AWS == nil {
+		d.AWS = &AWSDeployment{}
+		d.AWS.RegionalResources = &RegionalResources{}
+		d.AWS.RegionalResources.VPCs = make(map[string]*AWSVPC)
+		d.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+	}
+
+	return d.AWS
 }
 
 func (d *Deployment) ToMap() map[string]interface{} {
@@ -165,36 +177,80 @@ func (d *Deployment) ToMap() map[string]interface{} {
 func (d *Deployment) UpdateViperConfig() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	var deploymentPath string
-	if d.DeploymentType == DeploymentTypeAzure {
-		deploymentPath = fmt.Sprintf(
-			"deployments.%s.azure.%s",
-			d.UniqueID,
-			d.Azure.ResourceGroupName,
-		)
-	} else if d.DeploymentType == DeploymentTypeGCP {
-		deploymentPath = fmt.Sprintf(
-			"deployments.%s.gcp.%s",
-			d.UniqueID,
-			d.GCP.ProjectID,
-		)
-	} else if d.DeploymentType == DeploymentTypeAWS {
-		deploymentPath = fmt.Sprintf(
-			"deployments.%s.aws.%s",
-			d.UniqueID,
-			d.AWS.Region,
-		)
-	}
-	viperMachines := make(map[string]map[string]interface{})
-	for _, machine := range d.Machines {
-		viperMachines[machine.GetName()] = map[string]interface{}{
-			"Name":         machine.GetName(),
-			"PublicIP":     machine.GetPublicIP(),
-			"PrivateIP":    machine.GetPrivateIP(),
-			"Orchestrator": machine.IsOrchestrator(),
+
+	deploymentPath := fmt.Sprintf("deployments.%s", d.UniqueID)
+
+	// Common deployment settings
+	viper.Set(fmt.Sprintf("%s.provider", deploymentPath), strings.ToLower(string(d.DeploymentType)))
+
+	// Provider-specific settings
+	switch d.DeploymentType {
+	case DeploymentTypeAzure:
+		viper.Set(fmt.Sprintf("%s.azure.subscription_id", deploymentPath), d.Azure.SubscriptionID)
+		viper.Set(fmt.Sprintf("%s.azure.resource_group", deploymentPath), d.Azure.ResourceGroupName)
+		for _, machine := range d.Machines {
+			viper.Set(
+				fmt.Sprintf("%s.azure.machines.%s", deploymentPath, machine.GetName()),
+				map[string]interface{}{
+					"name":         machine.GetName(),
+					"public_ip":    machine.GetPublicIP(),
+					"private_ip":   machine.GetPrivateIP(),
+					"orchestrator": machine.IsOrchestrator(),
+				},
+			)
+		}
+
+	case DeploymentTypeGCP:
+		viper.Set(fmt.Sprintf("%s.gcp.project_id", deploymentPath), d.GCP.ProjectID)
+		viper.Set(fmt.Sprintf("%s.gcp.organization_id", deploymentPath), d.GCP.OrganizationID)
+		for _, machine := range d.Machines {
+			viper.Set(
+				fmt.Sprintf("%s.gcp.machines.%s", deploymentPath, machine.GetName()),
+				map[string]interface{}{
+					"name":         machine.GetName(),
+					"public_ip":    machine.GetPublicIP(),
+					"private_ip":   machine.GetPrivateIP(),
+					"orchestrator": machine.IsOrchestrator(),
+				},
+			)
+		}
+
+	case DeploymentTypeAWS:
+		viper.Set(fmt.Sprintf("%s.aws.account_id", deploymentPath), d.AWS.AccountID)
+		if d.AWS.RegionalResources != nil {
+			for region, vpc := range d.AWS.RegionalResources.VPCs {
+				regionPath := fmt.Sprintf("%s.aws.regions.%s", deploymentPath, region)
+				viper.Set(fmt.Sprintf("%s.vpc_id", regionPath), vpc.VPCID)
+				viper.Set(fmt.Sprintf("%s.security_group_id", regionPath), vpc.SecurityGroupID)
+
+				// Group machines by region
+				for _, machine := range d.Machines {
+					machineRegion := machine.GetLocation()
+					if machineRegion == "" {
+						continue
+					}
+					// Convert AWS Zone to region if necessary (e.g., us-west-2a -> us-west-2)
+					if len(machineRegion) > 0 &&
+						machineRegion[len(machineRegion)-1] >= 'a' &&
+						machineRegion[len(machineRegion)-1] <= 'z' {
+						machineRegion = machineRegion[:len(machineRegion)-1]
+					}
+					if machineRegion == region {
+						viper.Set(
+							fmt.Sprintf("%s.machines.%s", regionPath, machine.GetName()),
+							map[string]interface{}{
+								"name":         machine.GetName(),
+								"public_ip":    machine.GetPublicIP(),
+								"private_ip":   machine.GetPrivateIP(),
+								"orchestrator": machine.IsOrchestrator(),
+							},
+						)
+					}
+				}
+			}
 		}
 	}
-	viper.Set(deploymentPath, viperMachines)
+
 	return viper.WriteConfig()
 }
 
@@ -270,6 +326,12 @@ func (d *Deployment) GetProjectID() string {
 	return d.projectID
 }
 
+func (d *Deployment) GetSSHKeyName() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.SSHKeyName
+}
+
 func (d *Deployment) SetProjectID(projectID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -332,11 +394,78 @@ type GCPConfig struct {
 }
 
 type AWSConfig struct {
-	Region                string
-	VPCID                 string
-	SubnetID              string
-	DefaultRegion         string
+	AccountID             string
 	DefaultMachineType    string
 	DefaultDiskSizeGB     int32
 	DefaultCountPerRegion int
+	RegionalResources     *RegionalResources
+}
+
+// RegionalResources tracks VPCs and other resources per region
+type RegionalResources struct {
+	mu      sync.RWMutex
+	VPCs    map[string]*AWSVPC // key is region
+	Clients map[string]aws_interface.EC2Clienter
+}
+
+func (r *RegionalResources) Lock() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+}
+
+func (r *RegionalResources) Unlock() {
+	if r == nil {
+		return
+	}
+	r.mu.Unlock()
+}
+
+func (r *RegionalResources) RLock() {
+	r.mu.Lock()
+}
+
+func (r *RegionalResources) RUnlock() {
+	r.mu.Unlock()
+}
+
+func (r *RegionalResources) GetVPC(region string) *AWSVPC {
+	r.Lock()
+	defer r.Unlock()
+	if r.VPCs == nil {
+		r.VPCs = make(map[string]*AWSVPC)
+	}
+	return r.VPCs[region]
+}
+
+func (r *RegionalResources) SetVPC(region string, vpc *AWSVPC) {
+	r.Lock()
+	defer r.Unlock()
+	if r.VPCs == nil {
+		r.VPCs = make(map[string]*AWSVPC)
+	}
+	r.VPCs[region] = vpc
+}
+
+func (r *RegionalResources) SetSGID(region string, sgID string) {
+	r.Lock()
+	defer r.Unlock()
+	if r.VPCs == nil {
+		r.VPCs = make(map[string]*AWSVPC)
+	}
+	if r.VPCs[region] == nil {
+		r.VPCs[region] = &AWSVPC{}
+	}
+	r.VPCs[region].SecurityGroupID = sgID
+}
+
+type RegionalVPC struct {
+	VPCID              string
+	Region             string
+	SecurityGroupID    string
+	PublicSubnetIDs    []string
+	PrivateSubnetIDs   []string
+	InternetGatewayID  string
+	PublicRouteTableID string
 }

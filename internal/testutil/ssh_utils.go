@@ -6,6 +6,21 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testdata"
 )
 
+// CreateSSHPublicPrivateKeyPairOnDisk creates temporary SSH key files for testing purposes.
+// It writes predefined SSH key material to temporary files and returns their paths along with cleanup functions.
+//
+// Returns:
+//   - string: Path to the public key file
+//   - func(): Cleanup function for the public key file
+//   - string: Path to the private key file
+//   - func(): Cleanup function for the private key file
+//
+// The caller is responsible for calling both cleanup functions to remove the temporary files
+// when they are no longer needed. Typically, this should be done using defer:
+//
+//	publicKeyPath, cleanupPublic, privateKeyPath, cleanupPrivate := CreateSSHPublicPrivateKeyPairOnDisk()
+//	defer cleanupPublic()
+//	defer cleanupPrivate()
 func CreateSSHPublicPrivateKeyPairOnDisk() (string, func(), string, func()) {
 	testSSHPublicKeyPath, cleanupPublicKey, err := WriteStringToTempFile(
 		testdata.TestPublicSSHKeyMaterial,

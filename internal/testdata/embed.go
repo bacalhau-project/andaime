@@ -30,5 +30,16 @@ func ReadTestGCPConfig() (string, error) {
 	return TestGCPConfig, nil
 }
 
+//go:embed configs/aws.yaml
+var TestAWSConfig string
+
+func ReadTestAWSConfig() (string, error) {
+	return TestAWSConfig, nil
+}
+
 //go:embed configs/config.yaml
 var TestGenericConfig string
+
+func ReadTestGenericConfig() (string, error) {
+	return TestGenericConfig, nil
+}

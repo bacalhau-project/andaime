@@ -20,8 +20,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
 func NewAzureProviderFactory(ctx context.Context) (*AzureProvider, error) {
@@ -62,7 +62,7 @@ type AzureProvider struct {
 	Tags              map[string]*string
 	Client            azure_interface.AzureClienter
 	ClusterDeployer   common_interface.ClusterDeployerer
-	SSHClient         sshutils.SSHClienter
+	SSHClient         sshutils_interface.SSHClienter
 	SSHUser           string
 	SSHPort           int
 	serviceMutex      sync.Mutex //nolint:unused

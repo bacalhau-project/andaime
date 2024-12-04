@@ -31,7 +31,6 @@ type CloudData struct {
 	Locations    map[string][]string `yaml:"locations"`
 	DiskImages   []DiskImage         `yaml:"diskImages,omitempty"`
 	RemovedZones []string            `yaml:"removedZones"`
-	UbuntuAMIs   map[string]string   `yaml:"ubuntu_amis,omitempty"`
 }
 
 type lineSpinner struct {
@@ -194,8 +193,7 @@ func generateAWSData(removedZones chan<- string, s *lineSpinner) error {
 
 	sort.Strings(awsLocations)
 	awsData := CloudData{
-		Locations:  make(map[string][]string),
-		UbuntuAMIs: make(map[string]string),
+		Locations: make(map[string][]string),
 	}
 
 	var wg sync.WaitGroup
@@ -210,7 +208,6 @@ func generateAWSData(removedZones chan<- string, s *lineSpinner) error {
 		go func() {
 			defer wg.Done()
 			for location := range locationChan {
-				amiID, err := getUbuntuAMI(location)
 				if err != nil {
 					errorChan <- fmt.Errorf("failed to get Ubuntu AMI for region %s: %v", location, err)
 					continue
@@ -223,7 +220,6 @@ func generateAWSData(removedZones chan<- string, s *lineSpinner) error {
 				}
 
 				mu.Lock()
-				awsData.UbuntuAMIs[location] = amiID
 				awsData.Locations[location] = vmSizes
 				mu.Unlock()
 			}

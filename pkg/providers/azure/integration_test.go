@@ -12,9 +12,11 @@ import (
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -32,7 +34,7 @@ type PkgProvidersAzureIntegrationTest struct {
 	origGetGlobalModelFunc func() *display.DisplayModel
 	testDisplayModel       *display.DisplayModel
 	mockAzureClient        *azure_mocks.MockAzureClienter
-	mockSSHConfig          *sshutils.MockSSHConfig
+	mockSSHConfig          *ssh_mock.MockSSHConfiger
 	cleanup                func()
 }
 
@@ -156,160 +158,160 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 	display.SetGlobalModel(m)
 
 	sshBehavior := sshutils.ExpectedSSHBehavior{
+		WaitForSSHCount: 3,
 		PushFileExpectations: []sshutils.PushFileExpectation{
 			{
 				Dst:              "/tmp/get-node-config-metadata.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-docker.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-core-packages.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-bacalhau.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-run-bacalhau.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/custom_script.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
-				FileContents:     localCustomScriptContent,
 				Times:            3,
 			},
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
 				Cmd:              "sudo /tmp/get-node-config-metadata.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-docker.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo docker run hello-world",
-				ProgressCallback: mock.Anything,
-				Output:           "Hello from Docker!",
+				ProgressCallback: func(int64, int64) {},
+				Output:           models.ExpectedDockerOutput,
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-core-packages.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-bacalhau.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-run-bacalhau.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "bacalhau node list --output json --api-host 0.0.0.0",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           `[{"id": "node1"}]`,
 				Error:            nil,
 				Times:            1,
 			},
 			{
 				Cmd:              "bacalhau node list --output json --api-host 20.30.40.50",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           `[{"id": "node1"}]`,
 				Error:            nil,
 				Times:            2,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.interval'='5s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.infoupdateinterval'='6s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.resourceupdateinterval'='7s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout'='8s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'jobadmissioncontrol.acceptnetworkedjobs'='true'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo bacalhau config list --output json",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "[]",
 				Error:            nil,
 				Times:            3,
@@ -325,8 +327,11 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		},
 	}
 
-	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior)
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior).(*ssh_mock.MockSSHConfiger)
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
 		return s.mockSSHConfig, nil
 	}
 
@@ -338,8 +343,6 @@ func (s *PkgProvidersAzureIntegrationTest) TestProvisionResourcesSuccess() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-
-	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	s.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {

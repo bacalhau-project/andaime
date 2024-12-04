@@ -18,6 +18,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+var ExpectedDockerOutput = "Hello from Docker!"
+
 type Machiner interface {
 	// Basic information
 	GetID() string
@@ -605,8 +607,12 @@ func (mach *Machine) verifyDocker(ctx context.Context) error {
 		return err
 	}
 
-	if !strings.Contains(output, "Hello from Docker!") {
-		return fmt.Errorf("failed to verify Docker on machine %s: output: %s", mach.Name, output)
+	if !strings.Contains(output, ExpectedDockerOutput) {
+		return fmt.Errorf(
+			"docker verify ran, but did not get expected output on machine %s: output: %s",
+			mach.Name,
+			output,
+		)
 	}
 
 	return nil
@@ -639,6 +645,13 @@ func (mach *Machine) installService(
 		l.Errorf("Error creating SSH config: %v", err)
 		return err
 	}
+
+	// Connect to the remote host
+	if _, err := sshConfig.Connect(); err != nil {
+		l.Errorf("Error connecting to remote host: %v", err)
+		return err
+	}
+	defer sshConfig.Close()
 
 	scriptBytes, err := scriptGetter()
 	if err != nil {

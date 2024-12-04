@@ -1,0 +1,40 @@
+aws:
+  account_id: FAKE-ACCOUNT-ID
+  region: us-east-1
+  default_count_per_zone: 1
+  default_machine_type: t3.small
+  disk_size_gb: 30
+  machines:
+    - location: us-east-1
+      parameters:
+        count: 2
+        type: t3.small
+    - location: us-west-1
+      parameters:
+        count: 4
+    - location: us-west-2
+      parameters:
+        type: t3.small
+    - location: eu-central-1
+      parameters:
+        orchestrator: true
+    - location: eu-west-1
+general:
+  project_prefix: andaime
+  ssh_public_key_path: ./testdata/dummy_keys/id_ed25519.pub
+  ssh_private_key_path: ./testdata/dummy_keys/id_ed25519
+  bacalhau_settings:
+    - key: compute.allowlistedlocalpaths
+      value:
+        - /tmp
+        - /data:rw
+    - key: compute.heartbeat.interval
+      value: 5s
+    - key: compute.heartbeat.infoupdateinterval
+      value: 6s
+    - key: compute.heartbeat.resourceupdateinterval
+      value: 7s
+    - key: orchestrator.nodemanager.disconnecttimeout
+      value: 8s
+    - key: jobadmissioncontrol.acceptnetworkedjobs
+      value: true

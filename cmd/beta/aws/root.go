@@ -3,7 +3,7 @@ package aws
 import (
 	"sync"
 
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -23,8 +23,7 @@ func GetAwsDiagnosticsCmd() *cobra.Command {
 		Long:  `Prints detailed information about AWS configuration, credentials, and permissions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			accountID := viper.GetString("aws.account_id")
-			region := viper.GetString("aws.region")
-			awsProvider, err := awsprovider.NewAWSProvider(accountID, region)
+			awsProvider, err := aws_provider.NewAWSProviderFunc(accountID)
 			if err != nil {
 				return err
 			}

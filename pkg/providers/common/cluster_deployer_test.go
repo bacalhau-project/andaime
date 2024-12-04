@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
+	sshutils_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -194,7 +196,10 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 		RestartServiceExpectation:        &sshutils.Expectation{Error: nil, Times: 4},
 	}
 
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
 		return sshutils.NewMockSSHConfigWithBehavior(sshBehavior), nil
 	}
 
@@ -562,7 +567,7 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 			}
 
 			// Verify that all expected commands were executed
-			mockSSHConfig.AssertExpectations(t)
+			mockSSHConfig.(*sshutils_mock.MockSSHConfiger).AssertExpectations(t)
 		})
 	}
 }

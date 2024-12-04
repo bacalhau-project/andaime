@@ -56,7 +56,6 @@ func (c *LiveGCPClient) CreateVPCNetwork(
 	b.RandomizationFactor = 0.3          // Add some jitter
 
 	operation := func() error {
-
 		// Try to get existing network first
 		network, err := c.networksClient.Get(ctx, &computepb.GetNetworkRequest{
 			Project: projectID,
@@ -159,9 +158,9 @@ func (c *LiveGCPClient) CleanupFirewallRules(
 		}
 
 		// Skip SSH rule (port 22)
-		if rule.Allowed != nil && len(rule.Allowed) > 0 {
+		if len(rule.Allowed) > 0 {
 			for _, allowed := range rule.Allowed {
-				if allowed.Ports != nil && len(allowed.Ports) > 0 {
+				if len(allowed.Ports) > 0 {
 					if allowed.Ports[0] == "22" {
 						l.Infof("Keeping SSH firewall rule: %s", *rule.Name)
 						continue
@@ -586,7 +585,10 @@ func (c *LiveGCPClient) CreateVM(
 	}
 
 	// Update resource states for the VM
-	machine.SetMachineResourceState("compute.googleapis.com/Instance", models.ResourceStateSucceeded)
+	machine.SetMachineResourceState(
+		"compute.googleapis.com/Instance",
+		models.ResourceStateSucceeded,
+	)
 	machine.SetMachineResourceState("compute.googleapis.com/Network", models.ResourceStateSucceeded)
 	machine.SetMachineResourceState("compute.googleapis.com/Disk", models.ResourceStateSucceeded)
 	machine.SetMachineResourceState("compute.googleapis.com/IP", models.ResourceStateSucceeded)

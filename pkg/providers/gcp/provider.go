@@ -23,8 +23,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
 )
 
 var NewGCPProviderFunc = NewGCPProviderFactory
@@ -81,7 +81,7 @@ type GCPProvider struct {
 	ClusterDeployer     common_interface.ClusterDeployerer
 	CleanupClient       func()
 	Config              *viper.Viper
-	SSHClient           sshutils.SSHClienter
+	SSHClient           sshutils_interface.SSHClienter
 	SSHUser             string
 	SSHPort             int
 	updateQueue         chan display.UpdateAction
@@ -234,7 +234,10 @@ func (p *GCPProvider) PollResources(ctx context.Context) ([]interface{}, error) 
 			return backoff.Permanent(fmt.Errorf("failed to check if project exists: %w", err))
 		}
 		if !projectExists {
-			l.Debugf("Project %s does not exist, skipping resource polling", m.Deployment.GCP.ProjectID)
+			l.Debugf(
+				"Project %s does not exist, skipping resource polling",
+				m.Deployment.GCP.ProjectID,
+			)
 			return nil
 		}
 
@@ -307,9 +310,9 @@ func (p *GCPProvider) StartResourcePolling(ctx context.Context) <-chan error {
 				if err != nil {
 					consecutiveErrors++
 					l.Warnf("Poll error (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err)
-					
+
 					if consecutiveErrors >= maxConsecutiveErrors {
-						errChan <- fmt.Errorf("polling failed after %d consecutive errors: %w", 
+						errChan <- fmt.Errorf("polling failed after %d consecutive errors: %w",
 							maxConsecutiveErrors, err)
 						return
 					}
@@ -859,7 +862,7 @@ func randomString(n int) string {
 	const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+		b[i] = letterBytes[rand.Intn(len(letterBytes))] //nolint:gosec
 	}
 	return string(b)
 }

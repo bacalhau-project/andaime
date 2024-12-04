@@ -152,7 +152,7 @@ func PrepareDeployment(
 		defaultCountPerLocation = deployment.GCP.DefaultCountPerZone
 		defaultDiskSizeGB = int(deployment.GCP.DefaultDiskSizeGB)
 	} else if provider == models.DeploymentTypeAWS {
-		defaultCountPerLocation = deployment.AWS.DefaultCountPerRegion
+		defaultCountPerLocation = int(deployment.AWS.DefaultCountPerRegion)
 		defaultDiskSizeGB = int(deployment.AWS.DefaultDiskSizeGB)
 	}
 

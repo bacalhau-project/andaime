@@ -170,6 +170,7 @@ func ProcessMachinesConfig(
 					newMachine.SetOrchestrator(true)
 				}
 			}
+
 			newMachines[newMachine.GetName()] = newMachine
 			newMachines[newMachine.GetName()].SetMachineResourceState(
 				string(providerType)+"VM",
@@ -286,6 +287,8 @@ func createNewMachine(
 		}
 		newMachine.SetDiskImageURL(diskImageURL)
 		newMachine.SetDiskImageFamily(diskImageFamily)
+	} else if providerType == models.DeploymentTypeAWS {
+		l.Debugf("Nothing to do for AWS - we will set the Ubuntu AMI in the cloud provider")
 	}
 
 	return newMachine, nil

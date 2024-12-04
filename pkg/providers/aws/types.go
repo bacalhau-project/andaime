@@ -1,5 +1,5 @@
 //nolint:lll
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 const (
 	EC2InstanceType  = "EC2"
 	SpotInstanceType = "Spot"
+	DefaultName      = "default"
 )
 
 type EC2Clienter interface {
@@ -28,8 +29,11 @@ type EC2Clienter interface {
 		params *ec2.CreateSubnetInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.CreateSubnetOutput, error)
-	//CreateSecurityGroup(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
-	//AuthorizeSecurityGroupIngress(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
+	CreateSecurityGroup(
+		ctx context.Context,
+		params *ec2.CreateSecurityGroupInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.CreateSecurityGroupOutput, error)
 	RunInstances(
 		ctx context.Context,
 		params *ec2.RunInstancesInput,
@@ -75,4 +79,39 @@ type EC2Clienter interface {
 		params *ec2.DeleteVpcInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DeleteVpcOutput, error)
+	CreateInternetGateway(
+		ctx context.Context,
+		params *ec2.CreateInternetGatewayInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.CreateInternetGatewayOutput, error)
+	AttachInternetGateway(
+		ctx context.Context,
+		params *ec2.AttachInternetGatewayInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.AttachInternetGatewayOutput, error)
+	CreateRouteTable(
+		ctx context.Context,
+		params *ec2.CreateRouteTableInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.CreateRouteTableOutput, error)
+	CreateRoute(
+		ctx context.Context,
+		params *ec2.CreateRouteInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.CreateRouteOutput, error)
+	AssociateRouteTable(
+		ctx context.Context,
+		params *ec2.AssociateRouteTableInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.AssociateRouteTableOutput, error)
+	DescribeRouteTables(
+		ctx context.Context,
+		params *ec2.DescribeRouteTablesInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeRouteTablesOutput, error)
+	ModifyVpcAttribute(
+		ctx context.Context,
+		params *ec2.ModifyVpcAttributeInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.ModifyVpcAttributeOutput, error)
 }

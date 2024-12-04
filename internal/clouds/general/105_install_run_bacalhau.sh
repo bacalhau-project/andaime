@@ -9,53 +9,38 @@ cat << 'EOF' > "${RUN_BACALHAU_SH}"
 
 set -euo pipefail
 
+# Log files
 LOG_FILE="/var/log/bacalhau_start.log"
+DEBUG_LOG_FILE="/var/log/bacalhau_start_debug.log"
+
+# Ensure log files are writable
+touch "$LOG_FILE" "$DEBUG_LOG_FILE"
+chmod 666 "$LOG_FILE" "$DEBUG_LOG_FILE"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
+log_debug() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$DEBUG_LOG_FILE"
+}
+
+log_error() {
+    echo "[ERROR][$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE" >> "$DEBUG_LOG_FILE"
+}
 
 # Source the configuration file
 if [ -f /etc/node-config ]; then
     # shellcheck disable=SC1091
     source /etc/node-config
 else
-    log "Error: /etc/node-config file not found."
+    log_error "Node configuration file not found at /etc/node-config"
     exit 1
 fi
 
-check_orchestrators() {
-    if [ -z "${ORCHESTRATORS:-}" ]; then
-        log "Error: ORCHESTRATORS environment variable is not set."
-        exit 1
-    fi
-}
-
-get_current_labels() {
-    local config_json
-    config_json=$(bacalhau config list --output json)
-    if [ -z "$config_json" ]; then
-        log "Error: Failed to get Bacalhau configuration"
-        return 1
-    fi
-
-    local labels
-    labels=$(echo "$config_json" | jq -r '.[] | select(.Key == "Labels") | .Value | to_entries | map("\(.key)=\(.value)") | join(",")')
-    echo "$labels"
-}
-
-start_bacalhau() {
-    log "Starting Bacalhau..."
-    
-    # Initialize labels with current labels from Bacalhau config
-    LABELS=$(get_current_labels)
-    if [ $? -ne 0 ]; then
-        log "Failed to get current labels. Proceeding with empty labels."
-        LABELS=""
-    fi
-
-    # Read each line from node-config
+# Function to get labels from node config
+get_labels() {
+    local labels=""
     while IFS= read -r line
     do  
         # Skip empty lines and lines starting with TOKEN
@@ -66,30 +51,60 @@ start_bacalhau() {
         var_value=${!var_name}
     
         # Remove any quotes from the value
-        var_value=$(echo "$var_value" | tr -d '"')
+        var_value=$(echo "$var_value" | tr -d '\"')
     
-        # Append to LABELS string
-        LABELS="${LABELS:+$LABELS,}${var_name}=${var_value}"
+        # Append to labels string
+        labels="${labels:+$labels,}${var_name}=${var_value}"
     done < /etc/node-config
+    
+    echo "$labels"
+}
 
-    # Print the labels for verification
-    echo "Constructed Labels:"
-    echo "$LABELS"
+check_env_vars() {
+    local required_vars=("NODE_TYPE" "ORCHESTRATORS")
+    for var in "${required_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            log_error "Required environment variable $var is not set"
+            return 1
+        fi
+    done
+    return 0
+}
+
+start_bacalhau() {
+    log "Starting Bacalhau..."
+    
+    # Get labels from configuration
+    LABELS=$(get_labels)
+    
+    # Validate environment
+    if ! check_env_vars; then
+        log_error "Environment validation failed"
+        return 1
+    fi
+
+    # Log environment for debugging
+    log_debug "Environment:"
+    log_debug "NODE_TYPE: ${NODE_TYPE}"
+    log_debug "ORCHESTRATORS: ${ORCHESTRATORS}"
+    log_debug "LABELS: ${LABELS}"
     
     if [ -n "${TOKEN:-}" ]; then
         ORCHESTRATORS="${TOKEN}@${ORCHESTRATORS}"
     fi
 
-    # Start Bacalhau
+    # Start Bacalhau with verbose logging
     /usr/local/bin/bacalhau serve \
         --node-type "${NODE_TYPE}" \
         --orchestrators "${ORCHESTRATORS}" \
         --labels "${LABELS}" \
-        >> "${LOG_FILE}" 2>&1 &
+        --log-level debug \
+        >> "${LOG_FILE}" 2>&1
     
-    local PID=$!
-    log "Bacalhau worker node started with PID ${PID}"
-    log "Labels: ${LABELS}"
+    local exit_code=$?
+    log_debug "Bacalhau exit code: ${exit_code}"
+    
+    return ${exit_code}
 }
 
 stop_bacalhau() {
@@ -104,8 +119,8 @@ main() {
     
     case "${cmd}" in
         start)
-            check_orchestrators
             start_bacalhau
+            exit $?
             ;;
         stop)
             stop_bacalhau
@@ -113,11 +128,11 @@ main() {
         restart)
             stop_bacalhau
             sleep 2
-            check_orchestrators
             start_bacalhau
+            exit $?
             ;;
         *)
-            echo "Usage: $0 {start|stop|restart}"
+            log_error "Usage: $0 {start|stop|restart}"
             exit 1
             ;;
     esac

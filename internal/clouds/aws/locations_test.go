@@ -24,30 +24,6 @@ func TestIsValidAWSRegion(t *testing.T) {
 		})
 	}
 }
-
-func TestGetUbuntuAMI(t *testing.T) {
-	tests := []struct {
-		name       string
-		region     string
-		expectedOK bool
-	}{
-		{"Valid region", "us-east-1", true},
-		{"Invalid region", "invalid-region", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ami, ok := GetUbuntuAMI(tt.region)
-			if ok != tt.expectedOK {
-				t.Errorf("GetUbuntuAMI(%s) ok = %v, want %v", tt.region, ok, tt.expectedOK)
-			}
-			if tt.expectedOK && ami == "" {
-				t.Errorf("GetUbuntuAMI(%s) returned an empty AMI for a valid region", tt.region)
-			}
-		})
-	}
-}
-
 func TestIsValidAWSInstanceType(t *testing.T) {
 	tests := []struct {
 		name         string
