@@ -3,6 +3,14 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Debug logging
+set -x
+echo "Current working directory: $(pwd)"
+echo "Script path: $0"
+echo "Script arguments: $@"
+echo "Environment:"
+env
+
 # Variables
 PRIMARY_MIRROR="http://archive.ubuntu.com/ubuntu/"
 MIRRORS=(

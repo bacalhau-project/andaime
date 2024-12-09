@@ -165,7 +165,28 @@ func (c *SSHConfig) PushFileWithCallback(
 		}
 	}
 
-	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v)", remotePath, len(content), executable)
+	// Verify file exists and is executable
+	fileInfo, err := sftpClient.Stat(remotePath)
+	if err != nil {
+		c.Logger.Errorf("Failed to stat file %s after transfer: %v", remotePath, err)
+		return fmt.Errorf("failed to verify file after transfer: %w", err)
+	}
+
+	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v, mode: %v)", 
+		remotePath, len(content), executable, fileInfo.Mode())
+
+	// Additional verification: list directory contents
+	parentDir = filepath.Dir(remotePath)
+	files, err := sftpClient.ReadDir(parentDir)
+	if err != nil {
+		c.Logger.Errorf("Failed to list directory contents for %s: %v", parentDir, err)
+	} else {
+		c.Logger.Debugf("Files in %s:", parentDir)
+		for _, f := range files {
+			c.Logger.Debugf("- %s (mode: %v)", f.Name(), f.Mode())
+		}
+	}
+
 	return nil
 }
 
