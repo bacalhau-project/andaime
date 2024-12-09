@@ -17,6 +17,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -173,12 +174,70 @@ func (p *GCPProvider) DestroyResources(
 	return p.DestroyProject(ctx, projectID)
 }
 
-// DestroyProject destroys a specified GCP project
+// DestroyProject destroys a specified GCP project and removes it from config
 func (p *GCPProvider) DestroyProject(
 	ctx context.Context,
 	projectID string,
 ) error {
-	return p.GetGCPClient().DestroyProject(ctx, projectID)
+	l := logger.Get()
+
+	// First destroy the project in GCP
+	if err := p.GetGCPClient().DestroyProject(ctx, projectID); err != nil {
+		return fmt.Errorf("failed to destroy GCP project: %w", err)
+	}
+
+	// After successful destruction, remove from config
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Get the config file path
+	configPath := viper.ConfigFileUsed()
+	if configPath == "" {
+		return fmt.Errorf("no config file found")
+	}
+
+	// Read the current config
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Parse YAML
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(configData, &config); err != nil {
+		return fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Remove the deployment entry
+	if deployments, ok := config["deployments"].(map[string]interface{}); ok {
+		// Find and remove the deployment that matches this project ID
+		for deploymentID, deployment := range deployments {
+			if deploymentData, ok := deployment.(map[string]interface{}); ok {
+				if gcpData, ok := deploymentData["gcp"].(map[string]interface{}); ok {
+					if pid, ok := gcpData["project_id"].(string); ok && pid == projectID {
+						delete(deployments, deploymentID)
+						l.Infof("Removed deployment %s from config file", deploymentID)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Write back to file
+	updatedConfig, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, updatedConfig, 0644); err != nil {
+		return fmt.Errorf("failed to write updated config: %w", err)
+	}
+
+	l.Infof("Successfully removed project %s from config file", projectID)
+	return nil
 }
 
 // ListProjects lists all GCP projects
