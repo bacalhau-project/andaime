@@ -126,13 +126,35 @@ run_with_retries "apt-get update after Docker repo" "$MAX_RETRIES" sudo apt-get 
 echo "Installing Docker Engine..."
 run_with_retries "Install Docker Engine" "$MAX_RETRIES" sudo apt-get install -y docker-ce docker-ce-cli containerd.io || error_exit "Failed to install Docker Engine"
 
-# Start Docker service with retries
+# Start Docker service with retries and detailed logging
 echo "Starting Docker service..."
-run_with_retries "Start Docker service" "$MAX_RETRIES" sudo systemctl start docker || error_exit "Failed to start Docker service"
+run_with_retries "Start Docker service" "$MAX_RETRIES" sudo systemctl start docker || {
+    echo "Docker service start failed. Checking service status..."
+    sudo systemctl status docker
+    echo "Checking Docker daemon logs..."
+    sudo journalctl -u docker.service
+    echo "Checking Docker installation..."
+    which dockerd
+    dockerd --version
+    error_exit "Failed to start Docker service"
+}
 
-# Enable Docker to start on boot with retries
+# Enable Docker to start on boot with retries and detailed logging
 echo "Enabling Docker to start on boot..."
-run_with_retries "Enable Docker service" "$MAX_RETRIES" sudo systemctl enable docker || error_exit "Failed to enable Docker service"
+run_with_retries "Enable Docker service" "$MAX_RETRIES" sudo systemctl enable docker || {
+    echo "Failed to enable Docker service. Checking service status..."
+    sudo systemctl status docker
+    error_exit "Failed to enable Docker service"
+}
+
+# Verify Docker is running and functional
+echo "Verifying Docker installation..."
+sudo docker info || {
+    echo "Docker info command failed. Checking Docker daemon status..."
+    sudo systemctl status docker
+    sudo journalctl -u docker.service
+    error_exit "Docker is not functioning correctly"
+}
 
 # Remove the trap since the script succeeded
 trap - EXIT
