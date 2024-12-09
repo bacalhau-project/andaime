@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -181,8 +182,8 @@ func (p *GCPProvider) DestroyProject(
 ) error {
 	l := logger.Get()
 
-	// Validate project ID
-	if projectID == "" || projectID == "organization_id" || projectID == "project_id" {
+	// Strict validation of project ID
+	if !isValidGCPProjectID(projectID) {
 		l.Warnf("Skipping invalid project ID: %s", projectID)
 		return nil
 	}
@@ -196,12 +197,10 @@ func (p *GCPProvider) DestroyProject(
 		l.Errorf("Failed to destroy GCP project %s: %v", projectID, err)
 		
 		// Check for specific error conditions
-		if strings.Contains(err.Error(), "invalid project name") {
-			l.Warnf("Project %s has an invalid name, skipping", projectID)
-			return nil
-		}
-		if strings.Contains(err.Error(), "Project not active") {
-			l.Warnf("Project %s is not active, skipping", projectID)
+		if strings.Contains(err.Error(), "invalid project name") ||
+			strings.Contains(err.Error(), "Project not active") ||
+			strings.Contains(err.Error(), "does not exist") {
+			l.Warnf("Project %s is invalid or not active, skipping", projectID)
 			return nil
 		}
 		
@@ -235,7 +234,7 @@ func (p *GCPProvider) DestroyProject(
 	// Remove the deployment entry
 	modified := false
 	if deployments, ok := config["deployments"].(map[string]interface{}); ok {
-		// Find and remove the deployment that matches this project ID
+		// Iterate through a copy of the map to safely delete during iteration
 		for deploymentID, deployment := range deployments {
 			if deploymentData, ok := deployment.(map[string]interface{}); ok {
 				if gcpData, ok := deploymentData["gcp"].(map[string]interface{}); ok {
@@ -243,11 +242,23 @@ func (p *GCPProvider) DestroyProject(
 						delete(deployments, deploymentID)
 						l.Infof("Removed deployment %s from config file", deploymentID)
 						modified = true
-						break
 					}
 				}
 			}
 		}
+	}
+
+	// Clean up empty or unnecessary keys
+	if modified {
+		// Remove empty deployments
+		if deployments, ok := config["deployments"].(map[string]interface{}); ok {
+			if len(deployments) == 0 {
+				delete(config, "deployments")
+			}
+		}
+
+		// Remove empty GCP key
+		delete(config, "gcp")
 	}
 
 	// Only write back if modifications were made
@@ -266,6 +277,29 @@ func (p *GCPProvider) DestroyProject(
 	}
 
 	return nil
+}
+
+// isValidGCPProjectID checks if the project ID is a valid GCP project identifier
+func isValidGCPProjectID(projectID string) bool {
+	// Check for empty or known invalid strings
+	if projectID == "" || 
+		projectID == "organization_id" || 
+		projectID == "project_id" {
+		return false
+	}
+
+	// GCP project ID rules:
+	// 1. Must be 6-30 characters long
+	// 2. Can contain lowercase letters, digits, and hyphens
+	// 3. Must start with a letter
+	// 4. Must end with a letter or number
+	if len(projectID) < 6 || len(projectID) > 30 {
+		return false
+	}
+
+	// Use a regular expression to validate the project ID
+	match, _ := regexp.MatchString(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`, projectID)
+	return match
 }
 
 // ListProjects lists all GCP projects
