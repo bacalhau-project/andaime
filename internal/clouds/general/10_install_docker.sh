@@ -126,35 +126,64 @@ run_with_retries "apt-get update after Docker repo" "$MAX_RETRIES" sudo apt-get 
 echo "Installing Docker Engine..."
 run_with_retries "Install Docker Engine" "$MAX_RETRIES" sudo apt-get install -y docker-ce docker-ce-cli containerd.io || error_exit "Failed to install Docker Engine"
 
-# Start Docker service with retries and detailed logging
+# Ensure Docker socket directory exists
+sudo mkdir -p /etc/systemd/system/docker.socket.d
+
+# Create a custom socket configuration to resolve socket activation issues
+echo "[Socket]
+ListenStream=/var/run/docker.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=docker" | sudo tee /etc/systemd/system/docker.socket.d/10-custom.conf
+
+# Reload systemd to pick up new socket configuration
+sudo systemctl daemon-reload
+
+# Start Docker service with advanced error handling and logging
 echo "Starting Docker service..."
-run_with_retries "Start Docker service" "$MAX_RETRIES" sudo systemctl start docker || {
-    echo "Docker service start failed. Checking service status..."
-    sudo systemctl status docker
-    echo "Checking Docker daemon logs..."
+run_with_retries "Start Docker service" "$MAX_RETRIES" sudo systemctl start docker.service || {
+    echo "Docker service start failed. Detailed diagnostics:"
+    echo "1. Service Status:"
+    sudo systemctl status docker.service
+    echo "2. Docker Daemon Logs:"
     sudo journalctl -u docker.service
-    echo "Checking Docker installation..."
+    echo "3. System Journal Errors:"
+    sudo journalctl -xe | grep -i docker
+    echo "4. Docker Installation Check:"
     which dockerd
     dockerd --version
-    error_exit "Failed to start Docker service"
+    echo "5. Systemd Socket Status:"
+    sudo systemctl status docker.socket
+    
+    # Additional troubleshooting steps
+    echo "6. Checking Docker socket:"
+    ls -l /var/run/docker.sock || echo "Docker socket not found"
+    
+    error_exit "Failed to start Docker service. See diagnostic information above."
 }
 
 # Enable Docker to start on boot with retries and detailed logging
-echo "Enabling Docker to start on boot..."
-run_with_retries "Enable Docker service" "$MAX_RETRIES" sudo systemctl enable docker || {
+echo "Enabling Docker service and socket..."
+run_with_retries "Enable Docker service" "$MAX_RETRIES" sudo systemctl enable docker.service docker.socket || {
     echo "Failed to enable Docker service. Checking service status..."
-    sudo systemctl status docker
-    error_exit "Failed to enable Docker service"
+    sudo systemctl status docker.service
+    sudo systemctl status docker.socket
+    error_exit "Failed to enable Docker service and socket"
 }
 
-# Verify Docker is running and functional
+# Verify Docker is running and functional with extended timeout
 echo "Verifying Docker installation..."
-sudo docker info || {
-    echo "Docker info command failed. Checking Docker daemon status..."
+timeout 30s sudo docker info || {
+    echo "Docker info command failed. Extended diagnostics:"
     sudo systemctl status docker
     sudo journalctl -u docker.service
-    error_exit "Docker is not functioning correctly"
+    sudo journalctl -u docker.socket
+    error_exit "Docker is not functioning correctly after extended checks"
 }
+
+# Additional Docker configuration for robustness
+sudo systemctl restart docker.service
+sudo systemctl restart docker.socket
 
 # Remove the trap since the script succeeded
 trap - EXIT
