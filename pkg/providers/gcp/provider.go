@@ -281,10 +281,14 @@ func (p *GCPProvider) DestroyProject(
 
 // isValidGCPProjectID checks if the project ID is a valid GCP project identifier
 func isValidGCPProjectID(projectID string) bool {
-	// Check for empty or known invalid strings
-	if projectID == "" || 
-		projectID == "organization_id" || 
-		projectID == "project_id" {
+	// Explicitly reject known invalid project IDs
+	invalidProjectIDs := map[string]bool{
+		"":                "organization_id",
+		"organization_id": true,
+		"project_id":      true,
+	}
+
+	if invalidProjectIDs[projectID] {
 		return false
 	}
 
