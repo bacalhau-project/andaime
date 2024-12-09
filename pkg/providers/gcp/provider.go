@@ -283,7 +283,7 @@ func (p *GCPProvider) DestroyProject(
 func isValidGCPProjectID(projectID string) bool {
 	// Explicitly reject known invalid project IDs
 	invalidProjectIDs := map[string]bool{
-		"":                "organization_id",
+		"":                true,
 		"organization_id": true,
 		"project_id":      true,
 	}
