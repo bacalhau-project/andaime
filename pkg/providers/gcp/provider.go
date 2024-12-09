@@ -181,9 +181,31 @@ func (p *GCPProvider) DestroyProject(
 ) error {
 	l := logger.Get()
 
+	// Validate project ID
+	if projectID == "" || projectID == "organization_id" || projectID == "project_id" {
+		l.Warnf("Skipping invalid project ID: %s", projectID)
+		return nil
+	}
+
 	// First destroy the project in GCP
-	if err := p.GetGCPClient().DestroyProject(ctx, projectID); err != nil {
-		return fmt.Errorf("failed to destroy GCP project: %w", err)
+	destroyCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if err := p.GetGCPClient().DestroyProject(destroyCtx, projectID); err != nil {
+		// Log specific error details
+		l.Errorf("Failed to destroy GCP project %s: %v", projectID, err)
+		
+		// Check for specific error conditions
+		if strings.Contains(err.Error(), "invalid project name") {
+			l.Warnf("Project %s has an invalid name, skipping", projectID)
+			return nil
+		}
+		if strings.Contains(err.Error(), "Project not active") {
+			l.Warnf("Project %s is not active, skipping", projectID)
+			return nil
+		}
+		
+		return fmt.Errorf("failed to destroy GCP project %s: %w", projectID, err)
 	}
 
 	// After successful destruction, remove from config
@@ -211,6 +233,7 @@ func (p *GCPProvider) DestroyProject(
 	}
 
 	// Remove the deployment entry
+	modified := false
 	if deployments, ok := config["deployments"].(map[string]interface{}); ok {
 		// Find and remove the deployment that matches this project ID
 		for deploymentID, deployment := range deployments {
@@ -219,6 +242,7 @@ func (p *GCPProvider) DestroyProject(
 					if pid, ok := gcpData["project_id"].(string); ok && pid == projectID {
 						delete(deployments, deploymentID)
 						l.Infof("Removed deployment %s from config file", deploymentID)
+						modified = true
 						break
 					}
 				}
@@ -226,17 +250,21 @@ func (p *GCPProvider) DestroyProject(
 		}
 	}
 
-	// Write back to file
-	updatedConfig, err := yaml.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal updated config: %w", err)
+	// Only write back if modifications were made
+	if modified {
+		// Write back to file
+		updatedConfig, err := yaml.Marshal(config)
+		if err != nil {
+			return fmt.Errorf("failed to marshal updated config: %w", err)
+		}
+
+		if err := os.WriteFile(configPath, updatedConfig, 0644); err != nil {
+			return fmt.Errorf("failed to write updated config: %w", err)
+		}
+
+		l.Infof("Successfully removed project %s from config file", projectID)
 	}
 
-	if err := os.WriteFile(configPath, updatedConfig, 0644); err != nil {
-		return fmt.Errorf("failed to write updated config: %w", err)
-	}
-
-	l.Infof("Successfully removed project %s from config file", projectID)
 	return nil
 }
 
