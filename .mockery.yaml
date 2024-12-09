@@ -22,3 +22,8 @@ packages:
       all: true
       recursive: true
       dir: "./mocks/common"
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/sshutils"

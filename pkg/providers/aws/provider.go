@@ -1,28 +1,20 @@
-package awsprovider
+package aws
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/aws/aws-cdk-go/awscdk/v2"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awskms"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"github.com/aws/constructs-go/constructs/v10"
-	"github.com/aws/jsii-runtime-go"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -30,69 +22,301 @@ import (
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	ResourcePollingInterval = 10 * time.Second
-	UpdateQueueSize         = 100
+	ResourcePollingInterval = 30 * time.Second
+	UpdateQueueSize         = 1000 // Increased from 100 to prevent dropping updates
+	UpdatePollingInterval   = 100 * time.Millisecond
 	DefaultStackTimeout     = 30 * time.Minute
 	TestStackTimeout        = 30 * time.Second
+	UbuntuAMIOwner          = "099720109477" // Canonical's AWS account ID
 )
 
+type VPCState struct {
+	mu          sync.RWMutex
+	vpc         *models.AWSVPC
+	status      string
+	lastUpdated time.Time
+}
+
+// RegionalVPCManager handles VPC operations across regions
+type RegionalVPCManager struct {
+	states     map[string]*VPCState // region -> state
+	mu         sync.RWMutex
+	viper      *viper.Viper
+	deployment *models.Deployment
+	ec2Client  aws_interface.EC2Clienter
+}
+
+// NewRegionalVPCManager creates a new VPC manager
+func NewRegionalVPCManager(
+	deployment *models.Deployment,
+	ec2Client aws_interface.EC2Clienter,
+) *RegionalVPCManager {
+	return &RegionalVPCManager{
+		states:     make(map[string]*VPCState),
+		deployment: deployment,
+		ec2Client:  ec2Client,
+	}
+}
+
+type DeploymentInfo struct {
+	ID            string
+	Region        string
+	VPCCount      int
+	InstanceCount int
+	Tags          map[string]string
+}
+
+// String returns a formatted string representation of the deployment info
+func (d DeploymentInfo) String() string {
+	var tags []string
+	for k, v := range d.Tags {
+		tags = append(tags, fmt.Sprintf("%s=%s", k, v))
+	}
+	sort.Strings(tags) // Sort tags for consistent output
+	tagStr := ""
+	if len(tags) > 0 {
+		tagStr = fmt.Sprintf(" [%s]", strings.Join(tags, ", "))
+	}
+	return fmt.Sprintf("Deployment %s (Region: %s, VPCs: %d, Instances: %d)%s",
+		d.ID, d.Region, d.VPCCount, d.InstanceCount, tagStr)
+}
+
+// AWSProvider updated structure
 type AWSProvider struct {
-	AccountID            string
-	Config               *aws.Config
-	Region               string
-	ClusterDeployer      common_interface.ClusterDeployerer
-	UpdateQueue          chan display.UpdateAction
-	App                  awscdk.App
-	Stack                awscdk.Stack
-	VPC                  awsec2.IVpc
-	cloudFormationClient aws_interface.CloudFormationAPIer
-	EC2Client            aws_interface.EC2Clienter
+	AccountID       string
+	Config          *aws.Config
+	ClusterDeployer common_interface.ClusterDeployerer
+	UpdateQueue     chan display.UpdateAction
+	EC2Client       aws_interface.EC2Clienter
+	STSClient       *sts.Client
+	ConfigMutex     sync.RWMutex
+	vpcManager      *RegionalVPCManager
 }
 
-var NewCloudFormationClientFunc = func(cfg aws.Config) aws_interface.CloudFormationAPIer {
-	return cloudformation.NewFromConfig(cfg)
-}
+var NewAWSProviderFunc = NewAWSProvider
 
-func NewAWSProvider(accountID, region string) (*AWSProvider, error) {
+// NewAWSProvider creates a new AWS provider instance
+func NewAWSProvider(accountID string) (*AWSProvider, error) {
 	if accountID == "" {
 		return nil, fmt.Errorf("account ID is required")
 	}
 
-	if region == "" {
-		return nil, fmt.Errorf("region is required")
-	}
-
-	awsConfig, err := awsconfig.LoadDefaultConfig(
-		context.Background(),
-		awsconfig.WithRegion(region),
-	)
+	// Load default AWS config without region
+	awsConfig, err := awsconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
+	// Initialize a default EC2 client
+	ec2Client := ec2.NewFromConfig(awsConfig)
+	ec2Clienter := &LiveEC2Client{client: ec2Client}
+
 	provider := &AWSProvider{
-		AccountID:            accountID,
-		Region:               region,
-		Config:               &awsConfig,
-		Stack:                nil,
-		ClusterDeployer:      common.NewClusterDeployer(models.DeploymentTypeAWS),
-		UpdateQueue:          make(chan display.UpdateAction, UpdateQueueSize),
-		App:                  awscdk.NewApp(nil),
-		cloudFormationClient: NewCloudFormationClientFunc(awsConfig),
+		AccountID:       accountID,
+		Config:          &awsConfig,
+		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
+		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
+		STSClient:       sts.NewFromConfig(awsConfig),
+		EC2Client:       ec2Clienter,
 	}
 
 	return provider, nil
 }
 
-func (p *AWSProvider) PrepareDeployment(ctx context.Context) (*models.Deployment, error) {
-	return common.PrepareDeployment(ctx, models.DeploymentTypeAWS)
+// getOrCreateEC2Client gets or creates an EC2 client for a specific region
+func (p *AWSProvider) getOrCreateEC2Client(
+	ctx context.Context,
+	region string,
+) (aws_interface.EC2Clienter, error) {
+	// If no global model, create a temporary EC2 client
+	if display.GetGlobalModelFunc() == nil {
+		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+		}
+		return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
+	}
+
+	m := display.GetGlobalModelFunc()
+	if m.Deployment == nil {
+		m.Deployment = &models.Deployment{}
+	}
+
+	if m.Deployment.AWS == nil {
+		m.Deployment.AWS = &models.AWSDeployment{
+			RegionalResources: &models.RegionalResources{
+				Clients: make(map[string]aws_interface.EC2Clienter),
+			},
+		}
+	}
+
+	if m.Deployment.AWS.RegionalResources.Clients == nil {
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+	}
+
+	if m.Deployment.AWS.RegionalResources.Clients[region] != nil {
+		return m.Deployment.AWS.RegionalResources.Clients[region], nil
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+	}
+
+	var ec2Client aws_interface.EC2Clienter
+	if p.GetEC2Client() != nil {
+		// If we already have a global EC2 client, use it
+		ec2Client = p.GetEC2Client()
+	} else {
+		ec2Client = &LiveEC2Client{client: ec2.NewFromConfig(cfg)}
+	}
+
+	// Store the client in the regional resources
+	m.Deployment.AWS.RegionalResources.Clients[region] = ec2Client
+	return ec2Client, nil
 }
 
-// This updates m.Deployment with machines and returns an error if any
+func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Get deployment and ensure it has AWS config
+	deployment := m.Deployment
+
+	if deployment.AWS == nil {
+		deployment.AWS = &models.AWSDeployment{
+			RegionalResources: &models.RegionalResources{
+				VPCs:    make(map[string]*models.AWSVPC),
+				Clients: make(map[string]aws_interface.EC2Clienter),
+			},
+		}
+	}
+
+	// Get AWS account ID if not already set
+	if deployment.AWS.AccountID == "" {
+		identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			return fmt.Errorf("failed to get AWS account ID: %w", err)
+		}
+		deployment.AWS.AccountID = *identity.Account
+	}
+
+	// Initialize regional resources
+	regions := make(map[string]struct{})
+	for _, machine := range deployment.Machines {
+		region := machine.GetLocation()
+		if region == "" {
+			continue
+		}
+		// Convert zone to region if necessary
+		if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
+			region = region[:len(region)-1]
+		}
+		regions[region] = struct{}{}
+	}
+
+	// Create VPC and security group for each region
+	for region := range regions {
+		if vpc := deployment.AWS.RegionalResources.GetVPC(region); vpc != nil {
+			vpc, err := p.createVPCInfrastructure(ctx, region)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to create VPC infrastructure in region %s: %w",
+					region,
+					err,
+				)
+			}
+			deployment.AWS.RegionalResources.SetVPC(region, vpc)
+		}
+	}
+
+	return nil
+}
+
+func (p *AWSProvider) createVPCInfrastructure(
+	ctx context.Context,
+	region string,
+) (*models.AWSVPC, error) {
+	// Create EC2 client for the region
+	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
+	}
+
+	// Create VPC with CIDR block
+	vpcOut, err := ec2Client.CreateVpc(ctx, &ec2.CreateVpcInput{
+		CidrBlock: aws.String("10.0.0.0/16"),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeVpc,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String("andaime-vpc"),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	// Create security group
+	sgOut, err := ec2Client.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+		GroupName:   aws.String("andaime-sg"),
+		Description: aws.String("Security group for Andaime deployment"),
+		VpcId:       vpcOut.Vpc.VpcId,
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeSecurityGroup,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String("andaime-sg"),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create security group: %w", err)
+	}
+
+	// Allow inbound traffic
+	_, err = ec2Client.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
+		GroupId: sgOut.GroupId,
+		IpPermissions: []ec2_types.IpPermission{
+			{
+				IpProtocol: aws.String("-1"),
+				FromPort:   aws.Int32(-1),
+				ToPort:     aws.Int32(-1),
+				IpRanges: []ec2_types.IpRange{
+					{
+						CidrIp: aws.String("0.0.0.0/0"),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to authorize security group ingress: %w", err)
+	}
+
+	return &models.AWSVPC{
+		VPCID:           *vpcOut.Vpc.VpcId,
+		SecurityGroupID: *sgOut.GroupId,
+	}, nil
+}
+
 func (p *AWSProvider) ProcessMachinesConfig(
 	ctx context.Context,
 ) (map[string]models.Machiner, map[string]bool, error) {
@@ -105,30 +329,52 @@ func (p *AWSProvider) ProcessMachinesConfig(
 
 func (p *AWSProvider) StartResourcePolling(ctx context.Context) error {
 	go func() {
-		ticker := time.NewTicker(ResourcePollingInterval)
-		defer ticker.Stop()
+		resourceTicker := time.NewTicker(ResourcePollingInterval)
+		updateTicker := time.NewTicker(UpdatePollingInterval)
+		defer resourceTicker.Stop()
+		defer updateTicker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-resourceTicker.C:
 				if err := p.pollResources(ctx); err != nil {
 					logger.Get().Error(fmt.Sprintf("Failed to poll resources: %v", err))
 				}
+			case <-updateTicker.C:
+				p.processUpdateQueue()
 			}
 		}
 	}()
 	return nil
 }
 
+func (p *AWSProvider) processUpdateQueue() {
+	m := display.GetGlobalModelFunc()
+	if m == nil {
+		return
+	}
+
+	// Process up to 100 updates per tick to prevent queue from filling
+	for i := 0; i < 100; i++ {
+		select {
+		case update := <-p.UpdateQueue:
+			m.QueueUpdate(update)
+		default:
+			return // No more updates in queue
+		}
+	}
+}
+
 func (p *AWSProvider) pollResources(ctx context.Context) error {
-	if p.Stack == nil {
-		return fmt.Errorf("stack is nil")
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("display model or deployment is nil")
 	}
 
 	// Create EC2 client
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Config.Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -139,7 +385,7 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 		Filters: []ec2_types.Filter{
 			{
 				Name:   aws.String("tag:AndaimeDeployment"),
-				Values: []string{*p.Stack.StackName()},
+				Values: []string{"AndaimeDeployment"},
 			},
 		},
 	}
@@ -151,11 +397,49 @@ func (p *AWSProvider) pollResources(ctx context.Context) error {
 
 	for _, reservation := range result.Reservations {
 		for _, instance := range reservation.Instances {
-			// Update instance status in the deployment model
 			machineID := getMachineIDFromTags(instance.Tags)
 			if machineID != "" {
+				machine := m.Deployment.GetMachine(machineID)
+				if machine == nil {
+					continue
+				}
+
+				// Check and update instance state
 				status := mapEC2StateToMachineState(instance.State.Name)
 				p.updateMachineStatus(machineID, status)
+
+				// Check and update network interface state
+				if len(instance.NetworkInterfaces) > 0 {
+					networkStatus := models.ResourceStateRunning
+					if instance.NetworkInterfaces[0].Status != "in-use" {
+						networkStatus = models.ResourceStatePending
+					}
+					m.QueueUpdate(display.UpdateAction{
+						MachineName: machine.GetName(),
+						UpdateData: display.UpdateData{
+							UpdateType:    display.UpdateTypeResource,
+							ResourceType:  "Network",
+							ResourceState: networkStatus,
+						},
+					})
+				}
+
+				// Check and update volume state
+				if len(instance.BlockDeviceMappings) > 0 {
+					volumeStatus := models.ResourceStateRunning
+					if instance.BlockDeviceMappings[0].Ebs != nil &&
+						instance.BlockDeviceMappings[0].Ebs.Status != "attached" {
+						volumeStatus = models.ResourceStatePending
+					}
+					m.QueueUpdate(display.UpdateAction{
+						MachineName: machine.GetName(),
+						UpdateData: display.UpdateData{
+							UpdateType:    display.UpdateTypeResource,
+							ResourceType:  "Volume",
+							ResourceState: volumeStatus,
+						},
+					})
+				}
 			}
 		}
 	}
@@ -217,379 +501,995 @@ func (p *AWSProvider) updateMachineStatus(machineID string, status models.Machin
 }
 
 func (p *AWSProvider) BootstrapEnvironment(ctx context.Context) error {
+	// No bootstrapping needed anymore since we're not using CDK
+	return nil
+}
+func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 	l := logger.Get()
-	l.Info("Ensuring AWS environment is bootstrapped")
+	l.Debugf("Creating VPC in region %s", region)
 
-	// Create a channel to signal completion
-	done := make(chan error)
-	defer close(done)
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
 
-	// First, let's check if any bootstrap assets exist
-	ssmClient := ssm.NewFromConfig(*p.Config)
-	paramName := "/cdk-bootstrap/hnb659fds/version"
+	// Initialize VPC manager if needed
+	if p.vpcManager == nil {
+		p.vpcManager = NewRegionalVPCManager(m.Deployment, p.EC2Client)
+	}
 
-	// Try to get the version parameter
-	_, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
-		Name: aws.String(paramName),
-	})
-
+	// Get or create EC2 client for this region
+	regionalClient, err := p.getOrCreateEC2Client(ctx, region)
 	if err != nil {
-		l.Warn("Bootstrap parameter not found, creating new bootstrap stack")
-	} else {
-		l.Info("Bootstrap stack already exists")
-		done <- nil
-		return <-done
+		return fmt.Errorf("failed to get EC2 client: %w", err)
 	}
 
-	// Initialize CloudFormation resources
-	bootstrapApp := awscdk.NewApp(nil)
-
-	stackProps := &awscdk.StackProps{
-		Env: &awscdk.Environment{
-			Account: jsii.String(p.AccountID),
-			Region:  jsii.String(p.Region),
-		},
-		// Important: Disable the lookup of context values during synthesis
-		Synthesizer: awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
-			GenerateBootstrapVersionRule: jsii.Bool(false),
-		}),
-	}
-
-	bootstrapStack := awscdk.NewStack(bootstrapApp, jsii.String("CDKToolkit"), stackProps)
-
-	// Create KMS key for bootstrap resources
-	key := awskms.NewKey(bootstrapStack, jsii.String("BootstrapKey"), &awskms.KeyProps{
-		Alias:             jsii.String("alias/cdk-hnb659fds-key"),
-		EnableKeyRotation: jsii.Bool(true),
-		RemovalPolicy:     awscdk.RemovalPolicy_RETAIN,
-	})
-
-	// Create staging bucket
-	bucketName := fmt.Sprintf("cdk-%s-assets-%s-%s", "hnb659fds", p.AccountID, p.Region)
-	bucket := awss3.NewBucket(bootstrapStack, jsii.String("StagingBucket"), &awss3.BucketProps{
-		BucketName:        jsii.String(bucketName),
-		Encryption:        awss3.BucketEncryption_KMS,
-		EncryptionKey:     key,
-		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
-		Versioned:         jsii.Bool(true),
-		RemovalPolicy:     awscdk.RemovalPolicy_RETAIN,
-		AutoDeleteObjects: jsii.Bool(false),
-	})
-
-	// Add permissions
-	bucket.AddToResourcePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
-		Effect: awsiam.Effect_ALLOW,
-		Actions: jsii.Strings(
-			"s3:GetObject",
-			"s3:PutObject",
-			"s3:ListBucket",
-		),
-		Resources: jsii.Strings(
-			*bucket.BucketArn(),
-			*bucket.BucketArn()+"/*",
-		),
-		Principals: &[]awsiam.IPrincipal{
-			awsiam.NewAccountRootPrincipal(),
-		},
-	}))
-
-	// Create SSM parameters
-	awsssm.NewStringParameter(
-		bootstrapStack,
-		jsii.String("VersionParameter"),
-		&awsssm.StringParameterProps{
-			ParameterName: jsii.String("/cdk-bootstrap/hnb659fds/version"),
-			StringValue:   jsii.String("14"),
-			Description: jsii.String(
-				"The version of the CDK bootstrap resources in this environment",
-			),
-		},
-	)
-
-	// Synthesize the template
-	template := bootstrapApp.Synth(nil).GetStackArtifact(jsii.String("CDKToolkit")).Template()
-	templateJSON, err := json.Marshal(template)
-	if err != nil {
-		return fmt.Errorf("failed to marshal bootstrap template: %w", err)
-	}
-
-	l.Info("Creating bootstrap stack...")
-
-	// Create the stack with detailed error handling
-	_, err = p.cloudFormationClient.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:    aws.String("CDKToolkit"),
-		TemplateBody: aws.String(string(templateJSON)),
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityIam,
-			types.CapabilityCapabilityNamedIam,
-		},
-		OnFailure: types.OnFailureRollback,
-		Tags: []types.Tag{
-			{
-				Key:   aws.String("aws-cdk:bootstrap-role"),
-				Value: aws.String("lookup"),
-			},
-		},
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to create bootstrap stack: %w", err)
-	}
-
-	// Wait for creation to complete with detailed status updates
-	l.Info("Waiting for bootstrap stack creation to complete...")
-	waiter := cloudformation.NewStackCreateCompleteWaiter(p.cloudFormationClient)
-
-	// Add a ticker to log stack events during creation
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	waitDone := make(chan error)
-	go func() {
-		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-			StackName: aws.String("CDKToolkit"),
-		}, 30*time.Minute)
-	}()
-
-	for {
-		select {
-		case err := <-waitDone:
-			if err != nil {
-				// Get the stack events to understand what went wrong
-				events, descErr := p.cloudFormationClient.DescribeStackEvents(
-					ctx,
-					&cloudformation.DescribeStackEventsInput{
-						StackName: aws.String("CDKToolkit"),
+	// Create VPC
+	err = p.vpcManager.UpdateVPC(region, func(vpc *models.AWSVPC) error {
+		createVpcInput := &ec2.CreateVpcInput{
+			CidrBlock: aws.String("10.0.0.0/16"),
+			TagSpecifications: []ec2_types.TagSpecification{
+				{
+					ResourceType: ec2_types.ResourceTypeVpc,
+					Tags: []ec2_types.Tag{
+						{
+							Key:   aws.String("Name"),
+							Value: aws.String("andaime-vpc"),
+						},
+						{
+							Key:   aws.String("andaime"),
+							Value: aws.String("true"),
+						},
 					},
-				)
-				if descErr == nil && len(events.StackEvents) > 0 {
-					l.Error("Stack creation failed. Recent events:")
-					for i := 0; i < min(5, len(events.StackEvents)); i++ {
-						event := events.StackEvents[i]
-						l.Errorf(
-							"  %s: %s - %s",
-							*event.LogicalResourceId,
-							event.ResourceStatus,
-							*event.ResourceStatusReason,
-						)
-					}
-				}
-				return fmt.Errorf("bootstrap stack creation failed: %w", err)
-			}
-			l.Info("Bootstrap stack created successfully")
-			done <- nil
-			return <-done
-		case <-ticker.C:
-			// Log current stack status
-			status, err := p.cloudFormationClient.DescribeStacks(
-				ctx,
-				&cloudformation.DescribeStacksInput{
-					StackName: aws.String("CDKToolkit"),
 				},
-			)
-			if err == nil && len(status.Stacks) > 0 {
-				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
-			}
-		}
-	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// Add these helper functions to check stack status
-func isStackInRollback(status types.StackStatus) bool {
-	return status == types.StackStatusRollbackComplete ||
-		status == types.StackStatusRollbackInProgress ||
-		status == types.StackStatusUpdateRollbackComplete ||
-		status == types.StackStatusUpdateRollbackInProgress
-}
-
-func isStackFailed(status types.StackStatus) bool {
-	return status == types.StackStatusCreateFailed ||
-		status == types.StackStatusDeleteFailed ||
-		status == types.StackStatusUpdateFailed ||
-		isStackInRollback(status)
-}
-func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
-	l := logger.Get()
-	cfnClient := NewCloudFormationClientFunc(*p.Config)
-
-	stackProps := &awscdk.StackProps{
-		Env: &awscdk.Environment{
-			Account: jsii.String(p.AccountID),
-			Region:  jsii.String(p.Region),
-		},
-	}
-
-	p.Stack = NewVpcStack(p.App, "AndaimeStack", stackProps)
-	p.VPC = p.Stack.Node().FindChild(jsii.String("AndaimeVPC")).(awsec2.IVpc)
-
-	// Get the template
-	template := p.App.Synth(nil).GetStackArtifact(jsii.String("AndaimeStack")).Template()
-
-	// Marshal the template to JSON
-	templateJSON, err := json.Marshal(template)
-	if err != nil {
-		return fmt.Errorf("failed to marshal CloudFormation template: %w", err)
-	}
-
-	l.Info("Creating infrastructure stack...")
-
-	// Create the stack using the CloudFormation client
-	_, err = cfnClient.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:    aws.String("AndaimeStack"),
-		TemplateBody: aws.String(string(templateJSON)),
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityIam,
-			types.CapabilityCapabilityNamedIam,
-		},
-		Tags: []types.Tag{
-			{
-				Key:   aws.String("AndaimeDeployment"),
-				Value: aws.String("true"),
 			},
-		},
+		}
+
+		l.Debugf("Sending CreateVpc request with cidr_block %s", "10.0.0.0/16")
+
+		createVpcOutput, err := regionalClient.CreateVpc(ctx, createVpcInput)
+		if err != nil {
+			l.Debugf("VPC creation failed: %v", err)
+			return fmt.Errorf("failed to create VPC: %w", err)
+		}
+
+		vpc.VPCID = *createVpcOutput.Vpc.VpcId
+		l.Debugf("Created VPC with ID %s", vpc.VPCID)
+		return nil
 	})
+
 	if err != nil {
-		return fmt.Errorf("failed to create stack: %w", err)
-	}
-
-	// Wait for creation to complete with detailed status updates
-	l.Info("Waiting for infrastructure stack creation to complete...")
-	waiter := cloudformation.NewStackCreateCompleteWaiter(cfnClient)
-
-	// Use shorter timeout for tests
-	timeout := DefaultStackTimeout
-	if strings.HasSuffix(os.Args[0], ".test") {
-		timeout = TestStackTimeout
-	}
-
-	// Add a ticker to log stack events during creation
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	waitDone := make(chan error)
-	go func() {
-		waitDone <- waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-			StackName: aws.String("AndaimeStack"),
-		}, timeout)
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-waitDone:
-			if err != nil {
-				// Get the stack events to understand what went wrong
-				events, descErr := cfnClient.DescribeStackEvents(
-					ctx,
-					&cloudformation.DescribeStackEventsInput{
-						StackName: aws.String("AndaimeStack"),
-					},
-				)
-				if descErr == nil && len(events.StackEvents) > 0 {
-					l.Error("Stack creation failed. Recent events:")
-					for i := 0; i < min(5, len(events.StackEvents)); i++ {
-						event := events.StackEvents[i]
-						l.Errorf(
-							"  %s: %s - %s",
-							*event.LogicalResourceId,
-							event.ResourceStatus,
-							*event.ResourceStatusReason,
-						)
-					}
-				}
-				return fmt.Errorf("infrastructure stack creation failed: %w", err)
-			}
-			l.Info("Infrastructure stack created successfully")
-			return nil
-		case <-ticker.C:
-			// Log current stack status
-			status, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
-				StackName: aws.String("AndaimeStack"),
-			})
-			if err == nil && len(status.Stacks) > 0 {
-				l.Infof("Current stack status: %s", status.Stacks[0].StackStatus)
-			}
-		}
-	}
-}
-
-// Destroy modification to clean up bootstrap resources
-func (p *AWSProvider) Destroy(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Starting destruction of AWS resources")
-
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-	cfnClient := cloudformation.NewFromConfig(cfg)
-
-	// Delete the main stack first
-	if p.Stack != nil {
-		stackName := *p.Stack.StackName()
-		if err := p.deleteStack(ctx, cfnClient, stackName); err != nil {
-			return err
-		}
-	}
-
-	// Delete the bootstrap stack
-	if err := p.deleteStack(ctx, cfnClient, "CDKToolkit"); err != nil {
 		return err
 	}
 
-	// Clean up local state
-	p.Stack = nil
-	p.VPC = nil
+	// Wait for VPC to become available
+	l.Info("Waiting for VPC to be available...")
+	state := p.vpcManager.GetOrCreateVPCState(region)
+	vpcID := state.vpc.VPCID
+
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 5 * time.Minute
+	b.InitialInterval = 2 * time.Second
+	b.MaxInterval = 30 * time.Second
+
+	operation := func() error {
+		if err := ctx.Err(); err != nil {
+			return backoff.Permanent(err)
+		}
+
+		input := &ec2.DescribeVpcsInput{
+			VpcIds: []string{vpcID},
+		}
+
+		result, err := regionalClient.DescribeVpcs(ctx, input)
+		if err != nil {
+			l.Debugf("Failed to describe VPC with ID %s: %v", vpcID, err)
+			return fmt.Errorf("failed to describe VPC: %w", err)
+		}
+
+		if len(result.Vpcs) > 0 {
+			l.Debugf("VPC status check with ID %s: %s", vpcID, string(result.Vpcs[0].State))
+
+			if result.Vpcs[0].State == ec2_types.VpcStateAvailable {
+				l.Debugf("VPC is now available with ID %s", vpcID)
+				return nil
+			}
+		}
+
+		l.Debugf("VPC not yet available with ID %s", vpcID)
+		return fmt.Errorf("VPC not yet available")
+	}
+
+	if err := backoff.Retry(operation, backoff.WithContext(b, ctx)); err != nil {
+		return fmt.Errorf("timeout waiting for VPC to become available: %w", err)
+	}
+
+	// Update display state to pending
+	p.updateVPCDisplayState(m, models.ResourceStatePending)
+
+	// Enable DNS hostnames
+	modifyVpcAttributeInput := &ec2.ModifyVpcAttributeInput{
+		VpcId:              aws.String(vpcID),
+		EnableDnsHostnames: &ec2_types.AttributeBooleanValue{Value: aws.Bool(true)},
+	}
+
+	_, err = regionalClient.ModifyVpcAttribute(ctx, modifyVpcAttributeInput)
+	if err != nil {
+		return fmt.Errorf("failed to enable DNS hostnames: %w", err)
+	}
+
+	// Update display state to running
+	p.updateVPCDisplayState(m, models.ResourceStateRunning)
+
+	// Save VPC configuration
+	if err := p.vpcManager.SaveVPCConfig(region); err != nil {
+		l.Warnf("Failed to save VPC configuration: %v", err)
+	}
+
+	l.Debugf("Regional VPC (Region: %s) created successfully with ID %s",
+		region, vpcID)
 
 	return nil
 }
 
-// Helper function to delete a stack and wait for completion
-func (p *AWSProvider) deleteStack(
+// Core infrastructure creation function
+func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Creating AWS infrastructure...")
+
+	allRegions, err := p.GetAllAWSRegions(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get all AWS regions: %w", err)
+	}
+
+	if err := p.initializeInfrastructureDisplay(); err != nil {
+		return err
+	}
+
+	if err := p.createRegionalInfrastructure(ctx, allRegions); err != nil {
+		return fmt.Errorf("failed to create infrastructure: %w", err)
+	}
+
+	l.Info("Infrastructure created successfully")
+	return nil
+}
+
+// Initialize the display model for infrastructure creation
+func (p *AWSProvider) initializeInfrastructureDisplay() error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("deployment model not initialized")
+	}
+
+	for _, machine := range m.Deployment.GetMachines() {
+		m.QueueUpdate(display.UpdateAction{
+			MachineName: machine.GetName(),
+			UpdateData: display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  "Infrastructure",
+				ResourceState: models.ResourceStatePending,
+			},
+		})
+	}
+	return nil
+}
+
+// Create infrastructure in all regions concurrently
+func (p *AWSProvider) createRegionalInfrastructure(
 	ctx context.Context,
-	cfnClient *cloudformation.Client,
-	stackName string,
+	regions []string,
+) error {
+	var eg errgroup.Group
+
+	for _, region := range regions {
+		region := region // capture for goroutine
+		eg.Go(func() error {
+			return p.setupRegionalInfrastructure(ctx, region)
+		})
+	}
+
+	return eg.Wait()
+}
+
+// Setup infrastructure for a single region
+func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region string) error {
+	l := logger.Get()
+	l.Debugf("Setting up infrastructure for region: %s", region)
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Debug current state
+	l.Debugf("Current deployment state: %+v", m.Deployment.AWS)
+	if m.Deployment.AWS.RegionalResources != nil {
+		l.Debugf("Current VPCs: %+v", m.Deployment.AWS.RegionalResources.VPCs)
+	}
+
+	// Initialize VPC manager if needed
+	if p.vpcManager == nil {
+		l.Debug("Initializing VPC manager")
+		p.vpcManager = NewRegionalVPCManager(m.Deployment, p.EC2Client)
+	}
+
+	// Step 1: Get availability zones
+	azs, err := p.getRegionAvailabilityZones(ctx, region)
+	if err != nil {
+		l.Debugf("Failed to get availability zones: %v", err)
+		return err
+	}
+	l.Debugf("Found %d availability zones", len(azs))
+
+	// Step 2: Create VPC and security groups
+	l.Debug("Creating VPC...")
+	if err := p.createVPCWithRetry(ctx, region); err != nil {
+		l.Debugf("Failed to create VPC: %v", err)
+		return fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	// Get VPC state
+	state := p.vpcManager.GetOrCreateVPCState(region)
+	state.mu.RLock()
+	vpc := state.vpc
+	state.mu.RUnlock()
+
+	l.Debugf("VPC state after creation: %+v", vpc)
+
+	if vpc == nil {
+		l.Debug("VPC is nil after creation!")
+		return fmt.Errorf("VPC not found for region %s", region)
+	}
+
+	sgID, err := p.createSecurityGroup(ctx, vpc.VPCID)
+	if err != nil {
+		return fmt.Errorf("failed to create security groups: %w", err)
+	}
+	m.Deployment.AWS.RegionalResources.SetSGID(region, *sgID)
+
+	// Step 3: Create subnets
+	if err := p.createRegionalSubnets(ctx, region, azs[:2]); err != nil {
+		return err
+	}
+
+	// Step 4: Setup networking components
+	if err := p.setupNetworking(ctx, region); err != nil {
+		return err
+	}
+
+	// Step 5: Save and update display
+	if err := p.saveInfrastructureToConfig(); err != nil {
+		return fmt.Errorf("failed to save infrastructure IDs to config: %w", err)
+	}
+
+	p.updateInfrastructureDisplay(models.ResourceStateSucceeded)
+
+	l.Info("AWS infrastructure created successfully for region: " + region)
+	return nil
+}
+
+// Get availability zones for a region
+func (p *AWSProvider) getRegionAvailabilityZones(
+	ctx context.Context,
+	region string,
+) ([]ec2_types.AvailabilityZone, error) {
+	azInput := &ec2.DescribeAvailabilityZonesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("region-name"),
+				Values: []string{region},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+	}
+
+	azOutput, err := p.EC2Client.DescribeAvailabilityZones(ctx, azInput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get availability zones for region %s: %w", region, err)
+	}
+
+	if len(azOutput.AvailabilityZones) < 2 {
+		return nil, fmt.Errorf("region %s does not have at least 2 availability zones", region)
+	}
+
+	return azOutput.AvailabilityZones, nil
+}
+
+// Create subnets in a region
+func (p *AWSProvider) createRegionalSubnets(
+	ctx context.Context,
+	region string,
+	azs []ec2_types.AvailabilityZone,
 ) error {
 	l := logger.Get()
+	l.Debugf("Creating regional subnets for region %s", region)
 
-	// Check if stack exists
-	_, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
-		StackName: aws.String(stackName),
-	})
-	if err != nil {
-		// If stack doesn't exist, just return
-		if strings.Contains(err.Error(), "does not exist") {
-			return nil
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil || m.Deployment.AWS == nil {
+		return fmt.Errorf("deployment model not properly initialized")
+	}
+
+	// Initialize VPC manager if needed
+	if p.vpcManager == nil {
+		p.vpcManager = NewRegionalVPCManager(m.Deployment, p.EC2Client)
+	}
+
+	state := p.vpcManager.GetOrCreateVPCState(region)
+	if state == nil {
+		return fmt.Errorf("failed to get VPC state for region %s", region)
+	}
+
+	state.mu.RLock()
+	vpc := state.vpc
+	state.mu.RUnlock()
+
+	if vpc == nil {
+		return fmt.Errorf("VPC not found for region %s", region)
+	}
+
+	l.Debugf("Creating subnets in VPC %s", vpc.VPCID)
+
+	return p.vpcManager.UpdateVPC(region, func(vpc *models.AWSVPC) error {
+		for i, az := range azs {
+			// Create public subnet
+			l.Debugf("Creating public subnet in AZ %s", *az.ZoneName)
+			publicSubnet, err := p.createSubnet(ctx, vpc.VPCID, *az.ZoneName, i*2, "public")
+			if err != nil {
+				return fmt.Errorf("failed to create public subnet: %w", err)
+			}
+			vpc.PublicSubnetIDs = append(vpc.PublicSubnetIDs, *publicSubnet.Subnet.SubnetId)
+
+			// Create private subnet
+			l.Debugf("Creating private subnet in AZ %s", *az.ZoneName)
+			privateSubnet, err := p.createSubnet(ctx, vpc.VPCID, *az.ZoneName, i*2+1, "private")
+			if err != nil {
+				return fmt.Errorf("failed to create private subnet: %w", err)
+			}
+			vpc.PrivateSubnetIDs = append(vpc.PrivateSubnetIDs, *privateSubnet.Subnet.SubnetId)
 		}
-		return fmt.Errorf("failed to describe stack %s: %w", stackName, err)
+		return nil
+	})
+}
+
+// Create a single subnet
+func (p *AWSProvider) createSubnet(
+	ctx context.Context,
+	vpcID, azName string,
+	index int,
+	subnetType string,
+) (*ec2.CreateSubnetOutput, error) {
+	input := &ec2.CreateSubnetInput{
+		VpcId:            aws.String(vpcID),
+		AvailabilityZone: aws.String(azName),
+		CidrBlock:        aws.String(fmt.Sprintf("10.0.%d.0/24", index)),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeSubnet,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(fmt.Sprintf("%s-subnet-%s", subnetType, azName)),
+					},
+					{Key: aws.String("Type"), Value: aws.String(subnetType)},
+				},
+			},
+		},
 	}
 
-	// Delete the stack
-	_, err = cfnClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName: aws.String(stackName),
+	subnet, err := p.EC2Client.CreateSubnet(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s subnet in %s: %w", subnetType, azName, err)
+	}
+
+	return subnet, nil
+}
+
+// Setup networking components (IGW, route tables, etc.)
+func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error {
+	l := logger.Get()
+	l.Debugf("Setting up networking for region %s", region)
+
+	if p.vpcManager == nil {
+		return fmt.Errorf("VPC manager not initialized")
+	}
+
+	state := p.vpcManager.GetOrCreateVPCState(region)
+	if state == nil {
+		return fmt.Errorf("failed to get VPC state for region %s", region)
+	}
+
+	state.mu.RLock()
+	vpc := state.vpc
+	state.mu.RUnlock()
+
+	if vpc == nil {
+		return fmt.Errorf("VPC not found for region %s", region)
+	}
+
+	// Create and attach Internet Gateway
+	igw, err := p.createInternetGateway(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create internet gateway: %w", err)
+	}
+
+	return p.vpcManager.UpdateVPC(region, func(vpc *models.AWSVPC) error {
+		vpc.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
+
+		if err := p.attachInternetGateway(ctx, vpc.InternetGatewayID, vpc.VPCID); err != nil {
+			return fmt.Errorf("failed to attach internet gateway: %w", err)
+		}
+
+		// Setup routing
+		return p.setupRouting(ctx, vpc)
+	})
+}
+
+func (p *AWSProvider) attachInternetGateway(ctx context.Context, igwID, vpcID string) error {
+	l := logger.Get()
+	l.Debugf("Attaching internet gateway %s to VPC %s", igwID, vpcID)
+
+	if p.EC2Client == nil {
+		return fmt.Errorf("EC2 client not initialized")
+	}
+
+	_, err := p.EC2Client.AttachInternetGateway(ctx, &ec2.AttachInternetGatewayInput{
+		InternetGatewayId: aws.String(igwID),
+		VpcId:             aws.String(vpcID),
+	})
+	return err
+}
+
+// Update the infrastructure display state
+func (p *AWSProvider) updateInfrastructureDisplay(state models.MachineResourceState) {
+	m := display.GetGlobalModelFunc()
+	if m != nil && m.Deployment != nil {
+		for _, machine := range m.Deployment.GetMachines() {
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "Infrastructure",
+					ResourceState: state,
+				},
+			})
+		}
+	}
+}
+
+// Helper functions for networking setup
+func (p *AWSProvider) createInternetGateway(
+	ctx context.Context,
+) (*ec2.CreateInternetGatewayOutput, error) {
+	return p.EC2Client.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeInternetGateway,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String("andaime-igw")},
+				},
+			},
+		},
+	})
+}
+
+// createVPCWithRetry handles VPC creation with cleanup retry logic
+func (p *AWSProvider) createVPCWithRetry(ctx context.Context, region string) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Initialize VPC manager if needed
+	if p.vpcManager == nil {
+		p.vpcManager = NewRegionalVPCManager(m.Deployment, p.EC2Client)
+	}
+
+	err := p.CreateVpc(ctx, region)
+	if err != nil {
+		if strings.Contains(err.Error(), "VpcLimitExceeded") {
+			l.Info("VPC limit exceeded, attempting to clean up abandoned VPCs...")
+
+			// Try to find and clean up any abandoned VPCs
+			if cleanupErr := p.cleanupAbandonedVPCs(ctx); cleanupErr != nil {
+				return fmt.Errorf("failed to cleanup VPCs: %w", cleanupErr)
+			}
+
+			// Retry VPC creation after cleanup
+			l.Info("Retrying VPC creation after cleanup...")
+			if retryErr := p.CreateVpc(ctx, region); retryErr != nil {
+				return fmt.Errorf("failed to create VPC after cleanup: %w", retryErr)
+			}
+
+			l.Info("Successfully created VPC after cleanup")
+		} else {
+			return fmt.Errorf("failed to create VPC: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// cleanupVPCResources handles the cleanup of a single VPC's resources
+func (p *AWSProvider) cleanupVPCResources(ctx context.Context, vpcID string) error {
+	l := logger.Get()
+	l.Infof("Cleaning up resources for VPC %s", vpcID)
+
+	// 1. Delete subnets
+	if err := p.cleanupSubnets(ctx, vpcID); err != nil {
+		return fmt.Errorf("failed to cleanup subnets: %w", err)
+	}
+
+	// 2. Delete security groups
+	if err := p.cleanupSecurityGroups(ctx, vpcID); err != nil {
+		return fmt.Errorf("failed to cleanup security groups: %w", err)
+	}
+
+	// 3. Delete route tables
+	if err := p.cleanupRouteTables(ctx, vpcID); err != nil {
+		return fmt.Errorf("failed to cleanup route tables: %w", err)
+	}
+
+	// 4. Detach and delete internet gateways
+	if err := p.cleanupInternetGateways(ctx, vpcID); err != nil {
+		return fmt.Errorf("failed to cleanup internet gateways: %w", err)
+	}
+
+	// Finally, delete the VPC
+	_, err := p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
+		VpcId: aws.String(vpcID),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete stack %s: %w", stackName, err)
+		return fmt.Errorf("failed to delete VPC: %w", err)
 	}
 
-	l.Infof("Waiting for stack %s deletion to complete...", stackName)
-	waiter := cloudformation.NewStackDeleteCompleteWaiter(cfnClient)
-	maxWaitTime := 30 * time.Minute
-	if err := waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-		StackName: aws.String(stackName),
-	}, maxWaitTime); err != nil {
-		return fmt.Errorf("failed waiting for stack %s deletion: %w", stackName, err)
+	l.Infof("Successfully cleaned up VPC %s", vpcID)
+	return nil
+}
+
+// Helper functions for VPC cleanup
+func (p *AWSProvider) cleanupSubnets(ctx context.Context, vpcID string) error {
+	subnets, err := p.EC2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("vpc-id"),
+				Values: []string{vpcID},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to describe subnets: %w", err)
 	}
 
-	l.Infof("Stack %s successfully destroyed", stackName)
+	for _, subnet := range subnets.Subnets {
+		_, err := p.EC2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
+			SubnetId: subnet.SubnetId,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete subnet %s: %w", aws.ToString(subnet.SubnetId), err)
+		}
+	}
+
+	return nil
+}
+
+func (p *AWSProvider) cleanupSecurityGroups(ctx context.Context, vpcID string) error {
+	sgs, err := p.EC2Client.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("vpc-id"),
+				Values: []string{vpcID},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to describe security groups: %w", err)
+	}
+
+	for _, sg := range sgs.SecurityGroups {
+		if aws.ToString(sg.GroupName) != DefaultName {
+			_, err := p.EC2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+				GroupId: sg.GroupId,
+			})
+			if err != nil {
+				return fmt.Errorf(
+					"failed to delete security group %s: %w",
+					aws.ToString(sg.GroupId),
+					err,
+				)
+			}
+		}
+	}
+
+	return nil
+}
+func (p *AWSProvider) createSecurityGroup(ctx context.Context,
+	vpcid string) (*string, error) {
+	l := logger.Get()
+	l.Info("Creating security groups...")
+	sgOutput, err := p.GetEC2Client().CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+		GroupName:   aws.String("andaime-sg"),
+		VpcId:       aws.String(vpcid),
+		Description: aws.String("Security group for Andaime deployments"),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeSecurityGroup,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String("andaime-sg")},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create security group: %w", err)
+	}
+
+	sgRules := []ec2_types.IpPermission{}
+	allowedPorts := []int{22, 1234, 1235, 4222}
+	for _, port := range allowedPorts {
+		sgRules = append(sgRules, ec2_types.IpPermission{
+			IpProtocol: aws.String("tcp"),
+			FromPort:   aws.Int32(int32(port)),
+			ToPort:     aws.Int32(int32(port)),
+			IpRanges: []ec2_types.IpRange{
+				{
+					CidrIp: aws.String("0.0.0.0/0"),
+				},
+			},
+		})
+	}
+
+	_, err = p.GetEC2Client().
+		AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
+			GroupId:       sgOutput.GroupId,
+			IpPermissions: sgRules,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("failed to authorize security group ingress: %w", err)
+	}
+
+	return sgOutput.GroupId, nil
+}
+
+func (p *AWSProvider) importSSHKeyPair(
+	_ context.Context,
+	sshPublicKeyPath string,
+) (string, error) {
+	l := logger.Get()
+	l.Info("Reading SSH public key...")
+
+	// Read the public key file
+	publicKeyBytes, err := os.ReadFile(sshPublicKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read SSH public key: %w", err)
+	}
+
+	l.Infof("Read SSH public key from %s", sshPublicKeyPath)
+	return string(publicKeyBytes), nil
+}
+
+// generateRandomString creates a random string of specified length
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+// saveInfrastructureToConfig saves all infrastructure IDs to the configuration
+func (p *AWSProvider) saveInfrastructureToConfig() error {
+	// Create a local lock to ensure we only write to the config file once
+	p.ConfigMutex.Lock()
+	defer p.ConfigMutex.Unlock()
+
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	basePath := m.Deployment.ViperPath
+	for region, vpc := range m.Deployment.AWS.RegionalResources.VPCs {
+		viper.Set(fmt.Sprintf("%s.regions.%s.vpc_id", basePath, region), vpc.VPCID)
+	}
+
+	return viper.WriteConfig()
+}
+
+func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	var eg errgroup.Group
+	for region := range m.Deployment.AWS.RegionalResources.VPCs {
+		region := region
+		vpcID := m.Deployment.AWS.RegionalResources.VPCs[region].VPCID
+
+		eg.Go(func() error {
+			l := logger.Get()
+			l.Debugf("Starting network connectivity check with VPC ID %s", vpcID)
+
+			b := backoff.NewExponentialBackOff()
+			b.InitialInterval = 5 * time.Second
+			b.MaxInterval = 30 * time.Second
+			b.MaxElapsedTime = 5 * time.Minute
+
+			l.Info("Starting network connectivity check...")
+			l.Infof("Using VPC ID: %s", vpcID)
+
+			operation := func() error {
+				if err := ctx.Err(); err != nil {
+					l.Error(fmt.Sprintf("Context error: %v", err))
+					return backoff.Permanent(err)
+				}
+
+				// Check if we can describe route tables (tests network connectivity)
+				input := &ec2.DescribeRouteTablesInput{
+					Filters: []ec2_types.Filter{
+						{
+							Name:   aws.String("vpc-id"),
+							Values: []string{vpcID},
+						},
+					},
+				}
+
+				l.Info("Attempting to describe route tables for VPC connectivity check...")
+				l.Debugf("Looking for route tables in VPC %s with internet gateway routes", vpcID)
+				result, err := p.EC2Client.DescribeRouteTables(ctx, input)
+				if err != nil {
+					l.Debugf("Failed to describe route tables: %v", err)
+					return fmt.Errorf("failed to describe route tables: %w", err)
+				}
+
+				l.Debugf("Route tables found with VPC ID %s: %d", vpcID, len(result.RouteTables))
+
+				// Verify route table has internet gateway route
+				hasInternetRoute := false
+				for i, rt := range result.RouteTables {
+					l.Infof("Checking route table %d...", i+1)
+					l.Infof("Route table ID: %s", *rt.RouteTableId)
+
+					for _, route := range rt.Routes {
+						if route.GatewayId != nil {
+							l.Debugf(
+								"Examining route: [RouteTable: %s] [GatewayID: %s] [Destination: %s] [State: %s]",
+								*rt.RouteTableId,
+								aws.ToString(route.GatewayId),
+								aws.ToString(route.DestinationCidrBlock),
+								string(route.State),
+							)
+							if strings.HasPrefix(*route.GatewayId, "igw-") {
+								hasInternetRoute = true
+								l.Info("Found internet gateway route!")
+								break
+							}
+						}
+					}
+				}
+
+				if !hasInternetRoute {
+					l.Warn("No internet gateway route found in any route table")
+					return fmt.Errorf("internet gateway route not found")
+				}
+
+				l.Info("Network connectivity check passed")
+				return nil
+			}
+
+			return backoff.Retry(operation, backoff.WithContext(b, ctx))
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("network connectivity check failed: %w", err)
+	}
+
+	return nil
+}
+
+// cleanupAbandonedVPCs attempts to find and remove any abandoned VPCs
+func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
+	l := logger.Get()
+	l.Info("Attempting to cleanup abandoned VPCs")
+
+	// List all VPCs
+	result, err := p.EC2Client.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{})
+	if err != nil {
+		return fmt.Errorf("failed to list VPCs: %w", err)
+	}
+
+	for _, vpc := range result.Vpcs {
+		// Skip the default VPC
+		if aws.ToBool(vpc.IsDefault) {
+			continue
+		}
+
+		// Check if VPC has the andaime tag
+		isAndaimeVPC := false
+		for _, tag := range vpc.Tags {
+			if aws.ToString(tag.Key) == "andaime" {
+				isAndaimeVPC = true
+				break
+			}
+		}
+
+		if isAndaimeVPC {
+			vpcID := aws.ToString(vpc.VpcId)
+			l.Infof("Found abandoned VPC %s, cleaning up dependencies...", vpcID)
+
+			// 1. Delete subnets
+			subnets, err := p.EC2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("vpc-id"),
+						Values: []string{vpcID},
+					},
+				},
+			})
+			if err != nil {
+				l.Warnf("Failed to describe subnets for VPC %s: %v", vpcID, err)
+				continue
+			}
+
+			for _, subnet := range subnets.Subnets {
+				_, err := p.EC2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
+					SubnetId: subnet.SubnetId,
+				})
+				if err != nil {
+					l.Warnf("Failed to delete subnet %s: %v", aws.ToString(subnet.SubnetId), err)
+				}
+			}
+
+			// 2. Delete security groups (except default)
+			sgs, err := p.EC2Client.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("vpc-id"),
+						Values: []string{vpcID},
+					},
+				},
+			})
+			if err != nil {
+				l.Warnf("Failed to describe security groups for VPC %s: %v", vpcID, err)
+				continue
+			}
+
+			for _, sg := range sgs.SecurityGroups {
+				if aws.ToString(sg.GroupName) != DefaultName {
+					_, err := p.EC2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+						GroupId: sg.GroupId,
+					})
+					if err != nil {
+						l.Warnf(
+							"Failed to delete security group %s: %v",
+							aws.ToString(sg.GroupId),
+							err,
+						)
+					}
+				}
+			}
+
+			// 3. Delete route tables (except main)
+			rts, err := p.EC2Client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("vpc-id"),
+						Values: []string{vpcID},
+					},
+				},
+			})
+			if err != nil {
+				l.Warnf("Failed to describe route tables for VPC %s: %v", vpcID, err)
+				continue
+			}
+
+			for _, rt := range rts.RouteTables {
+				// Skip the main route table
+				isMain := false
+				for _, assoc := range rt.Associations {
+					if aws.ToBool(assoc.Main) {
+						isMain = true
+						break
+					}
+				}
+				if isMain {
+					continue
+				}
+
+				// Delete route table associations first
+				for _, assoc := range rt.Associations {
+					if assoc.RouteTableAssociationId != nil {
+						_, err := p.EC2Client.DisassociateRouteTable(
+							ctx,
+							&ec2.DisassociateRouteTableInput{
+								AssociationId: assoc.RouteTableAssociationId,
+							},
+						)
+						if err != nil {
+							l.Warnf(
+								"Failed to disassociate route table %s: %v",
+								aws.ToString(rt.RouteTableId),
+								err,
+							)
+						}
+					}
+				}
+
+				_, err := p.EC2Client.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
+					RouteTableId: rt.RouteTableId,
+				})
+				if err != nil {
+					l.Warnf(
+						"Failed to delete route table %s: %v",
+						aws.ToString(rt.RouteTableId),
+						err,
+					)
+				}
+			}
+
+			// 4. Detach and delete internet gateways
+			igws, err := p.EC2Client.DescribeInternetGateways(
+				ctx,
+				&ec2.DescribeInternetGatewaysInput{
+					Filters: []ec2_types.Filter{
+						{
+							Name:   aws.String("attachment.vpc-id"),
+							Values: []string{vpcID},
+						},
+					},
+				},
+			)
+			if err != nil {
+				l.Warnf("Failed to describe internet gateways for VPC %s: %v", vpcID, err)
+				continue
+			}
+
+			for _, igw := range igws.InternetGateways {
+				// Detach first
+				_, err := p.EC2Client.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
+					InternetGatewayId: igw.InternetGatewayId,
+					VpcId:             aws.String(vpcID),
+				})
+				if err != nil {
+					l.Warnf(
+						"Failed to detach internet gateway %s: %v",
+						aws.ToString(igw.InternetGatewayId),
+						err,
+					)
+					continue
+				}
+
+				// Then delete
+				_, err = p.EC2Client.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
+					InternetGatewayId: igw.InternetGatewayId,
+				})
+				if err != nil {
+					l.Warnf(
+						"Failed to delete internet gateway %s: %v",
+						aws.ToString(igw.InternetGatewayId),
+						err,
+					)
+				}
+			}
+
+			// Finally, delete the VPC
+			_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
+				VpcId: aws.String(vpcID),
+			})
+			if err != nil {
+				l.Warnf("Failed to delete VPC %s: %v", vpcID, err)
+				continue
+			}
+			l.Infof("Successfully deleted abandoned VPC %s and its dependencies", vpcID)
+		}
+	}
+
 	return nil
 }
 
@@ -599,55 +1499,6 @@ func (p *AWSProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
 
 func (p *AWSProvider) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
-}
-
-func NewVpcStack(scope constructs.Construct, id string, props *awscdk.StackProps) awscdk.Stack {
-	stack := awscdk.NewStack(scope, &id, props)
-
-	vpc := awsec2.NewVpc(stack, jsii.String("AndaimeVPC"), &awsec2.VpcProps{
-		MaxAzs: jsii.Number(2),
-		SubnetConfiguration: &[]*awsec2.SubnetConfiguration{
-			{
-				CidrMask:   jsii.Number(24),
-				Name:       jsii.String("Public"),
-				SubnetType: awsec2.SubnetType_PUBLIC,
-			},
-			{
-				CidrMask:   jsii.Number(24),
-				Name:       jsii.String("Private"),
-				SubnetType: awsec2.SubnetType_PRIVATE_WITH_EGRESS,
-			},
-		},
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("VpcId"), &awscdk.CfnOutputProps{
-		Value:       vpc.VpcId(),
-		Description: jsii.String("VPC ID"),
-	})
-
-	for i, subnet := range *vpc.PublicSubnets() {
-		awscdk.NewCfnOutput(
-			stack,
-			jsii.String(fmt.Sprintf("PublicSubnet%d", i)),
-			&awscdk.CfnOutputProps{
-				Value:       subnet.SubnetId(),
-				Description: jsii.String(fmt.Sprintf("Public Subnet %d ID", i)),
-			},
-		)
-	}
-
-	for i, subnet := range *vpc.PrivateSubnets() {
-		awscdk.NewCfnOutput(
-			stack,
-			jsii.String(fmt.Sprintf("PrivateSubnet%d", i)),
-			&awscdk.CfnOutputProps{
-				Value:       subnet.SubnetId(),
-				Description: jsii.String(fmt.Sprintf("Private Subnet %d ID", i)),
-			},
-		)
-	}
-
-	return stack
 }
 
 func (p *AWSProvider) ValidateMachineType(
@@ -698,112 +1549,6 @@ func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (s
 	return *instance.PublicIpAddress, nil
 }
 
-func (p *AWSProvider) ListDeployments(ctx context.Context) ([]string, error) {
-	l := logger.Get()
-	l.Info("Listing AWS deployments")
-
-	// Create CloudFormation client
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-	cfnClient := cloudformation.NewFromConfig(cfg)
-
-	// List stacks with our deployment tag
-	input := &cloudformation.ListStacksInput{
-		StackStatusFilter: []types.StackStatus{
-			types.StackStatusCreateComplete,
-			types.StackStatusUpdateComplete,
-		},
-	}
-
-	paginator := cloudformation.NewListStacksPaginator(cfnClient, input)
-	var deployments []string
-
-	for paginator.HasMorePages() {
-		output, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list stacks: %w", err)
-		}
-
-		for _, stack := range output.StackSummaries {
-			// Check if the stack has our deployment tag
-			describeInput := &cloudformation.DescribeStacksInput{
-				StackName: stack.StackName,
-			}
-			describeOutput, err := cfnClient.DescribeStacks(ctx, describeInput)
-			if err != nil {
-				l.Warnf("Failed to describe stack %s: %v", *stack.StackName, err)
-				continue
-			}
-
-			if len(describeOutput.Stacks) > 0 {
-				for _, tag := range describeOutput.Stacks[0].Tags {
-					if *tag.Key == "AndaimeDeployment" && *tag.Value == "true" {
-						deployments = append(deployments, *stack.StackName)
-						break
-					}
-				}
-			}
-		}
-	}
-
-	l.Infof("Found %d AWS deployments", len(deployments))
-	return deployments, nil
-}
-
-func (p *AWSProvider) TerminateDeployment(ctx context.Context) error {
-	l := logger.Get()
-	l.Info("Starting termination of AWS deployment")
-
-	if p.Stack == nil {
-		return fmt.Errorf("no active stack found for termination")
-	}
-
-	// Create CloudFormation client
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(p.Region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-	cfnClient := cloudformation.NewFromConfig(cfg)
-
-	// Get the stack name
-	stackName := *p.Stack.StackName()
-
-	// Delete the CloudFormation stack
-	_, err = cfnClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName: aws.String(stackName),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to initiate stack deletion: %w", err)
-	}
-
-	l.Infof("Initiated deletion of stack: %s", stackName)
-
-	// Wait for the stack to be deleted
-	l.Info("Waiting for stack deletion to complete...")
-	waiter := cloudformation.NewStackDeleteCompleteWaiter(cfnClient)
-	maxWaitTime := 30 * time.Minute
-	if err := waiter.Wait(ctx, &cloudformation.DescribeStacksInput{
-		StackName: aws.String(stackName),
-	}, maxWaitTime); err != nil {
-		return fmt.Errorf("error waiting for stack deletion: %w", err)
-	}
-
-	l.Info("Stack deletion completed successfully")
-
-	// Clean up local state
-	p.Stack = nil
-	p.VPC = nil
-
-	// Remove the deployment from the configuration
-	if err := p.removeDeploymentFromConfig(stackName); err != nil {
-		l.Warnf("Failed to remove deployment from config: %v", err)
-	}
-
-	return nil
-}
-
 func (p *AWSProvider) removeDeploymentFromConfig(stackName string) error {
 	deployments := viper.GetStringMap("deployments")
 	for uniqueID, details := range deployments {
@@ -830,29 +1575,198 @@ func (p *AWSProvider) removeDeploymentFromConfig(stackName string) error {
 	return nil
 }
 
-func (p *AWSProvider) ToCloudFormationTemplate(
-	ctx context.Context,
-	stackName string,
-) (map[string]interface{}, error) {
-	svc := p.cloudFormationClient
-
-	// Get the template from CloudFormation
-	input := &cloudformation.GetTemplateInput{
-		StackName: aws.String(stackName),
-	}
-	result, err := svc.GetTemplate(ctx, input)
+func (p *AWSProvider) cleanupRouteTables(ctx context.Context, vpcID string) error {
+	l := logger.Get()
+	rts, err := p.EC2Client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("vpc-id"),
+				Values: []string{vpcID},
+			},
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to get cloudformation template: %w", err)
+		return fmt.Errorf("failed to describe route tables: %w", err)
 	}
 
-	// Deserialize the template body from JSON to map[string]interface{}
-	var template map[string]interface{}
-	err = json.Unmarshal([]byte(*result.TemplateBody), &template)
+	for _, rt := range rts.RouteTables {
+		// Skip the main route table
+		isMain := false
+		for _, assoc := range rt.Associations {
+			if aws.ToBool(assoc.Main) {
+				isMain = true
+				break
+			}
+		}
+		if isMain {
+			l.Debugf("Skipping main route table %s", *rt.RouteTableId)
+			continue
+		}
+
+		// Delete route table associations first
+		for _, assoc := range rt.Associations {
+			if assoc.RouteTableAssociationId != nil {
+				l.Debugf("Disassociating route table %s", *assoc.RouteTableAssociationId)
+				_, err := p.EC2Client.DisassociateRouteTable(ctx, &ec2.DisassociateRouteTableInput{
+					AssociationId: assoc.RouteTableAssociationId,
+				})
+				if err != nil {
+					return fmt.Errorf("failed to disassociate route table: %w", err)
+				}
+			}
+		}
+
+		l.Debugf("Deleting route table %s", *rt.RouteTableId)
+		_, err := p.EC2Client.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
+			RouteTableId: rt.RouteTableId,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete route table: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (p *AWSProvider) cleanupInternetGateways(ctx context.Context, vpcID string) error {
+	l := logger.Get()
+	igws, err := p.EC2Client.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("attachment.vpc-id"),
+				Values: []string{vpcID},
+			},
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal template body: %w", err)
+		return fmt.Errorf("failed to describe internet gateways: %w", err)
 	}
 
-	return template, nil
+	for _, igw := range igws.InternetGateways {
+		// Detach first
+		l.Debugf("Detaching internet gateway %s from VPC %s", *igw.InternetGatewayId, vpcID)
+		_, err := p.EC2Client.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
+			InternetGatewayId: igw.InternetGatewayId,
+			VpcId:             aws.String(vpcID),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to detach internet gateway: %w", err)
+		}
+
+		// Then delete
+		l.Debugf("Deleting internet gateway %s", *igw.InternetGatewayId)
+		_, err = p.EC2Client.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
+			InternetGatewayId: igw.InternetGatewayId,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete internet gateway: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Helper functions for VPC routing setup
+func (p *AWSProvider) setupRouting(ctx context.Context, vpc *models.AWSVPC) error {
+	l := logger.Get()
+	// Create public route table
+	l.Debug("Creating public route table")
+	publicRT, err := p.EC2Client.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{
+		VpcId: aws.String(vpc.VPCID),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeRouteTable,
+				Tags: []ec2_types.Tag{
+					{Key: aws.String("Name"), Value: aws.String("public-rt")},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create public route table: %w", err)
+	}
+	vpc.PublicRouteTableID = *publicRT.RouteTable.RouteTableId
+
+	// Create route to Internet Gateway
+	if err := p.createInternetGatewayRoute(ctx, vpc); err != nil {
+		return err
+	}
+
+	// Associate public subnets with route table
+	return p.associatePublicSubnets(ctx, vpc)
+}
+
+func (p *AWSProvider) createInternetGatewayRoute(ctx context.Context, vpc *models.AWSVPC) error {
+	l := logger.Get()
+	l.Debugf("Creating internet gateway route for VPC %s", vpc.VPCID)
+	_, err := p.EC2Client.CreateRoute(ctx, &ec2.CreateRouteInput{
+		RouteTableId:         aws.String(vpc.PublicRouteTableID),
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+		GatewayId:            aws.String(vpc.InternetGatewayID),
+	})
+	return err
+}
+
+func (p *AWSProvider) associatePublicSubnets(ctx context.Context, vpc *models.AWSVPC) error {
+	l := logger.Get()
+	for _, subnetID := range vpc.PublicSubnetIDs {
+		l.Debugf("Associating subnet %s with route table %s", subnetID, vpc.PublicRouteTableID)
+		_, err := p.EC2Client.AssociateRouteTable(ctx, &ec2.AssociateRouteTableInput{
+			RouteTableId: aws.String(vpc.PublicRouteTableID),
+			SubnetId:     aws.String(subnetID),
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to associate public subnet %s with route table: %w",
+				subnetID,
+				err,
+			)
+		}
+	}
+	return nil
+}
+
+// VPC state display update helper
+func (p *AWSProvider) updateVPCDisplayState(
+	m *display.DisplayModel,
+	state models.MachineResourceState,
+) {
+	if m != nil && m.Deployment != nil {
+		for _, machine := range m.Deployment.GetMachines() {
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "VPC",
+					ResourceState: state,
+				},
+			})
+		}
+	}
+}
+
+// Additional VPC manager methods
+func (p *AWSProvider) GetVPCState(region string) (*VPCState, error) {
+	if p.vpcManager == nil {
+		return nil, fmt.Errorf("VPC manager not initialized")
+	}
+	return p.vpcManager.GetOrCreateVPCState(region), nil
+}
+
+func (p *AWSProvider) ValidateVPCState(region string) error {
+	state, err := p.GetVPCState(region)
+	if err != nil {
+		return err
+	}
+
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+
+	if state.vpc == nil || state.vpc.VPCID == "" {
+		return fmt.Errorf("no valid VPC found for region %s", region)
+	}
+
+	return nil
 }
 
 func (p *AWSProvider) ProvisionBacalhauCluster(ctx context.Context) error {
@@ -867,6 +1781,330 @@ func (p *AWSProvider) FinalizeDeployment(ctx context.Context) error {
 	return nil
 }
 
+// WaitUntilInstanceRunning waits for an EC2 instance to reach the running state
+func (p *AWSProvider) WaitUntilInstanceRunning(
+	ctx context.Context,
+	input *ec2.DescribeInstancesInput,
+) error {
+	l := logger.Get()
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 5 * time.Second
+	b.MaxInterval = 30 * time.Second
+	b.MaxElapsedTime = 10 * time.Minute
+
+	operation := func() error {
+		if err := ctx.Err(); err != nil {
+			return backoff.Permanent(err)
+		}
+
+		result, err := p.EC2Client.DescribeInstances(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to describe instances: %w", err)
+		}
+
+		if len(result.Reservations) == 0 || len(result.Reservations[0].Instances) == 0 {
+			return fmt.Errorf("no instances found")
+		}
+
+		instance := result.Reservations[0].Instances[0]
+		if instance.State == nil {
+			return fmt.Errorf("instance state is nil")
+		}
+
+		switch instance.State.Name {
+		case ec2_types.InstanceStateNameRunning:
+			return nil
+		case ec2_types.InstanceStateNameTerminated, ec2_types.InstanceStateNameShuttingDown:
+			return backoff.Permanent(fmt.Errorf("instance terminated or shutting down"))
+		default:
+			return fmt.Errorf("instance not yet running, current state: %s", instance.State.Name)
+		}
+	}
+
+	err := backoff.Retry(operation, backoff.WithContext(b, ctx))
+	if err != nil {
+		return fmt.Errorf("timeout waiting for instance to reach running state: %w", err)
+	}
+
+	l.Info("Instance is now running")
+	return nil
+}
+
 func (p *AWSProvider) SetEC2Client(client aws_interface.EC2Clienter) {
 	p.EC2Client = client
+}
+
+func (p *AWSProvider) GetEC2Client() aws_interface.EC2Clienter {
+	return p.EC2Client
+}
+
+func (p *AWSProvider) GetPrimaryRegion() string {
+	return p.Config.Region
+}
+
+func (p *AWSProvider) GetAccountID() string {
+	return p.AccountID
+}
+
+func (p *AWSProvider) GetConfig() *aws.Config {
+	return p.Config
+}
+
+// GetLatestUbuntuAMI returns the latest Ubuntu 22.04 LTS AMI ID for the specified architecture
+// arch should be either "x86_64" or "arm64"
+func (p *AWSProvider) GetLatestUbuntuAMI(
+	ctx context.Context,
+	loc string,
+	arch string,
+) (string, error) {
+	c := p.GetEC2Client()
+
+	input := &ec2.DescribeImagesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("name"),
+				Values: []string{"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-*-server-*"},
+			},
+			{
+				Name:   aws.String("architecture"),
+				Values: []string{arch},
+			},
+			{
+				Name:   aws.String("virtualization-type"),
+				Values: []string{"hvm"},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+			{
+				Name:   aws.String("owner-id"),
+				Values: []string{"099720109477"}, // Canonical's AWS account ID
+			},
+		},
+	}
+
+	result, err := c.DescribeImages(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe images: %w", err)
+	}
+
+	if len(result.Images) == 0 {
+		return "", fmt.Errorf(
+			"no matching Ubuntu AMI found for location: '%s' and architecture: '%s'",
+			loc, arch,
+		)
+	}
+
+	// Sort images by creation date (newest first)
+	sort.Slice(result.Images, func(i, j int) bool {
+		iTime, _ := time.Parse(time.RFC3339, *result.Images[i].CreationDate)
+		jTime, _ := time.Parse(time.RFC3339, *result.Images[j].CreationDate)
+		return iTime.After(jTime)
+	})
+
+	// Return the ID of the newest image
+	return *result.Images[0].ImageId, nil
+}
+
+// ListDeployments returns a list of all deployments across regions with the "andaime" tag
+func (p *AWSProvider) ListDeployments(ctx context.Context) ([]DeploymentInfo, error) {
+	// Get list of all AWS regions
+	var cfg aws.Config
+	var err error
+	if p.Config != nil {
+		cfg = *p.Config
+	} else {
+		cfg, err = awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+		}
+	}
+
+	// Set the initial region if not set
+	if cfg.Region == "" {
+		cfg.Region = p.Config.Region
+	}
+
+	ec2Client := ec2.NewFromConfig(cfg)
+	regionsOutput, err := ec2Client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list AWS regions: %w", err)
+	}
+
+	var deployments []DeploymentInfo
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Query each region in parallel
+	for _, region := range regionsOutput.Regions {
+		region := region // Create new variable for goroutine
+		g.Go(func() error {
+			// Create regional client
+			regionalCfg := cfg.Copy()
+			regionalCfg.Region = *region.RegionName
+			regionalClient := ec2.NewFromConfig(regionalCfg)
+
+			// Query VPCs with andaime tag
+			vpcOutput, err := regionalClient.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("tag-key"),
+						Values: []string{"andaime"},
+					},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to list VPCs in region %s: %w", *region.RegionName, err)
+			}
+
+			// Group VPCs by deployment ID (from tags)
+			deploymentVPCs := make(map[string][]ec2_types.Vpc)
+			for _, vpc := range vpcOutput.Vpcs {
+				var deploymentID string
+				for _, tag := range vpc.Tags {
+					if *tag.Key == "andaime-deployment-id" {
+						deploymentID = *tag.Value
+						break
+					}
+				}
+				if deploymentID != "" {
+					deploymentVPCs[deploymentID] = append(deploymentVPCs[deploymentID], vpc)
+				}
+			}
+
+			// For each deployment, count instances
+			for deploymentID, vpcs := range deploymentVPCs {
+				// Get instance count for all VPCs in this deployment
+				var instanceCount int
+				for _, vpc := range vpcs {
+					instanceOutput, err := regionalClient.DescribeInstances(
+						ctx,
+						&ec2.DescribeInstancesInput{
+							Filters: []ec2_types.Filter{
+								{
+									Name:   aws.String("vpc-id"),
+									Values: []string{*vpc.VpcId},
+								},
+								{
+									Name:   aws.String("tag-key"),
+									Values: []string{"andaime"},
+								},
+							},
+						},
+					)
+					if err != nil {
+						return fmt.Errorf("failed to list instances in VPC %s: %w", *vpc.VpcId, err)
+					}
+
+					for _, reservation := range instanceOutput.Reservations {
+						instanceCount += len(reservation.Instances)
+					}
+				}
+
+				// Create deployment info
+				info := DeploymentInfo{
+					ID:            deploymentID,
+					Region:        *region.RegionName,
+					VPCCount:      len(vpcs),
+					InstanceCount: instanceCount,
+					Tags:          make(map[string]string),
+				}
+
+				// Add any additional andaime-related tags from the first VPC
+				if len(vpcs) > 0 {
+					for _, tag := range vpcs[0].Tags {
+						if strings.HasPrefix(*tag.Key, "andaime-") {
+							info.Tags[*tag.Key] = *tag.Value
+						}
+					}
+				}
+
+				deployments = append(deployments, info)
+			}
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Also check local config file for any deployments
+	configDeployments := viper.GetStringMap("aws.deployments")
+	for id := range configDeployments {
+		// Check if this deployment was already found in AWS
+		found := false
+		for _, d := range deployments {
+			if d.ID == id {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			// Add deployment from config
+			deployments = append(deployments, DeploymentInfo{
+				ID:     id,
+				Region: viper.GetString(fmt.Sprintf("aws.deployments.%s.region", id)),
+				Tags: map[string]string{
+					"andaime-source": "local-config",
+				},
+			})
+		}
+	}
+
+	return deployments, nil
+}
+
+// GetOrCreateVPCState gets or creates a VPC state for a region
+func (rm *RegionalVPCManager) GetOrCreateVPCState(region string) *VPCState {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	if state, exists := rm.states[region]; exists {
+		return state
+	}
+
+	state := &VPCState{
+		vpc:         rm.deployment.AWS.RegionalResources.GetVPC(region),
+		lastUpdated: time.Now(),
+	}
+	rm.states[region] = state
+	return state
+}
+
+// UpdateVPC atomically updates a VPC's state
+func (rm *RegionalVPCManager) UpdateVPC(region string, updateFn func(*models.AWSVPC) error) error {
+	state := rm.GetOrCreateVPCState(region)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	if state.vpc == nil {
+		state.vpc = &models.AWSVPC{}
+		rm.deployment.AWS.RegionalResources.SetVPC(region, state.vpc)
+	}
+
+	if err := updateFn(state.vpc); err != nil {
+		return fmt.Errorf("failed to update VPC state: %w", err)
+	}
+
+	state.lastUpdated = time.Now()
+	return nil
+}
+
+// SaveVPCConfig saves VPC configuration to viper
+func (rm *RegionalVPCManager) SaveVPCConfig(region string) error {
+	state := rm.GetOrCreateVPCState(region)
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+
+	if state.vpc == nil {
+		return fmt.Errorf("no VPC found for region %s", region)
+	}
+
+	deploymentPath := fmt.Sprintf("deployments.%s", rm.deployment.UniqueID)
+	viper.Set(fmt.Sprintf("%s.aws.regions.%s.vpc_id", deploymentPath, region), state.vpc.VPCID)
+
+	return viper.WriteConfig()
 }

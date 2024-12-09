@@ -16,6 +16,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 	"golang.org/x/sync/errgroup"
@@ -26,7 +27,7 @@ type UpdateCallback func(*models.DisplayStatus)
 
 // ClusterDeployer struct that implements ClusterDeployerInterface
 type ClusterDeployer struct {
-	sshClient sshutils.SSHClienter
+	sshClient sshutils_interface.SSHClienter
 	provider  models.DeploymentType
 }
 
@@ -36,7 +37,7 @@ func NewClusterDeployer(provider models.DeploymentType) *ClusterDeployer {
 	}
 }
 
-func (cd *ClusterDeployer) SetSSHClient(client sshutils.SSHClienter) {
+func (cd *ClusterDeployer) SetSSHClient(client sshutils_interface.SSHClienter) {
 	cd.sshClient = client
 }
 
@@ -233,7 +234,7 @@ func (cd *ClusterDeployer) FindOrchestratorMachine() (models.Machiner, error) {
 // and marks the machine as complete.
 func (cd *ClusterDeployer) ProvisionBacalhauNode(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	machine models.Machiner,
 	bacalhauSettings []models.BacalhauSettings,
 ) error {
@@ -289,7 +290,7 @@ func (cd *ClusterDeployer) sendErrorUpdate(
 
 func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	machine models.Machiner,
 	bacalhauSettings []models.BacalhauSettings,
 	callback UpdateCallback,
@@ -477,13 +478,15 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 		false,
 	)
 
-	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+	if out, err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 		cd.sendErrorUpdate(
 			stepRegistry.GetStep(common_interface.ServiceRestart),
 			callback,
 			err,
 		)
 		return cd.HandleDeploymentError(ctx, machine, err)
+	} else {
+		l.Infof("Bacalhau service restarted: %s", out)
 	}
 
 	cd.sendStepUpdate(
@@ -521,7 +524,9 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	return nil
 }
 
-func (cd *ClusterDeployer) createSSHConfig(machine models.Machiner) (sshutils.SSHConfiger, error) {
+func (cd *ClusterDeployer) createSSHConfig(
+	machine models.Machiner,
+) (sshutils_interface.SSHConfiger, error) {
 	return sshutils.NewSSHConfigFunc(
 		machine.GetPublicIP(),
 		machine.GetSSHPort(),
@@ -533,7 +538,7 @@ func (cd *ClusterDeployer) createSSHConfig(machine models.Machiner) (sshutils.SS
 func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	ctx context.Context,
 	machine models.Machiner,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 ) error {
 	m := display.GetGlobalModelFunc()
 
@@ -607,7 +612,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 
 func (cd *ClusterDeployer) InstallBacalhau(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 ) error {
 	installScriptBytes, err := internal.GetInstallBacalhauScript()
 	if err != nil {
@@ -628,7 +633,7 @@ func (cd *ClusterDeployer) InstallBacalhau(
 
 func (cd *ClusterDeployer) InstallBacalhauRunScript(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 ) error {
 	installScriptBytes, err := internal.GetInstallRunBacalhauScript()
 	if err != nil {
@@ -649,7 +654,7 @@ func (cd *ClusterDeployer) InstallBacalhauRunScript(
 
 func (cd *ClusterDeployer) SetupBacalhauService(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 ) error {
 	serviceContent, err := internal.GetBacalhauServiceScript()
 	if err != nil {
@@ -661,8 +666,10 @@ func (cd *ClusterDeployer) SetupBacalhauService(
 	}
 
 	// Always restart after service installation
-	if err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
+	if out, err := sshConfig.RestartService(ctx, "bacalhau"); err != nil {
 		return fmt.Errorf("failed to restart Bacalhau service: %w", err)
+	} else {
+		logger.Get().Infof("Bacalhau service restarted: %s", out)
 	}
 
 	return nil
@@ -670,7 +677,7 @@ func (cd *ClusterDeployer) SetupBacalhauService(
 
 func (cd *ClusterDeployer) VerifyBacalhauDeployment(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	orchestratorIP string,
 ) error {
 	l := logger.Get()
@@ -705,7 +712,7 @@ func (cd *ClusterDeployer) VerifyBacalhauDeployment(
 
 func (cd *ClusterDeployer) ExecuteCustomScript(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	machine models.Machiner,
 ) error {
 	l := logger.Get()
@@ -739,7 +746,7 @@ func (cd *ClusterDeployer) ExecuteCustomScript(
 
 func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	combinedSettings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
@@ -759,7 +766,7 @@ func (cd *ClusterDeployer) ApplyBacalhauConfigs(
 
 func applySettings(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	settings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
@@ -800,7 +807,7 @@ func applySettings(
 
 func verifySettings(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	expectedSettings []models.BacalhauSettings,
 ) error {
 	l := logger.Get()
@@ -864,7 +871,7 @@ func (cd *ClusterDeployer) HandleDeploymentError(
 
 func (cd *ClusterDeployer) ProvisionMachine(
 	ctx context.Context,
-	sshConfig sshutils.SSHConfiger,
+	sshConfig sshutils_interface.SSHConfiger,
 	machine models.Machiner,
 ) error {
 	m := display.GetGlobalModelFunc()

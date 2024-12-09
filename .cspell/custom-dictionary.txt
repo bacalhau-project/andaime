@@ -37,6 +37,7 @@ awsprovider
 awss
 awsssm
 AWSVM
+AWSVPC
 azcore
 azidentity
 azurepackage
@@ -268,6 +269,8 @@ panicnil
 PBIP
 pdone
 pflag
+pkill
+polandcentral
 Pollerer
 practise
 predeclared
@@ -304,6 +307,7 @@ resultdownloaders
 Retryable
 rgname
 rivo
+rtbassoc
 runewidth
 schollz
 Sdump
@@ -316,6 +320,7 @@ serviceusage
 serviceusagepb
 sess
 Sessioner
+SetSGID
 sigchanyzer
 sirupsen
 Skus
@@ -328,6 +333,7 @@ sshbehavior
 sshclient
 sshmock
 sshuser
+sshutil
 sshutils
 staticcheck
 stdpm
@@ -383,6 +389,7 @@ virtualnetworks
 visibilitytimeout
 VMEX
 VMIP
+vmsizes
 VMSS
 vnet
 vnets
