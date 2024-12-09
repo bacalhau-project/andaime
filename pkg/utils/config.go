@@ -31,7 +31,7 @@ const (
 	ConfigFilePermissions = 0600
 )
 
-func DeleteKeyFromConfig(key string) error {
+func DeleteUniqueIDFromConfig(uniqueID string) error {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -48,34 +48,14 @@ func DeleteKeyFromConfig(key string) error {
 
 	configMap := tempViper.AllSettings()
 
-	// Split the key into parts
-	parts := strings.Split(key, ".")
+	// Get the deployments map
+	if deploymentsMap, ok := configMap["deployments"].(map[string]interface{}); ok {
+		// Delete the specific deployment
+		delete(deploymentsMap, uniqueID)
 
-	// Navigate through the nested maps
-	current := configMap
-	for _, part := range parts[:len(parts)-1] {
-		if next, ok := current[part].(map[string]interface{}); ok {
-			current = next
-		} else {
-			// If the path doesn't exist, we're done
-			return nil
-		}
-	}
-
-	// Delete the final key
-	delete(current, parts[len(parts)-1])
-
-	// Clean up empty maps
-	const parentDirIndex = 2
-	for i := len(parts) - parentDirIndex; i >= 0; i-- {
-		parent := configMap
-		for _, part := range parts[:i] {
-			parent = parent[part].(map[string]interface{})
-		}
-		if len(parent[parts[i]].(map[string]interface{})) == 0 {
-			delete(parent, parts[i])
-		} else {
-			break
+		// If deployments is empty, remove it entirely
+		if len(deploymentsMap) == 0 {
+			delete(configMap, "deployments")
 		}
 	}
 

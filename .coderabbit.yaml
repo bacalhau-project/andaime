@@ -11,11 +11,9 @@ reviews:
     enabled: true
     drafts: false
   path_filters:
-    - "vendor/**"
-    - "dist/**"
-    - "mocks/**"
-    - "original/**"
-    - "experimental/**"
-    - "build/**"
+    - "cmd/**"
+    - "internal/**"
+    - "scripts/**"
+    - "pkg/**"
 chat:
   auto_reply: true

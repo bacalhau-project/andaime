@@ -16,6 +16,9 @@ var GCPCmd = &cobra.Command{
 	Use:   "gcp",
 	Short: "GCP-related commands",
 	Long:  `Commands for interacting with Google Cloud Platform (GCP).`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
+	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return nil
 	},

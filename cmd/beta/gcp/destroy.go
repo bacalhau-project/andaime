@@ -134,14 +134,14 @@ func extractGCPDeployments(uniqueID string, details interface{}) ([]ConfigDeploy
 		return nil, nil // Not a GCP deployment, skip
 	}
 
-	for projectID := range gcpDetails {
-		deployments = append(deployments, ConfigDeployment{
-			Name:         projectID,
+	deployments = []ConfigDeployment{
+		{
+			Name:         gcpDetails["project_id"].(string),
 			Type:         models.DeploymentTypeGCP,
-			ID:           projectID,
+			ID:           gcpDetails["project_id"].(string),
 			UniqueID:     uniqueID,
-			FullViperKey: fmt.Sprintf("deployments.%s.gcp.%s", uniqueID, projectID),
-		})
+			FullViperKey: fmt.Sprintf("deployments.%s.gcp.%s", uniqueID, gcpDetails["project_id"]),
+		},
 	}
 
 	return deployments, nil
@@ -170,15 +170,15 @@ func destroyAllDeployments(ctx context.Context, deployments []ConfigDeployment, 
 		fmt.Printf("%d. %s (%s) - %s\n", i+1, dep.Name, dep.Type, dep.ID)
 	}
 
-	if !dryRun {
-		fmt.Print("\nAre you sure you want to destroy these deployments? (y/N): ")
-		reader := bufio.NewReader(os.Stdin)
-		confirm, _ := reader.ReadString('\n')
-		if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-			fmt.Println("Operation cancelled.")
-			return nil
-		}
-	}
+	// if !dryRun {
+	// 	fmt.Print("\nAre you sure you want to destroy these deployments? (y/N): ")
+	// 	reader := bufio.NewReader(os.Stdin)
+	// 	confirm, _ := reader.ReadString('\n')
+	// 	if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
+	// 		fmt.Println("Operation cancelled.")
+	// 		return nil
+	// 	}
+	// }
 
 	g, ctx := errgroup.WithContext(ctx)
 	var mu sync.Mutex
@@ -348,7 +348,7 @@ func destroyGCPDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool
 		}
 
 		fmt.Printf("   Removing deployment from config\n")
-		if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
+		if err := utils.DeleteUniqueIDFromConfig(dep.UniqueID); err != nil {
 			return err
 		}
 	}

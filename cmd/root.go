@@ -59,6 +59,13 @@ func parseConfigFlag() error {
 	// Add only the config flag
 	flagSet.StringVar(&configFile, "config", "", "config file path")
 
+	// Skip if help is requested
+	for _, arg := range os.Args[1:] {
+		if arg == "--help" || arg == "-h" {
+			return nil
+		}
+	}
+
 	// Parse only the known flags (config in this case)
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		return fmt.Errorf("failed to parse config flag: %w", err)
