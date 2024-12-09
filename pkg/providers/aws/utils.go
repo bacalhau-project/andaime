@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"fmt"
@@ -10,11 +10,8 @@ import (
 )
 
 func (p *AWSProvider) GetAllAWSRegions(ctx context.Context) ([]string, error) {
-	// Create an EC2 client with the provider's configuration.
-	ec2Client := ec2.NewFromConfig(*p.Config)
-
-	// Call DescribeRegions to get the list of regions.
-	output, err := ec2Client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{
+	// Use the provider's EC2Client which can be mocked in tests
+	output, err := p.EC2Client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(true),
 	})
 	if err != nil {

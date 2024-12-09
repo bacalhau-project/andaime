@@ -1,17 +1,34 @@
 package sshutils
 
 import (
-	"io"
+	"fmt"
 
-	"golang.org/x/crypto/ssh"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	"github.com/pkg/sftp"
 )
 
-// SFTPClienter interface defines the methods we need for SFTP operations
-type SFTPClienter interface {
-	Create(path string) (io.WriteCloser, error)
-	Open(path string) (io.ReadCloser, error)
-	Close() error
+// defaultSFTPClientCreator is a struct for creating SFTP clients
+type defaultSFTPClientCreator struct{}
+
+func (d *defaultSFTPClientCreator) NewSFTPClient(
+	client sshutils_interfaces.SSHClienter,
+) (*sftp.Client, error) {
+	if client == nil {
+		return nil, fmt.Errorf("SSH client is nil")
+	}
+
+	sshClient := client.GetClient()
+	if sshClient == nil {
+		return nil, fmt.Errorf("SSH client connection is nil")
+	}
+
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
+	}
+
+	return sftpClient, nil
 }
 
-// SFTPDial is a function type for creating SFTP clients
-type SFTPDialFunc func(conn *ssh.Client) (SFTPClienter, error)
+// DefaultSFTPClientCreator is the default SFTP client creator instance
+var DefaultSFTPClientCreator = &defaultSFTPClientCreator{}

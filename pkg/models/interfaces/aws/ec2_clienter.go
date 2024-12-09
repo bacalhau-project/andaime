@@ -33,16 +33,41 @@ type EC2Clienter interface {
 		params *ec2.CreateSubnetInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.CreateSubnetOutput, error)
-	CreateVPC(
+	CreateVpc(
 		ctx context.Context,
 		params *ec2.CreateVpcInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.CreateVpcOutput, error)
-	DescribeVPCs(
+	DescribeVpcs(
 		ctx context.Context,
 		params *ec2.DescribeVpcsInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeVpcsOutput, error)
+	CreateSecurityGroup(
+		ctx context.Context,
+		params *ec2.CreateSecurityGroupInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.CreateSecurityGroupOutput, error)
+	DescribeSecurityGroups(
+		ctx context.Context,
+		params *ec2.DescribeSecurityGroupsInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeSecurityGroupsOutput, error)
+	AuthorizeSecurityGroupIngress(
+		ctx context.Context,
+		params *ec2.AuthorizeSecurityGroupIngressInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
+	DescribeSubnets(
+		ctx context.Context,
+		params *ec2.DescribeSubnetsInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeSubnetsOutput, error)
+	DeleteVpc(
+		ctx context.Context,
+		params *ec2.DeleteVpcInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteVpcOutput, error)
 	CreateInternetGateway(
 		ctx context.Context,
 		params *ec2.CreateInternetGatewayInput,
@@ -68,4 +93,59 @@ type EC2Clienter interface {
 		params *ec2.AssociateRouteTableInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.AssociateRouteTableOutput, error)
+	DescribeRouteTables(
+		ctx context.Context,
+		params *ec2.DescribeRouteTablesInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeRouteTablesOutput, error)
+	DeleteSubnet(
+		ctx context.Context,
+		params *ec2.DeleteSubnetInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteSubnetOutput, error)
+	DeleteSecurityGroup(
+		ctx context.Context,
+		params *ec2.DeleteSecurityGroupInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteSecurityGroupOutput, error)
+	DescribeRegions(
+		ctx context.Context,
+		params *ec2.DescribeRegionsInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeRegionsOutput, error)
+	ModifyVpcAttribute(
+		ctx context.Context,
+		params *ec2.ModifyVpcAttributeInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.ModifyVpcAttributeOutput, error)
+	DisassociateRouteTable(
+		ctx context.Context,
+		params *ec2.DisassociateRouteTableInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DisassociateRouteTableOutput, error)
+	DeleteRouteTable(
+		ctx context.Context,
+		params *ec2.DeleteRouteTableInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteRouteTableOutput, error)
+	DescribeInternetGateways(
+		ctx context.Context,
+		params *ec2.DescribeInternetGatewaysInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeInternetGatewaysOutput, error)
+	DetachInternetGateway(
+		ctx context.Context,
+		params *ec2.DetachInternetGatewayInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DetachInternetGatewayOutput, error)
+	DeleteInternetGateway(
+		ctx context.Context,
+		params *ec2.DeleteInternetGatewayInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DeleteInternetGatewayOutput, error)
+	DescribeAvailabilityZones(
+		ctx context.Context,
+		params *ec2.DescribeAvailabilityZonesInput,
+		optFns ...func(*ec2.Options),
+	) (*ec2.DescribeAvailabilityZonesOutput, error)
 }

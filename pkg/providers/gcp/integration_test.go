@@ -13,9 +13,11 @@ import (
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -33,7 +35,7 @@ type PkgProvidersGCPIntegrationTest struct {
 	origGetGlobalModelFunc func() *display.DisplayModel
 	testDisplayModel       *display.DisplayModel
 	mockGCPClient          *gcp_mocks.MockGCPClienter
-	mockSSHConfig          *sshutils.MockSSHConfig
+	mockSSHConfig          *ssh_mock.MockSSHConfiger
 	cleanup                func()
 }
 
@@ -66,6 +68,7 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 	viper.Set("gcp.region", "us-central1")
 	viper.Set("general.ssh_user", "testuser")
 	viper.Set("general.ssh_port", 22)
+	viper.Set("general.custom_script_path", localCustomScriptPath)
 	viper.Set("gcp.default_disk_size_gb", 30)
 
 	s.mockGCPClient = new(gcp_mocks.MockGCPClienter)
@@ -86,10 +89,6 @@ func (s *PkgProvidersGCPIntegrationTest) SetupSuite() {
 		_ = os.Remove(localCustomScriptPath)
 		viper.Reset()
 	}
-}
-
-func (s *PkgProvidersGCPIntegrationTest) TearDownSuite() {
-	s.cleanup()
 }
 
 func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
@@ -168,156 +167,155 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 			{
 				Dst:              "/tmp/get-node-config-metadata.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-docker.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-core-packages.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-bacalhau.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/install-run-bacalhau.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Dst:              "/tmp/custom_script.sh",
 				Executable:       true,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Error:            nil,
-				FileContents:     localCustomScriptContent,
 				Times:            3,
 			},
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
 				Cmd:              "sudo /tmp/get-node-config-metadata.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-docker.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo docker run hello-world",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "Hello from Docker!",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-core-packages.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-bacalhau.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo /tmp/install-run-bacalhau.sh",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo bash /tmp/custom_script.sh | sudo tee /var/log/andaime-custom-script.log",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "bacalhau node list --output json --api-host 0.0.0.0",
-				ProgressCallback: mock.Anything,
-				Output:           `[{"id": "node1"}]`,
+				ProgressCallback: func(int64, int64) {},
+				Output:           `[{"id":"12D3KooWRTzN7HfmjoUB3WNSCUEm8rDqFqJqmmGwvvcSqyh5vxpq","host":{"name":"orchestrator","address":"10.0.0.1"},"labels":{"andaime_role":"orchestrator"},"compute":{"executors":["docker"],"concurrency":10},"status":{"state":"ready","time":"2024-04-01T10:00:00Z"}}]`,
 				Error:            nil,
 				Times:            1,
 			},
 			{
 				Cmd:              "bacalhau node list --output json --api-host 35.200.100.100",
-				ProgressCallback: mock.Anything,
-				Output:           `[{"id": "node1"}]`,
+				ProgressCallback: func(int64, int64) {},
+				Output:           `[{"id":"12D3KooWRTzN7HfmjoUB3WNSCUEm8rDqFqJqmmGwvvcSqyh5vxpq","host":{"name":"orchestrator","address":"35.200.100.100"},"labels":{"andaime_role":"orchestrator"},"compute":{"executors":["docker"],"concurrency":10},"status":{"state":"ready","time":"2024-04-01T10:00:00Z"}}]`,
 				Error:            nil,
 				Times:            2,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.allowlistedlocalpaths'='/tmp,/data:rw'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.interval'='15s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.infoupdateinterval'='16s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'compute.heartbeat.resourceupdateinterval'='17s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'orchestrator.nodemanager.disconnecttimeout'='18s'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              `sudo bacalhau config set 'jobadmissioncontrol.acceptnetworkedjobs'='true'`,
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "",
 				Error:            nil,
 				Times:            3,
 			},
 			{
 				Cmd:              "sudo bacalhau config list --output json",
-				ProgressCallback: mock.Anything,
+				ProgressCallback: func(int64, int64) {},
 				Output:           "[]",
 				Error:            nil,
 				Times:            3,
@@ -333,8 +331,11 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 		},
 	}
 
-	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior)
-	sshutils.NewSSHConfigFunc = func(host string, port int, user string, sshPrivateKeyPath string) (sshutils.SSHConfiger, error) {
+	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior).(*ssh_mock.MockSSHConfiger)
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
 		return s.mockSSHConfig, nil
 	}
 }
@@ -346,7 +347,7 @@ func (s *PkgProvidersGCPIntegrationTest) TestProvisionResourcesSuccess() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	models.ExpectedDockerOutput = ""
 
 	s.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {

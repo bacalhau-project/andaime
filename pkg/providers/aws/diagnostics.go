@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -49,7 +48,6 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 	// Print Provider Configuration
 	l.Info("\nProvider Configuration:")
 	l.Infof("  Account ID: %s", p.AccountID)
-	l.Infof("  Region: %s", p.Region)
 
 	// Print AWS Credentials
 	l.Info("\nAWS Credentials:")
@@ -90,13 +88,6 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 	// Check if we can access necessary services
 	l.Info("\nService Access Check:")
 
-	// Check CloudFormation
-	_, err = p.cloudFormationClient.ListStacks(ctx, &cloudformation.ListStacksInput{})
-	l.Infof("  CloudFormation Access: %v", err == nil)
-	if err != nil {
-		l.Errorf("    Error: %v", err)
-	}
-
 	// Check S3
 	s3Client := s3.NewFromConfig(*p.Config)
 	_, err = s3Client.ListBuckets(ctx, &s3.ListBucketsInput{})
@@ -128,8 +119,10 @@ func (p *AWSProvider) PrintDiagnostics(ctx context.Context) error {
 
 // Helper function to mask sensitive strings
 func maskString(s string) string {
-	if len(s) <= 4 {
+	visibleLength := 4
+
+	if len(s) <= visibleLength { //nolint:mnd
 		return strings.Repeat("*", len(s))
 	}
-	return s[:4] + strings.Repeat("*", len(s)-4)
+	return s[:visibleLength] + strings.Repeat("*", len(s)-visibleLength)
 }

@@ -13,7 +13,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
@@ -55,6 +55,11 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	deployments, err := getDeployments()
 	if err != nil {
 		return err
+	}
+
+	if len(deployments) == 0 {
+		fmt.Println("No deployments found to destroy")
+		return nil
 	}
 
 	if flags.destroyAll {
@@ -129,6 +134,18 @@ func extractAwsDeployments(uniqueID string, details interface{}) ([]ConfigDeploy
 		return nil, nil // Not an AWS deployment, skip
 	}
 
+	// If this is a deployment without a VPC ID, it won't have stack details
+	if _, hasVpcID := awsDetails["vpc_id"]; hasVpcID {
+		deployments = append(deployments, ConfigDeployment{
+			Name:         uniqueID,
+			Type:         models.DeploymentTypeAWS,
+			UniqueID:     uniqueID,
+			FullViperKey: fmt.Sprintf("deployments.%s", uniqueID),
+		})
+		return deployments, nil
+	}
+
+	// Handle deployments with stack details
 	for stackName, stackDetails := range awsDetails {
 		stackMap, ok := stackDetails.(map[string]interface{})
 		if !ok {
@@ -220,6 +237,10 @@ func selectDeploymentByIndex(deployments []ConfigDeployment, index int) (ConfigD
 }
 
 func selectDeploymentInteractively(deployments []ConfigDeployment) (ConfigDeployment, error) {
+	if len(deployments) == 0 {
+		return ConfigDeployment{}, fmt.Errorf("no deployments available to destroy")
+	}
+
 	fmt.Println("Available deployments:")
 	for i, dep := range deployments {
 		fmt.Printf("%d. %s (%s) - %s\n", i+1, dep.Name, dep.Type, dep.ID)
@@ -256,7 +277,7 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 	if dryRun {
 		fmt.Printf("   -- Dry run: Would destroy AWS resources for VPC %s\n", dep.ID)
 	} else {
-		err = awsProvider.DestroyResources(ctx, dep.ID)
+		err = awsProvider.Destroy(ctx, dep.ID)
 		if err != nil {
 			return fmt.Errorf("failed to destroy AWS deployment %s: %w", dep.Name, err)
 		}
@@ -271,10 +292,9 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 	return nil
 }
 
-func createAwsProvider() (*awsprovider.AWSProvider, error) {
+func createAwsProvider() (*aws_provider.AWSProvider, error) {
 	accountID := viper.GetString("aws.account_id")
-	region := viper.GetString("aws.region")
-	provider, err := awsprovider.NewAWSProvider(accountID, region)
+	provider, err := aws_provider.NewAWSProviderFunc(accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AWS provider: %w", err)
 	}

@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/sshutils"
+	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 )
 
 // Step represents a single step in the provisioning process
@@ -171,7 +171,7 @@ func (s StepMessage) RenderDoneMessage(args ...any) string {
 type ClusterDeployerer interface {
 	ProvisionMachine(
 		ctx context.Context,
-		sshConfig sshutils.SSHConfiger,
+		sshConfig sshutils_interface.SSHConfiger,
 		machine models.Machiner,
 	) error
 	WaitForAllMachinesToReachState(
@@ -182,11 +182,11 @@ type ClusterDeployerer interface {
 
 	ExecuteCustomScript(
 		ctx context.Context,
-		sshConfig sshutils.SSHConfiger,
+		sshConfig sshutils_interface.SSHConfiger,
 		machine models.Machiner,
 	) error
 	ApplyBacalhauConfigs(ctx context.Context,
-		sshConfig sshutils.SSHConfiger,
+		sshConfig sshutils_interface.SSHConfiger,
 		bacalhauSettings []models.BacalhauSettings) error
 
 	ProvisionBacalhauCluster(ctx context.Context) error

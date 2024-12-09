@@ -1,4 +1,4 @@
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -84,7 +84,11 @@ func ensureKeyPairExists(ctx context.Context, client *ec2.Client, keyPairName st
 }
 
 // createVPCIfNotExists creates a new VPC if one with the specified tag doesn't exist
-func createVPCIfNotExists(ctx context.Context, client *ec2.Client, config SpotInstanceConfig) (string, error) {
+func createVPCIfNotExists(
+	ctx context.Context,
+	client *ec2.Client,
+	config SpotInstanceConfig,
+) (string, error) {
 	// Check if a VPC with the specified tag already exists
 	describeVPCsOutput, err := client.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{
 		Filters: []types.Filter{
@@ -102,7 +106,12 @@ func createVPCIfNotExists(ctx context.Context, client *ec2.Client, config SpotIn
 	if len(describeVPCsOutput.Vpcs) > 0 {
 		// VPC already exists
 		vpcID := *describeVPCsOutput.Vpcs[0].VpcId
-		log.Printf("VPC with tag %s:%s already exists: %s", config.VPCTagKey, config.VPCTagValue, vpcID)
+		log.Printf(
+			"VPC with tag %s:%s already exists: %s",
+			config.VPCTagKey,
+			config.VPCTagValue,
+			vpcID,
+		)
 		return vpcID, nil
 	}
 
