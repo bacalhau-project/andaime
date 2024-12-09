@@ -165,7 +165,7 @@ func (c *SSHConfig) PushFileWithCallback(
 		}
 	}
 
-	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes)", remotePath, len(content))
+	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v)", remotePath, len(content), executable)
 	return nil
 }
 
