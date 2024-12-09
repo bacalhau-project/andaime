@@ -10,14 +10,11 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-  path_filters: 
-    - dist/**
-    - __pycache__/**
-    - archival-python-version/**
-    - ai/**
-    - build/**
-    - vendor/**
-    - experimental/**
+  path_filters:
+    - "**"
+    - "!cmd/**"
+    - "!internal/**"
+    - "!scripts/**"
+    - "!pkg/**"
 chat:
   auto_reply: true
-
