@@ -429,6 +429,7 @@ func (s *IntegrationTestSuite) setupMockClusterDeployer() {
 }
 
 func (s *IntegrationTestSuite) setupMockSSHConfig() {
+	s.mockSSHConfig.On("Connect").Return(nil, nil)
 	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker run hello-world").
 		Return("Hello from Docker!", nil)
 	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
@@ -447,6 +448,7 @@ func (s *IntegrationTestSuite) setupMockSSHConfig() {
 		mock.Anything,
 		mock.Anything,
 	).Return(nil)
+	s.mockSSHConfig.On("Close").Return(nil)
 
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,

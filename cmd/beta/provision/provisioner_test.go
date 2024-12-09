@@ -56,6 +56,12 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
 	cbpts.mockClusterDeployer = new(common_mock.MockClusterDeployerer)
 
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
+
 	// Set up the mock SSH config function
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
@@ -63,6 +69,10 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 		return cbpts.mockSSHConfig, nil
 	}
+
+	// Set up Connect and Close expectations
+	cbpts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
+	cbpts.mockSSHConfig.On("Close").Return(nil).Maybe()
 
 	// Set up default expectations with .Maybe() to make them optional
 	cbpts.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
@@ -288,8 +298,16 @@ invalid-setting
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+
 	// Define expected behavior
 	behavior := sshutils.ExpectedSSHBehavior{
+		ConnectExpectation: &sshutils.ConnectExpectation{
+			Client: mockSSHClient,
+			Error:  nil,
+			Times:  2,
+		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
 				Cmd:    "sudo docker run hello-world",
@@ -298,17 +316,20 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 				Error:  nil,
 			},
 			{
-				Cmd:    "bacalhau node list --output json --api-host",
+				Cmd:    "bacalhau node list --output json --api-host 0.0.0.0",
 				Times:  1,
 				Output: `[{"id": "12D"}]`,
 				Error:  nil,
 			},
 		},
+		WaitForSSHCount: 1,
+		WaitForSSHError: nil,
 	}
 
-	// Rest of the test remains the same
+	// Create mock SSH config with behavior
 	mockSSH := sshutils.NewMockSSHConfigWithBehavior(behavior)
 
+	// Set up the mock SSH config function
 	origNewSSHConfigFunc := sshutils.NewSSHConfigFunc
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
@@ -338,10 +359,18 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	logCapture := logger.NewTestLogger(cbpts.T())
 	logger.SetGlobalLogger(logCapture)
 
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
+
 	// Create a mock SSH config
 	mockSSH := new(ssh_mock.MockSSHConfiger)
 
 	// Setup the mock to pass SSH wait but fail command execution
+	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
+	mockSSH.On("Close").Return(nil).Maybe()
 	mockSSH.On("WaitForSSH", mock.Anything,
 		mock.Anything,
 		mock.Anything).Return(nil)

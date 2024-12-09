@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"golang.org/x/crypto/ssh"
 )
 
 type PkgProvidersCommonClusterDeployerTestSuite struct {
@@ -132,7 +133,17 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) SetupTest() {
 // }
 
 func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluster() {
+	mockSSHClient := new(sshutils_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&sshutils_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(&ssh.Client{}).Maybe()
+
 	sshBehavior := sshutils.ExpectedSSHBehavior{
+		ConnectExpectation: &sshutils.ConnectExpectation{
+			Client: mockSSHClient,
+			Error:  nil,
+			Times:  2,
+		},
 		PushFileExpectations: []sshutils.PushFileExpectation{
 			{Dst: mock.Anything, Executable: true, Error: nil, Times: 3},
 		},

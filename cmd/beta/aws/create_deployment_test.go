@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	sshutils_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -82,4 +83,20 @@ deployments:
 		viper.GetString("deployments.test-deployment.aws.regions.us-west-2.security_group_id"),
 		"Security group ID should be written to config",
 	)
+}
+
+func TestExecuteCreateDeployment(t *testing.T) {
+	// ... existing test setup ...
+
+	// Create SSH config mock
+	mockSSHConfig := new(sshutils_mock.MockSSHConfiger)
+
+	// Set up expectations for the Connect call
+	mockSSHConfig.On("Connect").Return(nil)
+
+	// If the mock needs to return a connection, you might need something like:
+	// mockConn := new(mocks.SSHConnection)
+	// mockSSHConfig.On("Connect").Return(mockConn, nil)
+
+	// ... rest of test ...
 }

@@ -22,9 +22,9 @@ func (_m *MockSFTPClienter) EXPECT() *MockSFTPClienter_Expecter {
 	return &MockSFTPClienter_Expecter{mock: &_m.Mock}
 }
 
-// Chmod provides a mock function with given fields: path, mode
-func (_m *MockSFTPClienter) Chmod(path string, mode fs.FileMode) error {
-	ret := _m.Called(path, mode)
+// Chmod provides a mock function with given fields: _a0, _a1
+func (_m *MockSFTPClienter) Chmod(_a0 string, _a1 fs.FileMode) error {
+	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Chmod")
@@ -32,7 +32,7 @@ func (_m *MockSFTPClienter) Chmod(path string, mode fs.FileMode) error {
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(string, fs.FileMode) error); ok {
-		r0 = rf(path, mode)
+		r0 = rf(_a0, _a1)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -46,13 +46,13 @@ type MockSFTPClienter_Chmod_Call struct {
 }
 
 // Chmod is a helper method to define mock.On call
-//   - path string
-//   - mode fs.FileMode
-func (_e *MockSFTPClienter_Expecter) Chmod(path interface{}, mode interface{}) *MockSFTPClienter_Chmod_Call {
-	return &MockSFTPClienter_Chmod_Call{Call: _e.mock.On("Chmod", path, mode)}
+//   - _a0 string
+//   - _a1 fs.FileMode
+func (_e *MockSFTPClienter_Expecter) Chmod(_a0 interface{}, _a1 interface{}) *MockSFTPClienter_Chmod_Call {
+	return &MockSFTPClienter_Chmod_Call{Call: _e.mock.On("Chmod", _a0, _a1)}
 }
 
-func (_c *MockSFTPClienter_Chmod_Call) Run(run func(path string, mode fs.FileMode)) *MockSFTPClienter_Chmod_Call {
+func (_c *MockSFTPClienter_Chmod_Call) Run(run func(_a0 string, _a1 fs.FileMode)) *MockSFTPClienter_Chmod_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(string), args[1].(fs.FileMode))
 	})
@@ -114,9 +114,9 @@ func (_c *MockSFTPClienter_Close_Call) RunAndReturn(run func() error) *MockSFTPC
 	return _c
 }
 
-// Create provides a mock function with given fields: path
-func (_m *MockSFTPClienter) Create(path string) (io.WriteCloser, error) {
-	ret := _m.Called(path)
+// Create provides a mock function with given fields: _a0
+func (_m *MockSFTPClienter) Create(_a0 string) (io.WriteCloser, error) {
+	ret := _m.Called(_a0)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
@@ -125,10 +125,10 @@ func (_m *MockSFTPClienter) Create(path string) (io.WriteCloser, error) {
 	var r0 io.WriteCloser
 	var r1 error
 	if rf, ok := ret.Get(0).(func(string) (io.WriteCloser, error)); ok {
-		return rf(path)
+		return rf(_a0)
 	}
 	if rf, ok := ret.Get(0).(func(string) io.WriteCloser); ok {
-		r0 = rf(path)
+		r0 = rf(_a0)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(io.WriteCloser)
@@ -136,7 +136,7 @@ func (_m *MockSFTPClienter) Create(path string) (io.WriteCloser, error) {
 	}
 
 	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(path)
+		r1 = rf(_a0)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -150,12 +150,12 @@ type MockSFTPClienter_Create_Call struct {
 }
 
 // Create is a helper method to define mock.On call
-//   - path string
-func (_e *MockSFTPClienter_Expecter) Create(path interface{}) *MockSFTPClienter_Create_Call {
-	return &MockSFTPClienter_Create_Call{Call: _e.mock.On("Create", path)}
+//   - _a0 string
+func (_e *MockSFTPClienter_Expecter) Create(_a0 interface{}) *MockSFTPClienter_Create_Call {
+	return &MockSFTPClienter_Create_Call{Call: _e.mock.On("Create", _a0)}
 }
 
-func (_c *MockSFTPClienter_Create_Call) Run(run func(path string)) *MockSFTPClienter_Create_Call {
+func (_c *MockSFTPClienter_Create_Call) Run(run func(_a0 string)) *MockSFTPClienter_Create_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(string))
 	})
@@ -172,9 +172,9 @@ func (_c *MockSFTPClienter_Create_Call) RunAndReturn(run func(string) (io.WriteC
 	return _c
 }
 
-// MkdirAll provides a mock function with given fields: path
-func (_m *MockSFTPClienter) MkdirAll(path string) error {
-	ret := _m.Called(path)
+// MkdirAll provides a mock function with given fields: _a0
+func (_m *MockSFTPClienter) MkdirAll(_a0 string) error {
+	ret := _m.Called(_a0)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MkdirAll")
@@ -182,7 +182,7 @@ func (_m *MockSFTPClienter) MkdirAll(path string) error {
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(path)
+		r0 = rf(_a0)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -196,12 +196,12 @@ type MockSFTPClienter_MkdirAll_Call struct {
 }
 
 // MkdirAll is a helper method to define mock.On call
-//   - path string
-func (_e *MockSFTPClienter_Expecter) MkdirAll(path interface{}) *MockSFTPClienter_MkdirAll_Call {
-	return &MockSFTPClienter_MkdirAll_Call{Call: _e.mock.On("MkdirAll", path)}
+//   - _a0 string
+func (_e *MockSFTPClienter_Expecter) MkdirAll(_a0 interface{}) *MockSFTPClienter_MkdirAll_Call {
+	return &MockSFTPClienter_MkdirAll_Call{Call: _e.mock.On("MkdirAll", _a0)}
 }
 
-func (_c *MockSFTPClienter_MkdirAll_Call) Run(run func(path string)) *MockSFTPClienter_MkdirAll_Call {
+func (_c *MockSFTPClienter_MkdirAll_Call) Run(run func(_a0 string)) *MockSFTPClienter_MkdirAll_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(string))
 	})
@@ -218,9 +218,9 @@ func (_c *MockSFTPClienter_MkdirAll_Call) RunAndReturn(run func(string) error) *
 	return _c
 }
 
-// Open provides a mock function with given fields: path
-func (_m *MockSFTPClienter) Open(path string) (io.ReadCloser, error) {
-	ret := _m.Called(path)
+// Open provides a mock function with given fields: _a0
+func (_m *MockSFTPClienter) Open(_a0 string) (io.ReadCloser, error) {
+	ret := _m.Called(_a0)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Open")
@@ -229,10 +229,10 @@ func (_m *MockSFTPClienter) Open(path string) (io.ReadCloser, error) {
 	var r0 io.ReadCloser
 	var r1 error
 	if rf, ok := ret.Get(0).(func(string) (io.ReadCloser, error)); ok {
-		return rf(path)
+		return rf(_a0)
 	}
 	if rf, ok := ret.Get(0).(func(string) io.ReadCloser); ok {
-		r0 = rf(path)
+		r0 = rf(_a0)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(io.ReadCloser)
@@ -240,7 +240,7 @@ func (_m *MockSFTPClienter) Open(path string) (io.ReadCloser, error) {
 	}
 
 	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(path)
+		r1 = rf(_a0)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -254,12 +254,12 @@ type MockSFTPClienter_Open_Call struct {
 }
 
 // Open is a helper method to define mock.On call
-//   - path string
-func (_e *MockSFTPClienter_Expecter) Open(path interface{}) *MockSFTPClienter_Open_Call {
-	return &MockSFTPClienter_Open_Call{Call: _e.mock.On("Open", path)}
+//   - _a0 string
+func (_e *MockSFTPClienter_Expecter) Open(_a0 interface{}) *MockSFTPClienter_Open_Call {
+	return &MockSFTPClienter_Open_Call{Call: _e.mock.On("Open", _a0)}
 }
 
-func (_c *MockSFTPClienter_Open_Call) Run(run func(path string)) *MockSFTPClienter_Open_Call {
+func (_c *MockSFTPClienter_Open_Call) Run(run func(_a0 string)) *MockSFTPClienter_Open_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(string))
 	})

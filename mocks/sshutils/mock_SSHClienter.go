@@ -67,6 +67,63 @@ func (_c *MockSSHClienter_Close_Call) RunAndReturn(run func() error) *MockSSHCli
 	return _c
 }
 
+// Connect provides a mock function with given fields:
+func (_m *MockSSHClienter) Connect() (sshutils.SSHClienter, error) {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Connect")
+	}
+
+	var r0 sshutils.SSHClienter
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (sshutils.SSHClienter, error)); ok {
+		return rf()
+	}
+	if rf, ok := ret.Get(0).(func() sshutils.SSHClienter); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(sshutils.SSHClienter)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockSSHClienter_Connect_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Connect'
+type MockSSHClienter_Connect_Call struct {
+	*mock.Call
+}
+
+// Connect is a helper method to define mock.On call
+func (_e *MockSSHClienter_Expecter) Connect() *MockSSHClienter_Connect_Call {
+	return &MockSSHClienter_Connect_Call{Call: _e.mock.On("Connect")}
+}
+
+func (_c *MockSSHClienter_Connect_Call) Run(run func()) *MockSSHClienter_Connect_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSSHClienter_Connect_Call) Return(_a0 sshutils.SSHClienter, _a1 error) *MockSSHClienter_Connect_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockSSHClienter_Connect_Call) RunAndReturn(run func() (sshutils.SSHClienter, error)) *MockSSHClienter_Connect_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetClient provides a mock function with given fields:
 func (_m *MockSSHClienter) GetClient() *ssh.Client {
 	ret := _m.Called()
@@ -110,6 +167,51 @@ func (_c *MockSSHClienter_GetClient_Call) Return(_a0 *ssh.Client) *MockSSHClient
 }
 
 func (_c *MockSSHClienter_GetClient_Call) RunAndReturn(run func() *ssh.Client) *MockSSHClienter_GetClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsConnected provides a mock function with given fields:
+func (_m *MockSSHClienter) IsConnected() bool {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsConnected")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// MockSSHClienter_IsConnected_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsConnected'
+type MockSSHClienter_IsConnected_Call struct {
+	*mock.Call
+}
+
+// IsConnected is a helper method to define mock.On call
+func (_e *MockSSHClienter_Expecter) IsConnected() *MockSSHClienter_IsConnected_Call {
+	return &MockSSHClienter_IsConnected_Call{Call: _e.mock.On("IsConnected")}
+}
+
+func (_c *MockSSHClienter_IsConnected_Call) Run(run func()) *MockSSHClienter_IsConnected_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSSHClienter_IsConnected_Call) Return(_a0 bool) *MockSSHClienter_IsConnected_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockSSHClienter_IsConnected_Call) RunAndReturn(run func() bool) *MockSSHClienter_IsConnected_Call {
 	_c.Call.Return(run)
 	return _c
 }

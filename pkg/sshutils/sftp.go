@@ -1,47 +1,34 @@
 package sshutils
 
 import (
-	"io"
-	"path/filepath"
+	"fmt"
 
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
 )
 
-// SFTPClientCreator is a function type for creating SFTP clients
-type SFTPClientCreator func(conn *ssh.Client) (sshutils_interfaces.SFTPClienter, error)
+// defaultSFTPClientCreator is a struct for creating SFTP clients
+type defaultSFTPClientCreator struct{}
 
-// defaultSFTPClient wraps the sftp.Client to implement our interface
-type defaultSFTPClient struct {
-	*sftp.Client
-}
-
-func (c *defaultSFTPClient) MkdirAll(path string) error {
-	return c.Client.MkdirAll(path)
-}
-
-// Create creates a new file on the remote system
-func (c *defaultSFTPClient) Create(path string) (io.WriteCloser, error) {
-	// Ensure parent directory exists
-	if err := c.MkdirAll(filepath.Dir(path)); err != nil {
-		return nil, err
+func (d *defaultSFTPClientCreator) NewSFTPClient(
+	client sshutils_interfaces.SSHClienter,
+) (*sftp.Client, error) {
+	if client == nil {
+		return nil, fmt.Errorf("SSH client is nil")
 	}
-	return c.Client.Create(path)
-}
 
-func (c *defaultSFTPClient) Open(path string) (io.ReadCloser, error) {
-	return c.Client.Open(path)
-}
+	sshClient := client.GetClient()
+	if sshClient == nil {
+		return nil, fmt.Errorf("SSH client connection is nil")
+	}
 
-// NewSFTPClient creates a new SFTP client from an SSH client
-func NewSFTPClient(client *ssh.Client) (sshutils_interfaces.SFTPClienter, error) {
-	sftpClient, err := sftp.NewClient(client)
+	sftpClient, err := sftp.NewClient(sshClient)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
 	}
-	return &defaultSFTPClient{Client: sftpClient}, nil
+
+	return sftpClient, nil
 }
 
-// Default SFTP client creator
-var DefaultSFTPClientCreator sshutils_interfaces.SFTPClientCreator = NewSFTPClient
+// DefaultSFTPClientCreator is the default SFTP client creator instance
+var DefaultSFTPClientCreator = &defaultSFTPClientCreator{}

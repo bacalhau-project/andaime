@@ -3,8 +3,8 @@
 package mocks
 
 import (
+	sftp "github.com/pkg/sftp"
 	mock "github.com/stretchr/testify/mock"
-	ssh "golang.org/x/crypto/ssh"
 
 	sshutils "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 )
@@ -22,28 +22,28 @@ func (_m *MockSFTPClientCreator) EXPECT() *MockSFTPClientCreator_Expecter {
 	return &MockSFTPClientCreator_Expecter{mock: &_m.Mock}
 }
 
-// Execute provides a mock function with given fields: client
-func (_m *MockSFTPClientCreator) Execute(client *ssh.Client) (sshutils.SFTPClienter, error) {
+// NewSFTPClient provides a mock function with given fields: client
+func (_m *MockSFTPClientCreator) NewSFTPClient(client sshutils.SSHClienter) (*sftp.Client, error) {
 	ret := _m.Called(client)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Execute")
+		panic("no return value specified for NewSFTPClient")
 	}
 
-	var r0 sshutils.SFTPClienter
+	var r0 *sftp.Client
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*ssh.Client) (sshutils.SFTPClienter, error)); ok {
+	if rf, ok := ret.Get(0).(func(sshutils.SSHClienter) (*sftp.Client, error)); ok {
 		return rf(client)
 	}
-	if rf, ok := ret.Get(0).(func(*ssh.Client) sshutils.SFTPClienter); ok {
+	if rf, ok := ret.Get(0).(func(sshutils.SSHClienter) *sftp.Client); ok {
 		r0 = rf(client)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(sshutils.SFTPClienter)
+			r0 = ret.Get(0).(*sftp.Client)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(*ssh.Client) error); ok {
+	if rf, ok := ret.Get(1).(func(sshutils.SSHClienter) error); ok {
 		r1 = rf(client)
 	} else {
 		r1 = ret.Error(1)
@@ -52,30 +52,30 @@ func (_m *MockSFTPClientCreator) Execute(client *ssh.Client) (sshutils.SFTPClien
 	return r0, r1
 }
 
-// MockSFTPClientCreator_Execute_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Execute'
-type MockSFTPClientCreator_Execute_Call struct {
+// MockSFTPClientCreator_NewSFTPClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NewSFTPClient'
+type MockSFTPClientCreator_NewSFTPClient_Call struct {
 	*mock.Call
 }
 
-// Execute is a helper method to define mock.On call
-//   - client *ssh.Client
-func (_e *MockSFTPClientCreator_Expecter) Execute(client interface{}) *MockSFTPClientCreator_Execute_Call {
-	return &MockSFTPClientCreator_Execute_Call{Call: _e.mock.On("Execute", client)}
+// NewSFTPClient is a helper method to define mock.On call
+//   - client sshutils.SSHClienter
+func (_e *MockSFTPClientCreator_Expecter) NewSFTPClient(client interface{}) *MockSFTPClientCreator_NewSFTPClient_Call {
+	return &MockSFTPClientCreator_NewSFTPClient_Call{Call: _e.mock.On("NewSFTPClient", client)}
 }
 
-func (_c *MockSFTPClientCreator_Execute_Call) Run(run func(client *ssh.Client)) *MockSFTPClientCreator_Execute_Call {
+func (_c *MockSFTPClientCreator_NewSFTPClient_Call) Run(run func(client sshutils.SSHClienter)) *MockSFTPClientCreator_NewSFTPClient_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*ssh.Client))
+		run(args[0].(sshutils.SSHClienter))
 	})
 	return _c
 }
 
-func (_c *MockSFTPClientCreator_Execute_Call) Return(_a0 sshutils.SFTPClienter, _a1 error) *MockSFTPClientCreator_Execute_Call {
+func (_c *MockSFTPClientCreator_NewSFTPClient_Call) Return(_a0 *sftp.Client, _a1 error) *MockSFTPClientCreator_NewSFTPClient_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockSFTPClientCreator_Execute_Call) RunAndReturn(run func(*ssh.Client) (sshutils.SFTPClienter, error)) *MockSFTPClientCreator_Execute_Call {
+func (_c *MockSFTPClientCreator_NewSFTPClient_Call) RunAndReturn(run func(sshutils.SSHClienter) (*sftp.Client, error)) *MockSFTPClientCreator_NewSFTPClient_Call {
 	_c.Call.Return(run)
 	return _c
 }

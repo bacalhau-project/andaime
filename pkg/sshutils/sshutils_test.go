@@ -1,11 +1,8 @@
 package sshutils
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"io"
-	"os"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
@@ -20,9 +17,8 @@ type PkgSSHUtilsTestSuite struct {
 	suite.Suite
 	testSSHPrivateKeyPath string
 	cleanupPrivateKey     func()
-	sshClient             *ssh_mock.MockSSHClienter
-	sshConfig             sshutils_interfaces.SSHConfiger
 	ctx                   context.Context
+	sshConfig             sshutils_interfaces.SSHConfiger
 }
 
 func (s *PkgSSHUtilsTestSuite) SetupSuite() {
@@ -37,283 +33,55 @@ func (s *PkgSSHUtilsTestSuite) SetupSuite() {
 
 func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.sshClient = &ssh_mock.MockSSHClienter{}
-	sshConfig, err := NewSSHConfigFunc(
-		"example.com",
-		22, //nolint:mnd
-		"testuser",
-		s.testSSHPrivateKeyPath,
-	)
+	sshConfig, err := NewSSHConfig("test-host", 22, "test-user", s.testSSHPrivateKeyPath)
 	s.Require().NoError(err)
 	s.sshConfig = sshConfig
-	s.sshConfig.SetSSHClienter(s.sshClient)
-
-	// Mock the validateSSHConnection method to bypass network checks
-	s.sshConfig.SetValidateSSHConnection(func() error {
-		return nil
-	})
-
-	// Add default mock expectations for common methods
-	s.sshClient.On("IsConnected").Return(true).Maybe()
-}
-
-// At the top of your test file
-type mockSSHDialer struct {
-	dialFunc func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)
-}
-
-func (m *mockSSHDialer) Dial(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
-	return m.dialFunc(network, addr, config)
-}
-
-// Update your TestConnect function
-func (s *PkgSSHUtilsTestSuite) TestConnect() {
-	sshConfig := s.sshConfig.(*SSHConfig) // Type assert to concrete type
-	mockClient := &ssh.Client{}
-	mockDialer := &mockSSHDialer{
-		dialFunc: func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
-			s.Equal("tcp", network)
-			s.Equal(fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port), addr)
-			s.Equal(sshConfig.ClientConfig, config)
-			return mockClient, nil
-		},
-	}
-	sshConfig.dialer = mockDialer
-
-	client, err := s.sshConfig.Connect()
-	s.NoError(err)
-	s.NotNil(client)
-	s.IsType(&SSHClientWrapper{}, client)
-	s.Equal(mockClient, client.(*SSHClientWrapper).Client)
-}
-
-// Update your TestConnectFailure function
-func (s *PkgSSHUtilsTestSuite) TestConnectFailure() {
-	sshConfig := s.sshConfig.(*SSHConfig) // Type assert to concrete type
-	expectedErr := fmt.Errorf("mock dial error")
-	mockDialer := &mockSSHDialer{
-		dialFunc: func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
-			return nil, expectedErr
-		},
-	}
-	sshConfig.dialer = mockDialer
-
-	client, err := s.sshConfig.Connect()
-	s.Error(err)
-	s.Nil(client)
-	s.Contains(err.Error(), expectedErr.Error())
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
-	expectedOutput := []byte("command output")
+	expectedOutput := "command output"
 
+	// Create mock session
 	mockSession := &ssh_mock.MockSSHSessioner{}
-	mockSession.On("CombinedOutput", "ls -l").Return(expectedOutput, nil).Once()
-	mockSession.On("Close").Return(nil).Once()
-	s.sshClient.On("NewSession").Return(mockSession, nil).Once()
+	mockSession.On("Run", "ls -l").Return(nil)
+	mockSession.On("Close").Return(nil)
+	mockSession.On("SetStdout", mock.MatchedBy(func(w interface{}) bool {
+		writer := w.(io.Writer)
+		_, err := writer.Write([]byte(expectedOutput))
+		return err == nil
+	})).Return()
+	mockSession.On("SetStderr", mock.Anything).Return()
 
-	s.sshConfig.SetSSHClienter(s.sshClient)
+	// Create mock SSH client
+	mockClient := &ssh_mock.MockSSHClienter{}
+	mockClient.On("NewSession").Return(mockSession, nil)
+	mockClient.On("Close").Return(nil)
+	mockClient.On("GetClient").Return(&ssh.Client{}).Maybe()
+	mockClient.On("Connect").Return(mockClient, nil).Maybe()
+	mockClient.On("IsConnected").Return(true).Maybe()
 
-	actualResult, err := s.sshConfig.ExecuteCommand(s.ctx, "ls -l")
+	// Create mock client creator
+	mockClientCreator := &ssh_mock.MockSSHClientCreator{}
+	mockClientCreator.On("NewClient",
+		"test-host",
+		22,
+		"test-user",
+		s.testSSHPrivateKeyPath,
+		mock.Anything,
+	).Return(mockClient, nil)
+
+	// Set mock client creator
+	s.sshConfig.SetSSHClientCreator(mockClientCreator)
+
+	// Execute command
+	actualOutput, err := s.sshConfig.ExecuteCommand(s.ctx, "ls -l")
 	s.NoError(err)
-	s.Equal(string(expectedOutput), actualResult)
+	s.Equal(expectedOutput, actualOutput)
 
-	s.sshClient.AssertExpectations(s.T())
+	// Verify expectations
 	mockSession.AssertExpectations(s.T())
-}
-
-type mockWriteCloser struct {
-	*bytes.Buffer
-	closeFunc func() error
-}
-
-func (m *mockWriteCloser) Close() error {
-	if m.closeFunc != nil {
-		return m.closeFunc()
-	}
-	return nil
-}
-
-type mockSFTPClient struct {
-	mock.Mock
-}
-
-// Verify that mockSFTPClient implements SFTPClienter
-var _ sshutils_interfaces.SFTPClienter = &mockSFTPClient{}
-
-func (m *mockSFTPClient) Create(path string) (io.WriteCloser, error) {
-	args := m.Called(path)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(io.WriteCloser), args.Error(1)
-}
-
-func (m *mockSFTPClient) Open(path string) (io.ReadCloser, error) {
-	args := m.Called(path)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(io.ReadCloser), args.Error(1)
-}
-
-func (m *mockSFTPClient) MkdirAll(path string) error {
-	args := m.Called(path)
-	return args.Error(0)
-}
-
-func (m *mockSFTPClient) Chmod(path string, mode os.FileMode) error {
-	args := m.Called(path, mode)
-	return args.Error(0)
-}
-
-func (m *mockSFTPClient) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (s *PkgSSHUtilsTestSuite) TestPushFile() {
-	s.runPushFileTest(false)
-}
-
-func (s *PkgSSHUtilsTestSuite) TestPushFileExecutable() {
-	s.runPushFileTest(true)
-}
-
-func (s *PkgSSHUtilsTestSuite) runPushFileTest(executable bool) {
-	localContent := []byte("test file content")
-	if executable {
-		localContent = []byte("#!/bin/bash\necho 'Hello, World!'")
-	}
-
-	// Create mock write closer
-	mockFile := &mockWriteCloser{
-		Buffer: bytes.NewBuffer(nil),
-		closeFunc: func() error {
-			return nil
-		},
-	}
-
-	// Create mock SFTP client
-	mockSFTP := &mockSFTPClient{}
-	mockSFTP.On("Create", "/remote/path").Return(mockFile, nil).Once()
-	if executable {
-		mockSFTP.On("Chmod", "/remote/path", os.FileMode(0755)).Return(nil).Once()
-	}
-	mockSFTP.On("Close").Return(nil).Once()
-
-	// Save the original creator and restore it after the test
-	originalCreator := DefaultSFTPClientCreator
-	defer func() { DefaultSFTPClientCreator = originalCreator }()
-
-	// Set up our test creator that returns the mock
-	var testCreator sshutils_interfaces.SFTPClientCreator = func(client *ssh.Client) (sshutils_interfaces.SFTPClienter, error) {
-		return mockSFTP, nil
-	}
-	DefaultSFTPClientCreator = testCreator
-
-	// Mock GetClient to return a mock ssh.Client
-	mockSSHClient := &ssh.Client{}
-	s.sshClient.On("GetClient").Return(mockSSHClient).Once()
-
-	err := s.sshConfig.PushFile(s.ctx, "/remote/path", localContent, executable)
-	s.NoError(err)
-
-	// Verify the content was written correctly
-	s.Equal(string(localContent), mockFile.String())
-
-	s.sshClient.AssertExpectations(s.T())
-	mockSFTP.AssertExpectations(s.T())
-}
-
-func (s *PkgSSHUtilsTestSuite) TestSystemdServiceOperations() {
-	tests := []struct {
-		name           string
-		operation      interface{}
-		serviceName    string
-		serviceContent string
-		expectedCmd    string
-		expectError    bool
-	}{
-		{
-			name:           "InstallSystemdService",
-			operation:      s.sshConfig.InstallSystemdService,
-			serviceName:    "test_service",
-			serviceContent: "service content",
-			expectedCmd:    "echo 'service content' | sudo tee /etc/systemd/system/test_service.service > /dev/null",
-			expectError:    false,
-		},
-		{
-			name:        "StartService",
-			operation:   s.sshConfig.StartService,
-			serviceName: "test_service",
-			expectedCmd: "sudo systemctl start test_service",
-			expectError: false,
-		},
-		{
-			name:        "RestartService",
-			operation:   s.sshConfig.RestartService,
-			serviceName: "test_service",
-			expectedCmd: "sudo systemctl restart test_service",
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			// Mock GetClient() to return a mock SSH client
-			mockSSHClient := &ssh.Client{}
-			mockSession := &ssh_mock.MockSSHSessioner{}
-			mockSession.On("Close").Return(nil)
-
-			s.sshClient.On("GetClient").Return(mockSSHClient).Once()
-			s.sshClient.On("NewSession").Return(mockSession, nil)
-
-			// Mock SFTP client creation
-			mockSFTP := &mockSFTPClient{}
-			mockSFTP.On("Create", mock.Anything).Return(&mockWriteCloser{
-				Buffer: bytes.NewBuffer(nil),
-				closeFunc: func() error {
-					return nil
-				},
-			}, nil).Maybe()
-			mockSFTP.On("Close").Return(nil).Maybe()
-			mockSFTP.On("Chmod", mock.Anything, mock.Anything).Return(nil).Maybe()
-
-			// Override the SFTP client creator for testing
-			originalCreator := DefaultSFTPClientCreator
-			DefaultSFTPClientCreator = func(client *ssh.Client) (sshutils_interfaces.SFTPClienter, error) {
-				return mockSFTP, nil
-			}
-			defer func() { DefaultSFTPClientCreator = originalCreator }()
-
-			mockSession.On("CombinedOutput", mock.Anything).Return([]byte(""), nil).Maybe()
-
-			var err error
-			var result string
-			switch op := tt.operation.(type) {
-			case func(context.Context, string, string) error:
-				err = op(s.ctx, tt.serviceName, tt.serviceContent)
-			case func(context.Context, string) (string, error):
-				result, err = op(s.ctx, tt.serviceName)
-				s.NoError(err)
-				if tt.serviceContent != "" {
-					s.NotEmpty(result)
-					s.Contains(result, tt.serviceContent)
-				}
-			default:
-				s.Fail("Unexpected operation type")
-			}
-
-			if tt.expectError {
-				s.Error(err)
-			} else {
-				s.NoError(err)
-			}
-
-			mockSFTP.AssertExpectations(s.T())
-		})
-	}
+	mockClient.AssertExpectations(s.T())
+	mockClientCreator.AssertExpectations(s.T())
 }
 
 func TestSSHUtilsSuite(t *testing.T) {

@@ -1,8 +1,10 @@
 version: "0.2"
 ignorePaths:
-  - ".git/**"
-  - ".github/**"
-  - ".vscode/**"
+  - "**"
+  - "!/Users/daaronch/code/andaime/**"
+  - .git/**
+  - .github/**
+  - .vscode/**
   - "**/node_modules/**"
   - "**/dist/**"
   - "**/build/**"
@@ -19,7 +21,10 @@ ignorePaths:
   - "!internal/**"
   - "!pkg/**"
   - "!**/*.md"
+  - /Users/daaronch/Library/**
 dictionaryDefinitions: []
-dictionaries: ["./.cspell/project-dictionary.txt"]
+dictionaries:
+  - ./.cspell/project-dictionary.txt
 ignoreWords: []
 import: []
+words: []

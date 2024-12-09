@@ -380,6 +380,53 @@ func (_c *MockSSHConfiger_GetPrivateKeyMaterial_Call) RunAndReturn(run func() []
 	return _c
 }
 
+// GetSFTPClientCreator provides a mock function with given fields:
+func (_m *MockSSHConfiger) GetSFTPClientCreator() sshutils.SFTPClientCreator {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSFTPClientCreator")
+	}
+
+	var r0 sshutils.SFTPClientCreator
+	if rf, ok := ret.Get(0).(func() sshutils.SFTPClientCreator); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(sshutils.SFTPClientCreator)
+		}
+	}
+
+	return r0
+}
+
+// MockSSHConfiger_GetSFTPClientCreator_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSFTPClientCreator'
+type MockSSHConfiger_GetSFTPClientCreator_Call struct {
+	*mock.Call
+}
+
+// GetSFTPClientCreator is a helper method to define mock.On call
+func (_e *MockSSHConfiger_Expecter) GetSFTPClientCreator() *MockSSHConfiger_GetSFTPClientCreator_Call {
+	return &MockSSHConfiger_GetSFTPClientCreator_Call{Call: _e.mock.On("GetSFTPClientCreator")}
+}
+
+func (_c *MockSSHConfiger_GetSFTPClientCreator_Call) Run(run func()) *MockSSHConfiger_GetSFTPClientCreator_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSSHConfiger_GetSFTPClientCreator_Call) Return(_a0 sshutils.SFTPClientCreator) *MockSSHConfiger_GetSFTPClientCreator_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockSSHConfiger_GetSFTPClientCreator_Call) RunAndReturn(run func() sshutils.SFTPClientCreator) *MockSSHConfiger_GetSFTPClientCreator_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSSHClient provides a mock function with given fields:
 func (_m *MockSSHConfiger) GetSSHClient() *ssh.Client {
 	ret := _m.Called()
@@ -423,6 +470,53 @@ func (_c *MockSSHConfiger_GetSSHClient_Call) Return(_a0 *ssh.Client) *MockSSHCon
 }
 
 func (_c *MockSSHConfiger_GetSSHClient_Call) RunAndReturn(run func() *ssh.Client) *MockSSHConfiger_GetSSHClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetSSHClientCreator provides a mock function with given fields:
+func (_m *MockSSHConfiger) GetSSHClientCreator() sshutils.SSHClientCreator {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSSHClientCreator")
+	}
+
+	var r0 sshutils.SSHClientCreator
+	if rf, ok := ret.Get(0).(func() sshutils.SSHClientCreator); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(sshutils.SSHClientCreator)
+		}
+	}
+
+	return r0
+}
+
+// MockSSHConfiger_GetSSHClientCreator_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSSHClientCreator'
+type MockSSHConfiger_GetSSHClientCreator_Call struct {
+	*mock.Call
+}
+
+// GetSSHClientCreator is a helper method to define mock.On call
+func (_e *MockSSHConfiger_Expecter) GetSSHClientCreator() *MockSSHConfiger_GetSSHClientCreator_Call {
+	return &MockSSHConfiger_GetSSHClientCreator_Call{Call: _e.mock.On("GetSSHClientCreator")}
+}
+
+func (_c *MockSSHConfiger_GetSSHClientCreator_Call) Run(run func()) *MockSSHConfiger_GetSSHClientCreator_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSSHConfiger_GetSSHClientCreator_Call) Return(_a0 sshutils.SSHClientCreator) *MockSSHConfiger_GetSSHClientCreator_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockSSHConfiger_GetSSHClientCreator_Call) RunAndReturn(run func() sshutils.SSHClientCreator) *MockSSHConfiger_GetSSHClientCreator_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -516,6 +610,51 @@ func (_c *MockSSHConfiger_InstallSystemdService_Call) Return(_a0 error) *MockSSH
 }
 
 func (_c *MockSSHConfiger_InstallSystemdService_Call) RunAndReturn(run func(context.Context, string, string) error) *MockSSHConfiger_InstallSystemdService_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsConnected provides a mock function with given fields:
+func (_m *MockSSHConfiger) IsConnected() bool {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsConnected")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// MockSSHConfiger_IsConnected_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsConnected'
+type MockSSHConfiger_IsConnected_Call struct {
+	*mock.Call
+}
+
+// IsConnected is a helper method to define mock.On call
+func (_e *MockSSHConfiger_Expecter) IsConnected() *MockSSHConfiger_IsConnected_Call {
+	return &MockSSHConfiger_IsConnected_Call{Call: _e.mock.On("IsConnected")}
+}
+
+func (_c *MockSSHConfiger_IsConnected_Call) Run(run func()) *MockSSHConfiger_IsConnected_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSSHConfiger_IsConnected_Call) Return(_a0 bool) *MockSSHConfiger_IsConnected_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockSSHConfiger_IsConnected_Call) RunAndReturn(run func() bool) *MockSSHConfiger_IsConnected_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -676,6 +815,39 @@ func (_c *MockSSHConfiger_RestartService_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// SetSFTPClientCreator provides a mock function with given fields: clientCreator
+func (_m *MockSSHConfiger) SetSFTPClientCreator(clientCreator sshutils.SFTPClientCreator) {
+	_m.Called(clientCreator)
+}
+
+// MockSSHConfiger_SetSFTPClientCreator_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSFTPClientCreator'
+type MockSSHConfiger_SetSFTPClientCreator_Call struct {
+	*mock.Call
+}
+
+// SetSFTPClientCreator is a helper method to define mock.On call
+//   - clientCreator sshutils.SFTPClientCreator
+func (_e *MockSSHConfiger_Expecter) SetSFTPClientCreator(clientCreator interface{}) *MockSSHConfiger_SetSFTPClientCreator_Call {
+	return &MockSSHConfiger_SetSFTPClientCreator_Call{Call: _e.mock.On("SetSFTPClientCreator", clientCreator)}
+}
+
+func (_c *MockSSHConfiger_SetSFTPClientCreator_Call) Run(run func(clientCreator sshutils.SFTPClientCreator)) *MockSSHConfiger_SetSFTPClientCreator_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(sshutils.SFTPClientCreator))
+	})
+	return _c
+}
+
+func (_c *MockSSHConfiger_SetSFTPClientCreator_Call) Return() *MockSSHConfiger_SetSFTPClientCreator_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockSSHConfiger_SetSFTPClientCreator_Call) RunAndReturn(run func(sshutils.SFTPClientCreator)) *MockSSHConfiger_SetSFTPClientCreator_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetSSHClient provides a mock function with given fields: client
 func (_m *MockSSHConfiger) SetSSHClient(client *ssh.Client) {
 	_m.Called(client)
@@ -709,35 +881,35 @@ func (_c *MockSSHConfiger_SetSSHClient_Call) RunAndReturn(run func(*ssh.Client))
 	return _c
 }
 
-// SetSSHClienter provides a mock function with given fields: client
-func (_m *MockSSHConfiger) SetSSHClienter(client sshutils.SSHClienter) {
-	_m.Called(client)
+// SetSSHClientCreator provides a mock function with given fields: clientCreator
+func (_m *MockSSHConfiger) SetSSHClientCreator(clientCreator sshutils.SSHClientCreator) {
+	_m.Called(clientCreator)
 }
 
-// MockSSHConfiger_SetSSHClienter_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSSHClienter'
-type MockSSHConfiger_SetSSHClienter_Call struct {
+// MockSSHConfiger_SetSSHClientCreator_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSSHClientCreator'
+type MockSSHConfiger_SetSSHClientCreator_Call struct {
 	*mock.Call
 }
 
-// SetSSHClienter is a helper method to define mock.On call
-//   - client sshutils.SSHClienter
-func (_e *MockSSHConfiger_Expecter) SetSSHClienter(client interface{}) *MockSSHConfiger_SetSSHClienter_Call {
-	return &MockSSHConfiger_SetSSHClienter_Call{Call: _e.mock.On("SetSSHClienter", client)}
+// SetSSHClientCreator is a helper method to define mock.On call
+//   - clientCreator sshutils.SSHClientCreator
+func (_e *MockSSHConfiger_Expecter) SetSSHClientCreator(clientCreator interface{}) *MockSSHConfiger_SetSSHClientCreator_Call {
+	return &MockSSHConfiger_SetSSHClientCreator_Call{Call: _e.mock.On("SetSSHClientCreator", clientCreator)}
 }
 
-func (_c *MockSSHConfiger_SetSSHClienter_Call) Run(run func(client sshutils.SSHClienter)) *MockSSHConfiger_SetSSHClienter_Call {
+func (_c *MockSSHConfiger_SetSSHClientCreator_Call) Run(run func(clientCreator sshutils.SSHClientCreator)) *MockSSHConfiger_SetSSHClientCreator_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(sshutils.SSHClienter))
+		run(args[0].(sshutils.SSHClientCreator))
 	})
 	return _c
 }
 
-func (_c *MockSSHConfiger_SetSSHClienter_Call) Return() *MockSSHConfiger_SetSSHClienter_Call {
+func (_c *MockSSHConfiger_SetSSHClientCreator_Call) Return() *MockSSHConfiger_SetSSHClientCreator_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *MockSSHConfiger_SetSSHClienter_Call) RunAndReturn(run func(sshutils.SSHClienter)) *MockSSHConfiger_SetSSHClienter_Call {
+func (_c *MockSSHConfiger_SetSSHClientCreator_Call) RunAndReturn(run func(sshutils.SSHClientCreator)) *MockSSHConfiger_SetSSHClientCreator_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -11,69 +11,14 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
-
-// TestHelper encapsulates common test setup and verification
-type TestHelper struct {
-	t             *testing.T
-	mockSSHConfig *ssh_mock.MockSSHConfiger
-	expectedCall  map[string]int   // tracks expected calls per method
-	actualCalls   map[string]int   // tracks actual calls per method
-	callArgs      map[string][]any // stores arguments per call for verification
-}
-
-func NewTestHelper(t *testing.T, mockSSHConfig *ssh_mock.MockSSHConfiger) *TestHelper {
-	return &TestHelper{
-		t:             t,
-		mockSSHConfig: mockSSHConfig,
-		expectedCall:  make(map[string]int),
-		actualCalls:   make(map[string]int),
-		callArgs:      make(map[string][]any),
-	}
-}
-
-// ExpectCall registers an expected call with args
-func (h *TestHelper) ExpectCall(method string, times int, args ...any) {
-	h.expectedCall[method] = times
-	h.callArgs[method] = args
-}
-
-// OnCall sets up a mock call with verification
-func (h *TestHelper) OnCall(method string, args ...any) *mock.Call {
-	return h.mockSSHConfig.On(method, args...).Run(func(args mock.Arguments) {
-		h.actualCalls[method]++
-		h.t.Logf("Called %s (%d/%d times)", method, h.actualCalls[method], h.expectedCall[method])
-	})
-}
-
-// VerifyCalls checks if all expected calls were made correctly
-func (h *TestHelper) VerifyCalls() {
-	h.t.Log("\nCall Verification:")
-	for method, expected := range h.expectedCall {
-		actual := h.actualCalls[method]
-		if actual != expected {
-			h.t.Errorf("Method %s: Expected %d calls, got %d", method, expected, actual)
-		}
-	}
-}
 
 type PkgProvidersAzureDeployBacalhauTestSuite struct {
 	suite.Suite
 	ctx        context.Context
 	deployment *models.Deployment
 	deployer   *common.ClusterDeployer
-	testHelper *TestHelper
-}
-
-// Add these methods to the TestHelper struct
-func (h *TestHelper) Reset() {
-	h.expectedCall = make(map[string]int)
-	h.actualCalls = make(map[string]int)
-	h.callArgs = make(map[string][]any)
-	h.mockSSHConfig.ExpectedCalls = nil
-	h.mockSSHConfig.Calls = nil
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
@@ -91,24 +36,6 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
 	}
 	s.deployer = common.NewClusterDeployer(models.DeploymentTypeAzure)
 
-	// Create fresh mocks for each test
-	mockSSHConfig := sshutils.NewMockSSHConfigWithBehavior(sshutils.ExpectedSSHBehavior{})
-	mockSSHConfigTyped := mockSSHConfig.(*ssh_mock.MockSSHConfiger)
-	
-	// Clear any previous mock expectations
-	mockSSHConfigTyped.ExpectedCalls = nil
-	mockSSHConfigTyped.Calls = nil
-
-	s.testHelper = NewTestHelper(s.T(), mockSSHConfigTyped)
-
-	// Reset the global SSH config function for each test
-	sshutils.NewSSHConfigFunc = func(host string,
-		port int,
-		user string,
-		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
-		return mockSSHConfig, nil
-	}
-
 	// Reset the global model function for each test
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
 		return &display.DisplayModel{
@@ -117,20 +44,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) SetupTest() {
 	}
 }
 
-// Add TearDownTest to clean up after each test
-func (s *PkgProvidersAzureDeployBacalhauTestSuite) TearDownTest() {
-	if s.testHelper != nil {
-		s.testHelper.Reset()
-	}
-
-	// Clear any global state
-	s.deployment = nil
-	s.deployer = nil
-}
-
-// Example test using the new helper
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
-
 	// Setup test data
 	s.deployment.SetMachines(map[string]models.Machiner{
 		"orch": &models.Machine{
@@ -141,53 +55,121 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 		},
 	})
 
-	// Define expected calls
-	s.testHelper.ExpectCall("PushFile", 5)
-	s.testHelper.ExpectCall("ExecuteCommand", 7)
-	s.testHelper.ExpectCall("InstallSystemdService", 1)
-	s.testHelper.ExpectCall("RestartService", 2)
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
-	// Setup mock behaviors with clear logging
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-docker.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-core-packages.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/get-node-config-metadata.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-bacalhau.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-run-bacalhau.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
+	// Define expected behavior
+	behavior := sshutils.ExpectedSSHBehavior{
+		ConnectExpectation: &sshutils.ConnectExpectation{
+			Client: mockSSHClient,
+			Error:  nil,
+			Times:  2,
+		},
+		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+			{
+				Cmd:    "sudo docker run hello-world",
+				Times:  1,
+				Output: models.ExpectedDockerOutput,
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-docker.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-core-packages.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/get-node-config-metadata.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-bacalhau.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-run-bacalhau.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "bacalhau node list --output json --api-host 0.0.0.0",
+				Times:  1,
+				Output: `[{"id": "node1"}]`,
+				Error:  nil,
+			},
+		},
+		PushFileExpectations: []sshutils.PushFileExpectation{
+			{
+				Dst:        "/tmp/install-docker.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/install-core-packages.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/get-node-config-metadata.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/install-bacalhau.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/install-run-bacalhau.sh",
+				Executable: true,
+				Times:      1,
+			},
+		},
+		InstallSystemdServiceExpectation: &sshutils.Expectation{
+			Error: nil,
+			Times: 1,
+		},
+		RestartServiceExpectation: &sshutils.Expectation{
+			Error: nil,
+			Times: 2,
+		},
+		WaitForSSHCount: 1,
+		WaitForSSHError: nil,
+	}
 
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo docker run hello-world", mock.Anything).
-		Return(models.ExpectedDockerOutput, nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0", mock.Anything).
-		Return(`[{"id": "node1"}]`, nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo bacalhau config list --output json", mock.Anything).
-		Return("[]", nil)
+	// Create mock SSH config with behavior
+	mockSSH := sshutils.NewMockSSHConfigWithBehavior(behavior)
 
-	s.testHelper.OnCall("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("RestartService", mock.Anything, mock.Anything, mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	// Set up the mock SSH config function
+	origNewSSHConfigFunc := sshutils.NewSSHConfigFunc
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
+		return mockSSH, nil
+	}
+	defer func() { sshutils.NewSSHConfigFunc = origNewSSHConfigFunc }()
 
 	// Run the test
 	err := s.deployer.ProvisionOrchestrator(s.ctx, "orch")
 	s.NoError(err)
 
-	// Verify all calls were made as expected
-	s.testHelper.VerifyCalls()
+	// Verify expectations
+	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
@@ -202,58 +184,124 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
 		},
 	})
 
-	// Define expected calls
-	s.testHelper.ExpectCall("PushFile", 5) // 5 script pushes
-	s.testHelper.ExpectCall("ExecuteCommand", 7)
-	s.testHelper.ExpectCall("InstallSystemdService", 1)
-	s.testHelper.ExpectCall("RestartService", 2)
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
-	// Setup mock behaviors
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-docker.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-core-packages.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/get-node-config-metadata.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-bacalhau.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-run-bacalhau.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
+	// Define expected behavior
+	behavior := sshutils.ExpectedSSHBehavior{
+		ConnectExpectation: &sshutils.ConnectExpectation{
+			Client: mockSSHClient,
+			Error:  nil,
+			Times:  2,
+		},
+		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+			{
+				Cmd:    "sudo docker run hello-world",
+				Times:  1,
+				Output: models.ExpectedDockerOutput,
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-docker.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-core-packages.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/get-node-config-metadata.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-bacalhau.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "sudo /tmp/install-run-bacalhau.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+			{
+				Cmd:    "bacalhau node list --output json --api-host 1.2.3.4",
+				Times:  1,
+				Output: `[{"id": "node1"}]`,
+				Error:  nil,
+			},
+		},
+		PushFileExpectations: []sshutils.PushFileExpectation{
+			{
+				Dst:        "/tmp/install-docker.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/install-core-packages.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/get-node-config-metadata.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/install-bacalhau.sh",
+				Executable: true,
+				Times:      1,
+			},
+			{
+				Dst:        "/tmp/install-run-bacalhau.sh",
+				Executable: true,
+				Times:      1,
+			},
+		},
+		InstallSystemdServiceExpectation: &sshutils.Expectation{
+			Error: nil,
+			Times: 1,
+		},
+		RestartServiceExpectation: &sshutils.Expectation{
+			Error: nil,
+			Times: 2,
+		},
+		WaitForSSHCount: 1,
+		WaitForSSHError: nil,
+	}
 
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo docker run hello-world", mock.Anything).
-		Return("Hello from Docker!", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-docker.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-core-packages.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-run-bacalhau.sh", mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 1.2.3.4", mock.Anything).
-		Return(`[{"id": "node1"}]`, nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo bacalhau config list --output json", mock.Anything).
-		Return("[]", nil)
+	// Create mock SSH config with behavior
+	mockSSH := sshutils.NewMockSSHConfigWithBehavior(behavior)
 
-	s.testHelper.OnCall("InstallSystemdService", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("RestartService", mock.Anything, mock.Anything, mock.Anything).
-		Return("", nil)
-	s.testHelper.OnCall("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	// Set up the mock SSH config function
+	origNewSSHConfigFunc := sshutils.NewSSHConfigFunc
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
+		return mockSSH, nil
+	}
+	defer func() { sshutils.NewSSHConfigFunc = origNewSSHConfigFunc }()
 
 	// Run the test
 	err := s.deployer.ProvisionWorker(s.ctx, "worker")
 	s.NoError(err)
 
-	// Verify all calls were made as expected
-	s.testHelper.VerifyCalls()
+	// Verify expectations
+	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata() {
-	s.SetupTest()
-
 	s.deployment.SetMachines(map[string]models.Machiner{
 		"test": &models.Machine{
 			Name:     "test",
@@ -263,43 +311,43 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata()
 		},
 	})
 
-	// Define expected calls
-	s.testHelper.ExpectCall("PushFile", 1)
-	s.testHelper.ExpectCall("ExecuteCommand", 1)
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
-	// Setup mock behaviors
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/get-node-config-metadata.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/get-node-config-metadata.sh", mock.Anything).
-		Return("", nil)
+	// Define expected behavior
+	behavior := sshutils.ExpectedSSHBehavior{
+		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+			{
+				Cmd:    "sudo /tmp/get-node-config-metadata.sh",
+				Times:  1,
+				Output: "",
+				Error:  nil,
+			},
+		},
+		PushFileExpectations: []sshutils.PushFileExpectation{
+			{
+				Dst:        "/tmp/get-node-config-metadata.sh",
+				Executable: true,
+				Times:      1,
+			},
+		},
+	}
+
+	// Create mock SSH config with behavior
+	mockSSH := sshutils.NewMockSSHConfigWithBehavior(behavior)
 
 	err := s.deployer.SetupNodeConfigMetadata(
 		s.ctx,
 		s.deployment.GetMachine("test"),
-		s.testHelper.mockSSHConfig,
+		mockSSH,
 	)
 	s.NoError(err)
 
-	s.testHelper.VerifyCalls()
-}
-
-func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestInstallBacalhau() {
-	s.SetupTest()
-
-	// Define expected calls
-	s.testHelper.ExpectCall("PushFile", 1)
-	s.testHelper.ExpectCall("ExecuteCommand", 1)
-
-	// Setup mock behaviors
-	s.testHelper.OnCall("PushFile", mock.Anything, "/tmp/install-bacalhau.sh", mock.Anything, true, mock.Anything).
-		Return(nil)
-	s.testHelper.OnCall("ExecuteCommand", mock.Anything, "sudo /tmp/install-bacalhau.sh", mock.Anything).
-		Return("", nil)
-
-	err := s.deployer.InstallBacalhau(s.ctx, s.testHelper.mockSSHConfig)
-	s.NoError(err)
-
-	s.testHelper.VerifyCalls()
+	// Verify expectations
+	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment() {
@@ -327,45 +375,48 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment(
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			s.SetupTest()
+			// Create mock SSH client
+			mockSSHClient := new(ssh_mock.MockSSHClienter)
+			mockSSHClient.On("Close").Return(nil).Maybe()
+			mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+			mockSSHClient.On("GetClient").Return(nil).Maybe()
 
-			// Define expected calls
-			s.testHelper.ExpectCall("ExecuteCommand", 1)
-
-			// Setup mock behavior
-			s.testHelper.OnCall("ExecuteCommand", mock.Anything, "bacalhau node list --output json --api-host 0.0.0.0", mock.Anything).
-				Return(tt.nodeListOutput, nil)
-
-			err := s.deployer.VerifyBacalhauDeployment(s.ctx, s.testHelper.mockSSHConfig, "0.0.0.0")
-
-			if tt.expectError {
-				s.Error(err, "Expected an error for case: %s", tt.name)
-				switch tt.name {
-				case "Empty node list":
-					s.Contains(
-						err.Error(),
-						"no Bacalhau nodes found",
-						"Expected specific error message for empty node list",
-					)
-				case "Invalid JSON":
-					s.Contains(
-						err.Error(),
-						"failed to strip and parse JSON",
-						"Expected specific error message for invalid JSON",
-					)
-				}
-			} else {
-				s.NoError(err, "Expected no error for case: %s", tt.name)
+			// Define expected behavior
+			behavior := sshutils.ExpectedSSHBehavior{
+				ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
+					{
+						Cmd:    "bacalhau node list --output json --api-host 0.0.0.0",
+						Times:  1,
+						Output: tt.nodeListOutput,
+						Error:  nil,
+					},
+				},
 			}
 
-			s.testHelper.VerifyCalls()
+			// Create mock SSH config with behavior
+			mockSSH := sshutils.NewMockSSHConfigWithBehavior(behavior)
+
+			err := s.deployer.VerifyBacalhauDeployment(s.ctx, mockSSH, "0.0.0.0")
+
+			if tt.expectError {
+				s.Error(err)
+				switch tt.name {
+				case "Empty node list":
+					s.Contains(err.Error(), "no Bacalhau nodes found")
+				case "Invalid JSON":
+					s.Contains(err.Error(), "failed to strip and parse JSON")
+				}
+			} else {
+				s.NoError(err)
+			}
+
+			// Verify expectations
+			mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
 		})
 	}
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestFindOrchestratorMachine() {
-	s.SetupTest()
-
 	tests := []struct {
 		name        string
 		machines    map[string]models.Machiner

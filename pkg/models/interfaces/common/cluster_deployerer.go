@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 )
 
@@ -183,11 +182,11 @@ type ClusterDeployerer interface {
 
 	ExecuteCustomScript(
 		ctx context.Context,
-		sshConfig sshutils.SSHConfiger,
+		sshConfig sshutils_interface.SSHConfiger,
 		machine models.Machiner,
 	) error
 	ApplyBacalhauConfigs(ctx context.Context,
-		sshConfig sshutils.SSHConfiger,
+		sshConfig sshutils_interface.SSHConfiger,
 		bacalhauSettings []models.BacalhauSettings) error
 
 	ProvisionBacalhauCluster(ctx context.Context) error

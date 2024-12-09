@@ -333,6 +333,7 @@ sshbehavior
 sshclient
 sshmock
 sshuser
+sshutil
 sshutils
 staticcheck
 stdpm

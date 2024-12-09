@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -21,11 +21,34 @@ type ExpectedSSHBehavior struct {
 	ExecuteCommandExpectations       []ExecuteCommandExpectation
 	InstallSystemdServiceExpectation *Expectation
 	RestartServiceExpectation        *Expectation
+	ConnectExpectation               *ConnectExpectation
+}
+
+type ConnectExpectation struct {
+	Client sshutils_interfaces.SSHClienter
+	Error  error
+	Times  int
 }
 
 // NewMockSSHConfigWithBehavior creates a new mock SSH config with predefined behavior
-func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) sshutils.SSHConfiger {
+func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) sshutils_interfaces.SSHConfiger {
 	mockSSH := new(ssh_mock.MockSSHConfiger)
+
+	// Setup Connect behavior
+	if behavior.ConnectExpectation != nil {
+		call := mockSSH.On("Connect")
+		if behavior.ConnectExpectation.Times > 0 {
+			call.Times(behavior.ConnectExpectation.Times)
+		} else {
+			call.Once()
+		}
+		call.Return(behavior.ConnectExpectation.Client, behavior.ConnectExpectation.Error)
+	} else {
+		mockSSH.On("Connect").Return(&ssh_mock.MockSSHClienter{}, nil).Maybe()
+	}
+
+	// Setup Close behavior
+	mockSSH.On("Close").Return(nil).Maybe()
 
 	for _, exp := range behavior.ExecuteCommandExpectations {
 		call := mockSSH.On(
@@ -148,6 +171,7 @@ type PushFileExpectation struct {
 	Error            error
 	Times            int
 }
+
 type ExecuteCommandExpectation struct {
 	Cmd              string
 	ProgressCallback func(int64, int64)
@@ -176,20 +200,6 @@ func (s StringCommand) Matches(cmd string) bool {
 // PrefixCommand is a command matcher that checks if a command starts with a specific prefix
 type PrefixCommand string
 
-// Matches checks if the given command string starts with this PrefixCommand.
-// The PrefixCommand value acts as the prefix to match against.
-//
-// Parameters:
-//   - cmd: The full command string to check
-//
-// Returns:
-//   - true if cmd starts with this prefix, false otherwise
-//
-// Example:
-//
-//	prefix := PrefixCommand("docker")
-//	prefix.Matches("docker run") // returns true
-//	prefix.Matches("kubectl run") // returns false
 func (p PrefixCommand) Matches(cmd string) bool {
 	return strings.HasPrefix(cmd, string(p))
 }
