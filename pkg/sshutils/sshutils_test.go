@@ -33,7 +33,7 @@ func (s *PkgSSHUtilsTestSuite) SetupSuite() {
 
 func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.ctx = context.Background()
-	sshConfig, err := NewSSHConfig("test-host", 22, "test-user", s.testSSHPrivateKeyPath)
+	sshConfig, err := NewSSHConfigFunc("test-host", 22, "test-user", s.testSSHPrivateKeyPath)
 	s.Require().NoError(err)
 	s.sshConfig = sshConfig
 }

@@ -31,7 +31,6 @@ var createAWSDeploymentCmd = &cobra.Command{
 
 func GetAwsCreateDeploymentCmd() *cobra.Command {
 	createAWSDeploymentCmd.Flags().String("config", "", "Path to the configuration file")
-	createAWSDeploymentCmd.Flags().String("config", "", "Path to the configuration file")
 	return createAWSDeploymentCmd
 }
 

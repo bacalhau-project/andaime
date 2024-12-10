@@ -120,8 +120,6 @@ func (c *SSHConfig) PushFileWithCallback(
 		}
 		defer sshClient.Close()
 	}
-	return sftp.NewClient(sshClient)
-}
 
 	// Use sftpClientCreator if set, otherwise fall back to default
 	if c.sftpClientCreator == nil {
@@ -174,7 +172,7 @@ func (c *SSHConfig) PushFileWithCallback(
 		return fmt.Errorf("failed to verify file after transfer: %w", err)
 	}
 
-	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v, mode: %v)", 
+	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v, mode: %v)",
 		remotePath, len(content), executable, fileInfo.Mode())
 
 	// Additional verification: list directory contents
