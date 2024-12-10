@@ -450,9 +450,8 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 		return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 	}
 
-	// First try without zone-type filter to debug
+	// Remove zone-type filter to get all zones
 	result, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
-		AllAvailabilityZones: aws.Bool(true),
 		Filters: []ec2_types.Filter{
 			{
 				Name:   aws.String("region-name"),
@@ -461,10 +460,6 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 			{
 				Name:   aws.String("state"),
 				Values: []string{"available"},
-			},
-			{
-				Name:   aws.String("zone-type"),
-				Values: []string{string(ec2_types.LocationTypeAvailabilityZone)},
 			},
 		},
 	})
@@ -505,13 +500,13 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 		)
 		l.Debug(zoneInfo)
 
-		// Only count standard availability zones
-		if zoneType == string(ec2_types.LocationTypeAvailabilityZone) {
+		// Count zones that are in the specified region and available
+		if regionName == region && az.State == ec2_types.AvailabilityZoneStateAvailable {
 			availableAZs = append(availableAZs, zoneName)
 		}
 	}
 
-	l.Info(fmt.Sprintf("Found %d standard availability zones: %v", len(availableAZs), availableAZs))
+	l.Info(fmt.Sprintf("Found %d available zones: %v", len(availableAZs), availableAZs))
 
 	if len(availableAZs) < MinRequiredAZs {
 		return fmt.Errorf(
