@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -147,9 +146,13 @@ func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
 	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02-15:04:05")
 	encoderConfig.LineEnding = "\n"
+
+	// Create a custom writer that doesn't try to sync
+	stdoutWriter := zapcore.Lock(os.Stdout)
+
 	return zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
-		zapcore.AddSync(ioutil.Discard), // Discard console output
+		stdoutWriter,
 		level,
 	)
 }
@@ -199,10 +202,8 @@ func (l *Logger) SetVerbose(verbose bool) {
 
 func (l *Logger) syncIfNeeded() {
 	if GlobalInstantSync {
-		if err := l.Sync(); err != nil {
-			// Log the error but don't fail, as this is a best-effort sync
-			fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
-		}
+		// Ignore sync errors for stdout
+		_ = l.Sync()
 	}
 }
 

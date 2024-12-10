@@ -7,7 +7,7 @@ set -e
 set -x
 echo "Current working directory: $(pwd)"
 echo "Script path: $0"
-echo "Script arguments: $@"
+echo "Script arguments: $*"
 echo "Environment:"
 env
 

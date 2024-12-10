@@ -159,6 +159,37 @@ func (p *Provisioner) ProvisionWithCallback(
 	hostname = strings.TrimSpace(hostname)
 	p.Machine.SetName(hostname)
 
+	// Check Docker status with detailed logging
+	l.Debug("Checking Docker status...")
+
+	// First check if Docker service is running
+	dockerStatusCmd := "sudo systemctl status docker"
+	l.Debug(fmt.Sprintf("Running command: %s", dockerStatusCmd))
+	if output, err := p.SSHConfig.ExecuteCommand(ctx, dockerStatusCmd); err != nil {
+		l.Error(fmt.Sprintf("Docker service check failed: %v", err))
+		l.Debug(fmt.Sprintf("Docker service status output: %s", output))
+	} else {
+		l.Debug(fmt.Sprintf("Docker service status: %s", output))
+	}
+
+	// Try to run hello-world container with detailed logging
+	dockerCmd := models.ExpectedDockerHelloWorldCommand
+	l.Debug(fmt.Sprintf("Running command: %s", dockerCmd))
+	if output, err := p.SSHConfig.ExecuteCommand(ctx, dockerCmd); err != nil {
+		l.Error(fmt.Sprintf("Docker hello-world test failed: %v", err))
+		l.Debug(fmt.Sprintf("Docker command output: %s", output))
+
+		// Check if docker group exists and user is in it
+		groupCmd := "groups"
+		if groupOutput, groupErr := p.SSHConfig.ExecuteCommand(ctx, groupCmd); groupErr == nil {
+			l.Debug(fmt.Sprintf("User groups: %s", groupOutput))
+		}
+
+		return fmt.Errorf("docker check failed: %w", err)
+	} else {
+		l.Debug(fmt.Sprintf("docker hello-world output: %s", output))
+	}
+
 	progress.CurrentStep.Status = "Completed"
 	progress.AddStep(progress.CurrentStep)
 	callback(&models.DisplayStatus{

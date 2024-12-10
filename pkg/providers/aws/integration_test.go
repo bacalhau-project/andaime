@@ -13,7 +13,55 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/mock"
+	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 )
+
+// Mock EC2 client setup
+mockEC2Client := new(aws_mock.MockEC2Clienter)
+
+// Mock DescribeAvailabilityZones response
+mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).Return(
+	&ec2.DescribeAvailabilityZonesOutput{
+		AvailabilityZones: []types.AvailabilityZone{
+			{
+				ZoneName:   aws.String("us-east-1a"),
+				ZoneType:   aws.String("availability-zone"),
+				RegionName: aws.String("us-east-1"),
+				State:      types.AvailabilityZoneStateAvailable,
+			},
+			{
+				ZoneName:   aws.String("us-east-1b"),
+				ZoneType:   aws.String("availability-zone"),
+				RegionName: aws.String("us-east-1"),
+				State:      types.AvailabilityZoneStateAvailable,
+			},
+			{
+				ZoneName:   aws.String("us-east-1c"),
+				ZoneType:   aws.String("availability-zone"),
+				RegionName: aws.String("us-east-1"),
+				State:      types.AvailabilityZoneStateAvailable,
+			},
+			{
+				ZoneName:   aws.String("us-west-1a"),
+				ZoneType:   aws.String("availability-zone"),
+				RegionName: aws.String("us-west-1"),
+				State:      types.AvailabilityZoneStateAvailable,
+			},
+			{
+				ZoneName:   aws.String("us-west-1b"),
+				ZoneType:   aws.String("availability-zone"),
+				RegionName: aws.String("us-west-1"),
+				State:      types.AvailabilityZoneStateAvailable,
+			},
+			{
+				ZoneName:   aws.String("us-west-1c"),
+				ZoneType:   aws.String("availability-zone"),
+				RegionName: aws.String("us-west-1"),
+				State:      types.AvailabilityZoneStateAvailable,
+			},
+		},
+	}, nil)
 
 func TestIntegrationCreateAndDestroyInfrastructure(t *testing.T) {
 	provider, err := NewAWSProvider(FAKE_ACCOUNT_ID, FAKE_REGION)
@@ -21,6 +69,9 @@ func TestIntegrationCreateAndDestroyInfrastructure(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+
+	// Set the mock client
+	provider.SetEC2Client(mockEC2Client)
 
 	// Create infrastructure
 	err = provider.CreateInfrastructure(ctx)

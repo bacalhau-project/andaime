@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -25,6 +26,33 @@ type Config struct {
 	GCP struct {
 		ProjectID string `yaml:"project_id"`
 	} `yaml:"gcp"`
+}
+
+type SpotConfig struct {
+	// Master switch for spot functionality
+	Enabled bool `yaml:"enabled" json:"enabled"`
+
+	// Maximum price willing to pay per hour (e.g. "0.50")
+	// Empty string means use current spot price
+	MaxPrice string `yaml:"maxPrice,omitempty" json:"maxPrice,omitempty"`
+
+	// Whether to automatically fall back to on-demand instances if spot is unavailable
+	FallbackToOnDemand bool `yaml:"fallbackToOnDemand" json:"fallbackToOnDemand"`
+
+	// Strategy for allocating instances across spot pools
+	// Valid values: "lowest-price", "capacity-optimized", "capacity-optimized-prioritized"
+	AllocationStrategy string `yaml:"allocationStrategy,omitempty" json:"allocationStrategy,omitempty"`
+
+	// What happens when a spot instance is interrupted
+	// Valid values: "terminate", "stop", "hibernate"
+	InterruptionBehavior string `yaml:"interruptionBehavior,omitempty" json:"interruptionBehavior,omitempty"`
+}
+
+type AWSProviderConfig struct {
+	// ... existing fields ...
+
+	// Spot instance configuration
+	Spot *SpotConfig `yaml:"spot,omitempty" json:"spot,omitempty"`
 }
 
 const (
@@ -167,4 +195,58 @@ func InitConfig(configFile string) (string, error) {
 
 	l.Info("Configuration initialization complete")
 	return configFile, nil
+}
+
+func (s *SpotConfig) Validate() error {
+	if s == nil {
+		return nil // Spot config is optional
+	}
+
+	if s.MaxPrice != "" {
+		// Validate price format
+		if _, err := strconv.ParseFloat(s.MaxPrice, 64); err != nil {
+			return fmt.Errorf("invalid spot max price format: %w", err)
+		}
+	}
+
+	// Validate allocation strategy
+	validStrategies := map[string]bool{
+		"lowest-price":                   true,
+		"capacity-optimized":             true,
+		"capacity-optimized-prioritized": true,
+		"":                               true, // Allow empty for default
+	}
+	if !validStrategies[s.AllocationStrategy] {
+		return fmt.Errorf("invalid spot allocation strategy: %s", s.AllocationStrategy)
+	}
+
+	// Validate interruption behavior
+	validBehaviors := map[string]bool{
+		"terminate": true,
+		"stop":      true,
+		"hibernate": true,
+		"":          true, // Allow empty for default
+	}
+	if !validBehaviors[s.InterruptionBehavior] {
+		return fmt.Errorf("invalid spot interruption behavior: %s", s.InterruptionBehavior)
+	}
+
+	return nil
+}
+
+func (s *SpotConfig) SetDefaults() {
+	if s == nil {
+		return
+	}
+
+	if s.AllocationStrategy == "" {
+		s.AllocationStrategy = "capacity-optimized"
+	}
+
+	if s.InterruptionBehavior == "" {
+		s.InterruptionBehavior = "terminate"
+	}
+
+	// Default to allowing fallback to on-demand for better reliability
+	s.FallbackToOnDemand = true
 }

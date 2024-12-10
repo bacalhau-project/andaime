@@ -1,78 +1,193 @@
-# Standard Operating Procedure (SOP) for AWS Direct Resource Provisioning
+# AWS Spot Instance Implementation Tasks
 
-**Objective:** Migrate from AWS CDK to direct AWS SDK resource provisioning for EC2 instances, networking, and associated resources. This will simplify the deployment process and reduce dependencies.
+## Phase 1: Core Infrastructure Setup
 
----
+### Configuration & Types
+1. Define spot instance configuration struct
+   - [ ] Add spot-specific fields to deployment config
+   - [ ] Create validation functions for spot configs
+   - [ ] Add price threshold configurations
+   - [ ] Add AZ validation requirements
+      - [ ] Create function to check minimum AZ count (>=2)
+      - [ ] Add early validation before deployment starts
+      - [ ] Implement clear error messaging for AZ validation failures
+      - [ ] Add AZ count validation to config validation pipeline
 
-## Phase 1: Analysis and Planning ✓
+2. Create spot instance type definitions
+   - [ ] Define SpotInstanceRequest struct
+   - [ ] Add spot pricing history types
+   - [ ] Create spot termination notice types
+   - [ ] Add AZ distribution configuration
+      - [ ] Define minimum AZ requirements
+      - [ ] Create AZ distribution strategy types
+      - [ ] Add AZ fallback configurations
 
-### 1. Review Current Implementation
-- [x] Identify all CDK dependencies in the codebase
-- [x] Document current resource creation workflow
-- [x] Map CDK constructs to equivalent AWS SDK calls
+### Basic Operations
+3. Implement spot price checking
+   - [ ] Create function to fetch current spot prices
+   - [ ] Add price history analysis
+   - [ ] Implement price threshold validation
 
-### 2. Design New Architecture
-- [x] Design direct AWS SDK resource provisioning flow
-- [x] Plan migration strategy with minimal service disruption
-- [x] Define new interfaces for AWS resource management
+4. Create spot request handling
+   - [ ] Implement spot instance request creation
+   - [ ] Add request status monitoring
+   - [ ] Create request cancellation logic
 
----
+## Phase 2: Instance Management
 
-## Phase 2: Implementation
+### Launch & Monitor
+5. Spot instance launch workflow
+   - [ ] Create spot launch template
+   - [ ] Implement instance launch monitoring
+   - [ ] Add launch failure handling
 
-### 3. Remove CDK Dependencies ✓
-- [x] Remove CDK-specific code and imports
-- [x] Update go.mod to remove CDK dependencies
-- [x] Clean up CDK-related configuration files
+6. Instance state management
+   - [ ] Create spot instance state tracking
+   - [ ] Implement health checking
+   - [ ] Add automatic recovery procedures
 
-### 4. Implement Direct Resource Creation
+### Termination Handling
+7. Implement termination notice handling
+   - [ ] Create termination notice listener
+   - [ ] Add graceful shutdown logic
+   - [ ] Implement workload migration
 
-#### VPC and Networking ✓
-- [x] Implement VPC creation using AWS SDK
-- [x] Add subnet configuration and creation
-- [x] Configure route tables and internet gateway
-- [x] Implement security group management
+8. Create fallback mechanisms
+   - [ ] Define fallback conditions
+   - [ ] Implement on-demand fallback
+   - [ ] Add automatic instance replacement
 
-#### EC2 Instance Management ✓
-- [x] Create EC2 instance provisioning logic
-- [x] Implement instance state management
-- [x] Add instance metadata handling
-- [x] Configure instance networking
+## Phase 3: Integration & Testing
 
-#### Resource Tagging and Management ✓
-- [x] Implement resource tagging strategy
-- [x] Add resource lifecycle management
-- [x] Create cleanup and termination logic
+### AWS Integration
+9. AWS API integration
+   - [ ] Implement AWS SDK calls
+   - [ ] Add proper error handling
+   - [ ] Create retry mechanisms
 
-### 5. Error Handling and Logging ✓
-- [x] Implement comprehensive error handling
-- [x] Add detailed logging for resource operations
-- [x] Create recovery mechanisms for failed operations
+10. Resource tagging
+    - [ ] Define spot-specific tags
+    - [ ] Implement resource tracking
+    - [ ] Add cost allocation tags
 
----
+### Testing Infrastructure
+11. Create test infrastructure
+    - [ ] Add unit tests for spot operations
+    - [ ] Create integration tests
+    - [ ] Implement mock AWS responses
 
-## Phase 3: Testing
+12. Add test scenarios
+    - [ ] Test price threshold behavior
+    - [ ] Verify termination handling
+    - [ ] Test fallback mechanisms
 
-### 6. Unit Testing ✓
-- [x] Create unit tests for new AWS SDK implementations
-- [x] Update existing tests to remove CDK dependencies
-- [x] Verify error handling and edge cases
+## Phase 4: CLI & User Interface
 
-### 7. Integration Testing ✓
-- [x] Test complete resource provisioning workflow
-- [x] Verify network connectivity and security
-- [x] Test resource cleanup and termination
+### Command Line Interface
+13. Add CLI commands
+    - [ ] Create spot instance launch command
+    - [ ] Add spot management commands
+    - [ ] Implement spot monitoring CLI
 
-### 8. Performance Testing ✓
-- [x] Measure resource creation time
-- [x] Compare memory and CPU usage
-- [x] Verify scalability under load
+14. Implement configuration handling
+    - [ ] Add spot config validation
+    - [ ] Create config generation helpers
+    - [ ] Implement config migration tools
 
----
+### User Experience
+15. Add user feedback
+    - [ ] Implement progress indicators
+    - [ ] Add detailed error messages
+    - [ ] Create success notifications
 
-## Phase 4: Documentation and Deployment
+16. Create documentation
+    - [ ] Write CLI documentation
+    - [ ] Add configuration examples
+    - [ ] Create troubleshooting guide
 
-### 9. Update Documentation ✓
-- [x] Update API documentation
-- [x] Create migration guide for users
-- [x] Document new configuration options
+## Phase 5: Advanced Features
+
+### Cost Management
+17. Implement cost optimization
+    - [ ] Add automatic instance type selection
+    - [ ] Create cost prediction tools
+    - [ ] Implement budget controls
+
+18. Add pricing strategies
+    - [ ] Create dynamic bidding strategy
+    - [ ] Implement multi-AZ pricing
+    - [ ] Add price history analysis
+
+### High Availability
+19. Implement HA features
+    - [ ] Create instance distribution logic
+    - [ ] Add zone failover
+    - [ ] Implement backup instances
+
+20. Add workload management
+    - [ ] Create workload migration logic
+    - [ ] Implement state preservation
+    - [ ] Add automatic scaling
+
+## Phase 6: Monitoring & Maintenance
+
+### Monitoring
+21. Add monitoring systems
+    - [ ] Implement metric collection
+    - [ ] Create alert system
+    - [ ] Add performance tracking
+
+22. Create logging infrastructure
+    - [ ] Add detailed logging
+    - [ ] Implement log aggregation
+    - [ ] Create audit trails
+
+### Maintenance
+23. Add maintenance features
+    - [ ] Create update mechanisms
+    - [ ] Implement version management
+    - [ ] Add configuration backups
+
+24. Create cleanup procedures
+    - [ ] Implement resource cleanup
+    - [ ] Add orphaned resource detection
+    - [ ] Create maintenance scripts
+
+## Phase 7: Security & Compliance
+
+### Security
+25. Implement security features
+    - [ ] Add encryption support
+    - [ ] Implement access controls
+    - [ ] Create security groups
+
+26. Add compliance features
+    - [ ] Implement audit logging
+    - [ ] Add compliance checks
+    - [ ] Create security reports
+
+### Final Integration
+27. System integration
+    - [ ] Test full system integration
+    - [ ] Add performance benchmarks
+    - [ ] Create deployment procedures
+
+28. Documentation & Release
+    - [ ] Complete system documentation
+    - [ ] Create release notes
+    - [ ] Add migration guides
+
+## Success Criteria
+- [ ] All spot instance operations are reliable and tested
+- [ ] Cost optimization features are working effectively
+- [ ] High availability mechanisms are in place
+- [ ] Monitoring and logging systems are operational
+- [ ] Security and compliance requirements are met
+- [ ] Documentation is complete and accurate
+- [ ] CLI provides full spot management capabilities
+
+## Notes
+- Each task should be implemented incrementally
+- Tests should be written before implementation
+- Documentation should be updated with each change
+- Security considerations should be addressed in each phase

@@ -18,6 +18,9 @@ import (
 
 const MinRequiredAZs = 2
 
+// UNKNOWN represents an unknown value in AWS responses
+const UNKNOWN = "unknown"
+
 // LiveEC2Client implements the EC2Clienter interface
 type LiveEC2Client struct {
 	client *ec2.Client
@@ -463,17 +466,17 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 
 	for _, az := range result.AvailabilityZones {
 		// Safely handle potential nil values
-		zoneName := "unknown"
+		zoneName := UNKNOWN
 		if az.ZoneName != nil {
 			zoneName = *az.ZoneName
 		}
 
-		zoneType := "unknown"
+		zoneType := UNKNOWN
 		if az.ZoneType != nil {
 			zoneType = *az.ZoneType
 		}
 
-		regionName := "unknown"
+		regionName := UNKNOWN
 		if az.RegionName != nil {
 			regionName = *az.RegionName
 		}

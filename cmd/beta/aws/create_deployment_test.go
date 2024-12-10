@@ -5,10 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
 	sshutils_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -86,7 +91,52 @@ deployments:
 }
 
 func TestExecuteCreateDeployment(t *testing.T) {
-	// ... existing test setup ...
+	// Create mock EC2 client
+	mockEC2Client := new(aws_mock.MockEC2Clienter)
+
+	// Mock DescribeAvailabilityZones response
+	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, &ec2.DescribeAvailabilityZonesInput{}).
+		Return(
+			&ec2.DescribeAvailabilityZonesOutput{
+				AvailabilityZones: []types.AvailabilityZone{
+					{
+						ZoneName:   aws.String("us-east-1a"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String("us-east-1"),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String("us-east-1b"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String("us-east-1"),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String("us-east-1c"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String("us-east-1"),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String("us-west-1a"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String("us-west-1"),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String("us-west-1b"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String("us-west-1"),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String("us-west-1c"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String("us-west-1"),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+				},
+			}, nil)
 
 	// Create SSH config mock
 	mockSSHConfig := new(sshutils_mock.MockSSHConfiger)
@@ -94,9 +144,5 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Set up expectations for the Connect call
 	mockSSHConfig.On("Connect").Return(nil)
 
-	// If the mock needs to return a connection, you might need something like:
-	// mockConn := new(mocks.SSHConnection)
-	// mockSSHConfig.On("Connect").Return(mockConn, nil)
-
-	// ... rest of test ...
+	// ... rest of test setup ...
 }

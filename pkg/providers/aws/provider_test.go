@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -148,8 +149,16 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 	suite.mockAWSClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeAvailabilityZonesOutput{
 			AvailabilityZones: []types.AvailabilityZone{
-				{ZoneName: aws.String("FAKE-ZONE-1")},
-				{ZoneName: aws.String("FAKE-ZONE-2")},
+				{
+					ZoneName:   aws.String(fmt.Sprintf("%sa", FAKE_REGION)),
+					State:      types.AvailabilityZoneStateAvailable,
+					RegionName: aws.String(FAKE_REGION),
+				},
+				{
+					ZoneName:   aws.String(fmt.Sprintf("%sb", FAKE_REGION)),
+					State:      types.AvailabilityZoneStateAvailable,
+					RegionName: aws.String(FAKE_REGION),
+				},
 			},
 		}, nil)
 
