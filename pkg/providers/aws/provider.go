@@ -822,6 +822,13 @@ func (p *AWSProvider) getRegionAvailabilityZones(
 	ctx context.Context,
 	region string,
 ) ([]ec2_types.AvailabilityZone, error) {
+	// Create a regional EC2 client
+	regionalCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+	}
+	regionalClient := ec2.NewFromConfig(regionalCfg)
+
 	azInput := &ec2.DescribeAvailabilityZonesInput{
 		Filters: []ec2_types.Filter{
 			{
@@ -835,7 +842,7 @@ func (p *AWSProvider) getRegionAvailabilityZones(
 		},
 	}
 
-	azOutput, err := p.EC2Client.DescribeAvailabilityZones(ctx, azInput)
+	azOutput, err := regionalClient.DescribeAvailabilityZones(ctx, azInput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get availability zones for region %s: %w", region, err)
 	}
