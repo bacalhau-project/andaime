@@ -488,14 +488,14 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 		l.Debug(zoneInfo)
 
 		// Explicitly check for region and availability
-		if regionName == region && 
-			(az.State == ec2_types.AvailabilityZoneStateAvailable || 
-			 az.State == ec2_types.AvailabilityZoneStateOptInRequired) {
+		if regionName == region && az.State == ec2_types.AvailabilityZoneStateAvailable {
 			availableAZs = append(availableAZs, zoneName)
 		}
 	}
 
-	l.Info(fmt.Sprintf("Found %d available zones in %s: %v", len(availableAZs), region, availableAZs))
+	l.Info(
+		fmt.Sprintf("Found %d available zones in %s: %v", len(availableAZs), region, availableAZs),
+	)
 
 	if len(availableAZs) < MinRequiredAZs {
 		return fmt.Errorf(
