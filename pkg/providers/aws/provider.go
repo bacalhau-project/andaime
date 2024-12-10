@@ -724,7 +724,7 @@ func (p *AWSProvider) initializeInfrastructureDisplay() error {
 }
 
 // Create infrastructure in all regions concurrently
-func (p *AWSProvider) createRegionalInfrastructure(
+func (p *AWSProvider) CreateRegionalResources(
 	ctx context.Context,
 	regions []string,
 ) error {
