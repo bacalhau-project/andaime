@@ -170,15 +170,15 @@ func destroyAllDeployments(ctx context.Context, deployments []ConfigDeployment, 
 		fmt.Printf("%d. %s (%s) - %s\n", i+1, dep.Name, dep.Type, dep.ID)
 	}
 
-	// if !dryRun {
-	// 	fmt.Print("\nAre you sure you want to destroy these deployments? (y/N): ")
-	// 	reader := bufio.NewReader(os.Stdin)
-	// 	confirm, _ := reader.ReadString('\n')
-	// 	if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-	// 		fmt.Println("Operation cancelled.")
-	// 		return nil
-	// 	}
-	// }
+	if !dryRun {
+		fmt.Print("\nAre you sure you want to destroy these deployments? (y/N): ")
+		reader := bufio.NewReader(os.Stdin)
+		confirm, _ := reader.ReadString('\n')
+		if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
+			fmt.Println("Operation cancelled.")
+			return nil
+		}
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	var mu sync.Mutex

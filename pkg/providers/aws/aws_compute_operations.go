@@ -13,6 +13,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	"github.com/bacalhau-project/andaime/pkg/utils"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -288,10 +289,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 			l.Warn(fmt.Sprintf("Machine %s has no location specified", machine.GetName()))
 			continue
 		}
-		// Convert zone to region if necessary
-		if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
-			region = region[:len(region)-1]
-		}
+		region = utils.NormalizeRegion(region)
 		machinesByRegion[region] = append(machinesByRegion[region], machine)
 	}
 

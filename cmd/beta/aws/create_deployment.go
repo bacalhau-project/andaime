@@ -337,6 +337,10 @@ func writeVPCIDToConfig(deployment *models.Deployment) error {
 
 	l := logger.Get()
 
+	if deployment.AWS.RegionalResources.VPCs == nil {
+		return nil
+	}
+
 	// Write VPC IDs for each region
 	for region, vpc := range deployment.AWS.RegionalResources.VPCs {
 		if vpc != nil && vpc.VPCID != "" {

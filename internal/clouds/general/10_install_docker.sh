@@ -126,11 +126,8 @@ run_with_retries "apt-get update after Docker repo" "$MAX_RETRIES" sudo apt-get 
 echo "Installing Docker Engine..."
 run_with_retries "Install Docker Engine" "$MAX_RETRIES" sudo apt-get install -y docker-ce docker-ce-cli containerd.io || error_exit "Failed to install Docker Engine"
 
-# Ensure Docker socket directory exists
-sudo mkdir -p /etc/systemd/system/docker.socket.d
-
 # Create a more comprehensive socket configuration to resolve socket activation issues
-mkdir -p /etc/systemd/system/docker.socket.d
+sudo mkdir -p /etc/systemd/system/docker.socket.d
 echo "[Socket]
 ListenStream=/var/run/docker.sock
 SocketMode=0660
@@ -148,15 +145,14 @@ StartLimitIntervalSec=500
 StartLimitBurst=10" | sudo tee /etc/systemd/system/docker.socket.d/10-custom.conf
 
 # Create a systemd override for docker.socket to enhance reliability
-mkdir -p /etc/systemd/system/docker.socket.override.d
-echo "[Unit]
-StartLimitIntervalSec=500
-StartLimitBurst=10
+mkdir -p /etc/systemd/system/docker.socket.d  
+echo "[Unit]  
+StartLimitIntervalSec=500  
+StartLimitBurst=10  
 
-[Socket]
-FileDescriptorName=docker
-RemoveOnStop=yes" | sudo tee /etc/systemd/system/docker.socket.override.d/10-reliability.conf
-
+[Socket]  
+FileDescriptorName=docker  
+RemoveOnStop=yes" | sudo tee /etc/systemd/system/docker.socket.d/10-reliability.conf  
 # Reload systemd to pick up new socket configuration
 sudo systemctl daemon-reload
 

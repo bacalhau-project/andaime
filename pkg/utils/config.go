@@ -248,5 +248,7 @@ func (s *SpotConfig) SetDefaults() {
 	}
 
 	// Default to allowing fallback to on-demand for better reliability
-	s.FallbackToOnDemand = true
+	if !s.FallbackToOnDemand {
+		s.FallbackToOnDemand = true
+	}
 }

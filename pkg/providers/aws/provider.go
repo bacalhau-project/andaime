@@ -171,13 +171,13 @@ func (p *AWSProvider) getOrCreateEC2Client(
 
 	var ec2Client aws_interface.EC2Clienter
 	p.ConfigMutex.Lock()
+	defer p.ConfigMutex.Unlock()
 	if m.Deployment.AWS.RegionalResources.Clients[region] != nil {
 		ec2Client = m.Deployment.AWS.RegionalResources.Clients[region]
 	} else {
 		ec2Client = &LiveEC2Client{client: ec2.NewFromConfig(cfg)}
 		m.Deployment.AWS.RegionalResources.Clients[region] = ec2Client
 	}
-	p.ConfigMutex.Unlock()
 
 	return ec2Client, nil
 }
@@ -677,11 +677,6 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 					})
 					break
 				}
-			}
-
-			// Force immediate program termination
-			if prog := display.GetGlobalProgramFunc(); prog != nil {
-				prog.Quit()
 			}
 
 			return fmt.Errorf("region %s validation failed: %w", region, err)

@@ -373,8 +373,6 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 	cbpts.NoError(err)
 
 	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
-
-	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
@@ -392,8 +390,6 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	mockSSH := new(ssh_mock.MockSSHConfiger)
 
 	// Setup the mock to pass SSH wait but fail command execution
-	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
-	mockSSH.On("Close").Return(nil).Maybe()
 	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
 	mockSSH.On("Close").Return(nil).Maybe()
 	mockSSH.On("WaitForSSH", mock.Anything,

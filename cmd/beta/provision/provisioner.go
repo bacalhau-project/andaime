@@ -165,9 +165,11 @@ func (p *Provisioner) ProvisionWithCallback(
 	// First check if Docker service is running
 	dockerStatusCmd := "sudo systemctl status docker"
 	l.Debug(fmt.Sprintf("Running command: %s", dockerStatusCmd))
-	if output, err := p.SSHConfig.ExecuteCommand(ctx, dockerStatusCmd); err != nil {
+	output, err := p.SSHConfig.ExecuteCommand(ctx, dockerStatusCmd)
+	if err != nil {
 		l.Error(fmt.Sprintf("Docker service check failed: %v", err))
 		l.Debug(fmt.Sprintf("Docker service status output: %s", output))
+		return fmt.Errorf("docker service is not running: %w", err)
 	} else {
 		l.Debug(fmt.Sprintf("Docker service status: %s", output))
 	}
@@ -178,12 +180,6 @@ func (p *Provisioner) ProvisionWithCallback(
 	if output, err := p.SSHConfig.ExecuteCommand(ctx, dockerCmd); err != nil {
 		l.Error(fmt.Sprintf("Docker hello-world test failed: %v", err))
 		l.Debug(fmt.Sprintf("Docker command output: %s", output))
-
-		// Check if docker group exists and user is in it
-		groupCmd := "groups"
-		if groupOutput, groupErr := p.SSHConfig.ExecuteCommand(ctx, groupCmd); groupErr == nil {
-			l.Debug(fmt.Sprintf("User groups: %s", groupOutput))
-		}
 
 		return fmt.Errorf("docker check failed: %w", err)
 	} else {
