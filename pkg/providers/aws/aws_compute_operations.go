@@ -480,18 +480,34 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 	var availableAZs []string
 
 	for _, az := range result.AvailabilityZones {
+		// Safely handle potential nil values
+		zoneName := "unknown"
+		if az.ZoneName != nil {
+			zoneName = *az.ZoneName
+		}
+
+		zoneType := "unknown"
+		if az.ZoneType != nil {
+			zoneType = *az.ZoneType
+		}
+
+		regionName := "unknown"
+		if az.RegionName != nil {
+			regionName = *az.RegionName
+		}
+
 		zoneInfo := fmt.Sprintf(
 			"Zone: %s, State: %s, Type: %s, Region: %s",
-			*az.ZoneName,
+			zoneName,
 			string(az.State),
-			*az.ZoneType,
-			*az.RegionName,
+			zoneType,
+			regionName,
 		)
 		l.Debug(zoneInfo)
 
 		// Only count standard availability zones
-		if *az.ZoneType == string(ec2_types.LocationTypeAvailabilityZone) {
-			availableAZs = append(availableAZs, *az.ZoneName)
+		if zoneType == string(ec2_types.LocationTypeAvailabilityZone) {
+			availableAZs = append(availableAZs, zoneName)
 		}
 	}
 
