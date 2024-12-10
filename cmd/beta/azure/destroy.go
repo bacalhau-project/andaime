@@ -269,7 +269,7 @@ func destroyAzureDeployment(ctx context.Context, dep ConfigDeployment, dryRun bo
 		}
 
 		fmt.Printf("   Removing deployment from config\n")
-		if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
+		if err := utils.DeleteUniqueIDFromConfig(dep.UniqueID); err != nil {
 			return err
 		}
 	}

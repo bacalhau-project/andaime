@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -173,12 +175,135 @@ func (p *GCPProvider) DestroyResources(
 	return p.DestroyProject(ctx, projectID)
 }
 
-// DestroyProject destroys a specified GCP project
+// DestroyProject destroys a specified GCP project and removes it from config
 func (p *GCPProvider) DestroyProject(
 	ctx context.Context,
 	projectID string,
 ) error {
-	return p.GetGCPClient().DestroyProject(ctx, projectID)
+	l := logger.Get()
+
+	// Strict validation of project ID
+	if !isValidGCPProjectID(projectID) {
+		l.Warnf("Skipping invalid project ID: %s", projectID)
+		return nil
+	}
+
+	// First destroy the project in GCP
+	destroyCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if err := p.GetGCPClient().DestroyProject(destroyCtx, projectID); err != nil {
+		// Log specific error details
+		l.Errorf("Failed to destroy GCP project %s: %v", projectID, err)
+		
+		// Check for specific error conditions
+		if strings.Contains(err.Error(), "invalid project name") ||
+			strings.Contains(err.Error(), "Project not active") ||
+			strings.Contains(err.Error(), "does not exist") {
+			l.Warnf("Project %s is invalid or not active, skipping", projectID)
+			return nil
+		}
+		
+		return fmt.Errorf("failed to destroy GCP project %s: %w", projectID, err)
+	}
+
+	// After successful destruction, remove from config
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Get the config file path
+	configPath := viper.ConfigFileUsed()
+	if configPath == "" {
+		return fmt.Errorf("no config file found")
+	}
+
+	// Read the current config
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Parse YAML
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(configData, &config); err != nil {
+		return fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Remove the deployment entry
+	modified := false
+	if deployments, ok := config["deployments"].(map[string]interface{}); ok {
+		// Iterate through a copy of the map to safely delete during iteration
+		for deploymentID, deployment := range deployments {
+			if deploymentData, ok := deployment.(map[string]interface{}); ok {
+				if gcpData, ok := deploymentData["gcp"].(map[string]interface{}); ok {
+					if pid, ok := gcpData["project_id"].(string); ok && pid == projectID {
+						delete(deployments, deploymentID)
+						l.Infof("Removed deployment %s from config file", deploymentID)
+						modified = true
+					}
+				}
+			}
+		}
+	}
+
+	// Clean up empty or unnecessary keys
+	if modified {
+		// Remove empty deployments
+		if deployments, ok := config["deployments"].(map[string]interface{}); ok {
+			if len(deployments) == 0 {
+				delete(config, "deployments")
+			}
+		}
+
+		// Remove empty GCP key
+		delete(config, "gcp")
+	}
+
+	// Only write back if modifications were made
+	if modified {
+		// Write back to file
+		updatedConfig, err := yaml.Marshal(config)
+		if err != nil {
+			return fmt.Errorf("failed to marshal updated config: %w", err)
+		}
+
+		if err := os.WriteFile(configPath, updatedConfig, 0644); err != nil {
+			return fmt.Errorf("failed to write updated config: %w", err)
+		}
+
+		l.Infof("Successfully removed project %s from config file", projectID)
+	}
+
+	return nil
+}
+
+// isValidGCPProjectID checks if the project ID is a valid GCP project identifier
+func isValidGCPProjectID(projectID string) bool {
+	// Explicitly reject known invalid project IDs
+	invalidProjectIDs := map[string]bool{
+		"":                true,
+		"organization_id": true,
+		"project_id":      true,
+	}
+
+	if invalidProjectIDs[projectID] {
+		return false
+	}
+
+	// GCP project ID rules:
+	// 1. Must be 6-30 characters long
+	// 2. Can contain lowercase letters, digits, and hyphens
+	// 3. Must start with a letter
+	// 4. Must end with a letter or number
+	if len(projectID) < 6 || len(projectID) > 30 {
+		return false
+	}
+
+	// Use a regular expression to validate the project ID
+	match, _ := regexp.MatchString(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`, projectID)
+	return match
 }
 
 // ListProjects lists all GCP projects

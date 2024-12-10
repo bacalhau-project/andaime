@@ -3,8 +3,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/bacalhau-project/andaime/cmd/beta"
 	"github.com/bacalhau-project/andaime/cmd/beta/aws"
 	"github.com/bacalhau-project/andaime/cmd/beta/azure"
@@ -23,19 +21,20 @@ func GetBetaCmd() *cobra.Command {
 		Use:   "beta",
 		Short: "Beta commands for testing and development",
 		Long:  `Beta commands are experimental features that are not yet ready for production use.`,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Use 'andaime beta [command]' to run a beta command.")
-			fmt.Println(
-				"Use 'andaime beta --help' for more information about available beta commands.",
-			)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
 		},
 	}
-	betaCmd.AddCommand(beta.GetTestDisplayCmd())
-	betaCmd.AddCommand(azure.GetAzureCmd())
-	betaCmd.AddCommand(gcp.GetGCPCmd())
-	betaCmd.AddCommand(aws.GetAwsCmd())
-	betaCmd.AddCommand(internal.GetGenerateCloudDataCmd())
-	betaCmd.AddCommand(provision.GetProvisionNodeCmd())
+
+	// Add commands in a deterministic order
+	betaCmd.AddCommand(
+		aws.GetAwsCmd(),
+		azure.GetAzureCmd(),
+		gcp.GetGCPCmd(),
+		beta.GetTestDisplayCmd(),
+		internal.GetGenerateCloudDataCmd(),
+		provision.GetProvisionNodeCmd(),
+	)
 
 	return betaCmd
 }

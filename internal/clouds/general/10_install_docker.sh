@@ -3,6 +3,14 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Debug logging
+set -x
+echo "Current working directory: $(pwd)"
+echo "Script path: $0"
+echo "Script arguments: $*"
+echo "Environment:"
+env
+
 # Variables
 PRIMARY_MIRROR="http://archive.ubuntu.com/ubuntu/"
 MIRRORS=(
@@ -118,13 +126,110 @@ run_with_retries "apt-get update after Docker repo" "$MAX_RETRIES" sudo apt-get 
 echo "Installing Docker Engine..."
 run_with_retries "Install Docker Engine" "$MAX_RETRIES" sudo apt-get install -y docker-ce docker-ce-cli containerd.io || error_exit "Failed to install Docker Engine"
 
-# Start Docker service with retries
-echo "Starting Docker service..."
-run_with_retries "Start Docker service" "$MAX_RETRIES" sudo systemctl start docker || error_exit "Failed to start Docker service"
+# Ensure Docker socket directory exists
+sudo mkdir -p /etc/systemd/system/docker.socket.d
 
-# Enable Docker to start on boot with retries
-echo "Enabling Docker to start on boot..."
-run_with_retries "Enable Docker service" "$MAX_RETRIES" sudo systemctl enable docker || error_exit "Failed to enable Docker service"
+# Create a more comprehensive socket configuration to resolve socket activation issues
+mkdir -p /etc/systemd/system/docker.socket.d
+echo "[Socket]
+ListenStream=/var/run/docker.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=docker
+
+# Prevent socket activation failures
+FileDescriptorName=docker
+RemoveOnStop=yes
+Restart=on-failure
+RestartSec=5s
+
+# Increase start limit to prevent service-start-limit-hit
+StartLimitIntervalSec=500
+StartLimitBurst=10" | sudo tee /etc/systemd/system/docker.socket.d/10-custom.conf
+
+# Create a systemd override for docker.socket to enhance reliability
+mkdir -p /etc/systemd/system/docker.socket.override.d
+echo "[Unit]
+StartLimitIntervalSec=500
+StartLimitBurst=10
+
+[Socket]
+FileDescriptorName=docker
+RemoveOnStop=yes" | sudo tee /etc/systemd/system/docker.socket.override.d/10-reliability.conf
+
+# Reload systemd to pick up new socket configuration
+sudo systemctl daemon-reload
+
+# Start Docker service with enhanced reliability and logging
+echo "Starting Docker service..."
+# Ensure socket is stopped first to clear any lingering configurations
+sudo systemctl stop docker.socket || true
+sudo systemctl stop docker.service || true
+
+# Wait a moment to ensure clean state
+sleep 2
+
+# Start services with more robust error handling
+run_with_retries "Start Docker socket" "$MAX_RETRIES" sudo systemctl start docker.socket || {
+    echo "Docker socket start failed:"
+    sudo systemctl status docker.socket
+    sudo journalctl -u docker.socket
+    error_exit "Failed to start Docker socket"
+}
+
+run_with_retries "Start Docker service" "$MAX_RETRIES" sudo systemctl start docker.service || {
+    echo "Docker service start failed. Detailed diagnostics:"
+    echo "1. Service Status:"
+    sudo systemctl status docker.service
+    echo "2. Docker Daemon Logs:"
+    sudo journalctl -u docker.service
+    echo "3. System Journal Errors:"
+    sudo journalctl -xe | grep -i docker
+    echo "4. Docker Installation Check:"
+    which dockerd
+    dockerd --version
+    echo "5. Systemd Socket Status:"
+    sudo systemctl status docker.socket
+    
+    # Additional troubleshooting steps
+    echo "6. Checking Docker socket:"
+    ls -l /var/run/docker.sock || echo "Docker socket not found"
+    
+    error_exit "Failed to start Docker service. See diagnostic information above."
+}
+
+# Verify Docker is running and functional with extended timeout
+echo "Verifying Docker installation..."
+timeout 30s sudo docker info || {
+    echo "Docker info command failed. Extended diagnostics:"
+    sudo systemctl status docker
+    sudo journalctl -u docker.service
+    sudo journalctl -u docker.socket
+    error_exit "Docker is not functioning correctly after extended checks"
+}
+
+# Enable Docker to start on boot with retries and detailed logging
+echo "Enabling Docker service and socket..."
+run_with_retries "Enable Docker service" "$MAX_RETRIES" sudo systemctl enable docker.service docker.socket || {
+    echo "Failed to enable Docker service. Checking service status..."
+    sudo systemctl status docker.service
+    sudo systemctl status docker.socket
+    error_exit "Failed to enable Docker service and socket"
+}
+
+# Verify Docker is running and functional with extended timeout
+echo "Verifying Docker installation..."
+timeout 30s sudo docker info || {
+    echo "Docker info command failed. Extended diagnostics:"
+    sudo systemctl status docker
+    sudo journalctl -u docker.service
+    sudo journalctl -u docker.socket
+    error_exit "Docker is not functioning correctly after extended checks"
+}
+
+# Additional Docker configuration for robustness
+sudo systemctl restart docker.service
+sudo systemctl restart docker.socket
 
 # Remove the trap since the script succeeded
 trap - EXIT

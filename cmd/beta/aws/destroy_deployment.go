@@ -284,7 +284,7 @@ func destroyDeployment(ctx context.Context, dep ConfigDeployment, dryRun bool) e
 		fmt.Printf("   -- Resources destroyed successfully\n")
 
 		fmt.Printf("   Removing deployment from config\n")
-		if err := utils.DeleteKeyFromConfig(dep.FullViperKey); err != nil {
+		if err := utils.DeleteUniqueIDFromConfig(dep.UniqueID); err != nil {
 			return err
 		}
 	}

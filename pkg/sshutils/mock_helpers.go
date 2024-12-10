@@ -59,13 +59,13 @@ func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) sshutils_interfa
 			}),
 		)
 
+		call.Return(exp.Output, exp.Error)
+
 		if exp.Times > 0 {
 			call.Times(exp.Times)
 		} else {
 			call.Once()
 		}
-
-		call.Return(exp.Output, exp.Error)
 
 		if exp.ProgressCallback != nil {
 			call.Run(func(args mock.Arguments) {

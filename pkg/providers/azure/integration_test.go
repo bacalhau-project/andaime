@@ -219,7 +219,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 				Times:            3,
 			},
 			{
-				Cmd:              "sudo docker run hello-world",
+				Cmd:              models.ExpectedDockerHelloWorldCommand,
 				ProgressCallback: func(int64, int64) {},
 				Output:           models.ExpectedDockerOutput,
 				Error:            nil,

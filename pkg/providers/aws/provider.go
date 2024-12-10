@@ -170,15 +170,15 @@ func (p *AWSProvider) getOrCreateEC2Client(
 	}
 
 	var ec2Client aws_interface.EC2Clienter
-	if p.GetEC2Client() != nil {
-		// If we already have a global EC2 client, use it
-		ec2Client = p.GetEC2Client()
+	p.ConfigMutex.Lock()
+	if m.Deployment.AWS.RegionalResources.Clients[region] != nil {
+		ec2Client = m.Deployment.AWS.RegionalResources.Clients[region]
 	} else {
 		ec2Client = &LiveEC2Client{client: ec2.NewFromConfig(cfg)}
+		m.Deployment.AWS.RegionalResources.Clients[region] = ec2Client
 	}
+	p.ConfigMutex.Unlock()
 
-	// Store the client in the regional resources
-	m.Deployment.AWS.RegionalResources.Clients[region] = ec2Client
 	return ec2Client, nil
 }
 
@@ -632,25 +632,74 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 	return nil
 }
 
-// Core infrastructure creation function
 func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	l := logger.Get()
-	l.Info("Creating AWS infrastructure...")
-
-	allRegions, err := p.GetAllAWSRegions(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get all AWS regions: %w", err)
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
 	}
 
-	if err := p.initializeInfrastructureDisplay(); err != nil {
-		return err
+	// First, validate all regions have sufficient AZs before doing anything else
+	l.Info("Pre-validating availability zones for all regions")
+	regionsToValidate := make(map[string]bool)
+
+	// Collect unique regions and validate them first
+	for _, machine := range m.Deployment.GetMachines() {
+		region := machine.GetLocation()
+		// Convert zone to region if necessary
+		if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
+			region = region[:len(region)-1]
+		}
+		regionsToValidate[region] = true
 	}
 
-	if err := p.createRegionalInfrastructure(ctx, allRegions); err != nil {
-		return fmt.Errorf("failed to create infrastructure: %w", err)
+	// Validate all regions upfront
+	for region := range regionsToValidate {
+		l.Debug(fmt.Sprintf("Pre-validating region: %s", region))
+		if err := p.validateRegionZones(ctx, region); err != nil {
+			l.Error(fmt.Sprintf("Pre-validation failed for region %s: %v", region, err))
+
+			// Update display for the first machine in this region
+			for _, machine := range m.Deployment.GetMachines() {
+				machineRegion := machine.GetLocation()
+				if len(machineRegion) > 0 && machineRegion[len(machineRegion)-1] >= 'a' &&
+					machineRegion[len(machineRegion)-1] <= 'z' {
+					machineRegion = machineRegion[:len(machineRegion)-1]
+				}
+				if machineRegion == region {
+					m.QueueUpdate(display.UpdateAction{
+						MachineName: machine.GetName(),
+						UpdateData: display.UpdateData{
+							UpdateType:    display.UpdateTypeResource,
+							ResourceType:  display.ResourceType("Infrastructure"),
+							ResourceState: models.ResourceStateFailed,
+						},
+					})
+					break
+				}
+			}
+
+			// Force immediate program termination
+			if prog := display.GetGlobalProgramFunc(); prog != nil {
+				prog.Quit()
+			}
+
+			return fmt.Errorf("region %s validation failed: %w", region, err)
+		}
 	}
 
-	l.Info("Infrastructure created successfully")
+	// Only proceed with infrastructure creation if all regions are validated
+	l.Info("All regions validated successfully, proceeding with infrastructure creation")
+
+	// Create VPC and related resources for each region
+	for region := range regionsToValidate {
+		vpc, err := p.createVPCInfrastructure(ctx, region)
+		if err != nil {
+			return fmt.Errorf("failed to create infrastructure in region %s: %w", region, err)
+		}
+		m.Deployment.AWS.RegionalResources.VPCs[region] = vpc
+	}
+
 	return nil
 }
 

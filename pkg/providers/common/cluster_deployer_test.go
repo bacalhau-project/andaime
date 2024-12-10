@@ -155,8 +155,8 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 				Times:  2,
 			},
 			{
-				Cmd:    "sudo docker run hello-world",
-				Output: "Hello from Docker!",
+				Cmd:    models.ExpectedDockerHelloWorldCommand,
+				Output: models.ExpectedDockerOutput,
 				Error:  nil,
 				Times:  2,
 			},

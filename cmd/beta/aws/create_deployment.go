@@ -9,8 +9,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -35,16 +35,47 @@ func GetAwsCreateDeploymentCmd() *cobra.Command {
 }
 
 func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
-	// Load .env file at the beginning
-	if err := godotenv.Load(); err != nil {
-		logger.Get().Warn(fmt.Sprintf("Error loading .env file: %v", err))
+	// Initialize logger with proper configuration
+	logConfig := logger.Config{
+		Level:         viper.GetString("general.log_level"),
+		FilePath:      viper.GetString("general.log_path"),
+		Format:        viper.GetString("general.log_format"),
+		WithTrace:     true,
+		EnableConsole: true,
+		EnableBuffer:  true,
+		BufferSize:    8192,
+		InstantSync:   true,
 	}
 
-	// Ensure we're using the config file specified in the command
+	// Set defaults if not configured
+	if logConfig.FilePath == "" {
+		logConfig.FilePath = "/tmp/andaime.log"
+	}
+	if logConfig.Format == "" {
+		logConfig.Format = "text"
+	}
+
+	if err := logger.Initialize(logConfig); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	l := logger.Get()
+	l.Info("Starting AWS deployment")
+
+	// Load .env file at the beginning
+	if err := godotenv.Load(); err != nil {
+		l.Warn(fmt.Sprintf("Error loading .env file: %v", err))
+	}
+
+	// Log configuration details
+	l.Info("Loading configuration")
 	configFile, err := cmd.Flags().GetString("config")
 	if err != nil {
+		l.Error(fmt.Sprintf("Failed to get config flag: %v", err))
 		return fmt.Errorf("failed to get config flag: %w", err)
 	}
+
+	l.Info(fmt.Sprintf("Using config file: %s", configFile))
 	viper.SetConfigFile(configFile)
 
 	ctx := cmd.Context()
@@ -300,24 +331,27 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 }
 
 func writeVPCIDToConfig(deployment *models.Deployment) error {
-	if deployment == nil || deployment.AWS == nil {
-		return fmt.Errorf("deployment or AWS config is nil")
+	if deployment == nil || deployment.AWS == nil || deployment.AWS.RegionalResources == nil {
+		return nil
 	}
 
-	// Get the current deployment from config
-	deploymentKey := fmt.Sprintf("deployments.aws.%s", deployment.Name)
-	currentDeployment := viper.GetStringMap(deploymentKey)
-	if currentDeployment == nil {
-		currentDeployment = make(map[string]interface{})
+	l := logger.Get()
+
+	// Write VPC IDs for each region
+	for region, vpc := range deployment.AWS.RegionalResources.VPCs {
+		if vpc != nil && vpc.VPCID != "" {
+			regionPath := fmt.Sprintf("aws.regions.%s", region)
+			l.Info(fmt.Sprintf("Writing VPC ID %s for region %s to config", vpc.VPCID, region))
+
+			viper.Set(fmt.Sprintf("%s.vpc_id", regionPath), vpc.VPCID)
+			if vpc.SecurityGroupID != "" {
+				viper.Set(fmt.Sprintf("%s.security_group_id", regionPath), vpc.SecurityGroupID)
+			}
+		}
 	}
 
-	// Update the VPC ID
-	currentDeployment["account_id"] = deployment.AWS.AccountID
-
-	// Write back to config
-	viper.Set(deploymentKey, currentDeployment)
 	if err := viper.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
+		return fmt.Errorf("failed to write VPC IDs to config: %w", err)
 	}
 
 	return nil
