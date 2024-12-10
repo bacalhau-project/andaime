@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -76,8 +77,6 @@ type testingWriter struct {
 func (tw *testingWriter) Write(p []byte) (n int, err error) {
 	if t, ok := tw.tb.(*testing.T); ok {
 		t.Log(string(p))
-	} else {
-		fmt.Print(string(p))
 	}
 	return len(p), nil
 }
@@ -150,7 +149,7 @@ func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
 	encoderConfig.LineEnding = "\n"
 	return zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
-		zapcore.AddSync(os.Stdout),
+		zapcore.AddSync(ioutil.Discard), // Discard console output
 		level,
 	)
 }
