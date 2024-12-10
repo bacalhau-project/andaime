@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"strings"
 	"sync"
@@ -27,10 +26,9 @@ const (
 
 // Global variables
 var (
-	globalLogger    *zap.Logger
-	loggerMutex     sync.RWMutex
-	once            sync.Once
-	profileFilePath string
+	globalLogger *zap.Logger
+	loggerMutex  sync.RWMutex
+	once         sync.Once
 
 	// Log levels
 	DEBUG zapcore.Level = zapcore.DebugLevel
@@ -48,10 +46,6 @@ var (
 	GlobalLoggedBuffer        strings.Builder
 	GlobalLoggedBufferSize    int = 8192
 	GlobalLogFile             *os.File
-
-	// File permissions
-	debugFilePermissions   = fs.FileMode(DebugFilePermissions)
-	profileFilePermissions = fs.FileMode(ProfileFilePermissions)
 )
 
 // Logger types
