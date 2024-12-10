@@ -10,10 +10,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/pkg/display"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"golang.org/x/sync/errgroup"
 )
+
+const MinRequiredAZs = 2
 
 // LiveEC2Client implements the EC2Clienter interface
 type LiveEC2Client struct {
@@ -261,19 +264,25 @@ const (
 func (p *AWSProvider) DeployVMsInParallel(
 	ctx context.Context,
 ) error {
+	l := logger.Get()
+	l.Info("Starting parallel VM deployment")
+
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
+		l.Error("Global model or deployment is nil")
 		return fmt.Errorf("global model or deployment is nil")
 	}
-	deployment := m.Deployment
 
-	eg := errgroup.Group{}
+	// Log deployment details
+	l.Info(fmt.Sprintf("Deploying %d machines", len(m.Deployment.GetMachines())))
 
 	// Group machines by region
 	machinesByRegion := make(map[string][]models.Machiner)
-	for _, machine := range deployment.Machines {
+	for _, machine := range m.Deployment.GetMachines() {
 		region := machine.GetLocation()
+		l.Debug(fmt.Sprintf("Processing machine %s in region %s", machine.GetName(), region))
 		if region == "" {
+			l.Warn(fmt.Sprintf("Machine %s has no location specified", machine.GetName()))
 			continue
 		}
 		// Convert zone to region if necessary
@@ -283,9 +292,21 @@ func (p *AWSProvider) DeployVMsInParallel(
 		machinesByRegion[region] = append(machinesByRegion[region], machine)
 	}
 
+	// Validate zones for all regions
+	l.Info("Validating availability zones for all regions")
+	for region := range machinesByRegion {
+		l.Debug(fmt.Sprintf("Validating region: %s", region))
+		if err := p.validateRegionZones(ctx, region); err != nil {
+			l.Error(fmt.Sprintf("Zone validation failed for region %s: %v", region, err))
+			return fmt.Errorf("zone validation failed: %w", err)
+		}
+	}
+
+	eg := errgroup.Group{}
+
 	// Deploy machines in each region
 	for region, machines := range machinesByRegion {
-		vpc, exists := deployment.AWS.RegionalResources.VPCs[region]
+		vpc, exists := m.Deployment.AWS.RegionalResources.VPCs[region]
 		if !exists {
 			return fmt.Errorf("VPC not found for region %s", region)
 		}
@@ -418,4 +439,79 @@ func (p *AWSProvider) getLatestAMI(
 	}
 
 	return *latestImage.ImageId, nil
+}
+
+func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) error {
+	l := logger.Get()
+	l.Info(fmt.Sprintf("Validating availability zones for region: %s", region))
+
+	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
+	}
+
+	// First try without zone-type filter to debug
+	result, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		AllAvailabilityZones: aws.Bool(true),
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("region-name"),
+				Values: []string{region},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+			{
+				Name:   aws.String("zone-type"),
+				Values: []string{string(ec2_types.LocationTypeAvailabilityZone)},
+			},
+		},
+	})
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to describe AZs: %v", err))
+		return fmt.Errorf("failed to describe availability zones: %w", err)
+	}
+
+	// Log all found zones with detailed information
+	l.Info(
+		fmt.Sprintf("Found total of %d zones in region %s:", len(result.AvailabilityZones), region),
+	)
+	var availableAZs []string
+
+	for _, az := range result.AvailabilityZones {
+		zoneInfo := fmt.Sprintf(
+			"Zone: %s, State: %s, Type: %s, Region: %s",
+			*az.ZoneName,
+			string(az.State),
+			*az.ZoneType,
+			*az.RegionName,
+		)
+		l.Debug(zoneInfo)
+
+		// Only count standard availability zones
+		if *az.ZoneType == string(ec2_types.LocationTypeAvailabilityZone) {
+			availableAZs = append(availableAZs, *az.ZoneName)
+		}
+	}
+
+	l.Info(fmt.Sprintf("Found %d standard availability zones: %v", len(availableAZs), availableAZs))
+
+	if len(availableAZs) < MinRequiredAZs {
+		return fmt.Errorf(
+			"region %s does not have at least %d availability zones (found %d: %v)",
+			region,
+			MinRequiredAZs,
+			len(availableAZs),
+			availableAZs,
+		)
+	}
+
+	l.Info(fmt.Sprintf(
+		"Successfully validated region %s has %d availability zones: %v",
+		region,
+		len(availableAZs),
+		availableAZs,
+	))
+	return nil
 }
