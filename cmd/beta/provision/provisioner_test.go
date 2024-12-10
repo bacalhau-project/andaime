@@ -207,7 +207,7 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvision() {
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"sudo docker run hello-world",
-	).Return(models.ExpectedDockerOutput, nil).Once()
+	).Return("Hello from Docker!", nil).Once()
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"bacalhau node list --output json --api-host 0.0.0.0",
