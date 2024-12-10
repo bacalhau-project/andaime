@@ -120,6 +120,8 @@ func (c *SSHConfig) PushFileWithCallback(
 		}
 		defer sshClient.Close()
 	}
+	return sftp.NewClient(sshClient)
+}
 
 	// Use sftpClientCreator if set, otherwise fall back to default
 	if c.sftpClientCreator == nil {

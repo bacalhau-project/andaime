@@ -55,7 +55,14 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 
 	// Create new mocks for each test
 	cbpts.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
+	cbpts.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
 	cbpts.mockClusterDeployer = new(common_mock.MockClusterDeployerer)
+
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
 	// Create mock SSH client
 	mockSSHClient := new(ssh_mock.MockSSHClienter)
@@ -68,8 +75,16 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 		port int,
 		user string,
 		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 		return cbpts.mockSSHConfig, nil
 	}
+
+	// Set up Connect and Close expectations
+	cbpts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
+	cbpts.mockSSHConfig.On("Close").Return(nil).Maybe()
 
 	// Set up Connect and Close expectations
 	cbpts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
@@ -180,6 +195,8 @@ func (cbpts *CmdBetaProvisionTestSuite) TestNewProvisioner() {
 			config: &provision.NodeConfig{
 				IPAddress:      "192.168.1.1",
 				PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
+				IPAddress:      "192.168.1.1",
+				PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 			},
 			expectError: true,
 			errorMsg:    "username is required",
@@ -211,6 +228,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestNewProvisioner() {
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvision() {
 	config := &provision.NodeConfig{
+		IPAddress:      "192.168.1.1",
+		Username:       "testuser",
+		PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 		IPAddress:      "192.168.1.1",
 		Username:       "testuser",
 		PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
@@ -258,6 +278,7 @@ setting.two: "value2"
 		IPAddress:            "192.168.1.1",
 		Username:             "testuser",
 		PrivateKeyPath:       cbpts.testSSHPrivateKeyPath,
+		PrivateKeyPath:       cbpts.testSSHPrivateKeyPath,
 		BacalhauSettingsPath: settingsFile,
 	}
 
@@ -269,6 +290,7 @@ setting.two: "value2"
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"sudo docker run hello-world",
+	).Return(models.ExpectedDockerOutput, nil).Once()
 	).Return(models.ExpectedDockerOutput, nil).Once()
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
@@ -360,6 +382,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 		IPAddress:      "192.168.1.1",
 		Username:       "testuser",
 		PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
+		IPAddress:      "192.168.1.1",
+		Username:       "testuser",
+		PrivateKeyPath: cbpts.testSSHPrivateKeyPath,
 	}
 
 	p, err := provision.NewProvisioner(config)
@@ -367,6 +392,8 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 
 	err = p.Provision(context.Background())
 	cbpts.NoError(err)
+
+	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
 
 	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
 }
@@ -382,10 +409,19 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
 	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
+	// Create mock SSH client
+	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient.On("Close").Return(nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("GetClient").Return(nil).Maybe()
+
 	// Create a mock SSH config
+	mockSSH := new(ssh_mock.MockSSHConfiger)
 	mockSSH := new(ssh_mock.MockSSHConfiger)
 
 	// Setup the mock to pass SSH wait but fail command execution
+	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
+	mockSSH.On("Close").Return(nil).Maybe()
 	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
 	mockSSH.On("Close").Return(nil).Maybe()
 	mockSSH.On("WaitForSSH", mock.Anything,
@@ -402,6 +438,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 
 	// Create a provisioner with test configuration
 	config := &provision.NodeConfig{
+		IPAddress:      "192.168.1.100",
+		Username:       "testuser",
+		PrivateKeyPath: "/path/to/key",
 		IPAddress:      "192.168.1.100",
 		Username:       "testuser",
 		PrivateKeyPath: "/path/to/key",
@@ -424,6 +463,10 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 		Machine:   testMachine,
 	}
 
+	sshutils.NewSSHConfigFunc = func(host string,
+		port int,
+		user string,
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,
