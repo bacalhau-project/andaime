@@ -12,10 +12,14 @@ func FakeEC2DescribeAvailabilityZonesOutput(region string) *ec2.DescribeAvailabi
 	return &ec2.DescribeAvailabilityZonesOutput{
 		AvailabilityZones: []types.AvailabilityZone{
 			{
-				ZoneName: aws.String(fmt.Sprintf("%sa", region)),
+				ZoneName:   aws.String(fmt.Sprintf("%sa", region)),
+				State:      types.AvailabilityZoneStateAvailable,
+				RegionName: aws.String(region),
 			},
 			{
-				ZoneName: aws.String(fmt.Sprintf("%sb", region)),
+				ZoneName:   aws.String(fmt.Sprintf("%sb", region)),
+				State:      types.AvailabilityZoneStateAvailable,
+				RegionName: aws.String(region),
 			},
 		},
 	}

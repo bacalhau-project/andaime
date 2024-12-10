@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"strings"
 	"sync"
@@ -27,10 +26,9 @@ const (
 
 // Global variables
 var (
-	globalLogger    *zap.Logger
-	loggerMutex     sync.RWMutex
-	once            sync.Once
-	profileFilePath string
+	globalLogger *zap.Logger
+	loggerMutex  sync.RWMutex
+	once         sync.Once
 
 	// Log levels
 	DEBUG zapcore.Level = zapcore.DebugLevel
@@ -48,10 +46,6 @@ var (
 	GlobalLoggedBuffer        strings.Builder
 	GlobalLoggedBufferSize    int = 8192
 	GlobalLogFile             *os.File
-
-	// File permissions
-	debugFilePermissions   = fs.FileMode(DebugFilePermissions)
-	profileFilePermissions = fs.FileMode(ProfileFilePermissions)
 )
 
 // Logger types
@@ -82,8 +76,6 @@ type testingWriter struct {
 func (tw *testingWriter) Write(p []byte) (n int, err error) {
 	if t, ok := tw.tb.(*testing.T); ok {
 		t.Log(string(p))
-	} else {
-		fmt.Print(string(p))
 	}
 	return len(p), nil
 }
@@ -154,9 +146,13 @@ func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
 	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02-15:04:05")
 	encoderConfig.LineEnding = "\n"
+
+	// Create a custom writer that doesn't try to sync
+	stdoutWriter := zapcore.Lock(os.Stdout)
+
 	return zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
-		zapcore.AddSync(os.Stdout),
+		stdoutWriter,
 		level,
 	)
 }
@@ -206,10 +202,8 @@ func (l *Logger) SetVerbose(verbose bool) {
 
 func (l *Logger) syncIfNeeded() {
 	if GlobalInstantSync {
-		if err := l.Sync(); err != nil {
-			// Log the error but don't fail, as this is a best-effort sync
-			fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
-		}
+		// Ignore sync errors for stdout
+		_ = l.Sync()
 	}
 }
 

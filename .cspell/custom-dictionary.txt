@@ -206,6 +206,7 @@ jobselectionpolicy
 jobstore
 jobtimeouts
 joho
+journalctl
 jsii
 keyfile
 keyvault

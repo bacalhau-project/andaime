@@ -70,7 +70,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
-				Cmd:    "sudo docker run hello-world",
+				Cmd:    models.ExpectedDockerHelloWorldCommand,
 				Times:  1,
 				Output: models.ExpectedDockerOutput,
 				Error:  nil,

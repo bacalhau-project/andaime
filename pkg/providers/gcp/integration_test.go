@@ -223,9 +223,9 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 				Times:            3,
 			},
 			{
-				Cmd:              "sudo docker run hello-world",
+				Cmd:              models.ExpectedDockerHelloWorldCommand,
 				ProgressCallback: func(int64, int64) {},
-				Output:           "Hello from Docker!",
+				Output:           models.ExpectedDockerOutput,
 				Error:            nil,
 				Times:            3,
 			},

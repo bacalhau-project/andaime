@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bacalhau-project/andaime/cmd/beta/provision"
@@ -74,6 +75,10 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
 	cbpts.mockSSHConfig.On("Close").Return(nil).Maybe()
 
+	// Set up Connect and Close expectations
+	cbpts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
+	cbpts.mockSSHConfig.On("Close").Return(nil).Maybe()
+
 	// Set up default expectations with .Maybe() to make them optional
 	cbpts.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
@@ -81,9 +86,25 @@ func (cbpts *CmdBetaProvisionTestSuite) SetupTest() {
 	cbpts.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
 		Maybe()
-	cbpts.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
+
+	// Set up specific Docker command expectation first
+	cbpts.mockSSHConfig.On("ExecuteCommand",
+		mock.Anything,
+		models.ExpectedDockerHelloWorldCommand,
+	).
+		Return(models.ExpectedDockerOutput, nil).
+		Maybe()
+
+	// Then set up the catch-all for other commands
+	cbpts.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(func(cmd string) bool {
+		// Exclude specific commands we want to handle separately
+		return cmd != models.ExpectedDockerHelloWorldCommand &&
+			!strings.Contains(cmd, "bacalhau node list") &&
+			!strings.Contains(cmd, "bacalhau config list")
+	})).
 		Return("", nil).
 		Maybe()
+
 	cbpts.mockSSHConfig.On("InstallSystemdService",
 		mock.Anything,
 		mock.Anything,
@@ -206,7 +227,7 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvision() {
 	// Add our specific expectation first
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
-		"sudo docker run hello-world",
+		models.ExpectedDockerHelloWorldCommand,
 	).Return(models.ExpectedDockerOutput, nil).Once()
 	cbpts.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
@@ -310,15 +331,15 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 		},
 		ExecuteCommandExpectations: []sshutils.ExecuteCommandExpectation{
 			{
-				Cmd:    "sudo docker run hello-world",
-				Times:  1,
+				Cmd:    models.ExpectedDockerHelloWorldCommand,
+				Times:  2,
 				Output: models.ExpectedDockerOutput,
 				Error:  nil,
 			},
 			{
 				Cmd:    "bacalhau node list --output json --api-host 0.0.0.0",
 				Times:  1,
-				Output: `[{"id": "12D"}]`,
+				Output: `[{"id":"1234567890"}]`,
 				Error:  nil,
 			},
 		},
@@ -352,6 +373,8 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionWithDockerCheck() {
 	cbpts.NoError(err)
 
 	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
+
+	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(cbpts.T())
 }
 
 func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
@@ -371,12 +394,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	// Setup the mock to pass SSH wait but fail command execution
 	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
 	mockSSH.On("Close").Return(nil).Maybe()
+	mockSSH.On("Connect").Return(mockSSHClient, nil).Maybe()
+	mockSSH.On("Close").Return(nil).Maybe()
 	mockSSH.On("WaitForSSH", mock.Anything,
-		mock.Anything,
-		mock.Anything).Return(nil)
-	mockSSH.On("PushFile",
-		mock.Anything,
-		mock.Anything,
 		mock.Anything,
 		mock.Anything).Return(nil)
 	mockSSH.On("ExecuteCommand",

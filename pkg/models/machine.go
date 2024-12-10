@@ -18,6 +18,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+var ExpectedDockerHelloWorldCommand = "sudo docker run hello-world"
 var ExpectedDockerOutput = "Hello from Docker!"
 
 type Machiner interface {
@@ -601,7 +602,7 @@ func (mach *Machine) verifyDocker(ctx context.Context) error {
 		return err
 	}
 
-	output, err := sshConfig.ExecuteCommand(ctx, "sudo docker run hello-world")
+	output, err := sshConfig.ExecuteCommand(ctx, ExpectedDockerHelloWorldCommand)
 	if err != nil {
 		l.Errorf("Failed to verify Docker on machine %s: %v", mach.Name, err)
 		return err

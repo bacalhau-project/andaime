@@ -346,20 +346,24 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mock.Moc
 		Return(&ec2.DescribeAvailabilityZonesOutput{
 			AvailabilityZones: []types.AvailabilityZone{
 				{
-					ZoneName: aws.String("us-west-2a"),
-					State:    types.AvailabilityZoneStateAvailable,
+					ZoneName:   aws.String("us-west-2a"),
+					State:      types.AvailabilityZoneStateAvailable,
+					RegionName: aws.String("us-west-2"),
 				},
 				{
-					ZoneName: aws.String("us-west-2b"),
-					State:    types.AvailabilityZoneStateAvailable,
+					ZoneName:   aws.String("us-west-2b"),
+					State:      types.AvailabilityZoneStateAvailable,
+					RegionName: aws.String("us-west-2"),
 				},
 				{
-					ZoneName: aws.String("us-east-1a"),
-					State:    types.AvailabilityZoneStateAvailable,
+					ZoneName:   aws.String("us-east-1a"),
+					State:      types.AvailabilityZoneStateAvailable,
+					RegionName: aws.String("us-east-1"),
 				},
 				{
-					ZoneName: aws.String("us-east-1b"),
-					State:    types.AvailabilityZoneStateAvailable,
+					ZoneName:   aws.String("us-east-1b"),
+					State:      types.AvailabilityZoneStateAvailable,
+					RegionName: aws.String("us-east-1"),
 				},
 			},
 		}, nil)
@@ -430,8 +434,8 @@ func (s *IntegrationTestSuite) setupMockClusterDeployer() {
 
 func (s *IntegrationTestSuite) setupMockSSHConfig() {
 	s.mockSSHConfig.On("Connect").Return(nil, nil)
-	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, "sudo docker run hello-world").
-		Return("Hello from Docker!", nil)
+	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, models.ExpectedDockerHelloWorldCommand).
+		Return(models.ExpectedDockerOutput, nil)
 	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.Anything).
 		Return(`[{"id": "node1", "public_ip": "1.2.3.4"}]`, nil)
 	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, fmt.Sprintf("sudo bash %s", customScriptPath)).
