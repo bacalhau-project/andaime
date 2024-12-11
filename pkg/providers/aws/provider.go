@@ -922,12 +922,15 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 		return fmt.Errorf("VPC manager not initialized")
 	}
 
+	// Create a context with a timeout to prevent indefinite waiting
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+
 	state := p.vpcManager.GetOrCreateVPCState(region)
 	if state == nil {
 		return fmt.Errorf("failed to get VPC state for region %s", region)
 	}
 
-	state.mu.RLock()
 	// Get all VPCs for this region
 	vpcStates := p.vpcManager.GetAllVPCStates(region)
 
@@ -937,47 +940,76 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 	}
 	regionalClient := m.Deployment.AWS.RegionalResources.Clients[region]
 
+	// Use errgroup to parallelize VPC networking setup with timeout
+	eg, ctx := errgroup.WithContext(ctx)
+
 	for _, state := range vpcStates {
-		state.mu.RLock()
-		vpc := state.vpc
-		state.mu.RUnlock()
+		state := state // capture loop variable
+		eg.Go(func() error {
+			state.mu.RLock()
+			vpc := state.vpc
+			state.mu.RUnlock()
 
-		if vpc == nil {
-			continue
-		}
-
-		// Create Internet Gateway
-		igw, err := regionalClient.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{})
-		if err != nil {
-			return fmt.Errorf("failed to create internet gateway for VPC %s: %w", vpc.VPCID, err)
-		}
-
-		// Attach Internet Gateway
-		_, err = regionalClient.AttachInternetGateway(
-			ctx,
-			&ec2.AttachInternetGatewayInput{
-				InternetGatewayId: aws.String(*igw.InternetGateway.InternetGatewayId),
-				VpcId:             aws.String(vpc.VPCID),
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to attach internet gateway to VPC %s: %w", vpc.VPCID, err)
-		}
-
-		// Update VPC state with Internet Gateway ID
-		if err := p.vpcManager.UpdateVPC(region, func(v *models.AWSVPC) error {
-			if v.VPCID == vpc.VPCID {
-				v.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
+			if vpc == nil {
+				return nil
 			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("failed to update VPC state: %w", err)
-		}
 
-		// Setup routing for this VPC
-		if err := p.setupRouting(ctx, region, vpc); err != nil {
-			return fmt.Errorf("failed to setup routing for VPC %s: %w", vpc.VPCID, err)
-		}
+			l.Debugf("Setting up networking for VPC %s", vpc.VPCID)
+
+			// Create Internet Gateway with retry
+			var igw *ec2.CreateInternetGatewayOutput
+			err := backoff.Retry(func() error {
+				var err error
+				igw, err = regionalClient.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{})
+				return err
+			}, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
+			if err != nil {
+				l.Errorf("Failed to create internet gateway for VPC %s: %v", vpc.VPCID, err)
+				return fmt.Errorf("failed to create internet gateway for VPC %s: %w", vpc.VPCID, err)
+			}
+
+			// Attach Internet Gateway with retry
+			err = backoff.Retry(func() error {
+				_, err := regionalClient.AttachInternetGateway(
+					ctx,
+					&ec2.AttachInternetGatewayInput{
+						InternetGatewayId: aws.String(*igw.InternetGateway.InternetGatewayId),
+						VpcId:             aws.String(vpc.VPCID),
+					},
+				)
+				return err
+			}, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
+			if err != nil {
+				l.Errorf("Failed to attach internet gateway to VPC %s: %v", vpc.VPCID, err)
+				return fmt.Errorf("failed to attach internet gateway to VPC %s: %w", vpc.VPCID, err)
+			}
+
+			// Update VPC state with Internet Gateway ID
+			if err := p.vpcManager.UpdateVPC(region, func(v *models.AWSVPC) error {
+				if v.VPCID == vpc.VPCID {
+					v.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
+				}
+				return nil
+			}); err != nil {
+				l.Errorf("Failed to update VPC state for VPC %s: %v", vpc.VPCID, err)
+				return fmt.Errorf("failed to update VPC state: %w", err)
+			}
+
+			// Setup routing for this VPC
+			if err := p.setupRouting(ctx, region, vpc); err != nil {
+				l.Errorf("Failed to setup routing for VPC %s: %v", vpc.VPCID, err)
+				return fmt.Errorf("failed to setup routing for VPC %s: %w", vpc.VPCID, err)
+			}
+
+			l.Debugf("Successfully set up networking for VPC %s", vpc.VPCID)
+			return nil
+		})
+	}
+
+	// Wait for all VPC networking setups to complete
+	if err := eg.Wait(); err != nil {
+		l.Errorf("Error setting up networking in region %s: %v", region, err)
+		return fmt.Errorf("failed to set up networking in region %s: %w", region, err)
 	}
 
 	return nil
