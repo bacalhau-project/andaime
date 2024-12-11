@@ -118,9 +118,9 @@ func InitProduction() {
 		config.Level = zap.NewAtomicLevelAt(logLevel)
 		var cores []zapcore.Core
 
-		// Add console core if enabled
-		if GlobalEnableConsoleLogger {
-			cores = append(cores, createConsoleCore(config.Level))
+		// Add console core if enabled and not nil
+		if consoleCore := createConsoleCore(config.Level); consoleCore != nil {
+			cores = append(cores, consoleCore)
 		}
 
 		// Add file core if enabled
@@ -147,12 +147,14 @@ func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02-15:04:05")
 	encoderConfig.LineEnding = "\n"
 
-	// Create a custom writer that doesn't try to sync
-	stdoutWriter := zapcore.Lock(os.Stdout)
+	// Only create console core if explicitly enabled
+	if !GlobalEnableConsoleLogger {
+		return nil
+	}
 
 	return zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
-		stdoutWriter,
+		zapcore.AddSync(os.Stdout),
 		level,
 	)
 }
