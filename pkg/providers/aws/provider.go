@@ -508,84 +508,9 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 		return fmt.Errorf("failed to get EC2 client: %w", err)
 	}
 
-	// Create VPC
-	err = p.vpcManager.UpdateVPC(region, func(vpc *models.AWSVPC) error {
-		createVpcInput := &ec2.CreateVpcInput{
-			CidrBlock: aws.String("10.0.0.0/16"),
-			TagSpecifications: []ec2_types.TagSpecification{
-				{
-					ResourceType: ec2_types.ResourceTypeVpc,
-					Tags: []ec2_types.Tag{
-						{
-							Key:   aws.String("Name"),
-							Value: aws.String("andaime-vpc"),
-						},
-						{
-							Key:   aws.String("andaime"),
-							Value: aws.String("true"),
-						},
-					},
-				},
-			},
-		}
-
-		l.Debugf("Sending CreateVpc request with cidr_block %s", "10.0.0.0/16")
-
-		createVpcOutput, err := regionalClient.CreateVpc(ctx, createVpcInput)
-		if err != nil {
-			l.Debugf("VPC creation failed: %v", err)
-			return fmt.Errorf("failed to create VPC: %w", err)
-		}
-
-		vpc.VPCID = *createVpcOutput.Vpc.VpcId
-		l.Debugf("Created VPC with ID %s", vpc.VPCID)
-		return nil
-	})
-
+	vpc, err := p.createVPCInfrastructure(ctx, region)
 	if err != nil {
 		return err
-	}
-
-	// Wait for VPC to become available
-	l.Info("Waiting for VPC to be available...")
-	state := p.vpcManager.GetOrCreateVPCState(region)
-	vpcID := state.vpc.VPCID
-
-	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 5 * time.Minute
-	b.InitialInterval = 2 * time.Second
-	b.MaxInterval = 30 * time.Second
-
-	operation := func() error {
-		if err := ctx.Err(); err != nil {
-			return backoff.Permanent(err)
-		}
-
-		input := &ec2.DescribeVpcsInput{
-			VpcIds: []string{vpcID},
-		}
-
-		result, err := regionalClient.DescribeVpcs(ctx, input)
-		if err != nil {
-			l.Debugf("Failed to describe VPC with ID %s: %v", vpcID, err)
-			return fmt.Errorf("failed to describe VPC: %w", err)
-		}
-
-		if len(result.Vpcs) > 0 {
-			l.Debugf("VPC status check with ID %s: %s", vpcID, string(result.Vpcs[0].State))
-
-			if result.Vpcs[0].State == ec2_types.VpcStateAvailable {
-				l.Debugf("VPC is now available with ID %s", vpcID)
-				return nil
-			}
-		}
-
-		l.Debugf("VPC not yet available with ID %s", vpcID)
-		return fmt.Errorf("VPC not yet available")
-	}
-
-	if err := backoff.Retry(operation, backoff.WithContext(b, ctx)); err != nil {
-		return fmt.Errorf("timeout waiting for VPC to become available: %w", err)
 	}
 
 	// Update display state to pending
@@ -593,7 +518,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 
 	// Enable DNS hostnames
 	modifyVpcAttributeInput := &ec2.ModifyVpcAttributeInput{
-		VpcId:              aws.String(vpcID),
+		VpcId:              aws.String(vpc.VPCID),
 		EnableDnsHostnames: &ec2_types.AttributeBooleanValue{Value: aws.Bool(true)},
 	}
 
@@ -611,7 +536,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 	}
 
 	l.Debugf("Regional VPC (Region: %s) created successfully with ID %s",
-		region, vpcID)
+		region, vpc.VPCID)
 
 	return nil
 }
@@ -960,12 +885,19 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 			var igw *ec2.CreateInternetGatewayOutput
 			err := backoff.Retry(func() error {
 				var err error
-				igw, err = regionalClient.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{})
+				igw, err = regionalClient.CreateInternetGateway(
+					ctx,
+					&ec2.CreateInternetGatewayInput{},
+				)
 				return err
 			}, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
 			if err != nil {
 				l.Errorf("Failed to create internet gateway for VPC %s: %v", vpc.VPCID, err)
-				return fmt.Errorf("failed to create internet gateway for VPC %s: %w", vpc.VPCID, err)
+				return fmt.Errorf(
+					"failed to create internet gateway for VPC %s: %w",
+					vpc.VPCID,
+					err,
+				)
 			}
 
 			// Attach Internet Gateway with retry
@@ -1051,7 +983,7 @@ func (p *AWSProvider) createVPCWithRetry(ctx context.Context, region string) err
 			l.Info("VPC limit exceeded, attempting to clean up abandoned VPCs...")
 
 			// Try to find and clean up any abandoned VPCs
-			if cleanupErr := p.cleanupAbandonedVPCs(ctx); cleanupErr != nil {
+			if cleanupErr := p.cleanupAbandonedVPCs(ctx, region); cleanupErr != nil {
 				return fmt.Errorf("failed to cleanup VPCs: %w", cleanupErr)
 			}
 
