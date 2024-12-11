@@ -675,15 +675,6 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 	// Only proceed with infrastructure creation if all regions are validated
 	l.Info("All regions validated successfully, proceeding with infrastructure creation")
 
-	// Create VPC and related resources for each region
-	for region := range regionsToValidate {
-		vpc, err := p.createVPCInfrastructure(ctx, region)
-		if err != nil {
-			return fmt.Errorf("failed to create infrastructure in region %s: %w", region, err)
-		}
-		m.Deployment.AWS.RegionalResources.VPCs[region] = vpc
-	}
-
 	return nil
 }
 
@@ -1246,12 +1237,18 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 }
 
 // cleanupAbandonedVPCs attempts to find and remove any abandoned VPCs
-func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
+func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context, region string) error {
 	l := logger.Get()
 	l.Info("Attempting to cleanup abandoned VPCs")
 
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	regionalClient := m.Deployment.AWS.RegionalResources.Clients[region]
+
 	// List all VPCs
-	result, err := p.EC2Client.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{})
+	result, err := regionalClient.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{})
 	if err != nil {
 		return fmt.Errorf("failed to list VPCs: %w", err)
 	}
@@ -1276,7 +1273,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			l.Infof("Found abandoned VPC %s, cleaning up dependencies...", vpcID)
 
 			// 1. Delete subnets
-			subnets, err := p.EC2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+			subnets, err := regionalClient.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 				Filters: []ec2_types.Filter{
 					{
 						Name:   aws.String("vpc-id"),
@@ -1290,7 +1287,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			}
 
 			for _, subnet := range subnets.Subnets {
-				_, err := p.EC2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
+				_, err := regionalClient.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
 					SubnetId: subnet.SubnetId,
 				})
 				if err != nil {
@@ -1299,7 +1296,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			}
 
 			// 2. Delete security groups (except default)
-			sgs, err := p.EC2Client.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+			sgs, err := regionalClient.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
 				Filters: []ec2_types.Filter{
 					{
 						Name:   aws.String("vpc-id"),
@@ -1314,7 +1311,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 
 			for _, sg := range sgs.SecurityGroups {
 				if aws.ToString(sg.GroupName) != DefaultName {
-					_, err := p.EC2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+					_, err := regionalClient.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
 						GroupId: sg.GroupId,
 					})
 					if err != nil {
@@ -1328,7 +1325,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			}
 
 			// 3. Delete route tables (except main)
-			rts, err := p.EC2Client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+			rts, err := regionalClient.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
 				Filters: []ec2_types.Filter{
 					{
 						Name:   aws.String("vpc-id"),
@@ -1357,7 +1354,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 				// Delete route table associations first
 				for _, assoc := range rt.Associations {
 					if assoc.RouteTableAssociationId != nil {
-						_, err := p.EC2Client.DisassociateRouteTable(
+						_, err := regionalClient.DisassociateRouteTable(
 							ctx,
 							&ec2.DisassociateRouteTableInput{
 								AssociationId: assoc.RouteTableAssociationId,
@@ -1373,7 +1370,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 					}
 				}
 
-				_, err := p.EC2Client.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
+				_, err := regionalClient.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
 					RouteTableId: rt.RouteTableId,
 				})
 				if err != nil {
@@ -1386,7 +1383,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			}
 
 			// 4. Detach and delete internet gateways
-			igws, err := p.EC2Client.DescribeInternetGateways(
+			igws, err := regionalClient.DescribeInternetGateways(
 				ctx,
 				&ec2.DescribeInternetGatewaysInput{
 					Filters: []ec2_types.Filter{
@@ -1404,7 +1401,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 
 			for _, igw := range igws.InternetGateways {
 				// Detach first
-				_, err := p.EC2Client.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
+				_, err := regionalClient.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
 					InternetGatewayId: igw.InternetGatewayId,
 					VpcId:             aws.String(vpcID),
 				})
@@ -1418,7 +1415,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 				}
 
 				// Then delete
-				_, err = p.EC2Client.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
+				_, err = regionalClient.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
 					InternetGatewayId: igw.InternetGatewayId,
 				})
 				if err != nil {
@@ -1431,7 +1428,7 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context) error {
 			}
 
 			// Finally, delete the VPC
-			_, err = p.EC2Client.DeleteVpc(ctx, &ec2.DeleteVpcInput{
+			_, err = regionalClient.DeleteVpc(ctx, &ec2.DeleteVpcInput{
 				VpcId: aws.String(vpcID),
 			})
 			if err != nil {
