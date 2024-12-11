@@ -2071,3 +2071,18 @@ func (rm *RegionalVPCManager) SaveVPCConfig(region string) error {
 
 	return viper.WriteConfig()
 }
+
+// GetAllVPCStates returns all VPC states for a given region
+func (rm *RegionalVPCManager) GetAllVPCStates(region string) []*VPCState {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	var states []*VPCState
+	for r, state := range rm.states {
+		if r == region {
+			states = append(states, state)
+		}
+	}
+
+	return states
+}
