@@ -677,6 +677,8 @@ func (p *AWSProvider) CreateRegionalResources(
 	l.Infof("Creating regional resources for regions: %v", regions)
 
 	var eg errgroup.Group
+	var mu sync.Mutex
+	var errors []error
 
 	for _, region := range regions {
 		region := region // capture for goroutine
@@ -685,7 +687,10 @@ func (p *AWSProvider) CreateRegionalResources(
 			err := p.setupRegionalInfrastructure(ctx, region)
 			if err != nil {
 				l.Errorf("Failed to setup infrastructure for region %s: %v", region, err)
-				return fmt.Errorf("failed to setup infrastructure for region %s: %w", region, err)
+				mu.Lock()
+				errors = append(errors, fmt.Errorf("region %s: %w", region, err))
+				mu.Unlock()
+				return err
 			}
 			return nil
 		})
@@ -693,7 +698,20 @@ func (p *AWSProvider) CreateRegionalResources(
 
 	if err := eg.Wait(); err != nil {
 		l.Errorf("Error creating regional resources: %v", err)
-		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
+		
+		// Combine all errors
+		var combinedErr error
+		mu.Lock()
+		for _, e := range errors {
+			if combinedErr == nil {
+				combinedErr = e
+			} else {
+				combinedErr = fmt.Errorf("%v; %w", combinedErr, e)
+			}
+		}
+		mu.Unlock()
+
+		return fmt.Errorf("failed to deploy VMs in parallel: %w", combinedErr)
 	}
 
 	return nil
@@ -754,7 +772,13 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 
 	if vpc == nil {
 		l.Error("VPC is nil after creation!")
-		return fmt.Errorf("VPC not found for region %s", region)
+		// Attempt to retrieve VPC from regional resources
+		vpc = m.Deployment.AWS.RegionalResources.GetVPC(region)
+		if vpc == nil {
+			l.Errorf("Could not find VPC in regional resources for region %s", region)
+			return fmt.Errorf("VPC not found for region %s", region)
+		}
+		l.Infof("Retrieved VPC %s from regional resources", vpc.VPCID)
 	}
 
 	// Step 3: Create security group
