@@ -118,10 +118,8 @@ func InitProduction() {
 		config.Level = zap.NewAtomicLevelAt(logLevel)
 		var cores []zapcore.Core
 
-		// Add console core if enabled and not nil
-		if consoleCore := createConsoleCore(config.Level); consoleCore != nil {
-			cores = append(cores, consoleCore)
-		}
+		// Explicitly skip console core
+		GlobalEnableConsoleLogger = false
 
 		// Add file core if enabled
 		if GlobalEnableFileLogger {
@@ -136,13 +134,14 @@ func InitProduction() {
 		}
 
 		core := zapcore.NewTee(cores...)
-		globalLogger = zap.New(core, zap.AddCaller()).Named("andaime")
+		globalLogger = zap.New(core, zap.AddCaller(), zap.WithOptions(zap.WithCaller(false))).Named("andaime")
 	})
 }
 
 // Core creation helpers
 func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
-	// Always return nil to prevent console logging
+	// Explicitly return nil to prevent any console logging
+	GlobalEnableConsoleLogger = false
 	return nil
 }
 
