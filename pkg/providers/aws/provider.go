@@ -940,6 +940,12 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 	// Get all VPCs for this region
 	vpcStates := p.vpcManager.GetAllVPCStates(region)
 
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+	regionalClient := m.Deployment.AWS.RegionalResources.Clients[region]
+
 	for _, state := range vpcStates {
 		state.mu.RLock()
 		vpc := state.vpc
