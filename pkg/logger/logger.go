@@ -134,7 +134,7 @@ func InitProduction() {
 		}
 
 		core := zapcore.NewTee(cores...)
-		globalLogger = zap.New(core, zap.AddCaller(), zap.WithOptions(zap.WithCaller(false))).Named("andaime")
+		globalLogger = zap.New(core, zap.AddCaller()).Named("andaime")
 	})
 }
 
