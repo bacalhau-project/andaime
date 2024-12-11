@@ -673,16 +673,30 @@ func (p *AWSProvider) CreateRegionalResources(
 	ctx context.Context,
 	regions []string,
 ) error {
+	l := logger.Get()
+	l.Infof("Creating regional resources for regions: %v", regions)
+
 	var eg errgroup.Group
 
 	for _, region := range regions {
 		region := region // capture for goroutine
 		eg.Go(func() error {
-			return p.setupRegionalInfrastructure(ctx, region)
+			l.Debugf("Setting up infrastructure for region: %s", region)
+			err := p.setupRegionalInfrastructure(ctx, region)
+			if err != nil {
+				l.Errorf("Failed to setup infrastructure for region %s: %v", region, err)
+				return fmt.Errorf("failed to setup infrastructure for region %s: %w", region, err)
+			}
+			return nil
 		})
 	}
 
-	return eg.Wait()
+	if err := eg.Wait(); err != nil {
+		l.Errorf("Error creating regional resources: %v", err)
+		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
+	}
+
+	return nil
 }
 
 // Setup infrastructure for a single region
@@ -693,6 +707,14 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Ensure regional resources are initialized
+	if m.Deployment.AWS.RegionalResources == nil {
+		m.Deployment.AWS.RegionalResources = &models.RegionalResources{
+			VPCs:    make(map[string]*models.AWSVPC),
+			Clients: make(map[string]aws_interface.EC2Clienter),
+		}
 	}
 
 	// Debug current state
@@ -710,16 +732,16 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 	// Step 1: Get availability zones
 	azs, err := p.getRegionAvailabilityZones(ctx, region)
 	if err != nil {
-		l.Debugf("Failed to get availability zones: %v", err)
-		return err
+		l.Errorf("Failed to get availability zones for region %s: %v", region, err)
+		return fmt.Errorf("failed to get availability zones for region %s: %w", region, err)
 	}
-	l.Debugf("Found %d availability zones", len(azs))
+	l.Debugf("Found %d availability zones in region %s", len(azs), region)
 
 	// Step 2: Create VPC and security groups
-	l.Debug("Creating VPC...")
+	l.Debugf("Creating VPC in region %s", region)
 	if err := p.createVPCWithRetry(ctx, region); err != nil {
-		l.Debugf("Failed to create VPC: %v", err)
-		return fmt.Errorf("failed to create VPC: %w", err)
+		l.Errorf("Failed to create VPC in region %s: %v", region, err)
+		return fmt.Errorf("failed to create VPC in region %s: %w", region, err)
 	}
 
 	// Get VPC state
@@ -728,37 +750,42 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 	vpc := state.vpc
 	state.mu.RUnlock()
 
-	l.Debugf("VPC state after creation: %+v", vpc)
+	l.Debugf("VPC state after creation for region %s: %+v", region, vpc)
 
 	if vpc == nil {
-		l.Debug("VPC is nil after creation!")
+		l.Error("VPC is nil after creation!")
 		return fmt.Errorf("VPC not found for region %s", region)
 	}
 
+	// Step 3: Create security group
 	sgID, err := p.createSecurityGroup(ctx, region, vpc.VPCID)
 	if err != nil {
-		return fmt.Errorf("failed to create security groups: %w", err)
+		l.Errorf("Failed to create security group in region %s: %v", region, err)
+		return fmt.Errorf("failed to create security groups in region %s: %w", region, err)
 	}
 	m.Deployment.AWS.RegionalResources.SetSGID(region, *sgID)
 
-	// Step 3: Create subnets
+	// Step 4: Create subnets
 	if err := p.createRegionalSubnets(ctx, region, azs[:2]); err != nil {
-		return err
+		l.Errorf("Failed to create subnets in region %s: %v", region, err)
+		return fmt.Errorf("failed to create subnets in region %s: %w", region, err)
 	}
 
-	// Step 4: Setup networking components
+	// Step 5: Setup networking components
 	if err := p.setupNetworking(ctx, region); err != nil {
-		return err
+		l.Errorf("Failed to setup networking in region %s: %v", region, err)
+		return fmt.Errorf("failed to setup networking in region %s: %w", region, err)
 	}
 
-	// Step 5: Save and update display
+	// Step 6: Save and update display
 	if err := p.saveInfrastructureToConfig(); err != nil {
-		return fmt.Errorf("failed to save infrastructure IDs to config: %w", err)
+		l.Errorf("Failed to save infrastructure config for region %s: %v", region, err)
+		return fmt.Errorf("failed to save infrastructure IDs to config for region %s: %w", region, err)
 	}
 
 	p.updateInfrastructureDisplay(models.ResourceStateSucceeded)
 
-	l.Info("AWS infrastructure created successfully for region: " + region)
+	l.Infof("AWS infrastructure created successfully for region: %s", region)
 	return nil
 }
 
