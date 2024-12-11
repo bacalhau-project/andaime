@@ -937,41 +937,53 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 	}
 
 	state.mu.RLock()
-	vpc := state.vpc
-	state.mu.RUnlock()
+	// Get all VPCs for this region
+	vpcStates := p.vpcManager.GetAllVPCStates(region)
 
-	if vpc == nil {
-		return fmt.Errorf("VPC not found for region %s", region)
-	}
+	for _, state := range vpcStates {
+		state.mu.RLock()
+		vpc := state.vpc
+		state.mu.RUnlock()
 
-	// Create and attach Internet Gateway
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("global model or deployment is nil")
-	}
-	regionalClient := m.Deployment.AWS.RegionalResources.Clients[region]
-
-	igw, err := regionalClient.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{})
-	if err != nil {
-		return fmt.Errorf("failed to create internet gateway: %w", err)
-	}
-
-	return p.vpcManager.UpdateVPC(region, func(vpc *models.AWSVPC) error {
-		vpc.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
-
-		if _, err := regionalClient.AttachInternetGateway(
-			ctx,
-			&ec2.AttachInternetGatewayInput{
-				InternetGatewayId: aws.String(vpc.InternetGatewayID),
-				VpcId:             aws.String(vpc.VPCID),
-			},
-		); err != nil {
-			return fmt.Errorf("failed to attach internet gateway: %w", err)
+		if vpc == nil {
+			continue
 		}
 
-		// Setup routing
-		return p.setupRouting(ctx, region, vpc)
-	})
+		// Create Internet Gateway
+		igw, err := regionalClient.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{})
+		if err != nil {
+			return fmt.Errorf("failed to create internet gateway for VPC %s: %w", vpc.VPCID, err)
+		}
+
+		// Attach Internet Gateway
+		_, err = regionalClient.AttachInternetGateway(
+			ctx,
+			&ec2.AttachInternetGatewayInput{
+				InternetGatewayId: aws.String(*igw.InternetGateway.InternetGatewayId),
+				VpcId:             aws.String(vpc.VPCID),
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to attach internet gateway to VPC %s: %w", vpc.VPCID, err)
+		}
+
+		// Update VPC state with Internet Gateway ID
+		if err := p.vpcManager.UpdateVPC(region, func(v *models.AWSVPC) error {
+			if v.VPCID == vpc.VPCID {
+				v.InternetGatewayID = *igw.InternetGateway.InternetGatewayId
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to update VPC state: %w", err)
+		}
+
+		// Setup routing for this VPC
+		if err := p.setupRouting(ctx, region, vpc); err != nil {
+			return fmt.Errorf("failed to setup routing for VPC %s: %w", vpc.VPCID, err)
+		}
+	}
+
+	return nil
 }
 
 // Update the infrastructure display state
