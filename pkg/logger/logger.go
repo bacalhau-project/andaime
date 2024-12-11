@@ -142,21 +142,8 @@ func InitProduction() {
 
 // Core creation helpers
 func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
-	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02-15:04:05")
-	encoderConfig.LineEnding = "\n"
-
-	// Only create console core if explicitly enabled
-	if !GlobalEnableConsoleLogger {
-		return nil
-	}
-
-	return zapcore.NewCore(
-		zapcore.NewConsoleEncoder(encoderConfig),
-		zapcore.AddSync(os.Stdout),
-		level,
-	)
+	// Always return nil to prevent console logging
+	return nil
 }
 
 func createFileCore(level zap.AtomicLevel) (zapcore.Core, error) {
