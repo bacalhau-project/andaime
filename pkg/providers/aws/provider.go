@@ -230,15 +230,19 @@ func (p *AWSProvider) createVPCInfrastructure(
 	region string,
 ) (*models.AWSVPC, error) {
 	l := logger.Get()
-	l.Debugf("Creating VPC infrastructure in region %s", region)
+	l.Infof("Creating VPC infrastructure in region %s", region)
 
 	// Create EC2 client for the region
 	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
 	if err != nil {
+		l.Errorf("Failed to create EC2 client for region %s: %v", region, err)
 		return nil, fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 	}
 
-	// Create VPC with CIDR block
+	// Generate a unique deployment ID for tracking
+	deploymentID := fmt.Sprintf("andaime-%s", generateRandomString(8))
+
+	// Create VPC with CIDR block and enhanced tagging
 	vpcOut, err := ec2Client.CreateVpc(ctx, &ec2.CreateVpcInput{
 		CidrBlock: aws.String("10.0.0.0/16"),
 		TagSpecifications: []ec2_types.TagSpecification{
@@ -253,15 +257,26 @@ func (p *AWSProvider) createVPCInfrastructure(
 						Key:   aws.String("andaime"),
 						Value: aws.String("true"),
 					},
+					{
+						Key:   aws.String("andaime-deployment-id"),
+						Value: aws.String(deploymentID),
+					},
+					{
+						Key:   aws.String("andaime-region"),
+						Value: aws.String(region),
+					},
 				},
 			},
 		},
 	})
 	if err != nil {
+		l.Errorf("Failed to create VPC in region %s: %v", region, err)
 		return nil, fmt.Errorf("failed to create VPC: %w", err)
 	}
 
-	// Create security group
+	l.Infof("Created VPC %s in region %s", *vpcOut.Vpc.VpcId, region)
+
+	// Create security group with enhanced tagging
 	sgOut, err := ec2Client.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
 		GroupName:   aws.String("andaime-sg"),
 		Description: aws.String("Security group for Andaime deployment"),
@@ -278,13 +293,24 @@ func (p *AWSProvider) createVPCInfrastructure(
 						Key:   aws.String("andaime"),
 						Value: aws.String("true"),
 					},
+					{
+						Key:   aws.String("andaime-deployment-id"),
+						Value: aws.String(deploymentID),
+					},
+					{
+						Key:   aws.String("andaime-region"),
+						Value: aws.String(region),
+					},
 				},
 			},
 		},
 	})
 	if err != nil {
+		l.Errorf("Failed to create security group in VPC %s: %v", *vpcOut.Vpc.VpcId, err)
 		return nil, fmt.Errorf("failed to create security group: %w", err)
 	}
+
+	l.Infof("Created security group %s in VPC %s", *sgOut.GroupId, *vpcOut.Vpc.VpcId)
 
 	// Allow inbound traffic
 	_, err = ec2Client.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
@@ -303,8 +329,11 @@ func (p *AWSProvider) createVPCInfrastructure(
 		},
 	})
 	if err != nil {
+		l.Errorf("Failed to authorize security group ingress for group %s: %v", *sgOut.GroupId, err)
 		return nil, fmt.Errorf("failed to authorize security group ingress: %w", err)
 	}
+
+	l.Infof("Authorized security group ingress for %s", *sgOut.GroupId)
 
 	// Create VPC object
 	vpc := &models.AWSVPC{
@@ -312,10 +341,11 @@ func (p *AWSProvider) createVPCInfrastructure(
 		SecurityGroupID: *sgOut.GroupId,
 	}
 
-	// Initialize VPC manager if needed
+	// Initialize VPC manager if not already done
 	if p.vpcManager == nil {
 		m := display.GetGlobalModelFunc()
 		if m == nil || m.Deployment == nil {
+			l.Error("Global model or deployment is nil")
 			return nil, fmt.Errorf("global model or deployment is nil")
 		}
 		p.vpcManager = NewRegionalVPCManager(m.Deployment, p.EC2Client)
@@ -327,10 +357,11 @@ func (p *AWSProvider) createVPCInfrastructure(
 		return nil
 	})
 	if err != nil {
+		l.Errorf("Failed to save VPC %s to regional resources: %v", vpc.VPCID, err)
 		return nil, fmt.Errorf("failed to save VPC to regional resources: %w", err)
 	}
 
-	l.Debugf("Successfully created VPC %s in region %s", vpc.VPCID, region)
+	l.Infof("Successfully created and saved VPC %s in region %s", vpc.VPCID, region)
 
 	return vpc, nil
 }
