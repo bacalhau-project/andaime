@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -1126,10 +1128,34 @@ func (p *AWSProvider) getRegionAvailabilityZones(
 	ctx context.Context,
 	region string,
 ) ([]ec2_types.AvailabilityZone, error) {
-	// Create a regional EC2 client
-	regionalCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	l := logger.Get()
+	l.Debugf("Attempting to get availability zones for region %s", region)
+
+	// Diagnostic logging for network configuration
+	addrs, err := net.LookupHost("ec2." + region + ".amazonaws.com")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+		l.Errorf("DNS resolution failed for ec2.%s.amazonaws.com: %v", region, err)
+		l.Warn("Attempting to use default AWS configuration with fallback mechanisms")
+	} else {
+		l.Debugf("Resolved EC2 endpoint addresses: %v", addrs)
+	}
+
+	// Create a regional EC2 client with extended timeout and retry configuration
+	regionalCfg, err := awsconfig.LoadDefaultConfig(
+		ctx, 
+		awsconfig.WithRegion(region),
+		awsconfig.WithHTTPClient(&http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        10,
+				IdleConnTimeout:     30 * time.Second,
+				DisableCompression:  true,
+				TLSHandshakeTimeout: 10 * time.Second,
+			},
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config for region %s: detailed network diagnostics - %w", region, err)
 	}
 	regionalClient := ec2.NewFromConfig(regionalCfg)
 
@@ -1146,15 +1172,40 @@ func (p *AWSProvider) getRegionAvailabilityZones(
 		},
 	}
 
-	azOutput, err := regionalClient.DescribeAvailabilityZones(ctx, azInput)
+	// Add retry mechanism with exponential backoff
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 2 * time.Minute
+
+	var azOutput *ec2.DescribeAvailabilityZonesOutput
+	err = backoff.Retry(func() error {
+		var retryErr error
+		azOutput, retryErr = regionalClient.DescribeAvailabilityZones(ctx, azInput)
+		if retryErr != nil {
+			l.Warnf("Retrying availability zones lookup for %s: %v", region, retryErr)
+			return retryErr
+		}
+		return nil
+	}, b)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to get availability zones for region %s: %w", region, err)
+		// Enhanced error logging with network diagnostics
+		netErr, ok := err.(net.Error)
+		if ok {
+			l.Errorf("Network error getting AZs: timeout=%v, temporary=%v", netErr.Timeout(), netErr.Temporary())
+		}
+
+		// Attempt to get system DNS configuration
+		nsAddrs, _ := net.LookupNS(".")
+		l.Debugf("System nameservers: %v", nsAddrs)
+
+		return nil, fmt.Errorf("comprehensive failure getting availability zones for region %s: network diagnostics included - %w", region, err)
 	}
 
 	if len(azOutput.AvailabilityZones) < MinRequiredAZs {
 		return nil, fmt.Errorf("region %s does not have at least 2 availability zones", region)
 	}
 
+	l.Debugf("Successfully retrieved %d availability zones for region %s", len(azOutput.AvailabilityZones), region)
 	return azOutput.AvailabilityZones, nil
 }
 
