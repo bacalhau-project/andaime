@@ -1312,9 +1312,22 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 
 			l.Debugf("Setting up networking for VPC %s", vpc.VPCID)
 
+			// Verify VPC exists and is in a valid state
+			vpcDesc, err := regionalClient.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{
+				VpcIds: []string{vpc.VPCID},
+			})
+			if err != nil {
+				l.Errorf("Failed to describe VPC %s: %v", vpc.VPCID, err)
+				return fmt.Errorf("failed to describe VPC %s: %w", vpc.VPCID, err)
+			}
+			if len(vpcDesc.Vpcs) == 0 {
+				l.Errorf("VPC %s not found", vpc.VPCID)
+				return fmt.Errorf("VPC %s not found", vpc.VPCID)
+			}
+
 			// Create Internet Gateway with retry
 			var igw *ec2.CreateInternetGatewayOutput
-			err := backoff.Retry(func() error {
+			err = backoff.Retry(func() error {
 				var err error
 				igw, err = regionalClient.CreateInternetGateway(
 					ctx,
@@ -1326,6 +1339,10 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 									{
 										Key:   aws.String("Name"),
 										Value: aws.String(fmt.Sprintf("andaime-igw-%s", vpc.VPCID)),
+									},
+									{
+										Key:   aws.String("VPC"),
+										Value: aws.String(vpc.VPCID),
 									},
 								},
 							},
@@ -1374,6 +1391,48 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 			if err := p.setupRouting(ctx, region, vpc); err != nil {
 				l.Errorf("Failed to setup routing for VPC %s: %v", vpc.VPCID, err)
 				return fmt.Errorf("failed to setup routing for VPC %s: %w", vpc.VPCID, err)
+			}
+
+			// Verify Internet Gateway and Route Table
+			igws, err := regionalClient.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("attachment.vpc-id"),
+						Values: []string{vpc.VPCID},
+					},
+				},
+			})
+			if err != nil {
+				l.Errorf("Failed to describe internet gateways for VPC %s: %v", vpc.VPCID, err)
+			} else {
+				l.Debugf("Internet Gateways for VPC %s: %d", vpc.VPCID, len(igws.InternetGateways))
+				for _, gateway := range igws.InternetGateways {
+					l.Debugf("IGW ID: %s", aws.ToString(gateway.InternetGatewayId))
+				}
+			}
+
+			rts, err := regionalClient.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+				Filters: []ec2_types.Filter{
+					{
+						Name:   aws.String("vpc-id"),
+						Values: []string{vpc.VPCID},
+					},
+				},
+			})
+			if err != nil {
+				l.Errorf("Failed to describe route tables for VPC %s: %v", vpc.VPCID, err)
+			} else {
+				l.Debugf("Route tables for VPC %s: %d", vpc.VPCID, len(rts.RouteTables))
+				for i, rt := range rts.RouteTables {
+					l.Debugf("Route table %d ID: %s", i+1, aws.ToString(rt.RouteTableId))
+					for j, route := range rt.Routes {
+						l.Debugf("Route %d: Destination %s, Gateway %s", 
+							j+1, 
+							aws.ToString(route.DestinationCidrBlock), 
+							aws.ToString(route.GatewayId),
+						)
+					}
+				}
 			}
 
 			l.Debugf("Successfully set up networking for VPC %s", vpc.VPCID)
