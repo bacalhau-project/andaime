@@ -108,17 +108,17 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 
 	// Set the mock client and ensure it's used for all regions
-	mockRegionalClient = new(aws_mocks.MockEC2Clienter)
-	provider.SetEC2Client(mockRegionalClient)
+	suite.mockRegionalClient = new(aws_mocks.MockEC2Clienter)
+	provider.SetEC2Client(suite.mockRegionalClient)
 
 	// Pre-initialize VPC manager with the deployment
-	provider.vpcManager = NewRegionalVPCManager(deployment, mockRegionalClient)
+	provider.vpcManager = NewRegionalVPCManager(deployment, suite.mockRegionalClient)
 
 	// Initialize regional resources for the test region
 	deployment.AWS.RegionalResources.VPCs[FAKE_REGION] = &models.AWSVPC{
 		VPCID: FAKE_VPC_ID,
 	}
-	deployment.AWS.RegionalResources.Clients[FAKE_REGION] = mockRegionalClient
+	deployment.AWS.RegionalResources.Clients[FAKE_REGION] = suite.mockRegionalClient
 
 	// Mock all AWS API calls
 	suite.setupAWSMocks()
@@ -138,7 +138,7 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 
 func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 	// Mock DescribeRegions
-	mockRegionalClient.On("DescribeRegions", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("DescribeRegions", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeRegionsOutput{
 			Regions: []types.Region{
 				{RegionName: aws.String(FAKE_REGION)},
@@ -146,7 +146,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}, nil)
 
 	// Mock availability zones
-	mockRegionalClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeAvailabilityZonesOutput{
 			AvailabilityZones: []types.AvailabilityZone{
 				{
@@ -163,12 +163,12 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}, nil)
 
 	// Mock VPC-related operations
-	mockRegionalClient.On("CreateVpc", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
 			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
 		}, nil)
 
-	mockRegionalClient.On("DescribeVpcs", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("DescribeVpcs", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeVpcsOutput{
 			Vpcs: []types.Vpc{
 				{
@@ -178,38 +178,38 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 			},
 		}, nil)
 
-	mockRegionalClient.On("ModifyVpcAttribute", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("ModifyVpcAttribute", mock.Anything, mock.Anything).
 		Return(&ec2.ModifyVpcAttributeOutput{}, nil)
 
 	// Mock networking components
-	mockRegionalClient.On("CreateSubnet", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("CreateSubnet", mock.Anything, mock.Anything).
 		Return(&ec2.CreateSubnetOutput{
 			Subnet: &types.Subnet{SubnetId: aws.String(FAKE_SUBNET_ID)},
 		}, nil)
 
-	mockRegionalClient.On("CreateInternetGateway", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("CreateInternetGateway", mock.Anything, mock.Anything).
 		Return(&ec2.CreateInternetGatewayOutput{
 			InternetGateway: &types.InternetGateway{
 				InternetGatewayId: aws.String(FAKE_IGW_ID),
 			},
 		}, nil)
 
-	mockRegionalClient.On("CreateRouteTable", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("CreateRouteTable", mock.Anything, mock.Anything).
 		Return(&ec2.CreateRouteTableOutput{
 			RouteTable: &types.RouteTable{RouteTableId: aws.String(FAKE_RTB_ID)},
 		}, nil)
 
 	// Mock security group operations
-	mockRegionalClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
 		Return(&ec2.CreateSecurityGroupOutput{
 			GroupId: aws.String("sg-12345"),
 		}, nil)
 
-	mockRegionalClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
 		Return(&ec2.AuthorizeSecurityGroupIngressOutput{}, nil)
 
 	// Mock network setup operations with logging
-	mockRegionalClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.AttachInternetGatewayInput)
 			logger.Get().Debugf("Attaching Internet Gateway %s to VPC %s",
@@ -217,7 +217,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}).
 		Return(&ec2.AttachInternetGatewayOutput{}, nil)
 
-	mockRegionalClient.On("CreateRoute", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("CreateRoute", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.CreateRouteInput)
 			logger.Get().Debugf("Creating route in route table %s with destination %s via IGW %s",
@@ -225,7 +225,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}).
 		Return(&ec2.CreateRouteOutput{}, nil)
 
-	mockRegionalClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
+	suite.mockRegionalClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.AssociateRouteTableInput)
 			logger.Get().Debugf("Associating route table %s with subnet %s",
@@ -299,7 +299,7 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
-	mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
+	suite.mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{FAKE_INSTANCE_ID},
 	}).Return(&ec2.DescribeInstancesOutput{
 		Reservations: []types.Reservation{{
