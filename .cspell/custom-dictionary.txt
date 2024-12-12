@@ -237,6 +237,7 @@ mitchellh
 mktemp
 mmddhhmm
 mockprivatekey
+Msgf
 nakedret
 nameprovider
 nanosec
@@ -372,6 +373,7 @@ ukwest
 unbuffered
 unconvert
 UNIQID
+unitedstates
 unmarshaling
 unmarshalling
 unpadded

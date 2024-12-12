@@ -41,7 +41,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		FilePath:      viper.GetString("general.log_path"),
 		Format:        viper.GetString("general.log_format"),
 		WithTrace:     true,
-		EnableConsole: true,
+		EnableConsole: false,
 		EnableBuffer:  true,
 		BufferSize:    8192,
 		InstantSync:   true,
@@ -181,6 +181,14 @@ func prepareDeployment(
 	m.Deployment.SetMachines(machines)
 	m.Deployment.SetLocations(locations)
 
+	for _, machine := range m.Deployment.GetMachines() {
+		region := machine.GetRegion()
+		if _, exists := m.Deployment.AWS.RegionalResources.VPCs[region]; !exists {
+			m.Deployment.AWS.RegionalResources.SetVPC(region, &models.AWSVPC{})
+			m.Deployment.AWS.RegionalResources.SetClient(region, nil)
+		}
+	}
+
 	return m.Deployment, nil
 }
 
@@ -267,6 +275,14 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 		}
 		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
+
+	l.Debug("Infrastructure created successfully")
+	l.Debug("Creating regional networking...")
+	if err := awsProvider.CreateRegionalResources(ctx, m.Deployment.AWS.RegionalResources.GetRegions()); err != nil {
+		return fmt.Errorf("failed to create regional networking: %w", err)
+	}
+
+	l.Debug("Regional networking created successfully")
 
 	// Wait for network propagation and connectivity
 	l.Info("Waiting for network propagation...")
@@ -398,7 +414,8 @@ func writeConfig() {
 				machines[name] = map[string]interface{}{
 					"public_ip":  machine.GetPublicIP(),
 					"private_ip": machine.GetPrivateIP(),
-					"location":   machine.GetLocation(),
+					"region":     machine.GetRegion(),
+					"zone":       machine.GetZone(),
 				}
 			}
 

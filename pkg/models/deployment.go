@@ -225,7 +225,7 @@ func (d *Deployment) UpdateViperConfig() error {
 
 				// Group machines by region
 				for _, machine := range d.Machines {
-					machineRegion := machine.GetLocation()
+					machineRegion := machine.GetRegion()
 					if machineRegion == "" {
 						continue
 					}
@@ -448,6 +448,18 @@ func (r *RegionalResources) SetVPC(region string, vpc *AWSVPC) {
 	r.VPCs[region] = vpc
 }
 
+func (r *RegionalResources) GetClient(region string) aws_interface.EC2Clienter {
+	r.RLock()
+	defer r.RUnlock()
+	return r.Clients[region]
+}
+
+func (r *RegionalResources) SetClient(region string, client aws_interface.EC2Clienter) {
+	r.Lock()
+	defer r.Unlock()
+	r.Clients[region] = client
+}
+
 func (r *RegionalResources) SetSGID(region string, sgID string) {
 	r.Lock()
 	defer r.Unlock()
@@ -458,6 +470,16 @@ func (r *RegionalResources) SetSGID(region string, sgID string) {
 		r.VPCs[region] = &AWSVPC{}
 	}
 	r.VPCs[region].SecurityGroupID = sgID
+}
+
+func (r *RegionalResources) GetRegions() []string {
+	r.RLock()
+	defer r.RUnlock()
+	regions := []string{}
+	for region := range r.VPCs {
+		regions = append(regions, region)
+	}
+	return regions
 }
 
 type RegionalVPC struct {

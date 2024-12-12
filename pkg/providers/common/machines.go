@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/spf13/viper"
@@ -20,10 +21,16 @@ func CreateNewMachine(
 	publicKeyPath string,
 	publicKeyBytes []byte,
 ) (models.Machiner, error) {
+	region, zone, err := general.NormalizeLocation(
+		string(deploymentType),
+		location,
+	)
 	newMachine, err := models.NewMachine(deploymentType,
 		location,
 		vmSize,
 		diskSizeGB,
+		region,
+		zone,
 		models.CloudSpecificInfo{},
 	)
 	if err != nil {

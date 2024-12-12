@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -147,6 +148,10 @@ func ProcessMachinesConfig(
 				diskImageURL = rawMachine.Parameters.DiskImageURL
 			}
 		}
+		region, zone, err := general.NormalizeLocation(
+			string(providerType),
+			rawMachine.Location,
+		)
 		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
 				providerType,
@@ -158,6 +163,8 @@ func ProcessMachinesConfig(
 				publicKeyPath,
 				publicKeyBytes,
 				sshPort,
+				region,
+				zone,
 				diskImageFamily,
 				diskImageURL,
 			)
@@ -226,6 +233,8 @@ func createNewMachine(
 	publicKeyPath string,
 	publicKeyBytes []byte,
 	sshPort int,
+	region string,
+	zone string,
 	diskImageFamily string,
 	diskImageURL string,
 ) (models.Machiner, error) {
@@ -235,6 +244,8 @@ func createNewMachine(
 		location,
 		vmSize,
 		diskSizeGB,
+		region,
+		zone,
 		models.CloudSpecificInfo{},
 	)
 	if err != nil {

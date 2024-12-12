@@ -159,8 +159,8 @@ func (p *AWSProvider) getOrCreateEC2Client(
 		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
 	}
 
-	if m.Deployment.AWS.RegionalResources.Clients[region] != nil {
-		return m.Deployment.AWS.RegionalResources.Clients[region], nil
+	if client := m.Deployment.AWS.RegionalResources.GetClient(region); client != nil {
+		return client, nil
 	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
@@ -170,8 +170,8 @@ func (p *AWSProvider) getOrCreateEC2Client(
 
 	var ec2Client aws_interface.EC2Clienter
 	p.ConfigMutex.Lock()
-	if m.Deployment.AWS.RegionalResources.Clients[region] != nil {
-		ec2Client = m.Deployment.AWS.RegionalResources.Clients[region]
+	if client := m.Deployment.AWS.RegionalResources.GetClient(region); client != nil {
+		ec2Client = client
 	} else {
 		ec2Client = &LiveEC2Client{client: ec2.NewFromConfig(cfg)}
 		m.Deployment.AWS.RegionalResources.Clients[region] = ec2Client
@@ -211,7 +211,7 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 	// Initialize regional resources
 	regions := make(map[string]struct{})
 	for _, machine := range deployment.Machines {
-		region := machine.GetLocation()
+		region := machine.GetRegion()
 		if region == "" {
 			continue
 		}
@@ -619,7 +619,7 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 
 	// Collect unique regions and validate them first
 	for _, machine := range m.Deployment.GetMachines() {
-		region := machine.GetLocation()
+		region := machine.GetRegion()
 		// Convert zone to region if necessary
 		if len(region) > 0 && region[len(region)-1] >= 'a' && region[len(region)-1] <= 'z' {
 			region = region[:len(region)-1]
@@ -635,7 +635,7 @@ func (p *AWSProvider) CreateInfrastructure(ctx context.Context) error {
 
 			// Update display for the first machine in this region
 			for _, machine := range m.Deployment.GetMachines() {
-				machineRegion := machine.GetLocation()
+				machineRegion := machine.GetRegion()
 				if len(machineRegion) > 0 && machineRegion[len(machineRegion)-1] >= 'a' &&
 					machineRegion[len(machineRegion)-1] <= 'z' {
 					machineRegion = machineRegion[:len(machineRegion)-1]
@@ -698,7 +698,7 @@ func (p *AWSProvider) CreateRegionalResources(
 
 	if err := eg.Wait(); err != nil {
 		l.Errorf("Error creating regional resources: %v", err)
-		
+
 		// Combine all errors
 		var combinedErr error
 		mu.Lock()
@@ -804,7 +804,11 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 	// Step 6: Save and update display
 	if err := p.saveInfrastructureToConfig(); err != nil {
 		l.Errorf("Failed to save infrastructure config for region %s: %v", region, err)
-		return fmt.Errorf("failed to save infrastructure IDs to config for region %s: %w", region, err)
+		return fmt.Errorf(
+			"failed to save infrastructure IDs to config for region %s: %w",
+			region,
+			err,
+		)
 	}
 
 	p.updateInfrastructureDisplay(models.ResourceStateSucceeded)

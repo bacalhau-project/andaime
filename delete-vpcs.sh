@@ -42,7 +42,7 @@ for region in $regions; do
     # Get VPC IDs for VPCs named "andaime-vpc"
     vpc_ids=$(aws ec2 describe-vpcs \
         --region $region \
-        --filters "Name=tag:Name,Values=andaime-vpc" \
+        --filters "Name=tag:Name,Values=andaime-vpc*" \
         --query 'Vpcs[*].VpcId' \
         --output text)
     

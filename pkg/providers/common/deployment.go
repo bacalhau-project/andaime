@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/globals"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/utils"
+
 	"github.com/spf13/viper"
 )
 
@@ -154,19 +156,29 @@ func PrepareDeployment(
 	} else if provider == models.DeploymentTypeAWS {
 		defaultCountPerLocation = int(deployment.AWS.DefaultCountPerRegion)
 		defaultDiskSizeGB = int(deployment.AWS.DefaultDiskSizeGB)
+	} else {
+		return nil, fmt.Errorf("invalid provider: %s", provider)
 	}
 
 	orchestratorMachineName := ""
-	orchestratorLocation := ""
 	orchestratorMessagePrinted := false
 	for _, machineConfig := range machineConfigs {
+		region, zone, err := general.NormalizeLocation(
+			string(provider),
+			machineConfig["location"].(string),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("invalid location: %s", machineConfig["location"].(string))
+		}
 		machine := &models.Machine{
-			Location: machineConfig["location"].(string),
+			DisplayLocation: machineConfig["location"].(string),
 			VMSize: viper.GetString(
 				fmt.Sprintf("%s.default_machine_type", strings.ToLower(string(provider))),
 			),
 			DiskSizeGB:   defaultDiskSizeGB,
 			Orchestrator: false,
+			Region:       region,
+			Zone:         zone,
 		}
 		machine.SetNodeType(models.BacalhauNodeTypeCompute)
 
@@ -206,11 +218,12 @@ func PrepareDeployment(
 				machine.DiskSizeGB = diskSizeGB
 			}
 
+			var orchestratorZone string
 			if orchestrator, ok := params["orchestrator"].(bool); ok &&
 				orchestratorMachineName == "" {
 				machine.Orchestrator = orchestrator
 				orchestratorMachineName = machine.Name
-				orchestratorLocation = machine.Location
+				orchestratorZone = machine.Zone
 				machine.SetNodeType(models.BacalhauNodeTypeOrchestrator)
 				if count > 1 && !orchestratorMessagePrinted {
 					l.Infof(
@@ -220,7 +233,7 @@ func PrepareDeployment(
 			} else if orchestratorMachineName != "" {
 				l.Infof("Orchestrator flag must be set in a single location. Ignoring flag.")
 				l.Infof("Orchestrator machine name: %s", orchestratorMachineName)
-				l.Infof("Orchestrator location: %s", orchestratorLocation)
+				l.Infof("Orchestrator location: %s", orchestratorZone)
 			}
 			for i := 0; i < count; i++ {
 				machine.Name = fmt.Sprintf("%s-vm", utils.GenerateUniqueID())

@@ -22,6 +22,7 @@ const (
 	DebugFilePermissions   = 0600
 	ProfileFilePermissions = 0600
 	InfoLogLevel           = "info"
+	LastLogLines           = 100
 )
 
 // Global variables
@@ -138,19 +139,24 @@ func InitProduction() {
 	})
 }
 
-// Core creation helpers
-func createConsoleCore(level zap.AtomicLevel) zapcore.Core {
-	// Explicitly return nil to prevent any console logging
-	GlobalEnableConsoleLogger = false
-	return nil
-}
-
 func createFileCore(level zap.AtomicLevel) (zapcore.Core, error) {
 	encoderConfig := zapcore.EncoderConfig{
-		// ... encoder config ...
+		TimeKey:        "time",
+		LevelKey:       "level",
+		MessageKey:     "msg",
+		StacktraceKey:  "stacktrace",
+		EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeTime:     customTimeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	logFile, err := os.OpenFile(GlobalLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	logFile, err := os.OpenFile(
+		GlobalLogPath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0600, //nolint:gosec,mnd
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +491,7 @@ func (tl *TestLogger) PrintLogs(t *testing.T) {
 // PrintLogs prints all captured logs to the test output
 func (l *Logger) PrintLogs(t *testing.T) {
 	t.Log("Captured logs:")
-	for i, log := range globalLogBuffer.GetLastLines(100) {
+	for i, log := range globalLogBuffer.GetLastLines(LastLogLines) {
 		if log != "" {
 			t.Logf("[%d] %s", i, log)
 		}

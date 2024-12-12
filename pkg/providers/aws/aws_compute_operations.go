@@ -282,7 +282,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 	// Group machines by region
 	machinesByRegion := make(map[string][]models.Machiner)
 	for _, machine := range m.Deployment.GetMachines() {
-		region := machine.GetLocation()
+		region := machine.GetRegion()
 		l.Debug(fmt.Sprintf("Processing machine %s in region %s", machine.GetName(), region))
 		if region == "" {
 			l.Warn(fmt.Sprintf("Machine %s has no location specified", machine.GetName()))
@@ -309,8 +309,8 @@ func (p *AWSProvider) DeployVMsInParallel(
 
 	// Deploy machines in each region
 	for region, machines := range machinesByRegion {
-		vpc, exists := m.Deployment.AWS.RegionalResources.VPCs[region]
-		if !exists {
+		vpc := m.Deployment.AWS.RegionalResources.GetVPC(region)
+		if vpc == nil {
 			return fmt.Errorf("VPC not found for region %s", region)
 		}
 
@@ -454,7 +454,19 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 	}
 
 	// Describe all zones in the region, removing filters to get comprehensive data
-	result, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{})
+	result, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("region-name"),
+				Values: []string{region},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+		AllAvailabilityZones: aws.Bool(true),
+	})
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to describe AZs: %v", err))
 		return fmt.Errorf("failed to describe availability zones: %w", err)
