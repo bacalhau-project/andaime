@@ -1282,6 +1282,14 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 					l.Infof("Checking route table %d...", i+1)
 					l.Infof("Route table ID: %s", *rt.RouteTableId)
 
+					// Log route table associations
+					l.Debugf("Route table associations for %s:", *rt.RouteTableId)
+					for _, assoc := range rt.Associations {
+						l.Debugf("- Association: SubnetID: %s, Main: %v", 
+							aws.ToString(assoc.SubnetId), 
+							aws.ToBool(assoc.Main))
+					}
+
 					for _, route := range rt.Routes {
 						if route.GatewayId != nil {
 							l.Debugf(
@@ -1302,6 +1310,25 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 
 				if !hasInternetRoute {
 					l.Warn("No internet gateway route found in any route table")
+					
+					// Additional diagnostic information
+					igws, err := p.EC2Client.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
+						Filters: []ec2_types.Filter{
+							{
+								Name:   aws.String("attachment.vpc-id"),
+								Values: []string{vpcID},
+							},
+						},
+					})
+					if err != nil {
+						l.Errorf("Failed to describe internet gateways: %v", err)
+					} else {
+						l.Debugf("Internet Gateways for VPC %s: %d", vpcID, len(igws.InternetGateways))
+						for _, igw := range igws.InternetGateways {
+							l.Debugf("IGW ID: %s", aws.ToString(igw.InternetGatewayId))
+						}
+					}
+
 					return fmt.Errorf("internet gateway route not found")
 				}
 
