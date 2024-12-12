@@ -233,7 +233,7 @@ func (p *AWSProvider) createVPCInfrastructure(
 	l.Infof("Creating VPC infrastructure in region %s", region)
 
 	// Create EC2 client for the region
-	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	regionalClient, err := p.getOrCreateEC2Client(ctx, region)
 	if err != nil {
 		l.Errorf("Failed to create EC2 client for region %s: %v", region, err)
 		return nil, fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
@@ -243,7 +243,7 @@ func (p *AWSProvider) createVPCInfrastructure(
 	deploymentID := fmt.Sprintf("andaime-%s", generateRandomString(8))
 
 	// Create VPC with CIDR block and enhanced tagging
-	vpcOut, err := ec2Client.CreateVpc(ctx, &ec2.CreateVpcInput{
+	vpcOut, err := regionalClient.CreateVpc(ctx, &ec2.CreateVpcInput{
 		CidrBlock: aws.String("10.0.0.0/16"),
 		TagSpecifications: []ec2_types.TagSpecification{
 			{
@@ -277,7 +277,7 @@ func (p *AWSProvider) createVPCInfrastructure(
 	l.Infof("Created VPC %s in region %s", *vpcOut.Vpc.VpcId, region)
 
 	// Create security group with enhanced tagging
-	sgOut, err := ec2Client.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+	sgOut, err := regionalClient.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
 		GroupName:   aws.String("andaime-sg"),
 		Description: aws.String("Security group for Andaime deployment"),
 		VpcId:       vpcOut.Vpc.VpcId,
@@ -313,21 +313,24 @@ func (p *AWSProvider) createVPCInfrastructure(
 	l.Infof("Created security group %s in VPC %s", *sgOut.GroupId, *vpcOut.Vpc.VpcId)
 
 	// Allow inbound traffic
-	_, err = ec2Client.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
-		GroupId: sgOut.GroupId,
-		IpPermissions: []ec2_types.IpPermission{
-			{
-				IpProtocol: aws.String("-1"),
-				FromPort:   aws.Int32(-1),
-				ToPort:     aws.Int32(-1),
-				IpRanges: []ec2_types.IpRange{
-					{
-						CidrIp: aws.String("0.0.0.0/0"),
+	_, err = regionalClient.AuthorizeSecurityGroupIngress(
+		ctx,
+		&ec2.AuthorizeSecurityGroupIngressInput{
+			GroupId: sgOut.GroupId,
+			IpPermissions: []ec2_types.IpPermission{
+				{
+					IpProtocol: aws.String("-1"),
+					FromPort:   aws.Int32(-1),
+					ToPort:     aws.Int32(-1),
+					IpRanges: []ec2_types.IpRange{
+						{
+							CidrIp: aws.String("0.0.0.0/0"),
+						},
 					},
 				},
 			},
 		},
-	})
+	)
 	if err != nil {
 		l.Errorf("Failed to authorize security group ingress for group %s: %v", *sgOut.GroupId, err)
 		return nil, fmt.Errorf("failed to authorize security group ingress: %w", err)
@@ -680,7 +683,12 @@ func (p *AWSProvider) CreateRegionalResources(
 	var mu sync.Mutex
 	var errors []error
 
+	uniqueRegions := make(map[string]bool)
 	for _, region := range regions {
+		uniqueRegions[region] = true
+	}
+
+	for region := range uniqueRegions {
 		region := region // capture for goroutine
 		eg.Go(func() error {
 			l.Debugf("Setting up infrastructure for region: %s", region)
@@ -780,14 +788,6 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 		}
 		l.Infof("Retrieved VPC %s from regional resources", vpc.VPCID)
 	}
-
-	// Step 3: Create security group
-	sgID, err := p.createSecurityGroup(ctx, region, vpc.VPCID)
-	if err != nil {
-		l.Errorf("Failed to create security group in region %s: %v", region, err)
-		return fmt.Errorf("failed to create security groups in region %s: %w", region, err)
-	}
-	m.Deployment.AWS.RegionalResources.SetSGID(region, *sgID)
 
 	// Step 4: Create subnets
 	if err := p.createRegionalSubnets(ctx, region, azs[:2]); err != nil {
