@@ -1282,13 +1282,12 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 
-	state := p.vpcManager.GetOrCreateVPCState(region)
-	if state == nil {
-		return fmt.Errorf("failed to get VPC state for region %s", region)
-	}
-
 	// Get all VPCs for this region
 	vpcStates := p.vpcManager.GetAllVPCStates(region)
+	if len(vpcStates) == 0 {
+		l.Warn("No VPC states found for region")
+		return fmt.Errorf("no VPC states found for region %s", region)
+	}
 
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
@@ -1307,6 +1306,7 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 			state.mu.RUnlock()
 
 			if vpc == nil {
+				l.Warn("Skipping nil VPC in networking setup")
 				return nil
 			}
 
@@ -1318,7 +1318,19 @@ func (p *AWSProvider) setupNetworking(ctx context.Context, region string) error 
 				var err error
 				igw, err = regionalClient.CreateInternetGateway(
 					ctx,
-					&ec2.CreateInternetGatewayInput{},
+					&ec2.CreateInternetGatewayInput{
+						TagSpecifications: []ec2_types.TagSpecification{
+							{
+								ResourceType: ec2_types.ResourceTypeInternetGateway,
+								Tags: []ec2_types.Tag{
+									{
+										Key:   aws.String("Name"),
+										Value: aws.String(fmt.Sprintf("andaime-igw-%s", vpc.VPCID)),
+									},
+								},
+							},
+						},
+					},
 				)
 				return err
 			}, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
