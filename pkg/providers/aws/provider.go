@@ -28,18 +28,18 @@ import (
 )
 
 const (
-	ResourcePollingInterval = 30 * time.Second
-	UpdateQueueSize         = 1000 // Increased from 100 to prevent dropping updates
-	UpdatePollingInterval   = 100 * time.Millisecond
-	DefaultStackTimeout     = 30 * time.Minute
-	TestStackTimeout        = 30 * time.Second
-	UbuntuAMIOwner          = "099720109477" // Canonical's AWS account ID
+	ResourcePollingInterval    = 30 * time.Second
+	UpdateQueueSize            = 1000 // Increased from 100 to prevent dropping updates
+	UpdatePollingInterval      = 100 * time.Millisecond
+	DefaultStackTimeout        = 30 * time.Minute
+	TestStackTimeout           = 30 * time.Second
+	UbuntuAMIOwner             = "099720109477" // Canonical's AWS account ID
+	LengthOfDeploymentIDSuffix = 8
 )
 
 type VPCState struct {
 	mu          sync.RWMutex
 	vpc         *models.AWSVPC
-	status      string
 	lastUpdated time.Time
 }
 
@@ -225,6 +225,310 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 	return nil
 }
 
+// CreateVPCInfrastructure creates a complete VPC infrastructure in a given region
+func (p *AWSProvider) CreateVPCInfrastructure(
+	ctx context.Context,
+	region string,
+) (*models.AWSVPC, error) {
+	l := logger.Get()
+	l.Infof("Creating VPC infrastructure in region %s", region)
+
+	// Create EC2 client for region
+	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Create VPC
+	vpc, err := p.createVPC(ctx, region, ec2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	// Create Internet Gateway and attach to VPC
+	igwID, err := p.createAndAttachInternetGateway(ctx, region, vpc.VPCID, ec2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create and attach internet gateway: %w", err)
+	}
+	vpc.InternetGatewayID = igwID
+
+	// Create subnets
+	err = p.createVPCSubnets(ctx, region, vpc, ec2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create subnets: %w", err)
+	}
+
+	// Create and configure route table
+	err = p.configureVPCRouting(ctx, region, vpc, ec2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure routing: %w", err)
+	}
+
+	// Create security group
+	sgID, err := p.createSecurityGroup(ctx, region, vpc.VPCID, ec2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create security group: %w", err)
+	}
+	vpc.SecurityGroupID = sgID
+
+	l.Infof("Successfully created VPC infrastructure in region %s", region)
+	return vpc, nil
+}
+
+// createVPC creates a new VPC with the specified CIDR block
+func (p *AWSProvider) createVPC(
+	ctx context.Context,
+	region string,
+	ec2Client aws_interface.EC2Clienter,
+) (*models.AWSVPC, error) {
+	vpcResult, err := ec2Client.CreateVpc(ctx, &ec2.CreateVpcInput{
+		CidrBlock: aws.String(VPCCidrBlock),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeVpc,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(fmt.Sprintf("andaime-vpc-%s", region)),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VPC: %w", err)
+	}
+
+	// Enable DNS hostnames
+	_, err = ec2Client.ModifyVpcAttribute(ctx, &ec2.ModifyVpcAttributeInput{
+		VpcId:              vpcResult.Vpc.VpcId,
+		EnableDnsHostnames: &ec2_types.AttributeBooleanValue{Value: aws.Bool(true)},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to enable DNS hostnames: %w", err)
+	}
+
+	return &models.AWSVPC{
+		VPCID: *vpcResult.Vpc.VpcId,
+	}, nil
+}
+
+// createAndAttachInternetGateway creates an Internet Gateway and attaches it to the VPC
+func (p *AWSProvider) createAndAttachInternetGateway(
+	ctx context.Context,
+	region, vpcID string,
+	ec2Client aws_interface.EC2Clienter,
+) (string, error) {
+	// Create Internet Gateway
+	igwResult, err := ec2Client.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeInternetGateway,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(fmt.Sprintf("andaime-igw-%s", region)),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create internet gateway: %w", err)
+	}
+
+	// Attach Internet Gateway to VPC
+	_, err = ec2Client.AttachInternetGateway(ctx, &ec2.AttachInternetGatewayInput{
+		InternetGatewayId: igwResult.InternetGateway.InternetGatewayId,
+		VpcId:             aws.String(vpcID),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to attach internet gateway: %w", err)
+	}
+
+	return *igwResult.InternetGateway.InternetGatewayId, nil
+}
+
+// createVPCSubnets creates the public and private subnets in the VPC
+func (p *AWSProvider) createVPCSubnets(
+	ctx context.Context,
+	region string,
+	vpc *models.AWSVPC,
+	ec2Client aws_interface.EC2Clienter,
+) error {
+	// Get available AZs
+	azResult, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("region-name"),
+				Values: []string{region},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get availability zones: %w", err)
+	}
+
+	if len(azResult.AvailabilityZones) < MinRequiredAZs {
+		return fmt.Errorf("region %s does not have enough availability zones", region)
+	}
+
+	// Create subnets
+	subnets := []struct {
+		cidr   string
+		az     string
+		name   string
+		public bool
+	}{
+		{PublicSubnet1CIDR, *azResult.AvailabilityZones[0].ZoneName, "public-1", true},
+		{PublicSubnet2CIDR, *azResult.AvailabilityZones[1].ZoneName, "public-2", true},
+		{PrivateSubnet1CIDR, *azResult.AvailabilityZones[0].ZoneName, "private-1", false},
+		{PrivateSubnet2CIDR, *azResult.AvailabilityZones[1].ZoneName, "private-2", false},
+	}
+
+	for _, subnet := range subnets {
+		subnetResult, err := ec2Client.CreateSubnet(ctx, &ec2.CreateSubnetInput{
+			VpcId:            aws.String(vpc.VPCID),
+			CidrBlock:        aws.String(subnet.cidr),
+			AvailabilityZone: aws.String(subnet.az),
+			TagSpecifications: []ec2_types.TagSpecification{
+				{
+					ResourceType: ec2_types.ResourceTypeSubnet,
+					Tags: []ec2_types.Tag{
+						{
+							Key:   aws.String("Name"),
+							Value: aws.String(fmt.Sprintf("andaime-%s-%s", subnet.name, region)),
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create subnet %s: %w", subnet.name, err)
+		}
+
+		if subnet.public {
+			vpc.PublicSubnetIDs = append(vpc.PublicSubnetIDs, *subnetResult.Subnet.SubnetId)
+		} else {
+			vpc.PrivateSubnetIDs = append(vpc.PrivateSubnetIDs, *subnetResult.Subnet.SubnetId)
+		}
+	}
+
+	return nil
+}
+
+// configureVPCRouting creates and configures the route table for the VPC
+func (p *AWSProvider) configureVPCRouting(
+	ctx context.Context,
+	region string,
+	vpc *models.AWSVPC,
+	ec2Client aws_interface.EC2Clienter,
+) error {
+	// Create route table
+	rtResult, err := ec2Client.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{
+		VpcId: aws.String(vpc.VPCID),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeRouteTable,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(fmt.Sprintf("andaime-rt-%s", region)),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create route table: %w", err)
+	}
+
+	// Add route to Internet Gateway
+	_, err = ec2Client.CreateRoute(ctx, &ec2.CreateRouteInput{
+		RouteTableId:         rtResult.RouteTable.RouteTableId,
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+		GatewayId:            aws.String(vpc.InternetGatewayID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create route: %w", err)
+	}
+
+	// Associate public subnets with route table
+	for _, subnetID := range vpc.PublicSubnetIDs {
+		_, err = ec2Client.AssociateRouteTable(ctx, &ec2.AssociateRouteTableInput{
+			RouteTableId: rtResult.RouteTable.RouteTableId,
+			SubnetId:     aws.String(subnetID),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to associate route table with subnet %s: %w", subnetID, err)
+		}
+	}
+
+	vpc.PublicRouteTableID = *rtResult.RouteTable.RouteTableId
+	return nil
+}
+
+// createSecurityGroup creates and configures the security group for the VPC
+func (p *AWSProvider) createSecurityGroup(
+	ctx context.Context,
+	region, vpcID string,
+	ec2Client aws_interface.EC2Clienter,
+) (string, error) {
+	sgResult, err := ec2Client.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
+		GroupName:   aws.String(fmt.Sprintf("andaime-sg-%s", region)),
+		Description: aws.String("Security group for Andaime instances"),
+		VpcId:       aws.String(vpcID),
+		TagSpecifications: []ec2_types.TagSpecification{
+			{
+				ResourceType: ec2_types.ResourceTypeSecurityGroup,
+				Tags: []ec2_types.Tag{
+					{
+						Key:   aws.String("Name"),
+						Value: aws.String(fmt.Sprintf("andaime-sg-%s", region)),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create security group: %w", err)
+	}
+
+	// Add security group rules
+
+	ipPermissions := []ec2_types.IpPermission{}
+	for _, port := range p.vpcManager.deployment.AllowedPorts {
+		ipPermissions = append(ipPermissions, ec2_types.IpPermission{
+			IpProtocol: aws.String("tcp"),
+			FromPort:   aws.Int32(validatePort(port)),
+			ToPort:     aws.Int32(validatePort(port)),
+			IpRanges:   []ec2_types.IpRange{{CidrIp: aws.String("0.0.0.0/0")}},
+		})
+	}
+
+	_, err = ec2Client.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
+		GroupId:       sgResult.GroupId,
+		IpPermissions: ipPermissions,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to authorize security group ingress: %w", err)
+	}
+
+	return *sgResult.GroupId, nil
+}
+
+// validatePort ensures port number is within valid int32 range
+func validatePort(port int) int32 {
+	if port < 0 || port > 65535 {
+		return 0 // Or handle error appropriately
+	}
+	return int32(port)
+}
+
 func (p *AWSProvider) createVPCInfrastructure(
 	ctx context.Context,
 	region string,
@@ -240,7 +544,7 @@ func (p *AWSProvider) createVPCInfrastructure(
 	}
 
 	// Generate a unique deployment ID for tracking
-	deploymentID := fmt.Sprintf("andaime-%s", generateRandomString(8))
+	deploymentID := fmt.Sprintf("andaime-%s", generateRandomString(LengthOfDeploymentIDSuffix))
 
 	// Create VPC with CIDR block and enhanced tagging
 	vpcOut, err := regionalClient.CreateVpc(ctx, &ec2.CreateVpcInput{
@@ -892,7 +1196,14 @@ func (p *AWSProvider) createRegionalSubnets(
 		for i, az := range azs {
 			// Create public subnet
 			l.Debugf("Creating public subnet in AZ %s", *az.ZoneName)
-			publicSubnet, err := p.createSubnet(ctx, region, vpc.VPCID, *az.ZoneName, i*2, "public")
+			publicSubnet, err := p.createSubnet(
+				ctx,
+				region,
+				vpc.VPCID,
+				*az.ZoneName,
+				i*2, //nolint:mnd
+				"public",
+			)
 			if err != nil {
 				return fmt.Errorf("failed to create public subnet: %w", err)
 			}
@@ -1122,65 +1433,6 @@ func (p *AWSProvider) createVPCWithRetry(ctx context.Context, region string) err
 	return nil
 }
 
-func (p *AWSProvider) createSecurityGroup(ctx context.Context,
-	region string,
-	vpcid string,
-) (*string, error) {
-	l := logger.Get()
-	l.Info("Creating security groups...")
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return nil, fmt.Errorf("global model or deployment is nil")
-	}
-
-	regionalClient := m.Deployment.AWS.RegionalResources.Clients[region]
-
-	sgOutput, err := regionalClient.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
-		GroupName:   aws.String("andaime-sg"),
-		VpcId:       aws.String(vpcid),
-		Description: aws.String("Security group for Andaime deployments"),
-		TagSpecifications: []ec2_types.TagSpecification{
-			{
-				ResourceType: ec2_types.ResourceTypeSecurityGroup,
-				Tags: []ec2_types.Tag{
-					{Key: aws.String("Name"), Value: aws.String("andaime-sg")},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create security group: %w", err)
-	}
-
-	sgRules := []ec2_types.IpPermission{}
-	allowedPorts := []int{22, 1234, 1235, 4222}
-	for _, port := range allowedPorts {
-		sgRules = append(sgRules, ec2_types.IpPermission{
-			IpProtocol: aws.String("tcp"),
-			FromPort:   aws.Int32(int32(port)),
-			ToPort:     aws.Int32(int32(port)),
-			IpRanges: []ec2_types.IpRange{
-				{
-					CidrIp: aws.String("0.0.0.0/0"),
-				},
-			},
-		})
-	}
-
-	_, err = regionalClient.AuthorizeSecurityGroupIngress(
-		ctx,
-		&ec2.AuthorizeSecurityGroupIngressInput{
-			GroupId:       sgOutput.GroupId,
-			IpPermissions: sgRules,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to authorize security group ingress: %w", err)
-	}
-
-	return sgOutput.GroupId, nil
-}
-
 func (p *AWSProvider) importSSHKeyPair(
 	_ context.Context,
 	sshPublicKeyPath string,
@@ -1285,8 +1537,8 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 					// Log route table associations
 					l.Debugf("Route table associations for %s:", *rt.RouteTableId)
 					for _, assoc := range rt.Associations {
-						l.Debugf("- Association: SubnetID: %s, Main: %v", 
-							aws.ToString(assoc.SubnetId), 
+						l.Debugf("- Association: SubnetID: %s, Main: %v",
+							aws.ToString(assoc.SubnetId),
 							aws.ToBool(assoc.Main))
 					}
 
@@ -1310,16 +1562,19 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 
 				if !hasInternetRoute {
 					l.Warn("No internet gateway route found in any route table")
-					
+
 					// Additional diagnostic information
-					igws, err := p.EC2Client.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
-						Filters: []ec2_types.Filter{
-							{
-								Name:   aws.String("attachment.vpc-id"),
-								Values: []string{vpcID},
+					igws, err := p.EC2Client.DescribeInternetGateways(
+						ctx,
+						&ec2.DescribeInternetGatewaysInput{
+							Filters: []ec2_types.Filter{
+								{
+									Name:   aws.String("attachment.vpc-id"),
+									Values: []string{vpcID},
+								},
 							},
 						},
-					})
+					)
 					if err != nil {
 						l.Errorf("Failed to describe internet gateways: %v", err)
 					} else {
@@ -1607,123 +1862,6 @@ func (p *AWSProvider) GetVMExternalIP(ctx context.Context, instanceID string) (s
 	}
 
 	return *instance.PublicIpAddress, nil
-}
-
-func (p *AWSProvider) removeDeploymentFromConfig(stackName string) error {
-	deployments := viper.GetStringMap("deployments")
-	for uniqueID, details := range deployments {
-		deploymentDetails, ok := details.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		awsDetails, ok := deploymentDetails["aws"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if _, exists := awsDetails[stackName]; exists {
-			delete(awsDetails, stackName)
-			if len(awsDetails) == 0 {
-				delete(deploymentDetails, "aws")
-			}
-			if len(deploymentDetails) == 0 {
-				delete(deployments, uniqueID)
-			}
-			viper.Set("deployments", deployments)
-			return viper.WriteConfig()
-		}
-	}
-	return nil
-}
-
-func (p *AWSProvider) cleanupRouteTables(ctx context.Context, vpcID string) error {
-	l := logger.Get()
-	rts, err := p.EC2Client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
-		Filters: []ec2_types.Filter{
-			{
-				Name:   aws.String("vpc-id"),
-				Values: []string{vpcID},
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to describe route tables: %w", err)
-	}
-
-	for _, rt := range rts.RouteTables {
-		// Skip the main route table
-		isMain := false
-		for _, assoc := range rt.Associations {
-			if aws.ToBool(assoc.Main) {
-				isMain = true
-				break
-			}
-		}
-		if isMain {
-			l.Debugf("Skipping main route table %s", *rt.RouteTableId)
-			continue
-		}
-
-		// Delete route table associations first
-		for _, assoc := range rt.Associations {
-			if assoc.RouteTableAssociationId != nil {
-				l.Debugf("Disassociating route table %s", *assoc.RouteTableAssociationId)
-				_, err := p.EC2Client.DisassociateRouteTable(ctx, &ec2.DisassociateRouteTableInput{
-					AssociationId: assoc.RouteTableAssociationId,
-				})
-				if err != nil {
-					return fmt.Errorf("failed to disassociate route table: %w", err)
-				}
-			}
-		}
-
-		l.Debugf("Deleting route table %s", *rt.RouteTableId)
-		_, err := p.EC2Client.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
-			RouteTableId: rt.RouteTableId,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to delete route table: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (p *AWSProvider) cleanupInternetGateways(ctx context.Context, vpcID string) error {
-	l := logger.Get()
-	igws, err := p.EC2Client.DescribeInternetGateways(ctx, &ec2.DescribeInternetGatewaysInput{
-		Filters: []ec2_types.Filter{
-			{
-				Name:   aws.String("attachment.vpc-id"),
-				Values: []string{vpcID},
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to describe internet gateways: %w", err)
-	}
-
-	for _, igw := range igws.InternetGateways {
-		// Detach first
-		l.Debugf("Detaching internet gateway %s from VPC %s", *igw.InternetGatewayId, vpcID)
-		_, err := p.EC2Client.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
-			InternetGatewayId: igw.InternetGatewayId,
-			VpcId:             aws.String(vpcID),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to detach internet gateway: %w", err)
-		}
-
-		// Then delete
-		l.Debugf("Deleting internet gateway %s", *igw.InternetGatewayId)
-		_, err = p.EC2Client.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
-			InternetGatewayId: igw.InternetGatewayId,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to delete internet gateway: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // Helper functions for VPC routing setup
