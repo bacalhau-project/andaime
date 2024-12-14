@@ -8,6 +8,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 
 	"github.com/bacalhau-project/andaime/pkg/sshutils"

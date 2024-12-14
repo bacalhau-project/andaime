@@ -11,6 +11,7 @@ allowlistedlocalpaths
 Andaime
 andaimeconfig
 andaimeuser
+APAC
 apitype
 apiv
 armcompute
@@ -171,6 +172,7 @@ gosimple
 govet
 gserviceaccount
 Gtthi
+Hamina
 heartbeatcheckfrequency
 heartbeatfrequency
 heartbeattopic
