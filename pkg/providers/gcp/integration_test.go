@@ -139,6 +139,8 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 			machine.location,
 			"n1-standard-2",
 			30,
+			machine.location,
+			machine.location,
 			models.CloudSpecificInfo{},
 		)
 		s.Require().NoError(err)

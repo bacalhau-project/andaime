@@ -417,9 +417,11 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 
 	testMachine, err := models.NewMachine(
 		models.DeploymentTypeAWS,
-		"us-east-1",
+		"us-east-1a",
 		"test",
 		1,
+		"us-east-1",
+		"us-east-1a",
 		models.CloudSpecificInfo{},
 	)
 	testMachine.SetNodeType(models.BacalhauNodeTypeOrchestrator)

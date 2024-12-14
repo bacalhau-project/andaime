@@ -129,7 +129,7 @@ func (p *GCPProvider) provisionMachine(
 	l := logger.Get()
 
 	// Create VM
-	l.Infof("Creating instance %s in zone %s", machine.GetName(), machine.GetLocation())
+	l.Infof("Creating instance %s in zone %s", machine.GetName(), machine.GetZone())
 	if err := p.CreateAndConfigureVM(ctx, machine); err != nil {
 		return fmt.Errorf("failed to create and configure VM: %w", err)
 	}

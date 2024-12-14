@@ -91,7 +91,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 		if len(m.Deployment.GetMachines()) > 0 {
 			for _, machine := range m.Deployment.GetMachines() {
 				// Break over the first machine
-				resourceGroupLocation = machine.GetLocation()
+				resourceGroupLocation = machine.GetRegion()
 				break
 			}
 		}
@@ -185,8 +185,8 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 	// Group machines by location
 	machinesByLocation := make(map[string][]models.Machiner)
 	for _, machine := range m.Deployment.GetMachines() {
-		machinesByLocation[machine.GetLocation()] = append(
-			machinesByLocation[machine.GetLocation()],
+		machinesByLocation[machine.GetRegion()] = append(
+			machinesByLocation[machine.GetRegion()],
 			machine,
 		)
 	}
@@ -410,7 +410,7 @@ func (p *AzureProvider) deployMachine(
 	allMachines[machine.GetName()] = viperMachineStruct{
 		PublicIP:  machine.GetPublicIP(),
 		PrivateIP: machine.GetPrivateIP(),
-		Location:  machine.GetLocation(),
+		Location:  machine.GetRegion(),
 		Size:      machine.GetVMSize(),
 		BacalhauProvisioned: machine.GetServiceState(
 			models.ServiceTypeBacalhau.Name,
@@ -455,10 +455,10 @@ func (p *AzureProvider) prepareDeploymentParams(
 		),
 		"ubuntuOSVersion":          "Ubuntu-2004",
 		"vmSize":                   machine.GetVMSize(),
-		"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.GetLocation()),
-		"subnetName":               fmt.Sprintf("%s-subnet", machine.GetLocation()),
-		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.GetLocation()),
-		"location":                 machine.GetLocation(),
+		"virtualNetworkName":       fmt.Sprintf("%s-vnet", machine.GetZone()),
+		"subnetName":               fmt.Sprintf("%s-subnet", machine.GetZone()),
+		"networkSecurityGroupName": fmt.Sprintf("%s-nsg", machine.GetZone()),
+		"location":                 machine.GetZone(),
 		"securityType":             "TrustedLaunch",
 		"allowedPorts":             m.Deployment.AllowedPorts,
 	}
@@ -783,7 +783,10 @@ func (p *AzureProvider) DeployBacalhauWorkers(ctx context.Context) error {
 	return p.DeployBacalhauWorkersWithCallback(ctx, func(*models.DisplayStatus) {})
 }
 
-func (p *AzureProvider) DeployBacalhauWorkersWithCallback(ctx context.Context, callback UpdateCallback) error {
+func (p *AzureProvider) DeployBacalhauWorkersWithCallback(
+	ctx context.Context,
+	callback UpdateCallback,
+) error {
 	m := display.GetGlobalModelFunc()
 	l := logger.Get()
 	var workerMachines []models.Machiner

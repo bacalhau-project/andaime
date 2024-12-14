@@ -11,6 +11,7 @@ allowlistedlocalpaths
 Andaime
 andaimeconfig
 andaimeuser
+APAC
 apitype
 apiv
 armcompute
@@ -109,6 +110,7 @@ dryrun
 dupl
 eastasia
 eastus
+enis
 errcheck
 Errf
 errgroup
@@ -170,6 +172,7 @@ gosimple
 govet
 gserviceaccount
 Gtthi
+Hamina
 heartbeatcheckfrequency
 heartbeatfrequency
 heartbeattopic
@@ -182,6 +185,7 @@ housekeepingbackgroundtaskinterval
 housekeepinginterval
 housekeepingtimeout
 htmltemplate
+iface
 ignorephysicalresourcelimits
 igws
 ineffassign
@@ -237,6 +241,7 @@ mitchellh
 mktemp
 mmddhhmm
 mockprivatekey
+Msgf
 nakedret
 nameprovider
 nanosec
@@ -372,6 +377,7 @@ ukwest
 unbuffered
 unconvert
 UNIQID
+unitedstates
 unmarshaling
 unmarshalling
 unpadded

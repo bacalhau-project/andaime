@@ -8,7 +8,7 @@ var (
 	SSHRetryAttempts        = 3
 	SSHDialTimeout          = 10 * time.Second
 	SSHClientConfigTimeout  = 10 * time.Second
-	SSHRetryDelay           = 3 * time.Second
+	SSHRetryDelay           = 20 * time.Second
 )
 
 func GetAggregateSSHTimeout() time.Duration {

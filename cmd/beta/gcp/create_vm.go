@@ -103,15 +103,15 @@ func createVM(cmd *cobra.Command, args []string) error {
 	m.Deployment.GCP.BillingAccountID = billingAccountID
 	m.Deployment.GCP.DefaultRegion = getRegionFromZone(zone)
 	m.Deployment.GCP.DefaultZone = zone
+	region := getRegionFromZone(zone)
 	machine, err := models.NewMachine(
 		models.DeploymentTypeGCP,
 		vmName,
 		machineType,
 		diskSizeGB,
-		models.CloudSpecificInfo{
-			Zone:   zone,
-			Region: getRegionFromZone(zone),
-		},
+		region,
+		zone,
+		models.CloudSpecificInfo{},
 	)
 	if err != nil {
 		return err

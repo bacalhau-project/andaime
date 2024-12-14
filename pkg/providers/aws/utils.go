@@ -9,9 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 )
 
-func (p *AWSProvider) GetAllAWSRegions(ctx context.Context) ([]string, error) {
+func (p *AWSProvider) GetAllAWSRegions(
+	ctx context.Context,
+	client ec2.Client,
+) ([]string, error) {
 	// Use the provider's EC2Client which can be mocked in tests
-	output, err := p.EC2Client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{
+	output, err := client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(true),
 	})
 	if err != nil {

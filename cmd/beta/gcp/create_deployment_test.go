@@ -351,9 +351,9 @@ func (suite *CmdBetaGCPCreateDeploymentSuite) TestPrepareDeployment_CustomMachin
 	// Verify custom machine configuration
 	suite.Require().Len(deployment.Machines, 2, "Expected 2 machines to be created")
 	for _, m := range deployment.Machines {
-		machine, ok := m.(*models.Machine)
-		suite.Require().True(ok, "Expected machine to be of type *models.Machine")
-		suite.Equal("us-west1-b", machine.GetLocation(), "Expected location to be us-west1-b")
+		machine := m
+		suite.Equal("us-west1", machine.GetRegion(), "Expected location to be us-west1")
+		suite.Equal("us-west1-b", machine.GetZone(), "Expected zone to be us-west1-b")
 		suite.Equal(
 			"n1-standard-4",
 			machine.GetVMSize(),

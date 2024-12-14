@@ -1,9 +1,5 @@
 package models
 
-import (
-	"sync"
-)
-
 // AWSDeployment represents AWS-specific deployment configuration
 type AWSDeployment struct {
 	DefaultMachineType    string             `json:"default_machine_type,omitempty"`
@@ -11,7 +7,6 @@ type AWSDeployment struct {
 	DefaultCountPerRegion int32              `json:"default_count_per_zone,omitempty"`
 	AccountID             string             `json:"account_id,omitempty"`
 	RegionalResources     *RegionalResources `json:"regional_resources,omitempty"`
-	mu                    sync.RWMutex
 }
 
 // AWSVPC represents AWS VPC and related resources

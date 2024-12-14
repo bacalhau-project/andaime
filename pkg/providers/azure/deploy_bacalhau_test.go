@@ -306,7 +306,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata()
 		"test": &models.Machine{
 			Name:     "test",
 			VMSize:   "Standard_DS4_v2",
-			Location: "eastus2",
+			Region:   "eastus2",
 			NodeType: models.BacalhauNodeTypeOrchestrator,
 		},
 	})

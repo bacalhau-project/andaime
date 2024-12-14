@@ -19,7 +19,7 @@ func (p *GCPProvider) ValidateMachineType(
 	ctx context.Context,
 	location, machineType string,
 ) (bool, error) {
-	if !internal_gcp.IsValidGCPLocation(location) {
+	if !internal_gcp.IsValidGCPZone(location) {
 		return false, fmt.Errorf("invalid location for GCP: %s", location)
 	}
 	if !internal_gcp.IsValidGCPMachineType(location, machineType) {

@@ -224,12 +224,12 @@ func (suite *CmdBetaAzureCreateDeploymentSuite) TestPrepareDeployment() {
 	// Check if machines were properly configured
 	suite.Require().Len(deployment.Machines, 1)
 
-	var machine *models.Machine
+	var machine models.Machiner
 	for _, m := range deployment.Machines {
-		machine = m.(*models.Machine)
+		machine = m
 		break
 	}
-	suite.Equal("eastus", machine.GetLocation())
+	suite.Equal("eastus", machine.GetRegion())
 	suite.Equal("Standard_D2s_v3", machine.GetVMSize())
 	suite.True(machine.IsOrchestrator())
 }

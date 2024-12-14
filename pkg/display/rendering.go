@@ -176,7 +176,7 @@ func (m *DisplayModel) getSortedMachineSlice() []struct {
 				Location string
 				Name     string
 			}{
-				Location: machine.GetLocation(),
+				Location: machine.GetDisplayLocation(),
 				Name:     machine.GetName(),
 			})
 		}
@@ -209,7 +209,7 @@ func (m *DisplayModel) getMachineRowData(machine models.Machiner) []string {
 	return []string{
 		machine.GetName(),
 		machine.GetType().ShortResourceName,
-		utils.TruncateString(machine.GetLocation(), DisplayColumns[2].Width-2),
+		utils.TruncateString(machine.GetDisplayLocation(), DisplayColumns[2].Width-2),
 		machine.GetStatusMessage(),
 		progressBar,
 		formatElapsedTime(elapsedTime),

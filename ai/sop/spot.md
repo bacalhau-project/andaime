@@ -1,37 +1,51 @@
 # AWS Spot Instance Implementation Tasks
 
-## Phase 1: Core Infrastructure Setup
+## Phase 1: Core Infrastructure Setup (In Progress)
 
 ### Configuration & Types
 1. Define spot instance configuration struct
-   - [ ] Add spot-specific fields to deployment config
-   - [ ] Create validation functions for spot configs
-   - [ ] Add price threshold configurations
-   - [ ] Add AZ validation requirements
-      - [ ] Create function to check minimum AZ count (>=2)
-      - [ ] Add early validation before deployment starts
-      - [ ] Implement clear error messaging for AZ validation failures
-      - [ ] Add AZ count validation to config validation pipeline
+   - [x] Add basic spot-specific fields to deployment config
+   - [x] Initial validation functions for deployment configs
+   - [ ] Enhance price threshold configurations
+   - [x] Implement AZ validation requirements
+      - [x] Create function to check minimum AZ count (>=2)
+      - [x] Add early validation before deployment starts
+      - [x] Implement clear error messaging for AZ validation failures
+      - [ ] Refine AZ count validation in config pipeline
 
 2. Create spot instance type definitions
-   - [ ] Define SpotInstanceRequest struct
-   - [ ] Add spot pricing history types
-   - [ ] Create spot termination notice types
-   - [ ] Add AZ distribution configuration
-      - [ ] Define minimum AZ requirements
-      - [ ] Create AZ distribution strategy types
-      - [ ] Add AZ fallback configurations
+   - [x] Initial SpotInstanceRequest struct design
+   - [ ] Complete spot pricing history types
+   - [ ] Develop spot termination notice types
+   - [x] Initial AZ distribution configuration
+      - [x] Define basic AZ requirements
+      - [ ] Create advanced AZ distribution strategy types
+      - [ ] Implement comprehensive AZ fallback configurations
 
 ### Basic Operations
 3. Implement spot price checking
-   - [ ] Create function to fetch current spot prices
-   - [ ] Add price history analysis
-   - [ ] Implement price threshold validation
+   - [x] Basic infrastructure for price checking
+   - [ ] Develop comprehensive price history analysis
+   - [ ] Implement advanced price threshold validation
 
 4. Create spot request handling
-   - [ ] Implement spot instance request creation
-   - [ ] Add request status monitoring
-   - [ ] Create request cancellation logic
+   - [x] Initial spot instance request creation framework
+   - [ ] Enhance request status monitoring
+   - [ ] Develop robust request cancellation logic
+
+## Current Project Status
+- Infrastructure creation is functional
+- Basic AWS deployment workflow implemented
+- SSH connectivity and machine provisioning working
+- Bacalhau cluster deployment integrated
+- Logging and error handling in place
+
+## Immediate Next Steps
+- Implement spot instance specific features
+- Enhance price and availability zone strategies
+- Develop more granular fallback mechanisms
+- Create comprehensive testing suite for spot instances
+- Improve CLI and configuration management for spot deployments
 
 ## Phase 2: Instance Management
 

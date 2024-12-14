@@ -572,7 +572,7 @@ func (c *LiveGCPClient) CreateVM(
 	// Create the instance
 	op, err := c.computeClient.Insert(ctx, &computepb.InsertInstanceRequest{
 		Project:          projectID,
-		Zone:             machine.GetLocation(),
+		Zone:             machine.GetZone(),
 		InstanceResource: instance,
 	})
 	if err != nil {
@@ -620,7 +620,7 @@ func (c *LiveGCPClient) validateCreateVMInput(
 		return fmt.Errorf("projectID is not set in validateCreateVMInput")
 	}
 
-	if err := c.validateZone(projectID, machine.GetLocation()); err != nil {
+	if err := c.validateZone(projectID, machine.GetZone()); err != nil {
 		return fmt.Errorf("invalid zone: %w", err)
 	}
 
@@ -679,7 +679,7 @@ func (c *LiveGCPClient) prepareVMInstance(
 		Name: proto.String(machine.GetName()),
 		MachineType: proto.String(fmt.Sprintf(
 			"zones/%s/machineTypes/%s",
-			machine.GetLocation(),
+			machine.GetZone(),
 			machine.GetVMSize(),
 		)),
 		Tags: &computepb.Tags{
@@ -790,7 +790,7 @@ func (c *LiveGCPClient) validateZone(projectID, zone string) error {
 	l := logger.Get()
 	l.Debugf("Validating zone: %s in project: %s", zone, projectID)
 
-	isValid := internal_gcp.IsValidGCPLocation(zone)
+	isValid := internal_gcp.IsValidGCPZone(zone)
 	if !isValid {
 		return fmt.Errorf("zone %s is not valid", zone)
 	}

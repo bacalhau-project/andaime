@@ -195,7 +195,7 @@ func (p *GCPProvider) DestroyProject(
 	if err := p.GetGCPClient().DestroyProject(destroyCtx, projectID); err != nil {
 		// Log specific error details
 		l.Errorf("Failed to destroy GCP project %s: %v", projectID, err)
-		
+
 		// Check for specific error conditions
 		if strings.Contains(err.Error(), "invalid project name") ||
 			strings.Contains(err.Error(), "Project not active") ||
@@ -203,7 +203,7 @@ func (p *GCPProvider) DestroyProject(
 			l.Warnf("Project %s is invalid or not active, skipping", projectID)
 			return nil
 		}
-		
+
 		return fmt.Errorf("failed to destroy GCP project %s: %w", projectID, err)
 	}
 
@@ -784,7 +784,7 @@ func (p *GCPProvider) CreateAndConfigureVM(
 	m := display.GetGlobalModelFunc()
 
 	l.Infof("Starting VM creation process for %s in zone %s",
-		machine.GetName(), machine.GetLocation())
+		machine.GetName(), machine.GetZone())
 
 	m.UpdateStatus(models.NewDisplayStatusWithText(
 		machine.GetName(),
@@ -794,7 +794,7 @@ func (p *GCPProvider) CreateAndConfigureVM(
 	))
 
 	// Get region from zone
-	region := extractRegionFromZone(machine.GetLocation())
+	region := extractRegionFromZone(machine.GetZone())
 	l.Infof("Determined region %s for VM %s", region, machine.GetName())
 
 	// Attempt IP allocation with retries

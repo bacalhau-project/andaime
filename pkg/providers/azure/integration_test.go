@@ -132,6 +132,8 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 			machine.location,
 			"Standard_D2s_v3",
 			30,
+			machine.location,
+			machine.location,
 			models.CloudSpecificInfo{},
 		)
 		s.Require().NoError(err)

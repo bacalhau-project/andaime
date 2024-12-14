@@ -39,7 +39,8 @@ func (suite *GCPProgressTestSuite) SetupTest() {
 	machine := &models.Machine{
 		ID:            "test-machine",
 		Name:          "test-machine",
-		Location:      "us-central1-a",
+		Region:        "us-central1",
+		Zone:          "us-central1-a",
 		VMSize:        "n1-standard-2",
 		SSHPort:       22,
 		SSHUser:       "test-user",

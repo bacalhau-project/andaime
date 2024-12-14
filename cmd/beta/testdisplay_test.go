@@ -28,49 +28,49 @@ func TestDisplayLayout(t *testing.T) {
 	testMachines := make(map[string]models.Machiner)
 
 	testMachines["test1"] = &models.Machine{
-		Name:          "test1",
-		CloudProvider: models.DeploymentTypeAzure,
-		Type:          models.AzureResourceTypeVM,
-		Location:      "us-west-2",
-		StatusMessage: "apple grape mango",
-		Orchestrator:  true,
-		StartTime:     time.Now().Add(-29 * time.Second),
+		Name:            "test1",
+		CloudProvider:   models.DeploymentTypeAzure,
+		Type:            models.AzureResourceTypeVM,
+		DisplayLocation: "us-west-2",
+		StatusMessage:   "apple grape mango",
+		Orchestrator:    true,
+		StartTime:       time.Now().Add(-29 * time.Second),
 	}
 	testMachines["test2"] = &models.Machine{
-		Name:          "test2",
-		CloudProvider: models.DeploymentTypeAzure,
-		Type:          models.AzureResourceTypeVM,
-		Location:      "us-west-2",
-		StatusMessage: "nectarine fig elderberry",
-		Orchestrator:  true,
-		StartTime:     time.Now().Add(-29 * time.Second),
+		Name:            "test2",
+		CloudProvider:   models.DeploymentTypeAzure,
+		Type:            models.AzureResourceTypeVM,
+		DisplayLocation: "us-west-2",
+		StatusMessage:   "nectarine fig elderberry",
+		Orchestrator:    true,
+		StartTime:       time.Now().Add(-29 * time.Second),
 	}
 	testMachines["test3"] = &models.Machine{
-		Name:          "test3",
-		CloudProvider: models.DeploymentTypeAzure,
-		Type:          models.AzureResourceTypeVM,
-		Location:      "us-west-2",
-		StatusMessage: "grape quince kiwi",
-		Orchestrator:  true,
-		StartTime:     time.Now().Add(-29 * time.Second),
+		Name:            "test3",
+		CloudProvider:   models.DeploymentTypeAzure,
+		Type:            models.AzureResourceTypeVM,
+		DisplayLocation: "us-west-2",
+		StatusMessage:   "grape quince kiwi",
+		Orchestrator:    true,
+		StartTime:       time.Now().Add(-29 * time.Second),
 	}
 	testMachines["test4"] = &models.Machine{
-		Name:          "test4",
-		CloudProvider: models.DeploymentTypeAzure,
-		Type:          models.AzureResourceTypeVM,
-		Location:      "us-west-2",
-		StatusMessage: "cherry orange quince",
-		Orchestrator:  true,
-		StartTime:     time.Now().Add(-29 * time.Second),
+		Name:            "test4",
+		CloudProvider:   models.DeploymentTypeAzure,
+		Type:            models.AzureResourceTypeVM,
+		DisplayLocation: "us-west-2",
+		StatusMessage:   "cherry orange quince",
+		Orchestrator:    true,
+		StartTime:       time.Now().Add(-29 * time.Second),
 	}
 	testMachines["test5"] = &models.Machine{
-		Name:          "test5",
-		CloudProvider: models.DeploymentTypeAzure,
-		Type:          models.AzureResourceTypeVM,
-		Location:      "us-west-2",
-		StatusMessage: "raspberry ugli kiwi",
-		Orchestrator:  true,
-		StartTime:     time.Now().Add(-29 * time.Second),
+		Name:            "test5",
+		CloudProvider:   models.DeploymentTypeAzure,
+		Type:            models.AzureResourceTypeVM,
+		DisplayLocation: "us-west-2",
+		StatusMessage:   "raspberry ugli kiwi",
+		Orchestrator:    true,
+		StartTime:       time.Now().Add(-29 * time.Second),
 	}
 
 	m.Deployment.SetMachines(testMachines)
@@ -146,7 +146,7 @@ func TestDisplayLayout(t *testing.T) {
 			expectedLineSprintfString,
 			machine.GetName(),
 			models.AzureResourceTypeVM.ShortResourceName,
-			machine.GetLocation(),
+			machine.GetDisplayLocation(),
 			machine.GetStatusMessage(),
 			"██████████████████",
 			"29.0s",
@@ -198,12 +198,12 @@ func TestProgressBar(t *testing.T) {
 	viper.Set("general.project_prefix", "test-project")
 	m := display.GetGlobalModelFunc()
 	m.Deployment.SetMachine("test1", &models.Machine{
-		Name:          "test1",
-		CloudProvider: models.DeploymentTypeAzure,
-		Type:          models.AzureResourceTypeVM,
-		Location:      "us-west-2",
-		StatusMessage: "test",
-		Orchestrator:  true,
+		Name:            "test1",
+		CloudProvider:   models.DeploymentTypeAzure,
+		Type:            models.AzureResourceTypeVM,
+		DisplayLocation: "us-west-2",
+		StatusMessage:   "test",
+		Orchestrator:    true,
 	})
 	for _, machine := range m.Deployment.GetMachines() {
 		for _, resource := range machine.GetMachineResources() {

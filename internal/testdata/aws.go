@@ -170,6 +170,16 @@ func FakeEC2CreateInternetGatewayOutput() *ec2.CreateInternetGatewayOutput {
 	}
 }
 
+func FakeEC2DescribeInternetGatewaysOutput() *ec2.DescribeInternetGatewaysOutput {
+	return &ec2.DescribeInternetGatewaysOutput{
+		InternetGateways: []types.InternetGateway{
+			{
+				InternetGatewayId: aws.String("igw-12345"),
+			},
+		},
+	}
+}
+
 func FakeEC2AttachInternetGatewayOutput() *ec2.AttachInternetGatewayOutput {
 	return &ec2.AttachInternetGatewayOutput{}
 }
