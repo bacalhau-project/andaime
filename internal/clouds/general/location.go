@@ -71,8 +71,8 @@ func ParseRegionZone(input string) (string, string, error) {
 	}
 
 	// Handle GCP style zones (e.g., europe-west3-a)
-	if parts := strings.Split(input, "-"); len(parts) > 2 && parts[len(parts)-1][0] >= 'a' &&
-		parts[len(parts)-1][0] <= 'z' {
+	if parts := strings.Split(input, "-"); len(parts) > 2 && len(parts[len(parts)-1]) > 0 &&
+		parts[len(parts)-1][0] >= 'a' && parts[len(parts)-1][0] <= 'z' {
 		// Input is a GCP zone, extract region by removing the last segment
 		region := strings.Join(parts[:len(parts)-1], "-")
 		return region, input, nil
