@@ -57,7 +57,7 @@ func NormalizeLocation(
 		return region, zone, nil
 	}
 	l.Warnf("Unknown cloud provider: %s", cloudProvider)
-	return location, location, nil
+	return "", "", fmt.Errorf("unknown cloud provider: %s", cloudProvider)
 }
 
 // ParseRegionZone takes either a region (e.g., us-east-1) or zone (e.g., us-east-1a)
