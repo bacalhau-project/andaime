@@ -109,6 +109,7 @@ dryrun
 dupl
 eastasia
 eastus
+enis
 errcheck
 Errf
 errgroup

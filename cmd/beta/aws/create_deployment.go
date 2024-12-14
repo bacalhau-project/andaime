@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -101,13 +100,6 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	// Write the VPC ID to config as soon as it's created
 	if err := writeVPCIDToConfig(deployment); err != nil {
 		return fmt.Errorf("failed to write VPC ID to config: %w", err)
-	}
-
-	// Ensure EC2 client is initialized
-	ec2Client := awsProvider.GetEC2Client()
-	if ec2Client == nil {
-		ec2Client = ec2.NewFromConfig(*awsProvider.GetConfig())
-		awsProvider.SetEC2Client(ec2Client)
 	}
 
 	m := display.NewDisplayModel(deployment)
@@ -317,13 +309,35 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 			)
 		}
 
+		machine.SetMachineResourceState(
+			models.ServiceTypeSSH.Name,
+			models.ResourceStatePending,
+		)
+
 		if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
+			machine.SetMachineResourceState(
+				models.ServiceTypeSSH.Name,
+				models.ResourceStateFailed,
+			)
 			return fmt.Errorf(
 				"failed to establish SSH connection to machine %s: %w",
 				machine.GetName(),
 				err,
 			)
 		}
+		machine.SetMachineResourceState(
+			models.ServiceTypeSSH.Name,
+			models.ResourceStateSucceeded,
+		)
+
+		m.QueueUpdate(display.UpdateAction{
+			MachineName: machine.GetName(),
+			UpdateData: display.UpdateData{
+				UpdateType:    display.UpdateTypeResource,
+				ResourceType:  "SSH",
+				ResourceState: models.MachineResourceState(models.ServiceTypeSSH.State),
+			},
+		})
 
 		l.Infof("Machine %s is accessible via SSH", machine.GetName())
 	}

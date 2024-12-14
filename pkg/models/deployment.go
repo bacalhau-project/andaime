@@ -431,12 +431,24 @@ func (r *RegionalResources) RUnlock() {
 }
 
 func (r *RegionalResources) GetVPC(region string) *AWSVPC {
-	r.Lock()
-	defer r.Unlock()
+	r.RLock()
+	defer r.RUnlock()
 	if r.VPCs == nil {
 		r.VPCs = make(map[string]*AWSVPC)
 	}
 	return r.VPCs[region]
+}
+
+func (r *RegionalResources) UpdateVPC(
+	deployment *Deployment,
+	region string,
+	updateFn func(*AWSVPC) error,
+) error {
+	vpc := r.GetVPC(region)
+	if vpc == nil {
+		return fmt.Errorf("VPC not found for region %s", region)
+	}
+	return updateFn(vpc)
 }
 
 func (r *RegionalResources) SetVPC(region string, vpc *AWSVPC) {
@@ -480,6 +492,18 @@ func (r *RegionalResources) GetRegions() []string {
 		regions = append(regions, region)
 	}
 	return regions
+}
+
+// SaveVPCConfig saves VPC configuration to viper
+func (rm *RegionalResources) SaveVPCConfig(
+	deployment *Deployment,
+	region string,
+	vpc *AWSVPC,
+) error {
+	deploymentPath := fmt.Sprintf("deployments.%s", deployment.UniqueID)
+	viper.Set(fmt.Sprintf("%s.aws.regions.%s.vpc_id", deploymentPath, region), vpc.VPCID)
+
+	return viper.WriteConfig()
 }
 
 type RegionalVPC struct {

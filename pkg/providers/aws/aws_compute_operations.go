@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -16,10 +17,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const MinRequiredAZs = 2
-
 // UNKNOWN represents an unknown value in AWS responses
 const UNKNOWN = "unknown"
+
+// Network configuration constants
+const (
+	VPCCidrBlock          = "10.0.0.0/16"
+	PublicSubnet1CIDR     = "10.0.0.0/24"
+	PublicSubnet2CIDR     = "10.0.1.0/24"
+	PrivateSubnet1CIDR    = "10.0.2.0/24"
+	PrivateSubnet2CIDR    = "10.0.3.0/24"
+	MinRequiredAZs        = 2
+	SSHRetryInterval      = 10 * time.Second
+	MaxRetries            = 30
+	TimeToWaitForInstance = 5 * time.Minute
+)
 
 // LiveEC2Client implements the EC2Clienter interface
 type LiveEC2Client struct {
@@ -259,11 +271,6 @@ func (c *LiveEC2Client) DeleteInternetGateway(
 	return c.client.DeleteInternetGateway(ctx, params, optFns...)
 }
 
-const (
-	SSHRetryInterval = 10 * time.Second
-	MaxRetries       = 30
-)
-
 func (p *AWSProvider) DeployVMsInParallel(
 	ctx context.Context,
 ) error {
@@ -315,7 +322,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 		}
 
 		// Create EC2 client for the region
-		ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+		regionalClient, err := p.getOrCreateEC2Client(ctx, region)
 		if err != nil {
 			return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 		}
@@ -323,7 +330,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 		// Deploy machines in parallel within each region
 		for _, machine := range machines {
 			eg.Go(func() error {
-				if err := p.deployVM(ctx, ec2Client, machine, vpc); err != nil {
+				if err := p.deployVM(ctx, regionalClient, machine, vpc); err != nil {
 					return fmt.Errorf(
 						"failed to deploy VM %s in region %s: %w",
 						machine.GetName(),
@@ -349,37 +356,104 @@ func (p *AWSProvider) deployVM(
 	machine models.Machiner,
 	vpc *models.AWSVPC,
 ) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Validate VPC configuration
+	if vpc == nil {
+		return fmt.Errorf("vpc is nil")
+	}
+	if len(vpc.PublicSubnetIDs) == 0 {
+		return fmt.Errorf("no public subnets available in VPC %s", vpc.VPCID)
+	}
+	if vpc.SecurityGroupID == "" {
+		return fmt.Errorf("no security group ID set for VPC %s", vpc.VPCID)
+	}
+
 	// Get AMI ID for the region
-	amiID, err := p.getLatestAMI(ctx, ec2Client)
+	amiID, err := p.GetLatestUbuntuAMI(ctx, machine.GetRegion(), "x86_64")
 	if err != nil {
 		return fmt.Errorf("failed to get latest AMI: %w", err)
 	}
 
+	// Use the first public subnet
+	subnetID := vpc.PublicSubnetIDs[0]
+	l.Debug(fmt.Sprintf("Using subnet %s for VM %s", subnetID, machine.GetName()))
+
+	var tagSpecs []ec2_types.TagSpecification
+	for k, v := range m.Deployment.Tags {
+		tagSpecs = append(tagSpecs, ec2_types.TagSpecification{
+			ResourceType: ec2_types.ResourceTypeInstance,
+			Tags:         []ec2_types.Tag{{Key: aws.String(k), Value: aws.String(v)}},
+		})
+	}
+
+	tagSpecs = append(tagSpecs, ec2_types.TagSpecification{
+		ResourceType: ec2_types.ResourceTypeInstance,
+		Tags: []ec2_types.Tag{
+			{Key: aws.String("Name"), Value: aws.String(machine.GetName())},
+		},
+	})
+
+	userData := fmt.Sprintf(`#!/bin/bash
+SSH_USERNAME=%s
+SSH_PUBLIC_KEY_MATERIAL="%s"
+
+useradd -m -s /bin/bash $SSH_USERNAME
+passwd -l $SSH_USERNAME
+mkdir -p /home/$SSH_USERNAME/.ssh
+echo "$SSH_PUBLIC_KEY_MATERIAL" > /root/root.pub
+cat /root/root.pub >> /home/$SSH_USERNAME/.ssh/authorized_keys
+
+chown -R $SSH_USERNAME:$SSH_USERNAME /home/$SSH_USERNAME/.ssh
+chmod 700 /home/$SSH_USERNAME/.ssh
+chmod 600 /home/$SSH_USERNAME/.ssh/authorized_keys
+usermod -aG sudo $SSH_USERNAME
+
+# Add $SSH_USERNAME to the sudoers file
+echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
+		machine.GetSSHUser(),
+		machine.GetSSHPublicKeyMaterial(),
+	)
+
+	// Encode the script in base64
+	encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
+
+	// runResult, err := c.ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
+	// 	ImageId:      aws.String(c.cfg.ImageID),
+	// 	InstanceType: types.InstanceType(quote.InstanceType.Name),
+	// 	MinCount:     aws.Int32(1),
+	// 	MaxCount:     aws.Int32(1),
+	// 	SubnetId:     aws.String(c.cfg.SubnetID),
+	// 	KeyName:      aws.String(c.cfg.SSHKeyName),
+	// 	InstanceMarketOptions: &types.InstanceMarketOptionsRequest{
+	// 		MarketType: types.MarketTypeSpot,
+	// 		SpotOptions: &types.SpotMarketOptions{
+	// 			InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
+	// 			SpotInstanceType:             types.SpotInstanceTypeOneTime,
+	// 		},
+	// 	},
+	// 	UserData: aws.String(encodedUserData),
+
 	// Create instance
 	runResult, err := ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
 		ImageId:      aws.String(amiID),
-		InstanceType: ec2_types.InstanceTypeT2Micro,
+		InstanceType: ec2_types.InstanceTypeT2Medium,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
 		NetworkInterfaces: []ec2_types.InstanceNetworkInterfaceSpecification{
 			{
 				DeviceIndex:              aws.Int32(0),
-				SubnetId:                 aws.String(vpc.SubnetID),
+				SubnetId:                 aws.String(subnetID),
 				Groups:                   []string{vpc.SecurityGroupID},
 				AssociatePublicIpAddress: aws.Bool(true),
 			},
 		},
-		TagSpecifications: []ec2_types.TagSpecification{
-			{
-				ResourceType: ec2_types.ResourceTypeInstance,
-				Tags: []ec2_types.Tag{
-					{
-						Key:   aws.String("Name"),
-						Value: aws.String(machine.GetName()),
-					},
-				},
-			},
-		},
+		TagSpecifications: tagSpecs,
+		UserData:          aws.String(encodedUserData),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to run instance: %w", err)
@@ -389,7 +463,7 @@ func (p *AWSProvider) deployVM(
 	waiter := ec2.NewInstanceRunningWaiter(ec2Client)
 	if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*runResult.Instances[0].InstanceId},
-	}, 5*time.Minute); err != nil {
+	}, TimeToWaitForInstance); err != nil {
 		return fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 

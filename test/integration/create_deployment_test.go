@@ -297,7 +297,6 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 	// Create and configure mock EC2 client
 	mockEC2Client := new(aws_mock.MockEC2Clienter)
 	s.setupMockAWSResources(mockEC2Client)
-	s.awsProvider.SetEC2Client(mockEC2Client)
 
 	// Set up the provider in the command
 	aws_provider.NewAWSProviderFunc = func(accountID string) (*aws_provider.AWSProvider, error) {
@@ -383,6 +382,8 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mock.Moc
 	// Routing mocks
 	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
 		Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
+	mockEC2Client.On("DescribeInternetGateways", mock.Anything, mock.AnythingOfType("*ec2.DescribeInternetGatewaysInput")).
+		Return(testdata.FakeEC2DescribeInternetGatewaysOutput(), nil)
 	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
 		Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil)
 	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
