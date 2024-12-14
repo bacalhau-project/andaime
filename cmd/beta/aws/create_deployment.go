@@ -173,6 +173,12 @@ func prepareDeployment(
 	m.Deployment.SetMachines(machines)
 	m.Deployment.SetLocations(locations)
 
+	if m.Deployment.AWS.RegionalResources.VPCs == nil {
+		m.Deployment.AWS.RegionalResources.VPCs = make(map[string]*models.AWSVPC)
+	}
+	if m.Deployment.AWS.RegionalResources.Clients == nil {
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+	}
 	for _, machine := range m.Deployment.GetMachines() {
 		region := machine.GetRegion()
 		if _, exists := m.Deployment.AWS.RegionalResources.VPCs[region]; !exists {
