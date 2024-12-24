@@ -445,6 +445,19 @@ func writeConfig() {
 			deploymentID := m.Deployment.UniqueID
 			deploymentPath := fmt.Sprintf("deployments.%s", deploymentID)
 
+			// Save VPC information for each region
+			regions := make(map[string]interface{})
+			if m.Deployment.AWS != nil && m.Deployment.AWS.RegionalResources != nil {
+				for region, vpc := range m.Deployment.AWS.RegionalResources.VPCs {
+					if vpc != nil {
+						regions[region] = map[string]interface{}{
+							"vpc_id":            vpc.VPCID,
+							"security_group_id": vpc.SecurityGroupID,
+						}
+					}
+				}
+			}
+
 			// Save minimal deployment details
 			machines := make(map[string]interface{})
 			for name, machine := range m.Deployment.GetMachines() {
@@ -460,6 +473,7 @@ func writeConfig() {
 				"provider": "aws",
 				"aws": map[string]interface{}{
 					"account_id": m.Deployment.AWS.AccountID,
+					"regions":    regions,
 				},
 				"machines": machines,
 			})
