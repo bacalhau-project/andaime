@@ -355,10 +355,11 @@ func (p *AWSProvider) deployVM(
 		return fmt.Errorf("failed to get latest AMI: %w", err)
 	}
 
-	// Create instance
-	runResult, err := ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
+	// Check if spot instance is requested
+	params := machine.GetParameters()
+	runInstancesInput := &ec2.RunInstancesInput{
 		ImageId:      aws.String(amiID),
-		InstanceType: ec2_types.InstanceTypeT2Micro,
+		InstanceType: ec2_types.InstanceType(machine.GetMachineType()),
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
 		NetworkInterfaces: []ec2_types.InstanceNetworkInterfaceSpecification{
@@ -377,12 +378,47 @@ func (p *AWSProvider) deployVM(
 						Key:   aws.String("Name"),
 						Value: aws.String(machine.GetName()),
 					},
+					{
+						Key:   aws.String("AndaimeMachineID"),
+						Value: aws.String(machine.GetID()),
+					},
+					{
+						Key:   aws.String("AndaimeDeployment"),
+						Value: aws.String("AndaimeDeployment"),
+					},
 				},
 			},
 		},
-	})
+	}
+
+	// Add spot instance configuration if requested
+	if params.Spot {
+		runInstancesInput.InstanceMarketOptions = &ec2_types.InstanceMarketOptionsRequest{
+			MarketType: ec2_types.MarketTypeSpot,
+			SpotOptions: &ec2_types.SpotMarketOptions{
+				InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
+				MaxPrice:                    aws.String(""), // Let AWS determine optimal price
+			},
+		}
+	}
+
+	// Create instance
+	runResult, err := ec2Client.RunInstances(ctx, runInstancesInput)
 	if err != nil {
-		return fmt.Errorf("failed to run instance: %w", err)
+		if params.Spot {
+			// If spot instance creation fails, try falling back to on-demand
+			l := logger.Get()
+			l.Warn(fmt.Sprintf("Failed to create spot instance for %s, falling back to on-demand: %v", machine.GetName(), err))
+
+			// Remove spot market options for fallback
+			runInstancesInput.InstanceMarketOptions = nil
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err != nil {
+				return fmt.Errorf("failed to run instance (both spot and on-demand): %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to run instance: %w", err)
+		}
 	}
 
 	// Wait for instance to be running
