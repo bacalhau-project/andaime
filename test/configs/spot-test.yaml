@@ -1,0 +1,24 @@
+# Test configuration for spot and regular EC2 instances
+machines:
+  # Spot instance configuration
+  - location: us-east-1
+    parameters:
+      spot: true
+      type: t2.micro
+      count: 1
+      orchestrator: false
+
+  # Regular EC2 instance configuration (no spot parameter)
+  - location: us-east-1
+    parameters:
+      type: t2.micro
+      count: 1
+      orchestrator: true
+
+  # Another spot instance in a different region
+  - location: us-west-2
+    parameters:
+      spot: true
+      type: t2.micro
+      count: 1
+      orchestrator: false
