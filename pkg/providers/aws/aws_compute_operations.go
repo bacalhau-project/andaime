@@ -384,8 +384,56 @@ func (p *AWSProvider) deployVM(
 		return fmt.Errorf("failed to get latest AMI: %w", err)
 	}
 
-	// Create instance
-	runResult, err := ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
+	// Use the first public subnet
+	subnetID := vpc.PublicSubnetIDs[0]
+	l.Debug(fmt.Sprintf("Using subnet %s for VM %s", subnetID, machine.GetName()))
+
+	// Prepare tag specifications
+	var tagSpecs []ec2_types.TagSpecification
+	for k, v := range m.Deployment.Tags {
+		tagSpecs = append(tagSpecs, ec2_types.TagSpecification{
+			ResourceType: ec2_types.ResourceTypeInstance,
+			Tags:         []ec2_types.Tag{{Key: aws.String(k), Value: aws.String(v)}},
+		})
+	}
+
+	tagSpecs = append(tagSpecs, ec2_types.TagSpecification{
+		ResourceType: ec2_types.ResourceTypeInstance,
+		Tags: []ec2_types.Tag{
+			{Key: aws.String("Name"), Value: aws.String(machine.GetName())},
+			{Key: aws.String("AndaimeMachineID"), Value: aws.String(machine.GetID())},
+			{Key: aws.String("AndaimeDeployment"), Value: aws.String("AndaimeDeployment")},
+		},
+	})
+
+	// Prepare user data script
+	userData := fmt.Sprintf(`#!/bin/bash
+SSH_USERNAME=%s
+SSH_PUBLIC_KEY_MATERIAL=%q
+
+useradd -m -s /bin/bash $SSH_USERNAME
+passwd -l $SSH_USERNAME
+mkdir -p /home/$SSH_USERNAME/.ssh
+echo "$SSH_PUBLIC_KEY_MATERIAL" > /root/root.pub
+cat /root/root.pub >> /home/$SSH_USERNAME/.ssh/authorized_keys
+
+chown -R $SSH_USERNAME:$SSH_USERNAME /home/$SSH_USERNAME/.ssh
+chmod 700 /home/$SSH_USERNAME/.ssh
+chmod 600 /home/$SSH_USERNAME/.ssh/authorized_keys
+usermod -aG sudo $SSH_USERNAME
+
+# Add $SSH_USERNAME to the sudoers file
+echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
+		machine.GetSSHUser(),
+		machine.GetSSHPublicKeyMaterial(),
+	)
+
+	// Encode the script in base64
+	encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
+
+	// Prepare instance input with common configuration
+	params := machine.GetParameters()
+	runInstancesInput := &ec2.RunInstancesInput{
 		ImageId:      aws.String(amiID),
 		InstanceType: ec2_types.InstanceType(machine.GetMachineType()),
 		MinCount:     aws.Int32(1),
@@ -399,17 +447,17 @@ func (p *AWSProvider) deployVM(
 			},
 		},
 		TagSpecifications: tagSpecs,
-		UserData:          aws.String(encodedUserData),
-		},
+		UserData:         aws.String(encodedUserData),
 	}
 
-	// Add spot instance configuration if requested
+	// Configure spot instance if requested
 	if params.Spot {
+		l.Info(fmt.Sprintf("Requesting spot instance for VM %s", machine.GetName()))
 		runInstancesInput.InstanceMarketOptions = &ec2_types.InstanceMarketOptionsRequest{
 			MarketType: ec2_types.MarketTypeSpot,
 			SpotOptions: &ec2_types.SpotMarketOptions{
 				InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
-				MaxPrice:                    aws.String(""), // Let AWS determine optimal price
+				MaxPrice:                    aws.String(""), // Empty string means use current spot price
 			},
 		}
 	}
@@ -419,7 +467,6 @@ func (p *AWSProvider) deployVM(
 	if err != nil {
 		if params.Spot {
 			// If spot instance creation fails, try falling back to on-demand
-			l := logger.Get()
 			l.Warn(fmt.Sprintf("Failed to create spot instance for %s, falling back to on-demand: %v", machine.GetName(), err))
 
 			// Remove spot market options for fallback
@@ -431,6 +478,25 @@ func (p *AWSProvider) deployVM(
 		} else {
 			return fmt.Errorf("failed to run instance: %w", err)
 		}
+||||||| parent of 26862e6 (feat: add spot instance support with fallback to on-demand)
+		return fmt.Errorf("failed to run instance: %w", err)
+=======
+		if params.Spot {
+			// If spot instance creation fails, try falling back to on-demand
+			l.Warn(fmt.Sprintf(
+				"Failed to create spot instance for VM %s, falling back to on-demand: %v",
+				machine.GetName(),
+				err,
+			))
+			runInstancesInput.InstanceMarketOptions = nil
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err != nil {
+				return fmt.Errorf("failed to create fallback on-demand instance: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to run instance: %w", err)
+		}
+>>>>>>> 26862e6 (feat: add spot instance support with fallback to on-demand)
 	}
 
 	// Wait for instance to be running
