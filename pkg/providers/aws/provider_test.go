@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/internal/testdata"
@@ -84,6 +86,14 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 	viper.Set("aws.account_id", FAKE_ACCOUNT_ID)
 
+	// Set up AWS configuration with static credentials
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			"AKID", "SECRET", "SESSION")),
+		config.WithRegion(FAKE_REGION),
+	)
+	require.NoError(suite.T(), err)
+
 	// Create a properly initialized deployment model
 	deployment, err := models.NewDeployment()
 	require.NoError(suite.T(), err)
@@ -111,6 +121,9 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	suite.mockAWSClient = new(awsmock.MockEC2Clienter)
 	provider.SetEC2Client(suite.mockAWSClient)
 
+	// Configure mock client to return static credentials
+	suite.mockAWSClient.On("Config").Return(&cfg).Maybe()
+
 	// Pre-initialize VPC manager with the deployment
 	provider.vpcManager = NewRegionalVPCManager(deployment, suite.mockAWSClient)
 
@@ -130,6 +143,10 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 		port int,
 		user string,
 		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
+		// Configure default successful behaviors
+		suite.mockSSHConfig.On("Connect").Return(suite.mockSSHConfig, nil).Maybe()
+		suite.mockSSHConfig.On("IsConnected").Return(true).Maybe()
+		suite.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 		return suite.mockSSHConfig, nil
 	}
 
