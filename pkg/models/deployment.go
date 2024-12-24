@@ -45,9 +45,10 @@ type MachineResource struct {
 }
 
 type Parameters struct {
-	Count        int
-	Type         string
-	Orchestrator bool
+	Count        int    `json:"count" yaml:"count"`
+	Type         string `json:"type" yaml:"type"`
+	Orchestrator bool   `json:"orchestrator" yaml:"orchestrator"`
+	Spot         bool   `json:"spot,omitempty" yaml:"spot,omitempty"`
 }
 
 type ServiceAccountInfo struct {
