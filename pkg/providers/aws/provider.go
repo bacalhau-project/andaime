@@ -176,9 +176,14 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
-	// If machines are not set, return an error
-	if deployment.Machines == nil {
-		return fmt.Errorf("no machines configuration found")
+	// Get AWS account ID if not already set
+	if deployment.AWS.AccountID == "" {
+		// Use the STSClient interface method
+		identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			return fmt.Errorf("failed to get AWS account ID: %w", err)
+		}
+		deployment.AWS.AccountID = *identity.Account
 	}
 
 	// Initialize regional resources
@@ -246,44 +251,6 @@ func (p *AWSProvider) CreateVPCInfrastructure(
 
 	l.Infof("Successfully created VPC infrastructure in region %s", region)
 	return vpc, nil
-}
-
-// createVPC creates a new VPC with the specified CIDR block
-func (p *AWSProvider) createVPC(
-	ctx context.Context,
-	region string,
-	ec2Client aws_interface.EC2Clienter,
-) (*models.AWSVPC, error) {
-	vpcResult, err := ec2Client.CreateVpc(ctx, &ec2.CreateVpcInput{
-		CidrBlock: aws.String(VPCCidrBlock),
-		TagSpecifications: []ec2_types.TagSpecification{
-			{
-				ResourceType: ec2_types.ResourceTypeVpc,
-				Tags: []ec2_types.Tag{
-					{
-						Key:   aws.String("Name"),
-						Value: aws.String(fmt.Sprintf("andaime-vpc-%s", region)),
-					},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create VPC: %w", err)
-	}
-
-	// Enable DNS hostnames
-	_, err = ec2Client.ModifyVpcAttribute(ctx, &ec2.ModifyVpcAttributeInput{
-		VpcId:              vpcResult.Vpc.VpcId,
-		EnableDnsHostnames: &ec2_types.AttributeBooleanValue{Value: aws.Bool(true)},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to enable DNS hostnames: %w", err)
-	}
-
-	return &models.AWSVPC{
-		VPCID: *vpcResult.Vpc.VpcId,
-	}, nil
 }
 
 // createAndAttachInternetGateway creates an Internet Gateway and attaches it to the VPC
