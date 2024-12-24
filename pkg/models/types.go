@@ -479,13 +479,22 @@ func UpdateOnlyChangedStatus(
 
 	status.ElapsedTime = newStatus.ElapsedTime
 
-	// Update stage if provided
+	// Update stage and format status message accordingly
 	if newStatus.Stage != "" {
 		status.Stage = newStatus.Stage
+		// Format status message to include stage information
+		if !strings.Contains(status.StatusMessage, string(status.Stage)) {
+			status.StatusMessage = fmt.Sprintf("[%s] %s",
+				string(status.Stage),
+				status.StatusMessage)
+		}
 	}
 
-	// Update spot instance status
+	// Update spot instance status and prefix message if needed
 	status.SpotInstance = newStatus.SpotInstance
+	if status.SpotInstance && !strings.HasPrefix(status.StatusMessage, "[Spot]") {
+		status.StatusMessage = fmt.Sprintf("[Spot] %s", status.StatusMessage)
+	}
 
 	return status
 }

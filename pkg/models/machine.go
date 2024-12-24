@@ -112,6 +112,10 @@ type Machiner interface {
 
 	// Logging
 	LogTimingInfo(logger logger.Logger)
+
+	// Machine configuration
+	GetParameters() Parameters
+	GetMachineType() string
 }
 
 const (
@@ -910,6 +914,16 @@ func (mach *Machine) GetNodeType() string {
 
 func (mach *Machine) SetNodeType(nodeType string) {
 	mach.NodeType = nodeType
+}
+
+// GetParameters returns the machine parameters
+func (mach *Machine) GetParameters() Parameters {
+	return mach.Parameters
+}
+
+// GetMachineType returns the machine type (VM size)
+func (mach *Machine) GetMachineType() string {
+	return mach.VMSize
 }
 
 func MachineConfigToWrite(machine Machiner) map[string]interface{} {
