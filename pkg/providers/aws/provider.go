@@ -104,7 +104,7 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 }
 
 // getOrCreateEC2Client gets or creates an EC2 client for a specific region
-func (p *AWSProvider) getOrCreateEC2Client(
+func (p *AWSProvider) GetOrCreateEC2Client(
 	ctx context.Context,
 	region string,
 ) (aws_interface.EC2Clienter, error) {
@@ -157,30 +157,19 @@ func (p *AWSProvider) getOrCreateEC2Client(
 }
 
 func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
-	m := display.GetGlobalModelFunc()
-	if m == nil || m.Deployment == nil {
-		return fmt.Errorf("global model or deployment is nil")
+	accountID := viper.GetString("aws.account_id")
+	if accountID == "" {
+		return fmt.Errorf("aws.account_id is not set in the configuration")
 	}
 
-	// Get deployment and ensure it has AWS config
-	deployment := m.Deployment
-
-	if deployment.AWS == nil {
-		deployment.AWS = &models.AWSDeployment{
-			RegionalResources: &models.RegionalResources{
-				VPCs:    make(map[string]*models.AWSVPC),
-				Clients: make(map[string]aws_interface.EC2Clienter),
-			},
-		}
+	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeAWS)
+	if err != nil {
+		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
-	// Get AWS account ID if not already set
-	if deployment.AWS.AccountID == "" {
-		identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-		if err != nil {
-			return fmt.Errorf("failed to get AWS account ID: %w", err)
-		}
-		deployment.AWS.AccountID = *identity.Account
+	// If machines are not set, return an error
+	if deployment.Machines == nil {
+		return fmt.Errorf("no machines configuration found")
 	}
 
 	// Initialize regional resources
@@ -209,7 +198,7 @@ func (p *AWSProvider) CreateVPCInfrastructure(
 	l.Infof("Creating VPC infrastructure in region %s", region)
 
 	// Create EC2 client for region
-	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	ec2Client, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
 	}
@@ -541,7 +530,7 @@ func (p *AWSProvider) createVPCInfrastructure(
 	}
 
 	// Create EC2 client for the region
-	regionalClient, err := p.getOrCreateEC2Client(ctx, region)
+	regionalClient, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		l.Errorf("Failed to create EC2 client for region %s: %v", region, err)
 		return nil, fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
@@ -892,7 +881,7 @@ func (p *AWSProvider) CreateVpc(ctx context.Context, region string) error {
 		return fmt.Errorf("global model or deployment is nil")
 	}
 	// Get or create EC2 client for this region
-	regionalClient, err := p.getOrCreateEC2Client(ctx, region)
+	regionalClient, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return fmt.Errorf("failed to get EC2 client: %w", err)
 	}
@@ -2182,7 +2171,7 @@ func (p *AWSProvider) GetLatestUbuntuAMI(
 	}
 
 	// Get the EC2 client for the specific region
-	c, err := p.getOrCreateEC2Client(ctx, region)
+	c, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return "", fmt.Errorf("failed to get EC2 client for region %s: %w", region, err)
 	}

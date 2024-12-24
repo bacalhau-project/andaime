@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
@@ -11,7 +12,9 @@ import (
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -43,7 +46,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		WithTrace:     true,
 		EnableConsole: false,
 		EnableBuffer:  true,
-		BufferSize:    8192,
+		BufferSize:    8192, //nolint:mnd
 		InstantSync:   true,
 	}
 
@@ -296,6 +299,8 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 	}
 
 	// Wait for all VMs to be accessible via SSH
+	var wg sync.WaitGroup
+	var mutex sync.Mutex
 	l.Info("Waiting for all VMs to be accessible via SSH...")
 	for _, machine := range m.Deployment.GetMachines() {
 		if machine.GetPublicIP() == "" {
@@ -316,39 +321,50 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 			)
 		}
 
+		wg.Add(1)
 		machine.SetMachineResourceState(
 			models.ServiceTypeSSH.Name,
 			models.ResourceStatePending,
 		)
 
-		if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
+		go func(machine *models.Machine, sshConfig sshutils_interfaces.SSHConfiger) {
+			defer wg.Done()
+			mutex.Lock()
+			defer mutex.Unlock()
+			if err := sshConfig.WaitForSSH(ctx,
+				sshutils.SSHRetryAttempts,
+				sshutils.GetAggregateSSHTimeout()); err != nil {
+				machine.SetMachineResourceState(
+					models.ServiceTypeSSH.Name,
+					models.ResourceStateFailed,
+				)
+				l.Errorf(
+					"failed to establish SSH connection to machine %s: %v",
+					machine.GetName(),
+					err,
+				)
+			}
 			machine.SetMachineResourceState(
 				models.ServiceTypeSSH.Name,
-				models.ResourceStateFailed,
+				models.ResourceStateSucceeded,
 			)
-			return fmt.Errorf(
-				"failed to establish SSH connection to machine %s: %w",
-				machine.GetName(),
-				err,
-			)
-		}
-		machine.SetMachineResourceState(
-			models.ServiceTypeSSH.Name,
-			models.ResourceStateSucceeded,
-		)
 
-		m.QueueUpdate(display.UpdateAction{
-			MachineName: machine.GetName(),
-			UpdateData: display.UpdateData{
-				UpdateType:    display.UpdateTypeResource,
-				ResourceType:  "SSH",
-				ResourceState: models.MachineResourceState(models.ServiceTypeSSH.State),
-			},
-		})
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "SSH",
+					ResourceState: models.MachineResourceState(models.ServiceTypeSSH.State),
+				},
+			})
 
-		l.Infof("Machine %s is accessible via SSH", machine.GetName())
+			l.Infof("Machine %s is accessible via SSH", machine.GetName())
+		}(machine.(*models.Machine), sshConfig)
+
+		time.Sleep(RetryTimeout)
 	}
 
+	wg.Wait()
 	l.Info("All VMs are accessible via SSH")
 
 	// Now provision the Bacalhau cluster

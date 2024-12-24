@@ -134,13 +134,19 @@ func (s *PkgProvidersGCPIntegrationTest) SetupTest() {
 	}
 
 	for _, machine := range machines {
+		region, zone, err := general.NormalizeLocation(
+			string(models.DeploymentTypeGCP),
+			machine.location,
+		)
+		s.Require().NoError(err)
+
 		m, err := models.NewMachine(
 			models.DeploymentTypeGCP,
-			machine.location,
+			zone,
 			"n1-standard-2",
 			30,
-			machine.location,
-			machine.location,
+			region,
+			zone,
 			models.CloudSpecificInfo{},
 		)
 		s.Require().NoError(err)

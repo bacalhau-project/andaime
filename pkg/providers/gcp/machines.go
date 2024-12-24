@@ -17,12 +17,12 @@ func (p *GCPProvider) ProcessMachinesConfig(
 
 func (p *GCPProvider) ValidateMachineType(
 	ctx context.Context,
-	location, machineType string,
+	zone, machineType string,
 ) (bool, error) {
-	if !internal_gcp.IsValidGCPZone(location) {
-		return false, fmt.Errorf("invalid location for GCP: %s", location)
+	if !internal_gcp.IsValidGCPZone(zone) {
+		return false, fmt.Errorf("invalid zone for GCP: %s", zone)
 	}
-	if !internal_gcp.IsValidGCPMachineType(location, machineType) {
+	if !internal_gcp.IsValidGCPMachineType(zone, machineType) {
 		return false, fmt.Errorf("invalid machine type for GCP: %s", machineType)
 	}
 	return true, nil

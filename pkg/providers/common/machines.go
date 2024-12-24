@@ -26,7 +26,7 @@ func CreateNewMachine(
 		location,
 	)
 	newMachine, err := models.NewMachine(deploymentType,
-		location,
+		region,
 		vmSize,
 		diskSizeGB,
 		region,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -94,6 +95,7 @@ func createVM(cmd *cobra.Command, args []string) error {
 		diskSizeGB = 30
 	}
 
+	var mutex sync.Mutex
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
 		return fmt.Errorf("global model or deployment is nil")
@@ -116,9 +118,11 @@ func createVM(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	mutex.Lock()
 	m.Deployment.SetMachines(map[string]models.Machiner{
 		vmName: machine,
 	})
+	mutex.Unlock()
 	err = gcpProvider.CreateAndConfigureVM(ctx, machine)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unknown zone") {

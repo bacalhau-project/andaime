@@ -37,10 +37,10 @@ func (suite *InternalAzureTestSuite) TestIsValidAzureLocation() {
 			expectedReason: "invalidlocation is not a valid Azure region",
 		},
 		{
-			name:           "Empty location",
+			name:           "Empty region",
 			region:         "",
 			expectedValid:  false,
-			expectedReason: "location cannot be empty",
+			expectedReason: "region cannot be empty",
 		},
 	}
 

@@ -322,7 +322,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 		}
 
 		// Create EC2 client for the region
-		regionalClient, err := p.getOrCreateEC2Client(ctx, region)
+		regionalClient, err := p.GetOrCreateEC2Client(ctx, region)
 		if err != nil {
 			return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 		}
@@ -400,7 +400,7 @@ func (p *AWSProvider) deployVM(
 
 	userData := fmt.Sprintf(`#!/bin/bash
 SSH_USERNAME=%s
-SSH_PUBLIC_KEY_MATERIAL="%s"
+SSH_PUBLIC_KEY_MATERIAL=%q
 
 useradd -m -s /bin/bash $SSH_USERNAME
 passwd -l $SSH_USERNAME
@@ -522,7 +522,7 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 	l := logger.Get()
 	l.Info(fmt.Sprintf("Validating availability zones for region: %s", region))
 
-	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	ec2Client, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 	}

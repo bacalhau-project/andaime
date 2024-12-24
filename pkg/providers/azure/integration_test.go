@@ -119,11 +119,13 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 	machines := []struct {
 		name         string
 		location     string
+		region       string
+		zone         string
 		orchestrator bool
 	}{
-		{"orchestrator", "eastus", true},
-		{"worker1", "eastus2", false},
-		{"worker2", "westus", false},
+		{"orchestrator", "eastus", "eastus", "eastus-1", true},
+		{"worker1", "eastus2", "eastus2", "eastus2-1", false},
+		{"worker2", "westus", "westus", "westus-1", false},
 	}
 
 	for _, machine := range machines {
@@ -132,8 +134,8 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 			machine.location,
 			"Standard_D2s_v3",
 			30,
-			machine.location,
-			machine.location,
+			machine.region,
+			machine.zone,
 			models.CloudSpecificInfo{},
 		)
 		s.Require().NoError(err)

@@ -163,9 +163,17 @@ func PrepareDeployment(
 	orchestratorMachineName := ""
 	orchestratorMessagePrinted := false
 	for _, machineConfig := range machineConfigs {
+		locationValue, ok := machineConfig["location"]
+		if !ok {
+			return nil, fmt.Errorf("machine configuration missing 'location' key")
+		}
+		location, ok := locationValue.(string)
+		if !ok {
+			return nil, fmt.Errorf("'location' must be a string in machine configuration")
+		}
 		region, zone, err := general.NormalizeLocation(
 			string(provider),
-			machineConfig["location"].(string),
+			location,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("invalid location: %s", machineConfig["location"].(string))

@@ -56,7 +56,7 @@ func FakeEC2DescribeInstancesOutput() *ec2.DescribeInstancesOutput {
 					{
 						InstanceId:       aws.String("i-1234567890abcdef0"),
 						InstanceType:     types.InstanceTypeT3Medium,
-						PublicIpAddress:  aws.String("203.0.113.1"),
+						PublicIpAddress:  aws.String("1.2.3.4"),
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						SubnetId:         aws.String("subnet-12345"),
 						VpcId:            aws.String("vpc-12345"),

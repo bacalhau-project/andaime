@@ -35,13 +35,13 @@ func ProcessMachinesConfig(
 	if defaultCount == 0 {
 		errorMessage := fmt.Sprintf("%s.default_count_per_zone is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 	defaultType := viper.GetString(lowerProviderType + ".default_machine_type")
 	if defaultType == "" {
 		errorMessage := fmt.Sprintf("%s.default_machine_type is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 
 	defaultDiskImageFamily := viper.GetString(lowerProviderType + ".default_disk_image_family")
@@ -60,7 +60,7 @@ func ProcessMachinesConfig(
 	if defaultDiskSize == 0 {
 		errorMessage := fmt.Sprintf("%s.default_disk_size_gb is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 
 	privateKeyPath := viper.GetString("general.ssh_private_key_path")
@@ -72,7 +72,7 @@ func ProcessMachinesConfig(
 	if err != nil {
 		errorMessage := fmt.Sprintf("failed to read private key: %v", err)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 
 	publicKeyPath := viper.GetString("general.ssh_public_key_path")
@@ -152,6 +152,13 @@ func ProcessMachinesConfig(
 			string(providerType),
 			rawMachine.Location,
 		)
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"failed to normalize location %s: %w",
+				rawMachine.Location,
+				err,
+			)
+		}
 		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
 				providerType,
