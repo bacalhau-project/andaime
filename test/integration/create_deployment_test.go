@@ -106,19 +106,21 @@ func (s *IntegrationTestSuite) TearDownSuite() {
 	s.cleanup()
 }
 
-func (s *IntegrationTestSuite) SetupTest() {
+func (s *IntegrationTestSuite) SetupTest(deploymentType models.DeploymentType) {
 	viper.Reset()
 	f, err := os.CreateTemp("", "test-config-*.yaml")
 	s.Require().NoError(err)
 
 	var configContent string
-	switch viper.GetString("general.deployment_type") {
-	case string(models.DeploymentTypeGCP):
+	switch deploymentType {
+	case models.DeploymentTypeGCP:
 		configContent, err = testdata.ReadTestGCPConfig()
-	case string(models.DeploymentTypeAWS):
+	case models.DeploymentTypeAWS:
 		configContent, err = testdata.ReadTestAWSConfig()
-	default:
+	case models.DeploymentTypeAzure:
 		configContent, err = testdata.ReadTestAzureConfig()
+	default:
+		s.Fail("unknown deployment type in SetupTest")
 	}
 	s.Require().NoError(err)
 	os.WriteFile(f.Name(), []byte(configContent), 0o644)
@@ -153,6 +155,7 @@ func (s *IntegrationTestSuite) setupCommonConfig() {
 func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentType) {
 	switch provider {
 	case models.DeploymentTypeAzure:
+		viper.Set("general.deployment_type", string(models.DeploymentTypeAzure))
 		viper.Set("azure.subscription_id", "4a45a76b-5754-461d-84a1-f5e47b0a7198")
 		viper.Set("azure.default_count_per_zone", 1)
 		viper.Set("azure.default_location", "eastus2")
@@ -175,6 +178,7 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 			},
 		})
 	case models.DeploymentTypeGCP:
+		viper.Set("general.deployment_type", string(models.DeploymentTypeGCP))
 		viper.Set("gcp.project_id", "test-1292-gcp")
 		viper.Set("gcp.organization_id", "org-1234567890")
 		viper.Set("gcp.billing_account_id", "123456-789012-345678")
@@ -199,6 +203,7 @@ func (s *IntegrationTestSuite) setupProviderConfig(provider models.DeploymentTyp
 			},
 		})
 	case models.DeploymentTypeAWS:
+		viper.Set("general.deployment_type", string(models.DeploymentTypeAWS))
 		viper.Set("aws.account_id", "123456789012")
 		viper.Set("aws.default_count_per_zone", 1)
 		viper.Set("aws.default_machine_type", "t3.medium")
@@ -297,7 +302,6 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 	// Create and configure mock EC2 client
 	mockEC2Client := new(aws_mock.MockEC2Clienter)
 	s.setupMockAWSResources(mockEC2Client)
-	s.awsProvider.SetEC2Client(mockEC2Client)
 
 	// Set up the provider in the command
 	aws_provider.NewAWSProviderFunc = func(accountID string) (*aws_provider.AWSProvider, error) {
@@ -383,6 +387,8 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mock.Moc
 	// Routing mocks
 	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
 		Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
+	mockEC2Client.On("DescribeInternetGateways", mock.Anything, mock.AnythingOfType("*ec2.DescribeInternetGatewaysInput")).
+		Return(testdata.FakeEC2DescribeInternetGatewaysOutput(), nil)
 	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
 		Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil)
 	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
@@ -487,7 +493,7 @@ func (s *IntegrationTestSuite) TestExecuteCreateDeployment() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			s.SetupTest()
+			s.SetupTest(tt.provider)
 			s.setupProviderConfig(tt.provider)
 			s.setupDeploymentModel(tt.name, tt.provider)
 

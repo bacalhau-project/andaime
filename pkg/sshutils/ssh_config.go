@@ -586,6 +586,7 @@ func (c *SSHConfig) SetSSHClient(client *ssh.Client) {
 
 // WaitForSSH waits for SSH connection to be available
 func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
+	l := logger.Get()
 	var lastErr error
 	deadline := time.Now().Add(timeout)
 
@@ -600,7 +601,8 @@ func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Dura
 		return nil
 	} else {
 		lastErr = err
-		fmt.Printf("Could not connect: %v\nRetrying in %v seconds...\n", err, SSHRetryDelay.Seconds())
+		l.Infof("Could not connect to (%s): %v\nRetrying in %v seconds...\n",
+			c.Host, err, SSHRetryDelay.Seconds())
 	}
 
 	// If first attempt fails, start retrying with backoff
@@ -626,8 +628,8 @@ func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Dura
 			} else {
 				lastErr = err
 				attempts++
-				fmt.Printf("Could not connect: %v\nRetrying in %v seconds... (attempt %d/%d)\n",
-					err, SSHRetryDelay.Seconds(), attempts, retry)
+				l.Infof("Could not connect to (%s): %v\nRetrying in %v seconds... (attempt %d/%d)\n",
+					c.Host, err, SSHRetryDelay.Seconds(), attempts, retry)
 			}
 		}
 	}

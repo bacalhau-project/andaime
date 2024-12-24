@@ -221,7 +221,7 @@ func (m *DisplayModel) updateLocation(machineName string, newStatus *models.Disp
 	l := logger.Get()
 	if newStatus.Location != "" {
 		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
-			mach.SetLocation(newStatus.Location)
+			mach.SetDisplayLocation(newStatus.Location)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)
@@ -283,8 +283,10 @@ func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models
 	}
 
 	// Update SSH state if we have a public IP and the VM is running
-	if machine.GetPublicIP() != "" && 
-		machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded {
+	if machine.GetPublicIP() != "" &&
+		machine.GetMachineResourceState(
+			"compute.googleapis.com/Instance",
+		) == models.ResourceStateSucceeded {
 		machine.SetServiceState(
 			models.ServiceTypeSSH.Name,
 			models.ServiceStateSucceeded,

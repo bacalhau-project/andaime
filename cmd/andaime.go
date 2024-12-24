@@ -192,7 +192,23 @@ func GetSession(region string) *session.Session {
 
 	return sess
 }
+
+// getUbuntuAMIId retrieves the latest Ubuntu AMI ID from AWS for a given architecture.
+// It specifically looks for Ubuntu 22.04 (Jammy) images from Canonical.
+//
+// Parameters:
+//
+//	svc: AWS EC2 service client
+//	arch: Target architecture (e.g., "x86_64" or "arm64")
+//
+// Returns:
+//
+//	string: AMI ID if found
+//	error: Error if any occurred during the operation
 func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
+	const ubuntuVersion = "ubuntu-jammy-22.04"
+	const canonicalOwnerID = "099720109477"
+
 	describeImagesInput := &ec2.DescribeImagesInput{
 		Filters: []*ec2.Filter{
 			{
@@ -208,25 +224,21 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 				Values: aws.StringSlice([]string{"available"}),
 			},
 		},
-		Owners: aws.StringSlice([]string{"099720109477"}), // Canonical's owner ID
+		Owners: aws.StringSlice([]string{canonicalOwnerID}),
 	}
 
-	// Call DescribeImages to find matching AMIs
 	result, err := svc.DescribeImages(describeImagesInput)
 	if err != nil {
-		fmt.Printf("Failed to describe images, %v\n", err)
-		return "", err
+		return "", fmt.Errorf("failed to describe images: %w", err)
 	}
 
 	if len(result.Images) == 0 {
-		fmt.Println("No Ubuntu AMIs found")
-		return "", err
+		return "", fmt.Errorf("no Ubuntu AMIs found")
 	}
 
-	// Filter the results to find the latest image that matches the desired pattern
 	var latestImage *ec2.Image
 	for _, image := range result.Images {
-		if strings.Contains(*image.Name, "ubuntu-jammy-22.04") {
+		if strings.Contains(*image.Name, ubuntuVersion) {
 			if latestImage == nil || *image.CreationDate > *latestImage.CreationDate {
 				latestImage = image
 			}
@@ -234,8 +246,7 @@ func getUbuntuAMIId(svc *ec2.EC2, arch string) (string, error) {
 	}
 
 	if latestImage == nil {
-		fmt.Println("No matching Ubuntu 22.04 AMIs found")
-		return "", fmt.Errorf("no matching Ubuntu 22.04 AMIs found")
+		return "", fmt.Errorf("no matching %s AMIs found", ubuntuVersion)
 	}
 
 	if VerboseModeFlag {

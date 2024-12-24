@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	internal_gcp "github.com/bacalhau-project/andaime/internal/clouds/gcp"
+	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -34,13 +35,13 @@ func ProcessMachinesConfig(
 	if defaultCount == 0 {
 		errorMessage := fmt.Sprintf("%s.default_count_per_zone is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 	defaultType := viper.GetString(lowerProviderType + ".default_machine_type")
 	if defaultType == "" {
 		errorMessage := fmt.Sprintf("%s.default_machine_type is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 
 	defaultDiskImageFamily := viper.GetString(lowerProviderType + ".default_disk_image_family")
@@ -59,7 +60,7 @@ func ProcessMachinesConfig(
 	if defaultDiskSize == 0 {
 		errorMessage := fmt.Sprintf("%s.default_disk_size_gb is empty", lowerProviderType)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 
 	privateKeyPath := viper.GetString("general.ssh_private_key_path")
@@ -71,7 +72,7 @@ func ProcessMachinesConfig(
 	if err != nil {
 		errorMessage := fmt.Sprintf("failed to read private key: %v", err)
 		l.Error(errorMessage)
-		return nil, nil, fmt.Errorf(errorMessage)
+		return nil, nil, fmt.Errorf("%s", errorMessage)
 	}
 
 	publicKeyPath := viper.GetString("general.ssh_public_key_path")
@@ -147,6 +148,17 @@ func ProcessMachinesConfig(
 				diskImageURL = rawMachine.Parameters.DiskImageURL
 			}
 		}
+		region, zone, err := general.NormalizeLocation(
+			string(providerType),
+			rawMachine.Location,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"failed to normalize location %s: %w",
+				rawMachine.Location,
+				err,
+			)
+		}
 		for i := 0; i < count; i++ {
 			newMachine, err := createNewMachine(
 				providerType,
@@ -158,6 +170,8 @@ func ProcessMachinesConfig(
 				publicKeyPath,
 				publicKeyBytes,
 				sshPort,
+				region,
+				zone,
 				diskImageFamily,
 				diskImageURL,
 			)
@@ -226,6 +240,8 @@ func createNewMachine(
 	publicKeyPath string,
 	publicKeyBytes []byte,
 	sshPort int,
+	region string,
+	zone string,
 	diskImageFamily string,
 	diskImageURL string,
 ) (models.Machiner, error) {
@@ -235,6 +251,8 @@ func createNewMachine(
 		location,
 		vmSize,
 		diskSizeGB,
+		region,
+		zone,
 		models.CloudSpecificInfo{},
 	)
 	if err != nil {

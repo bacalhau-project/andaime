@@ -3,15 +3,18 @@ package aws
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
+	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
+
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,9 +44,9 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		FilePath:      viper.GetString("general.log_path"),
 		Format:        viper.GetString("general.log_format"),
 		WithTrace:     true,
-		EnableConsole: true,
+		EnableConsole: false,
 		EnableBuffer:  true,
-		BufferSize:    8192,
+		BufferSize:    8192, //nolint:mnd
 		InstantSync:   true,
 	}
 
@@ -101,13 +104,6 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	// Write the VPC ID to config as soon as it's created
 	if err := writeVPCIDToConfig(deployment); err != nil {
 		return fmt.Errorf("failed to write VPC ID to config: %w", err)
-	}
-
-	// Ensure EC2 client is initialized
-	ec2Client := awsProvider.GetEC2Client()
-	if ec2Client == nil {
-		ec2Client = ec2.NewFromConfig(*awsProvider.GetConfig())
-		awsProvider.SetEC2Client(ec2Client)
 	}
 
 	m := display.NewDisplayModel(deployment)
@@ -180,6 +176,20 @@ func prepareDeployment(
 	}
 	m.Deployment.SetMachines(machines)
 	m.Deployment.SetLocations(locations)
+
+	if m.Deployment.AWS.RegionalResources.VPCs == nil {
+		m.Deployment.AWS.RegionalResources.VPCs = make(map[string]*models.AWSVPC)
+	}
+	if m.Deployment.AWS.RegionalResources.Clients == nil {
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+	}
+	for _, machine := range m.Deployment.GetMachines() {
+		region := machine.GetRegion()
+		if _, exists := m.Deployment.AWS.RegionalResources.VPCs[region]; !exists {
+			m.Deployment.AWS.RegionalResources.SetVPC(region, &models.AWSVPC{})
+			m.Deployment.AWS.RegionalResources.SetClient(region, nil)
+		}
+	}
 
 	return m.Deployment, nil
 }
@@ -268,6 +278,14 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 		return fmt.Errorf("failed to create infrastructure: %w", err)
 	}
 
+	l.Debug("Infrastructure created successfully")
+	l.Debug("Creating regional networking...")
+	if err := awsProvider.CreateRegionalResources(ctx, m.Deployment.AWS.RegionalResources.GetRegions()); err != nil {
+		return fmt.Errorf("failed to create regional networking: %w", err)
+	}
+
+	l.Debug("Regional networking created successfully")
+
 	// Wait for network propagation and connectivity
 	l.Info("Waiting for network propagation...")
 	if err := awsProvider.WaitForNetworkConnectivity(ctx); err != nil {
@@ -281,6 +299,8 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 	}
 
 	// Wait for all VMs to be accessible via SSH
+	var wg sync.WaitGroup
+	var mutex sync.Mutex
 	l.Info("Waiting for all VMs to be accessible via SSH...")
 	for _, machine := range m.Deployment.GetMachines() {
 		if machine.GetPublicIP() == "" {
@@ -301,17 +321,50 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 			)
 		}
 
-		if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
-			return fmt.Errorf(
-				"failed to establish SSH connection to machine %s: %w",
-				machine.GetName(),
-				err,
-			)
-		}
+		wg.Add(1)
+		machine.SetMachineResourceState(
+			models.ServiceTypeSSH.Name,
+			models.ResourceStatePending,
+		)
 
-		l.Infof("Machine %s is accessible via SSH", machine.GetName())
+		go func(machine *models.Machine, sshConfig sshutils_interfaces.SSHConfiger) {
+			defer wg.Done()
+			mutex.Lock()
+			defer mutex.Unlock()
+			if err := sshConfig.WaitForSSH(ctx,
+				sshutils.SSHRetryAttempts,
+				sshutils.GetAggregateSSHTimeout()); err != nil {
+				machine.SetMachineResourceState(
+					models.ServiceTypeSSH.Name,
+					models.ResourceStateFailed,
+				)
+				l.Errorf(
+					"failed to establish SSH connection to machine %s: %v",
+					machine.GetName(),
+					err,
+				)
+			}
+			machine.SetMachineResourceState(
+				models.ServiceTypeSSH.Name,
+				models.ResourceStateSucceeded,
+			)
+
+			m.QueueUpdate(display.UpdateAction{
+				MachineName: machine.GetName(),
+				UpdateData: display.UpdateData{
+					UpdateType:    display.UpdateTypeResource,
+					ResourceType:  "SSH",
+					ResourceState: models.MachineResourceState(models.ServiceTypeSSH.State),
+				},
+			})
+
+			l.Infof("Machine %s is accessible via SSH", machine.GetName())
+		}(machine.(*models.Machine), sshConfig)
+
+		time.Sleep(RetryTimeout)
 	}
 
+	wg.Wait()
 	l.Info("All VMs are accessible via SSH")
 
 	// Now provision the Bacalhau cluster
@@ -411,7 +464,8 @@ func writeConfig() {
 				machines[name] = map[string]interface{}{
 					"public_ip":  machine.GetPublicIP(),
 					"private_ip": machine.GetPrivateIP(),
-					"location":   machine.GetLocation(),
+					"region":     machine.GetRegion(),
+					"zone":       machine.GetZone(),
 				}
 			}
 

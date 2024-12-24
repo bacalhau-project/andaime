@@ -152,7 +152,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 					machineName := fmt.Sprintf("machine-%s-%d", location, i)
 					suite.deployment.SetMachine(machineName, &models.Machine{
 						Name:              machineName,
-						Location:          location,
+						Region:            location,
 						SSHPublicKeyPath:  suite.testSSHPublicKeyPath,
 						SSHPrivateKeyPath: suite.testSSHPrivateKeyPath,
 					})
