@@ -345,7 +345,7 @@ func ConvertFromRawResourceToStatus(
 	var statuses []DisplayStatus
 
 	if location := GetLocationFromResourceName(resourceName); location != "" {
-		machinesNames, err := GetMachinesInLocation(location, deployment.GetMachines())
+		machinesNames, err := GetMachinesInRegion(location, deployment.GetMachines())
 		if err != nil {
 			return nil, err
 		}
@@ -428,17 +428,15 @@ func machineNeedsUpdating(
 	return needsUpdate > 0
 }
 
-func GetMachinesInLocation(resourceName string, machines map[string]Machiner) ([]string, error) {
-	location := strings.Split(resourceName, "-")[0]
-
-	if location == "" {
+func GetMachinesInRegion(region string, machines map[string]Machiner) ([]string, error) {
+	if region == "" {
 		return nil, fmt.Errorf("location is empty")
 	}
 
 	var machinesInLocation []string
 
 	for _, machine := range machines {
-		if machine.GetLocation() == location {
+		if machine.GetRegion() == region {
 			machinesInLocation = append(machinesInLocation, machine.GetName())
 		}
 	}

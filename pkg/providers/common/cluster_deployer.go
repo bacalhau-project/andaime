@@ -587,7 +587,7 @@ func (cd *ClusterDeployer) SetupNodeConfigMetadata(
 	err = tmpl.ExecuteTemplate(&scriptBuffer, "getNodeMetadataScript", map[string]interface{}{
 		"MachineType":   machine.GetVMSize(),
 		"MachineName":   machine.GetName(),
-		"Location":      machine.GetLocation(),
+		"Location":      machine.GetRegion(),
 		"Orchestrators": strings.Join(orchestrators, ","),
 		"IP":            machine.GetPublicIP(),
 		"Token":         "",

@@ -44,7 +44,7 @@ func getSortedAzureData() ([]byte, error) {
 	return yaml.Marshal(sortedData)
 }
 
-func IsValidAzureLocation(location string) bool {
+func IsValidAzureRegion(region string) bool {
 	l := logger.Get()
 	data, err := getSortedAzureData()
 	if err != nil {
@@ -59,7 +59,7 @@ func IsValidAzureLocation(location string) bool {
 		return false
 	}
 
-	_, exists := azureData.Locations[strings.ToLower(location)]
+	_, exists := azureData.Locations[strings.ToLower(region)]
 	return exists
 }
 

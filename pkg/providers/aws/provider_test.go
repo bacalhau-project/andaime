@@ -8,9 +8,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	awsmock "github.com/bacalhau-project/andaime/mocks/aws"
@@ -49,6 +49,7 @@ type PkgProvidersAWSProviderSuite struct {
 	mockAWSClient          *awsmock.MockEC2Clienter
 	awsProvider            *AWSProvider
 	awsConfig              aws.Config
+	deployment             *models.Deployment
 	origGetGlobalModelFunc func() *display.DisplayModel
 	origNewSSHConfigFunc   func(string, int, string, string) (sshutils_interface.SSHConfiger, error)
 	mockSSHConfig          *ssh_mock.MockSSHConfiger
@@ -61,15 +62,6 @@ func (suite *PkgProvidersAWSProviderSuite) SetupSuite() {
 		suite.testSSHPrivateKeyPath,
 		suite.cleanupPrivateKey = testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 
-	suite.origGetGlobalModelFunc = display.GetGlobalModelFunc
-	display.GetGlobalModelFunc = func() *display.DisplayModel {
-		deployment, err := models.NewDeployment()
-		suite.Require().NoError(err)
-		return &display.DisplayModel{
-			Deployment: deployment,
-		}
-	}
-
 	suite.origLogger = logger.Get()
 	logger.SetGlobalLogger(logger.NewTestLogger(suite.T()))
 }
@@ -77,8 +69,6 @@ func (suite *PkgProvidersAWSProviderSuite) SetupSuite() {
 func (suite *PkgProvidersAWSProviderSuite) TearDownSuite() {
 	suite.cleanupPublicKey()
 	suite.cleanupPrivateKey()
-	display.GetGlobalModelFunc = suite.origGetGlobalModelFunc
-	sshutils.NewSSHConfigFunc = suite.origNewSSHConfigFunc
 	logger.SetGlobalLogger(suite.origLogger)
 }
 
@@ -110,6 +100,7 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	}
 
 	// Set up the global model function
+	suite.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
 		return &display.DisplayModel{
 			Deployment: deployment,
@@ -134,7 +125,10 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	deployment.AWS.RegionalResources.VPCs[FAKE_REGION] = &models.AWSVPC{
 		VPCID: FAKE_VPC_ID,
 	}
-	deployment.AWS.RegionalResources.Clients[FAKE_REGION] = suite.mockAWSClient
+
+	mockAWSClient := new(mocks.MockEC2Clienter)
+	deployment.AWS.RegionalResources.Clients[FAKE_REGION] = mockAWSClient
+	suite.deployment = deployment
 
 	// Mock all AWS API calls
 	suite.setupAWSMocks()
@@ -154,6 +148,11 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	}
 
 	suite.awsProvider = provider
+}
+
+func (suite *PkgProvidersAWSProviderSuite) TearDownTest() {
+	display.GetGlobalModelFunc = suite.origGetGlobalModelFunc
+	sshutils.NewSSHConfigFunc = suite.origNewSSHConfigFunc
 }
 
 func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
@@ -239,7 +238,8 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		Reservations: []types.Reservation{},
 	}, nil).Maybe()
 	// Mock DescribeRegions
-	suite.mockAWSClient.On("DescribeRegions", mock.Anything, mock.Anything).
+	mockRegionalClient := suite.deployment.AWS.RegionalResources.Clients[FAKE_REGION].(*mocks.MockEC2Clienter)
+	mockRegionalClient.On("DescribeRegions", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeRegionsOutput{
 			Regions: []types.Region{
 				{RegionName: aws.String(FAKE_REGION)},
@@ -247,7 +247,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}, nil)
 
 	// Mock availability zones
-	suite.mockAWSClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+	mockRegionalClient.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeAvailabilityZonesOutput{
 			AvailabilityZones: []types.AvailabilityZone{
 				{
@@ -264,12 +264,12 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}, nil)
 
 	// Mock VPC-related operations
-	suite.mockAWSClient.On("CreateVpc", mock.Anything, mock.Anything).
+	mockRegionalClient.On("CreateVpc", mock.Anything, mock.Anything).
 		Return(&ec2.CreateVpcOutput{
 			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
 		}, nil)
 
-	suite.mockAWSClient.On("DescribeVpcs", mock.Anything, mock.Anything).
+	mockRegionalClient.On("DescribeVpcs", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeVpcsOutput{
 			Vpcs: []types.Vpc{
 				{
@@ -279,38 +279,38 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 			},
 		}, nil)
 
-	suite.mockAWSClient.On("ModifyVpcAttribute", mock.Anything, mock.Anything).
+	mockRegionalClient.On("ModifyVpcAttribute", mock.Anything, mock.Anything).
 		Return(&ec2.ModifyVpcAttributeOutput{}, nil)
 
 	// Mock networking components
-	suite.mockAWSClient.On("CreateSubnet", mock.Anything, mock.Anything).
+	mockRegionalClient.On("CreateSubnet", mock.Anything, mock.Anything).
 		Return(&ec2.CreateSubnetOutput{
 			Subnet: &types.Subnet{SubnetId: aws.String(FAKE_SUBNET_ID)},
 		}, nil)
 
-	suite.mockAWSClient.On("CreateInternetGateway", mock.Anything, mock.Anything).
+	mockRegionalClient.On("CreateInternetGateway", mock.Anything, mock.Anything).
 		Return(&ec2.CreateInternetGatewayOutput{
 			InternetGateway: &types.InternetGateway{
 				InternetGatewayId: aws.String(FAKE_IGW_ID),
 			},
 		}, nil)
 
-	suite.mockAWSClient.On("CreateRouteTable", mock.Anything, mock.Anything).
+	mockRegionalClient.On("CreateRouteTable", mock.Anything, mock.Anything).
 		Return(&ec2.CreateRouteTableOutput{
 			RouteTable: &types.RouteTable{RouteTableId: aws.String(FAKE_RTB_ID)},
 		}, nil)
 
 	// Mock security group operations
-	suite.mockAWSClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
+	mockRegionalClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
 		Return(&ec2.CreateSecurityGroupOutput{
 			GroupId: aws.String("sg-12345"),
 		}, nil)
 
-	suite.mockAWSClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
+	mockRegionalClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
 		Return(&ec2.AuthorizeSecurityGroupIngressOutput{}, nil)
 
 	// Mock network setup operations with logging
-	suite.mockAWSClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
+	mockRegionalClient.On("AttachInternetGateway", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.AttachInternetGatewayInput)
 			logger.Get().Debugf("Attaching Internet Gateway %s to VPC %s",
@@ -318,7 +318,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}).
 		Return(&ec2.AttachInternetGatewayOutput{}, nil)
 
-	suite.mockAWSClient.On("CreateRoute", mock.Anything, mock.Anything).
+	mockRegionalClient.On("CreateRoute", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.CreateRouteInput)
 			logger.Get().Debugf("Creating route in route table %s with destination %s via IGW %s",
@@ -326,7 +326,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}).
 		Return(&ec2.CreateRouteOutput{}, nil)
 
-	suite.mockAWSClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
+	mockRegionalClient.On("AssociateRouteTable", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			input := args.Get(1).(*ec2.AssociateRouteTableInput)
 			logger.Get().Debugf("Associating route table %s with subnet %s",
@@ -400,13 +400,19 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
-	// Test with spot instance
-	ip, err := suite.awsProvider.GetVMExternalIP(suite.ctx, "i-spotinstance123")
-	suite.Require().NoError(err)
-	suite.Require().Equal("1.2.3.4", ip)
+	mockRegionalClient := suite.deployment.AWS.RegionalResources.Clients[FAKE_REGION].(*mocks.MockEC2Clienter)
+	mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{FAKE_INSTANCE_ID},
+	}).Return(&ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{{
+			Instances: []types.Instance{{
+				InstanceId:      aws.String(FAKE_INSTANCE_ID),
+				PublicIpAddress: aws.String("203.0.113.1"),
+			}},
+		}},
+	}, nil)
 
-	// Test with on-demand instance
-	ip, err = suite.awsProvider.GetVMExternalIP(suite.ctx, "i-ondemand123")
+	ip, err := suite.awsProvider.GetVMExternalIP(suite.ctx, FAKE_REGION, FAKE_INSTANCE_ID)
 	suite.Require().NoError(err)
 	suite.Require().Equal("5.6.7.8", ip)
 }

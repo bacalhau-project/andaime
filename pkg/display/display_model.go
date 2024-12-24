@@ -221,7 +221,7 @@ func (m *DisplayModel) updateLocation(machineName string, newStatus *models.Disp
 	l := logger.Get()
 	if newStatus.Location != "" {
 		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
-			mach.SetLocation(newStatus.Location)
+			mach.SetDisplayLocation(newStatus.Location)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine status: %v", err)

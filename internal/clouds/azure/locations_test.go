@@ -14,45 +14,45 @@ type InternalAzureTestSuite struct {
 func (suite *InternalAzureTestSuite) TestIsValidAzureLocation() {
 	testCases := []struct {
 		name           string
-		location       string
+		region         string
 		expectedValid  bool
 		expectedReason string
 	}{
 		{
 			name:           "Valid location",
-			location:       "polandcentral",
+			region:         "polandcentral",
 			expectedValid:  true,
 			expectedReason: "",
 		},
 		{
 			name:           "Valid location with different case",
-			location:       "polandCentral",
+			region:         "polandCentral",
 			expectedValid:  true,
 			expectedReason: "",
 		},
 		{
 			name:           "Invalid location",
-			location:       "invalidlocation",
+			region:         "invalidlocation",
 			expectedValid:  false,
-			expectedReason: "invalidlocation is not a valid Azure location",
+			expectedReason: "invalidlocation is not a valid Azure region",
 		},
 		{
-			name:           "Empty location",
-			location:       "",
+			name:           "Empty region",
+			region:         "",
 			expectedValid:  false,
-			expectedReason: "location cannot be empty",
+			expectedReason: "region cannot be empty",
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			isValid := IsValidAzureLocation(tc.location)
+			isValid := IsValidAzureRegion(tc.region)
 			suite.Equal(
 				tc.expectedValid,
 				isValid,
 				fmt.Sprintf(
-					"Expected validity of location '%s' to be %v, but got %v",
-					tc.location,
+					"Expected validity of region '%s' to be %v, but got %v",
+					tc.region,
 					tc.expectedValid,
 					isValid,
 				),

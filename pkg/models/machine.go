@@ -38,10 +38,12 @@ type Machiner interface {
 	SetDiskImageURL(url string)
 	GetImageID() string
 	SetImageID(id string)
-	GetLocation() string
-	SetLocation(location string) error
+	GetDisplayLocation() string
+	SetDisplayLocation(location string) error
 	GetRegion() string
+	SetRegion(region string)
 	GetZone() string
+	SetZone(zone string)
 	GetPublicIP() string
 	SetPublicIP(ip string)
 	GetPrivateIP() string
@@ -124,13 +126,13 @@ const (
 )
 
 type Machine struct {
-	ID       string
-	Name     string
-	Type     ResourceType
-	Location string
-	Region   string
-	Zone     string
-	NodeType string
+	ID              string
+	Name            string
+	Type            ResourceType
+	DisplayLocation string
+	Region          string
+	Zone            string
+	NodeType        string
 
 	StatusMessage string
 	Parameters    Parameters
@@ -182,12 +184,6 @@ type CloudSpecificInfo struct {
 	// Azure specific
 	ResourceGroupName string
 
-	// GCP specific
-	Zone string
-
-	// Both GCP and AWS
-	Region string
-
 	// AWS specific
 	SpotMarketOptions *ec2Types.InstanceMarketOptionsRequest
 }
@@ -197,6 +193,8 @@ func NewMachine(
 	location string,
 	vmSize string,
 	diskSizeGB int,
+	region string,
+	zone string,
 	cloudSpecificInfo CloudSpecificInfo,
 ) (Machiner, error) {
 	newID := utils.CreateShortID()
@@ -220,7 +218,7 @@ func NewMachine(
 	}
 
 	// There is some logic in SetLocation so we do this outside of the struct
-	err := returnMachine.SetLocation(location)
+	err := returnMachine.SetDisplayLocation(location)
 	if err != nil {
 		return nil, err
 	}
@@ -281,31 +279,37 @@ func (mach *Machine) SetOrchestrator(orchestrator bool) {
 	mach.Orchestrator = orchestrator
 }
 
-func (mach *Machine) SetLocation(location string) error {
+func (mach *Machine) SetDisplayLocation(location string) error {
+	l := logger.Get()
+	region, zone, err := general.NormalizeLocation(string(mach.CloudProvider), location)
+	if err != nil {
+		return err
+	}
+	l.Debugf("Normalized location: %s -> %s, %s", location, region, zone)
+
 	switch mach.CloudProvider {
 	case DeploymentTypeAzure:
-		if !internal_azure.IsValidAzureLocation(location) {
+		if !internal_azure.IsValidAzureRegion(region) {
 			return fmt.Errorf("invalid Azure location: %s", location)
 		}
+		mach.Region = region
+		mach.Zone = zone
 	case DeploymentTypeGCP:
-		if !internal_gcp.IsValidGCPLocation(location) {
+		if !internal_gcp.IsValidGCPZone(zone) {
 			return fmt.Errorf("invalid GCP location: %s", location)
 		}
-		mach.CloudSpecific.Zone = location
-		region, err := internal_gcp.GetGCPRegionFromZone(location)
-		if err != nil {
-			return fmt.Errorf("invalid GCP location: %s", location)
-		}
-		mach.CloudSpecific.Region = region
+		mach.Region = region
+		mach.Zone = zone
 	case DeploymentTypeAWS:
-		if !internal_aws.IsValidAWSRegion(location) {
-			return fmt.Errorf("invalid AWS region: %s", location)
+		if !internal_aws.IsValidAWSRegion(region) {
+			return fmt.Errorf("invalid AWS region: %s", region)
 		}
-		mach.CloudSpecific.Region = location
+		mach.Region = region
+		mach.Zone = zone
 	default:
 		return fmt.Errorf("unknown deployment type: %s", mach.DeploymentType)
 	}
-	mach.Location = location
+	mach.DisplayLocation = location
 	return nil
 }
 
@@ -687,15 +691,25 @@ func (mach *Machine) EnsureMachineServices() error {
 	return nil
 }
 
-// Add this new function
+// For Azure, "location" is the region.
+// For GCP, "location" is the zone.
+// For AWS, "location" is the zone.
 func IsValidLocation(deploymentType DeploymentType, location string) bool {
+	region, zone, err := general.NormalizeLocation(
+		string(deploymentType),
+		location,
+	)
+	if err != nil {
+		return false
+	}
+
 	switch deploymentType {
 	case DeploymentTypeAzure:
-		return internal_azure.IsValidAzureLocation(location)
+		return internal_azure.IsValidAzureRegion(region)
 	case DeploymentTypeGCP:
-		return internal_gcp.IsValidGCPLocation(location)
+		return internal_gcp.IsValidGCPZone(zone)
 	case DeploymentTypeAWS:
-		return internal_aws.IsValidAWSRegion(location)
+		return internal_aws.IsValidAWSRegion(region)
 	default:
 		return false
 	}
@@ -733,15 +747,23 @@ func (mach *Machine) GetType() ResourceType {
 }
 
 func (mach *Machine) GetRegion() string {
-	return mach.CloudSpecific.Region
+	return mach.Region
+}
+
+func (mach *Machine) SetRegion(region string) {
+	mach.Region = region
 }
 
 func (mach *Machine) GetZone() string {
-	return mach.CloudSpecific.Zone
+	return mach.Zone
 }
 
-func (mach *Machine) GetLocation() string {
-	return mach.Location
+func (mach *Machine) SetZone(zone string) {
+	mach.Zone = zone
+}
+
+func (mach *Machine) GetDisplayLocation() string {
+	return mach.DisplayLocation
 }
 
 func (mach *Machine) GetPublicIP() string {

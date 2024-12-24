@@ -77,7 +77,7 @@ func (p *AWSProvider) cleanupRegionalResources(ctx context.Context, region, vpcI
 		return nil
 	}
 
-	client, err := p.getOrCreateEC2Client(ctx, region)
+	client, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return fmt.Errorf("failed to create client for region %s: %w", region, err)
 	}

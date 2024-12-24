@@ -11,10 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/mock"
 	awsmock "github.com/bacalhau-project/andaime/mocks/aws"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // setupMockEC2Client creates and configures a mock EC2 client for testing
@@ -102,53 +102,4 @@ func TestIntegrationCreateAndDestroyInfrastructure(t *testing.T) {
 	vpcExists, err = verifyVPCExists(ctx, provider)
 	assert.NoError(t, err)
 	assert.False(t, vpcExists)
-}
-
-func verifyVPCExists(ctx context.Context, provider *AWSProvider) (bool, error) {
-	if provider.EC2Client == nil {
-		return false, nil
-	}
-
-	input := &ec2.DescribeVpcsInput{
-		VpcIds: []string{provider.VPCID},
-	}
-
-	result, err := provider.EC2Client.DescribeVpcs(ctx, input)
-	if err != nil {
-		return false, err
-	}
-
-	return len(result.Vpcs) > 0, nil
-}
-
-func verifyNetworkConnectivity(ctx context.Context, provider *AWSProvider) (bool, error) {
-	if provider.EC2Client == nil {
-		return false, nil
-	}
-
-	// Verify subnets can route to internet gateway
-	input := &ec2.DescribeRouteTablesInput{
-		Filters: []types.Filter{
-			{
-				Name:  aws.String("vpc-id"),
-				Value: []string{provider.VPCID},
-			},
-		},
-	}
-
-	result, err := provider.EC2Client.DescribeRouteTables(ctx, input)
-	if err != nil {
-		return false, err
-	}
-
-	// Check if route table has internet gateway route
-	for _, rt := range result.RouteTables {
-		for _, route := range rt.Routes {
-			if route.GatewayId != nil && *route.GatewayId != "" {
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
 }

@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -17,10 +18,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const MinRequiredAZs = 2
-
 // UNKNOWN represents an unknown value in AWS responses
 const UNKNOWN = "unknown"
+
+// Network configuration constants
+const (
+	VPCCidrBlock          = "10.0.0.0/16"
+	PublicSubnet1CIDR     = "10.0.0.0/24"
+	PublicSubnet2CIDR     = "10.0.1.0/24"
+	PrivateSubnet1CIDR    = "10.0.2.0/24"
+	PrivateSubnet2CIDR    = "10.0.3.0/24"
+	MinRequiredAZs        = 2
+	SSHRetryInterval      = 10 * time.Second
+	MaxRetries            = 30
+	TimeToWaitForInstance = 5 * time.Minute
+)
 
 // LiveEC2Client implements the EC2Clienter interface
 type LiveEC2Client struct {
@@ -264,11 +276,6 @@ func (c *LiveEC2Client) DeleteInternetGateway(
 	return c.client.DeleteInternetGateway(ctx, params, optFns...)
 }
 
-const (
-	SSHRetryInterval = 10 * time.Second
-	MaxRetries       = 30
-)
-
 func (p *AWSProvider) DeployVMsInParallel(
 	ctx context.Context,
 ) error {
@@ -287,7 +294,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 	// Group machines by region
 	machinesByRegion := make(map[string][]models.Machiner)
 	for _, machine := range m.Deployment.GetMachines() {
-		region := machine.GetLocation()
+		region := machine.GetRegion()
 		l.Debug(fmt.Sprintf("Processing machine %s in region %s", machine.GetName(), region))
 		if region == "" {
 			l.Warn(fmt.Sprintf("Machine %s has no location specified", machine.GetName()))
@@ -314,13 +321,13 @@ func (p *AWSProvider) DeployVMsInParallel(
 
 	// Deploy machines in each region
 	for region, machines := range machinesByRegion {
-		vpc, exists := m.Deployment.AWS.RegionalResources.VPCs[region]
-		if !exists {
+		vpc := m.Deployment.AWS.RegionalResources.GetVPC(region)
+		if vpc == nil {
 			return fmt.Errorf("VPC not found for region %s", region)
 		}
 
 		// Create EC2 client for the region
-		ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+		regionalClient, err := p.GetOrCreateEC2Client(ctx, region)
 		if err != nil {
 			return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 		}
@@ -328,7 +335,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 		// Deploy machines in parallel within each region
 		for _, machine := range machines {
 			eg.Go(func() error {
-				if err := p.deployVM(ctx, ec2Client, machine, vpc); err != nil {
+				if err := p.deployVM(ctx, regionalClient, machine, vpc); err != nil {
 					return fmt.Errorf(
 						"failed to deploy VM %s in region %s: %w",
 						machine.GetName(),
@@ -354,15 +361,31 @@ func (p *AWSProvider) deployVM(
 	machine models.Machiner,
 	vpc *models.AWSVPC,
 ) error {
+	l := logger.Get()
+	m := display.GetGlobalModelFunc()
+	if m == nil || m.Deployment == nil {
+		return fmt.Errorf("global model or deployment is nil")
+	}
+
+	// Validate VPC configuration
+	if vpc == nil {
+		return fmt.Errorf("vpc is nil")
+	}
+	if len(vpc.PublicSubnetIDs) == 0 {
+		return fmt.Errorf("no public subnets available in VPC %s", vpc.VPCID)
+	}
+	if vpc.SecurityGroupID == "" {
+		return fmt.Errorf("no security group ID set for VPC %s", vpc.VPCID)
+	}
+
 	// Get AMI ID for the region
-	amiID, err := p.getLatestAMI(ctx, ec2Client)
+	amiID, err := p.GetLatestUbuntuAMI(ctx, machine.GetRegion(), "x86_64")
 	if err != nil {
 		return fmt.Errorf("failed to get latest AMI: %w", err)
 	}
 
-	// Check if spot instance is requested
-	params := machine.GetParameters()
-	runInstancesInput := &ec2.RunInstancesInput{
+	// Create instance
+	runResult, err := ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
 		ImageId:      aws.String(amiID),
 		InstanceType: ec2_types.InstanceType(machine.GetMachineType()),
 		MinCount:     aws.Int32(1),
@@ -370,29 +393,13 @@ func (p *AWSProvider) deployVM(
 		NetworkInterfaces: []ec2_types.InstanceNetworkInterfaceSpecification{
 			{
 				DeviceIndex:              aws.Int32(0),
-				SubnetId:                 aws.String(vpc.SubnetID),
+				SubnetId:                 aws.String(subnetID),
 				Groups:                   []string{vpc.SecurityGroupID},
 				AssociatePublicIpAddress: aws.Bool(true),
 			},
 		},
-		TagSpecifications: []ec2_types.TagSpecification{
-			{
-				ResourceType: ec2_types.ResourceTypeInstance,
-				Tags: []ec2_types.Tag{
-					{
-						Key:   aws.String("Name"),
-						Value: aws.String(machine.GetName()),
-					},
-					{
-						Key:   aws.String("AndaimeMachineID"),
-						Value: aws.String(machine.GetID()),
-					},
-					{
-						Key:   aws.String("AndaimeDeployment"),
-						Value: aws.String("AndaimeDeployment"),
-					},
-				},
-			},
+		TagSpecifications: tagSpecs,
+		UserData:          aws.String(encodedUserData),
 		},
 	}
 
@@ -430,7 +437,7 @@ func (p *AWSProvider) deployVM(
 	waiter := ec2.NewInstanceRunningWaiter(ec2Client)
 	if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*runResult.Instances[0].InstanceId},
-	}, 5*time.Minute); err != nil {
+	}, TimeToWaitForInstance); err != nil {
 		return fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 
@@ -500,13 +507,25 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 	l := logger.Get()
 	l.Info(fmt.Sprintf("Validating availability zones for region: %s", region))
 
-	ec2Client, err := p.getOrCreateEC2Client(ctx, region)
+	ec2Client, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return fmt.Errorf("failed to create EC2 client for region %s: %w", region, err)
 	}
 
 	// Describe all zones in the region, removing filters to get comprehensive data
-	result, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{})
+	result, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		Filters: []ec2_types.Filter{
+			{
+				Name:   aws.String("region-name"),
+				Values: []string{region},
+			},
+			{
+				Name:   aws.String("state"),
+				Values: []string{"available"},
+			},
+		},
+		AllAvailabilityZones: aws.Bool(true),
+	})
 	if err != nil {
 		l.Error(fmt.Sprintf("Failed to describe AZs: %v", err))
 		return fmt.Errorf("failed to describe availability zones: %w", err)

@@ -23,7 +23,7 @@ type DiskImage struct {
 	Architecture string   `yaml:"architecture"`
 }
 
-func IsValidGCPLocation(location string) bool {
+func IsValidGCPZone(zone string) bool {
 	l := logger.Get()
 	gcpDataRaw, err := GetGCPData()
 	if err != nil {
@@ -37,11 +37,11 @@ func IsValidGCPLocation(location string) bool {
 		return false
 	}
 
-	_, exists := gcpData.Locations[strings.ToLower(location)]
+	_, exists := gcpData.Locations[strings.ToLower(zone)]
 	return exists
 }
 
-func IsValidGCPMachineType(location, machineType string) bool {
+func IsValidGCPMachineType(zone, machineType string) bool {
 	l := logger.Get()
 	gcpDataRaw, err := GetGCPData()
 	if err != nil {
@@ -53,7 +53,7 @@ func IsValidGCPMachineType(location, machineType string) bool {
 		l.Warnf("Failed to unmarshal GCP data: %v", err)
 		return false
 	}
-	validMachineTypes, ok := gcpData.Locations[strings.ToLower(location)]
+	validMachineTypes, ok := gcpData.Locations[strings.ToLower(zone)]
 	if !ok {
 		return false
 	}
@@ -61,7 +61,7 @@ func IsValidGCPMachineType(location, machineType string) bool {
 }
 
 // Returns the name of the disk image, if the disk image family is valid, otherwise returns an empty string
-func IsValidGCPDiskImageFamily(location, diskImageFamilyToCheck string) (string, error) {
+func IsValidGCPDiskImageFamily(zone, diskImageFamilyToCheck string) (string, error) {
 	l := logger.Get()
 	gcpDataRaw, err := GetGCPData()
 	if err != nil {
