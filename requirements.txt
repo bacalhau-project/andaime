@@ -234,7 +234,7 @@ networkx==3.2.1
     #   aider-chat
     #   llama-index-core
     #   torch
-nltk==3.8.1
+nltk==3.9
     # via llama-index-core
 numpy==1.26.4
     # via
