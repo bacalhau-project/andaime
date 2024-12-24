@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	awsmock "github.com/bacalhau-project/andaime/mocks/aws"
@@ -50,6 +51,7 @@ type PkgProvidersAWSProviderSuite struct {
 	awsProvider            *AWSProvider
 	awsConfig              aws.Config
 	deployment             *models.Deployment
+	awsConfig              aws.Config
 	origGetGlobalModelFunc func() *display.DisplayModel
 	origNewSSHConfigFunc   func(string, int, string, string) (sshutils_interface.SSHConfiger, error)
 	mockSSHConfig          *ssh_mock.MockSSHConfiger
@@ -400,19 +402,40 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
+	// Mock setup for spot and on-demand instances
 	mockRegionalClient := suite.deployment.AWS.RegionalResources.Clients[FAKE_REGION].(*mocks.MockEC2Clienter)
+
+	// Mock spot instance response
 	mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
-		InstanceIds: []string{FAKE_INSTANCE_ID},
+		InstanceIds: []string{"i-spotinstance123"},
 	}).Return(&ec2.DescribeInstancesOutput{
 		Reservations: []types.Reservation{{
 			Instances: []types.Instance{{
-				InstanceId:      aws.String(FAKE_INSTANCE_ID),
-				PublicIpAddress: aws.String("203.0.113.1"),
+				InstanceId:      aws.String("i-spotinstance123"),
+				PublicIpAddress: aws.String("1.2.3.4"),
 			}},
 		}},
-	}, nil)
+	}, nil).Once()
 
-	ip, err := suite.awsProvider.GetVMExternalIP(suite.ctx, FAKE_REGION, FAKE_INSTANCE_ID)
+	// Mock on-demand instance response
+	mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{"i-ondemand123"},
+	}).Return(&ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{{
+			Instances: []types.Instance{{
+				InstanceId:      aws.String("i-ondemand123"),
+				PublicIpAddress: aws.String("5.6.7.8"),
+			}},
+		}},
+	}, nil).Once()
+
+	// Test spot instance IP retrieval
+	ip, err := suite.awsProvider.GetVMExternalIP(suite.ctx, FAKE_REGION, "i-spotinstance123")
+	suite.Require().NoError(err)
+	suite.Require().Equal("1.2.3.4", ip)
+
+	// Test on-demand instance IP retrieval
+	ip, err = suite.awsProvider.GetVMExternalIP(suite.ctx, FAKE_REGION, "i-ondemand123")
 	suite.Require().NoError(err)
 	suite.Require().Equal("5.6.7.8", ip)
 }
