@@ -6,6 +6,7 @@ import (
 	context "context"
 
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
+	imds "github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -2092,6 +2093,22 @@ func (_c *MockEC2Clienter_TerminateInstances_Call) Return(_a0 *ec2.TerminateInst
 func (_c *MockEC2Clienter_TerminateInstances_Call) RunAndReturn(run func(context.Context, *ec2.TerminateInstancesInput, ...func(*ec2.Options)) (*ec2.TerminateInstancesOutput, error)) *MockEC2Clienter_TerminateInstances_Call {
 	_c.Call.Return(run)
 	return _c
+}
+
+// GetIMDSConfig provides a mock function with given fields:
+func (_m *MockEC2Clienter) GetIMDSConfig() *imds.Client {
+	ret := _m.Called()
+
+	var r0 *imds.Client
+	if rf, ok := ret.Get(0).(func() *imds.Client); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*imds.Client)
+		}
+	}
+
+	return r0
 }
 
 // NewMockEC2Clienter creates a new instance of MockEC2Clienter. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

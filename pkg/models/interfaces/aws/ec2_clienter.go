@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 )
 
 //go:generate mockery --name EC2Clienter
@@ -148,4 +149,6 @@ type EC2Clienter interface {
 		params *ec2.DescribeAvailabilityZonesInput,
 		optFns ...func(*ec2.Options),
 	) (*ec2.DescribeAvailabilityZonesOutput, error)
+	// IMDS configuration
+	GetIMDSConfig() *imds.Client
 }

@@ -21,7 +21,8 @@ func (m *MockSSHClient) Connect() (sshutils.SSHClienter, error) {
 	if m.ConnectFunc != nil {
 		return m.ConnectFunc()
 	}
-	return nil, nil
+	// Always return successful connection in test environment
+	return m, nil
 }
 
 func (m *MockSSHClient) ExecuteCommand(ctx context.Context, command string) (string, error) {
@@ -35,7 +36,8 @@ func (m *MockSSHClient) IsConnected() bool {
 	if m.IsConnectedFunc != nil {
 		return m.IsConnectedFunc()
 	}
-	return false
+	// Always return true to prevent connection timeout errors
+	return true
 }
 
 func (m *MockSSHClient) Close() error {

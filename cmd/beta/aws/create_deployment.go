@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -110,7 +111,10 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	// Ensure EC2 client is initialized
 	ec2Client := awsProvider.GetEC2Client()
 	if ec2Client == nil {
-		ec2Client = ec2.NewFromConfig(*awsProvider.GetConfig())
+		ec2Client = aws_provider.NewEC2ClientWrapper(
+			ec2.NewFromConfig(*awsProvider.GetConfig()),
+			imds.NewFromConfig(*awsProvider.GetConfig()),
+		)
 		awsProvider.SetEC2Client(ec2Client)
 	}
 

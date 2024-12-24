@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -23,7 +24,8 @@ const UNKNOWN = "unknown"
 
 // LiveEC2Client implements the EC2Clienter interface
 type LiveEC2Client struct {
-	client *ec2.Client
+	client     *ec2.Client
+	imdsClient *imds.Client
 }
 
 // NewEC2Client creates a new EC2 client
@@ -32,7 +34,10 @@ func NewEC2Client(ctx context.Context) (aws_interface.EC2Clienter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
+	return &LiveEC2Client{
+		client:     ec2.NewFromConfig(cfg),
+		imdsClient: imds.NewFromConfig(cfg),
+	}, nil
 }
 
 func (c *LiveEC2Client) RunInstances(
@@ -564,4 +569,9 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 		availableAZs,
 	))
 	return nil
+}
+
+// GetIMDSConfig returns the IMDS client for EC2 instance metadata
+func (c *LiveEC2Client) GetIMDSConfig() *imds.Client {
+	return c.imdsClient
 }
