@@ -9,6 +9,37 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+// ProvisioningStage represents different stages of machine provisioning
+type ProvisioningStage string
+
+const (
+	// VM provisioning stages
+	StageVMRequested    ProvisioningStage = "Requesting VM"
+	StageVMProvisioning ProvisioningStage = "Provisioning VM"
+	StageVMProvisioned  ProvisioningStage = "VM Provisioned"
+	StageVMFailed       ProvisioningStage = "VM Provisioning Failed"
+
+	// SSH provisioning stages
+	StageSSHConfiguring ProvisioningStage = "Configuring SSH"
+	StageSSHConfigured  ProvisioningStage = "SSH Configured"
+	StageSSHFailed      ProvisioningStage = "SSH Configuration Failed"
+
+	// Docker installation stages
+	StageDockerInstalling ProvisioningStage = "Installing Docker"
+	StageDockerInstalled  ProvisioningStage = "Docker Installed"
+	StageDockerFailed     ProvisioningStage = "Docker Installation Failed"
+
+	// Bacalhau installation stages
+	StageBacalhauInstalling ProvisioningStage = "Installing Bacalhau"
+	StageBacalhauInstalled  ProvisioningStage = "Bacalhau Installed"
+	StageBacalhauFailed     ProvisioningStage = "Bacalhau Installation Failed"
+
+	// Script execution stages
+	StageScriptExecuting ProvisioningStage = "Executing Script"
+	StageScriptCompleted ProvisioningStage = "Script Completed"
+	StageScriptFailed    ProvisioningStage = "Script Execution Failed"
+)
+
 type ProviderAbbreviation string
 
 const (
@@ -34,6 +65,8 @@ type DisplayStatus struct {
 	Name            string
 	Progress        int
 	Orchestrator    bool
+	Stage           ProvisioningStage
+	SpotInstance    bool
 	SSH             ServiceState
 	Docker          ServiceState
 	CorePackages    ServiceState
@@ -106,7 +139,20 @@ func NewDisplayVMStatus(
 	machineName string,
 	state MachineResourceState,
 ) *DisplayStatus {
-	return NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
+	// Map resource state to appropriate VM stage
+	stage := StageVMRequested
+	switch state {
+	case ResourceStatePending:
+		stage = StageVMProvisioning
+	case ResourceStateRunning, ResourceStateSucceeded:
+		stage = StageVMProvisioned
+	case ResourceStateFailed:
+		stage = StageVMFailed
+	}
+
+	status := NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
+	status.Stage = stage
+	return status
 }
 
 // NewDisplayStatus creates a new DisplayStatus
@@ -131,14 +177,17 @@ func NewDisplayStatus(
 		state,
 	)
 	return &DisplayStatus{
-		ID:   machineName,
-		Name: machineName,
-		Type: resourceType,
-		StatusMessage: CreateStateMessage(
-			resourceType,
-			state,
-			resourceID,
-		),
+		ID:            machineName,
+		Name:          machineName,
+		Type:          resourceType,
+		StatusMessage: CreateStateMessage(resourceType, state, resourceID),
+		Stage:         StageVMRequested,
+		SpotInstance:  false,
+		SSH:           ServiceStateUnknown,
+		Docker:        ServiceStateUnknown,
+		CorePackages:  ServiceStateUnknown,
+		Bacalhau:      ServiceStateUnknown,
+		CustomScript:  ServiceStateUnknown,
 	}
 }
 
@@ -429,6 +478,14 @@ func UpdateOnlyChangedStatus(
 	}
 
 	status.ElapsedTime = newStatus.ElapsedTime
+
+	// Update stage if provided
+	if newStatus.Stage != "" {
+		status.Stage = newStatus.Stage
+	}
+
+	// Update spot instance status
+	status.SpotInstance = newStatus.SpotInstance
 
 	return status
 }
