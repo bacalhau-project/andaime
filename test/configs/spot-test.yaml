@@ -1,4 +1,8 @@
 # Test configuration for spot and regular EC2 instances
+aws:
+  account_id: "123456789012"  # AWS account ID
+  region: "us-east-1"         # Default AWS region
+
 machines:
   # Spot instance configuration
   - location: us-east-1

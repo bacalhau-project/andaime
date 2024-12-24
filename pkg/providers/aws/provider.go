@@ -1887,6 +1887,14 @@ func (p *AWSProvider) GetEC2Client() aws_interface.EC2Clienter {
 	return p.EC2Client
 }
 
+func (p *AWSProvider) SetSTSClient(client aws_interface.STSClienter) {
+	p.STSClient = client
+}
+
+func (p *AWSProvider) GetSTSClient() aws_interface.STSClienter {
+	return p.STSClient
+}
+
 func (p *AWSProvider) GetPrimaryRegion() string {
 	return p.Config.Region
 }
