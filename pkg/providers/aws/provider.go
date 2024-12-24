@@ -2155,6 +2155,22 @@ func (p *AWSProvider) WaitUntilInstanceRunning(
 	return nil
 }
 
+func (p *AWSProvider) SetEC2Client(client aws_interface.EC2Clienter) {
+	p.EC2Client = client
+}
+
+func (p *AWSProvider) GetEC2Client() aws_interface.EC2Clienter {
+	return p.EC2Client
+}
+
+func (p *AWSProvider) SetSTSClient(client aws_interface.STSClienter) {
+	p.STSClient = client
+}
+
+func (p *AWSProvider) GetSTSClient() aws_interface.STSClienter {
+	return p.STSClient
+}
+
 func (p *AWSProvider) GetPrimaryRegion() string {
 	return p.Config.Region
 }

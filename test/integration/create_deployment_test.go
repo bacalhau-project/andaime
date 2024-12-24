@@ -31,7 +31,6 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testdata"
 
 	common_mock "github.com/bacalhau-project/andaime/mocks/common"
-
 	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
 	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
 	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
