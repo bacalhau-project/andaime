@@ -94,7 +94,7 @@ type AWSProvider struct {
 	ClusterDeployer common_interface.ClusterDeployerer
 	UpdateQueue     chan display.UpdateAction
 	EC2Client       aws_interface.EC2Clienter
-	STSClient       *sts.Client
+	STSClient       aws_interface.STSClienter // Changed from *sts.Client to aws_interface.STSClienter
 	ConfigMutex     sync.RWMutex
 	vpcManager      *RegionalVPCManager
 }
@@ -117,12 +117,16 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 	ec2Client := ec2.NewFromConfig(awsConfig)
 	ec2Clienter := &LiveEC2Client{client: ec2Client}
 
+	// Initialize STS client with interface wrapper
+	stsClient := sts.NewFromConfig(awsConfig)
+	stsClienter := NewSTSClient(stsClient)
+
 	provider := &AWSProvider{
 		AccountID:       accountID,
 		Config:          &awsConfig,
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
-		STSClient:       sts.NewFromConfig(awsConfig),
+		STSClient:       stsClienter,
 		EC2Client:       ec2Clienter,
 	}
 
@@ -134,6 +138,11 @@ func (p *AWSProvider) getOrCreateEC2Client(
 	ctx context.Context,
 	region string,
 ) (aws_interface.EC2Clienter, error) {
+	// If we already have an EC2 client set, use it (this is primarily for testing)
+	if p.EC2Client != nil {
+		return p.EC2Client, nil
+	}
+
 	// If no global model, create a temporary EC2 client
 	if display.GetGlobalModelFunc() == nil {
 		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
@@ -202,6 +211,7 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 
 	// Get AWS account ID if not already set
 	if deployment.AWS.AccountID == "" {
+		// Use the STSClient interface method
 		identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 		if err != nil {
 			return fmt.Errorf("failed to get AWS account ID: %w", err)

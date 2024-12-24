@@ -7,6 +7,9 @@ packages:
       all: true
       recursive: true
       dir: "./mocks/aws"
+      inpackage: false
+      with-expecter: true
+      outpkg: aws
   github.com/bacalhau-project/andaime/pkg/models/interfaces/azure:
     config:
       all: true

@@ -437,9 +437,20 @@ func (p *AWSProvider) deployVM(
 		return fmt.Errorf("failed to describe instance: %w", err)
 	}
 
+	if len(describeResult.Reservations) == 0 {
+		return fmt.Errorf("no reservations found for instance")
+	}
+	if len(describeResult.Reservations[0].Instances) == 0 {
+		return fmt.Errorf("no instances found in reservation")
+	}
+
 	instance := describeResult.Reservations[0].Instances[0]
-	machine.SetPublicIP(*instance.PublicIpAddress)
-	machine.SetPrivateIP(*instance.PrivateIpAddress)
+	if instance.PublicIpAddress != nil {
+		machine.SetPublicIP(*instance.PublicIpAddress)
+	}
+	if instance.PrivateIpAddress != nil {
+		machine.SetPrivateIP(*instance.PrivateIpAddress)
+	}
 
 	return nil
 }

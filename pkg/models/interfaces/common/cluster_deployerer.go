@@ -192,4 +192,5 @@ type ClusterDeployerer interface {
 	ProvisionBacalhauCluster(ctx context.Context) error
 	ProvisionOrchestrator(ctx context.Context, machineName string) error
 	ProvisionWorker(ctx context.Context, machineName string) error
+	SetSSHClient(client sshutils_interface.SSHClienter)
 }

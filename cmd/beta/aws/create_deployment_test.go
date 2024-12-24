@@ -6,16 +6,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/bacalhau-project/andaime/internal/testdata"
-	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	awsmocks "github.com/bacalhau-project/andaime/mocks/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	awsprovider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	ssh_utils "github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
@@ -101,7 +101,7 @@ deployments:
 
 func TestExecuteCreateDeployment(t *testing.T) {
 	// Create mock EC2 client
-	mockEC2Client := new(aws_mock.MockEC2Clienter)
+	mockEC2Client := new(awsmocks.MockEC2Clienter)
 
 	// Mock DescribeAvailabilityZones response
 	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, &ec2.DescribeAvailabilityZonesInput{}).
@@ -109,15 +109,15 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			&ec2.DescribeAvailabilityZonesOutput{
 				AvailabilityZones: []types.AvailabilityZone{
 					{
-						ZoneName:   aws.String("us-east-1a"),
-						ZoneType:   aws.String("availability-zone"),
-						RegionName: aws.String("us-east-1"),
+						ZoneName:   awsconfig.String("us-east-1a"),
+						ZoneType:   awsconfig.String("availability-zone"),
+						RegionName: awsconfig.String("us-east-1"),
 						State:      types.AvailabilityZoneStateAvailable,
 					},
 					{
-						ZoneName:   aws.String("us-east-1b"),
-						ZoneType:   aws.String("availability-zone"),
-						RegionName: aws.String("us-east-1"),
+						ZoneName:   awsconfig.String("us-east-1b"),
+						ZoneType:   awsconfig.String("availability-zone"),
+						RegionName: awsconfig.String("us-east-1"),
 						State:      types.AvailabilityZoneStateAvailable,
 					},
 				},
@@ -128,7 +128,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		return input.CidrBlock != nil
 	})).Return(&ec2.CreateVpcOutput{
 		Vpc: &types.Vpc{
-			VpcId: aws.String("vpc-test123"),
+			VpcId: awsconfig.String("vpc-test123"),
 			State: types.VpcStateAvailable,
 		},
 	}, nil)
@@ -137,7 +137,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.Anything).
 		Return(&ec2.CreateInternetGatewayOutput{
 			InternetGateway: &types.InternetGateway{
-				InternetGatewayId: aws.String("igw-test123"),
+				InternetGatewayId: awsconfig.String("igw-test123"),
 			},
 		}, nil)
 
@@ -145,7 +145,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.MatchedBy(func(input *ec2.CreateSecurityGroupInput) bool {
 		return input.GroupName != nil && input.VpcId != nil
 	})).Return(&ec2.CreateSecurityGroupOutput{
-		GroupId: aws.String("sg-test123"),
+		GroupId: awsconfig.String("sg-test123"),
 	}, nil)
 
 	// Mock Security Group rule authorization
@@ -162,7 +162,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		return input.VpcId != nil && input.CidrBlock != nil
 	})).Return(&ec2.CreateSubnetOutput{
 		Subnet: &types.Subnet{
-			SubnetId: aws.String("subnet-test123"),
+			SubnetId: awsconfig.String("subnet-test123"),
 			State:    types.SubnetStateAvailable,
 		},
 	}, nil)
@@ -172,7 +172,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		return input.VpcId != nil
 	})).Return(&ec2.CreateRouteTableOutput{
 		RouteTable: &types.RouteTable{
-			RouteTableId: aws.String("rtb-test123"),
+			RouteTableId: awsconfig.String("rtb-test123"),
 		},
 	}, nil)
 
@@ -183,7 +183,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock route table association
 	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.Anything).
 		Return(&ec2.AssociateRouteTableOutput{
-			AssociationId: aws.String("rtbassoc-test123"),
+			AssociationId: awsconfig.String("rtbassoc-test123"),
 		}, nil)
 
 	// Mock DescribeRouteTables for network connectivity check
@@ -192,12 +192,12 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	})).Return(&ec2.DescribeRouteTablesOutput{
 		RouteTables: []types.RouteTable{
 			{
-				RouteTableId: aws.String("rtb-test123"),
-				VpcId:       aws.String("vpc-test123"),
+				RouteTableId: awsconfig.String("rtb-test123"),
+				VpcId:       awsconfig.String("vpc-test123"),
 				Routes: []types.Route{
 					{
-						DestinationCidrBlock: aws.String("0.0.0.0/0"),
-						GatewayId:           aws.String("igw-test123"),
+						DestinationCidrBlock: awsconfig.String("0.0.0.0/0"),
+						GatewayId:           awsconfig.String("igw-test123"),
 						State:               types.RouteStateActive,
 					},
 				},
@@ -211,7 +211,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	})).Return(&ec2.DescribeVpcsOutput{
 		Vpcs: []types.Vpc{
 			{
-				VpcId: aws.String("vpc-test123"),
+				VpcId: awsconfig.String("vpc-test123"),
 				State: types.VpcStateAvailable,
 			},
 		},
@@ -223,11 +223,11 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	})).Return(&ec2.DescribeInternetGatewaysOutput{
 		InternetGateways: []types.InternetGateway{
 			{
-				InternetGatewayId: aws.String("igw-test123"),
+				InternetGatewayId: awsconfig.String("igw-test123"),
 				Attachments: []types.InternetGatewayAttachment{
 					{
 						State: types.AttachmentStatusAttached,
-						VpcId: aws.String("vpc-test123"),
+						VpcId: awsconfig.String("vpc-test123"),
 					},
 				},
 			},
@@ -246,8 +246,8 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	})).Return(&ec2.DescribeImagesOutput{
 		Images: []types.Image{
 			{
-				ImageId: aws.String("ami-test123"),
-				Name:    aws.String("amzn2-ami-hvm-2.0.20231218.0-x86_64-gp2"),
+				ImageId: awsconfig.String("ami-test123"),
+				Name:    awsconfig.String("amzn2-ami-hvm-2.0.20231218.0-x86_64-gp2"),
 				State:   types.ImageStateAvailable,
 			},
 		},
@@ -264,7 +264,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	).Return(&ec2.RunInstancesOutput{
 		Instances: []types.Instance{
 			{
-				InstanceId: aws.String("i-spot123"),
+				InstanceId: awsconfig.String("i-spot123"),
 				State: &types.InstanceState{
 					Name: types.InstanceStateNameRunning,
 				},
@@ -282,7 +282,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	).Return(&ec2.RunInstancesOutput{
 		Instances: []types.Instance{
 			{
-				InstanceId: aws.String("i-ondemand123"),
+				InstanceId: awsconfig.String("i-ondemand123"),
 				State: &types.InstanceState{
 					Name: types.InstanceStateNameRunning,
 				},
@@ -290,45 +290,74 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		},
 	}, nil)
 
-	// Mock DescribeInstances for both spot and on-demand
+	// Mock DescribeInstances for both spot and on-demand (handles both with and without options)
 	mockEC2Client.On(
 		"DescribeInstances",
-		mock.Anything,
-		mock.Anything,
+		mock.Anything,  // Use Anything to accept any context implementation
+		mock.AnythingOfType("*ec2.DescribeInstancesInput"),
+		mock.Anything,  // Use Anything to handle variadic options parameter
 	).Return(&ec2.DescribeInstancesOutput{
 		Reservations: []types.Reservation{
 			{
 				Instances: []types.Instance{
 					{
-						InstanceId: aws.String("i-spot123"),
+						InstanceId: awsconfig.String("i-spot123"),
 						State: &types.InstanceState{
 							Name: types.InstanceStateNameRunning,
 						},
-						PublicIpAddress: aws.String("1.2.3.4"),
+						PublicIpAddress: awsconfig.String("1.2.3.4"),
 					},
 					{
-						InstanceId: aws.String("i-ondemand123"),
+						InstanceId: awsconfig.String("i-ondemand123"),
 						State: &types.InstanceState{
 							Name: types.InstanceStateNameRunning,
 						},
-						PublicIpAddress: aws.String("5.6.7.8"),
+						PublicIpAddress: awsconfig.String("5.6.7.8"),
+					},
+				},
+			},
+		},
+	}, nil)
+
+	// Mock DescribeInstances for direct calls (2-arg version)
+	mockEC2Client.On(
+		"DescribeInstances",
+		mock.Anything,  // Use Anything for context to accept any context implementation
+		mock.AnythingOfType("*ec2.DescribeInstancesInput"),
+	).Return(&ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{
+			{
+				Instances: []types.Instance{
+					{
+						InstanceId: awsconfig.String("i-spot123"),
+						State: &types.InstanceState{
+							Name: types.InstanceStateNameRunning,
+						},
+						PublicIpAddress: awsconfig.String("1.2.3.4"),
+					},
+					{
+						InstanceId: awsconfig.String("i-ondemand123"),
+						State: &types.InstanceState{
+							Name: types.InstanceStateNameRunning,
+						},
+						PublicIpAddress: awsconfig.String("5.6.7.8"),
 					},
 				},
 			},
 		},
 	}, nil)
 	// Create mock STS client
-	mockSTSClient := &aws_mock.MockSTSClienter{}
+	mockSTSClient := new(awsmocks.MockSTSClienter)
 	mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.Anything).Return(
 		&sts.GetCallerIdentityOutput{
-			Account: aws.String("123456789012"),
-			Arn:     aws.String("arn:aws:iam::123456789012:user/test"),
-			UserId:  aws.String("AIDATEST"),
+			Account: awsconfig.String("123456789012"),
+			Arn:     awsconfig.String("arn:aws:iam::123456789012:user/test"),
+			UserId:  awsconfig.String("AIDATEST"),
 		}, nil)
 
 	// Create SSH client mock
-	var mockSSHClient *aws_mock.MockSSHClient
-	mockSSHClient = &aws_mock.MockSSHClient{}
+	var mockSSHClient *awsmocks.MockSSHClient
+	mockSSHClient = &awsmocks.MockSSHClient{}
 	mockSSHClient.ConnectFunc = func() (sshutils.SSHClienter, error) {
 		return mockSSHClient, nil
 	}
@@ -337,22 +366,23 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	mockSSHClient.CloseFunc = func() error { return nil }
 	mockSSHClient.GetClientFunc = func() *ssh.Client { return nil }
 	mockSSHClient.NewSessionFunc = func() (sshutils.SSHSessioner, error) { return nil, nil }
-	originalNewAWSProviderFunc := aws_provider.NewAWSProviderFunc
+
+	originalNewAWSProvider := awsprovider.NewAWSProviderFunc
 	defer func() {
-		aws_provider.NewAWSProviderFunc = originalNewAWSProviderFunc
+		awsprovider.NewAWSProviderFunc = originalNewAWSProvider
 	}()
 
 	// Mock NewAWSProviderFunc to return our provider with mock clients
-	aws_provider.NewAWSProviderFunc = func(accountID string) (*aws_provider.AWSProvider, error) {
+	awsprovider.NewAWSProviderFunc = func(accountID string) (*awsprovider.AWSProvider, error) {
 		// Create provider with mock clients directly, bypassing AWS credential loading
-		cfg := aws.Config{Region: "us-east-1"} // Create config struct
-		provider := &aws_provider.AWSProvider{
+		cfg := awsconfig.Config{Region: "us-east-1"} // Create config struct
+		provider := &awsprovider.AWSProvider{
 			AccountID:       accountID,
-			Config:         &cfg, // Use pointer to config
+			Config:         &cfg,
 			EC2Client:      mockEC2Client,
 			STSClient:      mockSTSClient,
 			ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
-			UpdateQueue:     make(chan display.UpdateAction, aws_provider.UpdateQueueSize),
+			UpdateQueue:     make(chan display.UpdateAction, 1000), // Use constant value directly as it's not exported
 		}
 		deployer := provider.GetClusterDeployer()
 		deployer.SetSSHClient(mockSSHClient)

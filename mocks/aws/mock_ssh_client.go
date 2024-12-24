@@ -2,35 +2,26 @@ package aws
 
 import (
 	"context"
+
+	"github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"golang.org/x/crypto/ssh"
 )
 
-// MockSSHClient implements SSHClienter interface for testing
+// MockSSHClient is a custom mock implementation of SSHClienter with function fields
 type MockSSHClient struct {
-	ConnectFunc           func() error
-	CloseFunc            func() error
-	ExecuteCommandFunc    func(ctx context.Context, command string) (string, error)
-	GetHostFunc          func() string
-	GetPortFunc          func() int
-	GetUserFunc          func() string
-	GetPrivateKeyMaterialFunc func() []byte
-	GetSSHClientFunc     func() *ssh.Client
-	SetSSHClientFunc     func(client *ssh.Client)
-	IsConnectedFunc      func() bool
+	ConnectFunc        func() (sshutils.SSHClienter, error)
+	ExecuteCommandFunc func(ctx context.Context, command string) (string, error)
+	IsConnectedFunc    func() bool
+	CloseFunc         func() error
+	GetClientFunc     func() *ssh.Client
+	NewSessionFunc    func() (sshutils.SSHSessioner, error)
 }
 
-func (m *MockSSHClient) Connect() error {
+func (m *MockSSHClient) Connect() (sshutils.SSHClienter, error) {
 	if m.ConnectFunc != nil {
 		return m.ConnectFunc()
 	}
-	return nil
-}
-
-func (m *MockSSHClient) Close() error {
-	if m.CloseFunc != nil {
-		return m.CloseFunc()
-	}
-	return nil
+	return nil, nil
 }
 
 func (m *MockSSHClient) ExecuteCommand(ctx context.Context, command string) (string, error) {
@@ -40,50 +31,30 @@ func (m *MockSSHClient) ExecuteCommand(ctx context.Context, command string) (str
 	return "", nil
 }
 
-func (m *MockSSHClient) GetHost() string {
-	if m.GetHostFunc != nil {
-		return m.GetHostFunc()
-	}
-	return "localhost"
-}
-
-func (m *MockSSHClient) GetPort() int {
-	if m.GetPortFunc != nil {
-		return m.GetPortFunc()
-	}
-	return 22
-}
-
-func (m *MockSSHClient) GetUser() string {
-	if m.GetUserFunc != nil {
-		return m.GetUserFunc()
-	}
-	return "test"
-}
-
-func (m *MockSSHClient) GetPrivateKeyMaterial() []byte {
-	if m.GetPrivateKeyMaterialFunc != nil {
-		return m.GetPrivateKeyMaterialFunc()
-	}
-	return []byte("test-key")
-}
-
-func (m *MockSSHClient) GetSSHClient() *ssh.Client {
-	if m.GetSSHClientFunc != nil {
-		return m.GetSSHClientFunc()
-	}
-	return nil
-}
-
-func (m *MockSSHClient) SetSSHClient(client *ssh.Client) {
-	if m.SetSSHClientFunc != nil {
-		m.SetSSHClientFunc(client)
-	}
-}
-
 func (m *MockSSHClient) IsConnected() bool {
 	if m.IsConnectedFunc != nil {
 		return m.IsConnectedFunc()
 	}
-	return true
+	return false
+}
+
+func (m *MockSSHClient) Close() error {
+	if m.CloseFunc != nil {
+		return m.CloseFunc()
+	}
+	return nil
+}
+
+func (m *MockSSHClient) GetClient() *ssh.Client {
+	if m.GetClientFunc != nil {
+		return m.GetClientFunc()
+	}
+	return nil
+}
+
+func (m *MockSSHClient) NewSession() (sshutils.SSHSessioner, error) {
+	if m.NewSessionFunc != nil {
+		return m.NewSessionFunc()
+	}
+	return nil, nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
+	awsmock "github.com/bacalhau-project/andaime/mocks/aws"
 	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -43,7 +43,7 @@ type PkgProvidersAWSProviderSuite struct {
 	testSSHPrivateKeyPath  string
 	cleanupPublicKey       func()
 	cleanupPrivateKey      func()
-	mockAWSClient          *aws_mocks.MockEC2Clienter
+	mockAWSClient          *awsmock.MockEC2Clienter
 	awsProvider            *AWSProvider
 	origGetGlobalModelFunc func() *display.DisplayModel
 	origNewSSHConfigFunc   func(string, int, string, string) (sshutils_interface.SSHConfiger, error)
@@ -108,7 +108,7 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 
 	// Set the mock client and ensure it's used for all regions
-	suite.mockAWSClient = new(aws_mocks.MockEC2Clienter)
+	suite.mockAWSClient = new(awsmock.MockEC2Clienter)
 	provider.SetEC2Client(suite.mockAWSClient)
 
 	// Pre-initialize VPC manager with the deployment

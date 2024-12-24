@@ -285,8 +285,13 @@ func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models
 	// Update stage based on service states and update the corresponding service state
 	switch {
 	case machine.GetPublicIP() != "" &&
-		machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded:
-		newStatus.Stage = models.StageVMProvisioned
+		(machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded ||
+			machine.GetMachineResourceState("aws.compute/Instance") == models.ResourceStateSucceeded):
+		if newStatus.SpotInstance {
+			newStatus.Stage = models.StageSpotProvisioned
+		} else {
+			newStatus.Stage = models.StageVMProvisioned
+		}
 		machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
 
 	case newStatus.SSH != models.ServiceStateUnknown:

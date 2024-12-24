@@ -19,6 +19,13 @@ const (
 	StageVMProvisioned  ProvisioningStage = "VM Provisioned"
 	StageVMFailed       ProvisioningStage = "VM Provisioning Failed"
 
+	// Spot Instance specific stages
+	StageSpotRequested    ProvisioningStage = "Requesting Spot Instance"
+	StageSpotBidding      ProvisioningStage = "Spot Instance Bid Pending"
+	StageSpotProvisioning ProvisioningStage = "Spot Instance Provisioning"
+	StageSpotProvisioned  ProvisioningStage = "Spot Instance Provisioned"
+	StageSpotFailed       ProvisioningStage = "Spot Instance Failed"
+
 	// SSH provisioning stages
 	StageSSHConfiguring ProvisioningStage = "Configuring SSH"
 	StageSSHConfigured  ProvisioningStage = "SSH Configured"
@@ -131,27 +138,39 @@ func NewDisplayStatusWithText(
 	}
 }
 
-// NewDisplayVMStatus creates a new DisplayStatus for a VM
-// - machineName is the name of the machine (the start of the row - should be unique, something like ABCDEF-vm)
-// - resourceType is the type of the resource (e.g. AzureResourceTypeNIC)
-// - state is the state of the resource (e.g. AzureResourceStateSucceeded)
 func NewDisplayVMStatus(
 	machineName string,
 	state MachineResourceState,
+	spotInstance bool,
 ) *DisplayStatus {
 	// Map resource state to appropriate VM stage
 	stage := StageVMRequested
-	switch state {
-	case ResourceStatePending:
-		stage = StageVMProvisioning
-	case ResourceStateRunning, ResourceStateSucceeded:
-		stage = StageVMProvisioned
-	case ResourceStateFailed:
-		stage = StageVMFailed
+	if spotInstance {
+		stage = StageSpotRequested
+		switch state {
+		case ResourceStatePending:
+			stage = StageSpotBidding
+		case ResourceStateRunning:
+			stage = StageSpotProvisioning
+		case ResourceStateSucceeded:
+			stage = StageSpotProvisioned
+		case ResourceStateFailed:
+			stage = StageSpotFailed
+		}
+	} else {
+		switch state {
+		case ResourceStatePending:
+			stage = StageVMProvisioning
+		case ResourceStateRunning, ResourceStateSucceeded:
+			stage = StageVMProvisioned
+		case ResourceStateFailed:
+			stage = StageVMFailed
+		}
 	}
 
 	status := NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
 	status.Stage = stage
+	status.SpotInstance = spotInstance
 	return status
 }
 
