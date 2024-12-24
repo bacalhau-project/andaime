@@ -277,13 +277,24 @@ func (m *DisplayModel) updateOrchestratorStatus(
 }
 
 func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models.DisplayStatus) {
+	l := logger.Get()
 	machine := m.Deployment.Machines[machineName]
 	if machine == nil {
+		l.Debugf("Machine %s not found, skipping service state update", machineName)
 		return
 	}
 
 	// Update stage based on service states and update the corresponding service state
 	switch {
+	// Handle spot instance specific states first
+	case newStatus.SpotInstance:
+		if newStatus.SpotState == models.SpotStateRequested {
+			newStatus.Stage = models.StageSpotRequested
+		} else if newStatus.SpotState == models.SpotStateFallback {
+			newStatus.Stage = models.StageSpotFallback
+		}
+		machine.SetServiceState(models.ServiceTypeSpot.Name, newStatus.SpotState)
+
 	case machine.GetPublicIP() != "" &&
 		(machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded ||
 			machine.GetMachineResourceState("aws.compute/Instance") == models.ResourceStateSucceeded):
@@ -336,6 +347,16 @@ func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models
 			newStatus.Stage = models.StageScriptExecuting
 		}
 		machine.SetServiceState(models.ServiceTypeScript.Name, newStatus.CustomScript)
+	}
+
+	// Update the machine's stage if a new one is set
+	if newStatus.Stage != models.StageUnknown {
+		err := m.Deployment.UpdateMachine(machineName, func(m models.Machiner) {
+			m.SetStage(newStatus.Stage)
+		})
+		if err != nil {
+			l.Errorf("Error updating machine stage: %v", err)
+		}
 	}
 
 	// Update status message with spot instance prefix if needed

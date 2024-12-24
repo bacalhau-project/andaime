@@ -25,6 +25,7 @@ const (
 	StageSpotProvisioning ProvisioningStage = "Spot Instance Provisioning"
 	StageSpotProvisioned  ProvisioningStage = "Spot Instance Provisioned"
 	StageSpotFailed       ProvisioningStage = "Spot Instance Failed"
+	StageSpotFallback     ProvisioningStage = "Falling Back to On-Demand"
 
 	// SSH provisioning stages
 	StageSSHConfiguring ProvisioningStage = "Configuring SSH"
@@ -496,6 +497,7 @@ func UpdateOnlyChangedStatus(
 
 	status.ElapsedTime = newStatus.ElapsedTime
 
+<<<<<<< HEAD
 	// Update stage and format status message accordingly
 	if newStatus.Stage != "" {
 		status.Stage = newStatus.Stage
@@ -513,5 +515,16 @@ func UpdateOnlyChangedStatus(
 		status.StatusMessage = fmt.Sprintf("[Spot] %s", status.StatusMessage)
 	}
 
+||||||| parent of 62cd200 (refactor: update display model with stage tracking and spot instance support)
+=======
+	// Update stage if provided
+	if newStatus.Stage != "" {
+		status.Stage = newStatus.Stage
+	}
+
+	// Update spot instance status
+	status.SpotInstance = newStatus.SpotInstance
+
+>>>>>>> 62cd200 (refactor: update display model with stage tracking and spot instance support)
 	return status
 }
