@@ -226,3 +226,16 @@ type EC2ContextOperations interface {
 	RouteTableAPI
 	RegionAPI
 }
+
+// EC2Clienter defines the interface for EC2 client operations
+type EC2Clienter interface {
+	EC2Client
+	EC2Operations
+	EC2ContextOperations
+}
+
+// STSClienter defines the interface for STS client operations
+type STSClienter interface {
+	STSClient
+	STSOperations
+}

@@ -21,18 +21,9 @@ packages:
       RouteOperations:
       RegionOperations:
       IMDSClient:
-  github.com/bacalhau-project/andaime/pkg/models/interfaces/aws:
-    config:
-      dir: mocks/aws
-      outpkg: aws
-      filename: "mock_{{.InterfaceName}}.go"
-      all: true
-      recursive: true
-      keyed-interfaces: true
-    interfaces:
       EC2Clienter:
-      EC2BaseOperations:
-      EC2ContextOperations:
+      STSClienter:
+      AWSOperations:
       RunInstancesAPI:
       DescribeInstancesAPI:
       TerminateInstancesAPI:
@@ -43,7 +34,8 @@ packages:
       InternetGatewayAPI:
       RouteTableAPI:
       RegionAPI:
-      STSClienter:
+      EC2ContextOperations:
+
   github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils:
     config:
       dir: mocks/sshutils
