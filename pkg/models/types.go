@@ -58,6 +58,36 @@ const (
 	ProviderAbbreviationUnknown ProviderAbbreviation = "UNK"
 )
 
+// ServiceType represents the type of service being used
+type ServiceType struct {
+	Name  string
+	state ServiceState
+}
+
+// NewServiceType creates a new ServiceType with initial state
+func NewServiceType(name string, state ServiceState) ServiceType {
+	return ServiceType{Name: name, state: state}
+}
+
+// GetState returns the current state of the service
+func (s *ServiceType) GetState() ServiceState {
+	return s.state
+}
+
+// SetState updates the state of the service
+func (s *ServiceType) SetState(state ServiceState) {
+	s.state = state
+}
+
+var (
+	ServiceTypeSpot         = ServiceType{Name: "spot"}
+	ServiceTypeSSH          = ServiceType{Name: "ssh"}
+	ServiceTypeDocker       = ServiceType{Name: "docker"}
+	ServiceTypeCorePackages = ServiceType{Name: "core-packages"}
+	ServiceTypeBacalhau     = ServiceType{Name: "bacalhau"}
+	ServiceTypeScript       = ServiceType{Name: "script"}
+)
+
 type DisplayStatus struct {
 	ID              string
 	Type            ResourceType
@@ -75,6 +105,7 @@ type DisplayStatus struct {
 	Orchestrator    bool
 	Stage           ProvisioningStage
 	SpotInstance    bool
+	SpotState       ProvisioningStage
 	SSH             ServiceState
 	Docker          ServiceState
 	CorePackages    ServiceState
@@ -398,13 +429,6 @@ func GetMachineNameFromResourceName(id string) string {
 	return ""
 }
 
-var RequiredServices = []ServiceType{
-	ServiceTypeSSH,
-	ServiceTypeDocker,
-	ServiceTypeBacalhau,
-	ServiceTypeScript,
-}
-
 func machineNeedsUpdating(
 	deployment *Deployment,
 	machineName string,
@@ -497,7 +521,6 @@ func UpdateOnlyChangedStatus(
 
 	status.ElapsedTime = newStatus.ElapsedTime
 
-<<<<<<< HEAD
 	// Update stage and format status message accordingly
 	if newStatus.Stage != "" {
 		status.Stage = newStatus.Stage
@@ -515,16 +538,5 @@ func UpdateOnlyChangedStatus(
 		status.StatusMessage = fmt.Sprintf("[Spot] %s", status.StatusMessage)
 	}
 
-||||||| parent of 62cd200 (refactor: update display model with stage tracking and spot instance support)
-=======
-	// Update stage if provided
-	if newStatus.Stage != "" {
-		status.Stage = newStatus.Stage
-	}
-
-	// Update spot instance status
-	status.SpotInstance = newStatus.SpotInstance
-
->>>>>>> 62cd200 (refactor: update display model with stage tracking and spot instance support)
 	return status
 }

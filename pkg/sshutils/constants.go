@@ -1,18 +1,20 @@
 package sshutils
 
-import "time"
-
-var (
-	TimeInBetweenSSHRetries = 2 * time.Second
-	SSHTimeOut              = 1 * time.Minute
-	SSHRetryAttempts        = 3
-	SSHDialTimeout          = 10 * time.Second
-	SSHClientConfigTimeout  = 10 * time.Second
-	SSHRetryDelay           = 20 * time.Second
+import (
+	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces/types"
 )
 
-func GetAggregateSSHTimeout() time.Duration {
-	totalTimeout := (SSHTimeOut + TimeInBetweenSSHRetries + SSHRetryDelay) * time.Duration(
+var (
+	TimeInBetweenSSHRetries = 2 * types.Second
+	SSHTimeOut              = 1 * types.Minute
+	SSHRetryAttempts        = 3
+	SSHDialTimeout          = 10 * types.Second
+	SSHClientConfigTimeout  = 10 * types.Second
+	SSHRetryDelay           = 20 * types.Second
+)
+
+func GetAggregateSSHTimeout() types.Duration {
+	totalTimeout := (SSHTimeOut + TimeInBetweenSSHRetries + SSHRetryDelay) * types.Duration(
 		SSHRetryAttempts,
 	)
 	return totalTimeout

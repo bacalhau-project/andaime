@@ -49,6 +49,10 @@ type Machiner interface {
 	GetPrivateIP() string
 	SetPrivateIP(ip string)
 
+	// Stage management
+	GetStage() ProvisioningStage
+	SetStage(stage ProvisioningStage)
+
 	// AWS Spot Market Options
 	GetSpotMarketOptions() *ec2Types.InstanceMarketOptionsRequest
 	SetSpotMarketOptions(options *ec2Types.InstanceMarketOptionsRequest)
@@ -133,6 +137,7 @@ type Machine struct {
 	Region          string
 	Zone            string
 	NodeType        string
+	Stage           ProvisioningStage
 
 	StatusMessage string
 	Parameters    Parameters
@@ -208,13 +213,15 @@ func NewMachine(
 
 	machineName := fmt.Sprintf("%s-vm", newID)
 	returnMachine := &Machine{
-		ID:            machineName,
-		Name:          machineName,
-		StartTime:     time.Now(),
-		VMSize:        vmSize,
-		DiskSizeGB:    diskSizeGB,
-		CloudProvider: cloudProvider,
-		CloudSpecific: cloudSpecificInfo,
+		ID:              machineName,
+		Name:            machineName,
+		StartTime:       time.Now(),
+		VMSize:          vmSize,
+		DiskSizeGB:      diskSizeGB,
+		CloudProvider:   cloudProvider,
+		CloudSpecific:   cloudSpecificInfo,
+		Stage:           StageVMRequested, // Initialize stage as VM requested
+		machineResources: make(map[string]MachineResource),
 	}
 
 	// There is some logic in SetLocation so we do this outside of the struct
@@ -496,7 +503,7 @@ func (mach *Machine) getServiceStateUnsafe(serviceName string) ServiceState {
 	}
 
 	if service, ok := mach.machineServices[serviceName]; ok {
-		return service.State
+		return service.GetState()
 	}
 	return ServiceStateUnknown
 }
@@ -513,10 +520,10 @@ func (mach *Machine) setServiceStateUnsafe(serviceName string, state ServiceStat
 	}
 
 	if service, ok := mach.machineServices[serviceName]; ok {
-		service.State = state
+		service.SetState(state)
 		mach.machineServices[serviceName] = service
 	} else {
-		mach.machineServices[serviceName] = ServiceType{Name: serviceName, State: state}
+		mach.machineServices[serviceName] = NewServiceType(serviceName, state)
 	}
 }
 
@@ -840,6 +847,20 @@ func (mach *Machine) SetOrchestratorIP(ip string) {
 
 func (mach *Machine) GetStatusMessage() string {
 	return mach.StatusMessage
+}
+
+// GetStage returns the current provisioning stage with mutex protection
+func (mach *Machine) GetStage() ProvisioningStage {
+	mach.stateMutex.RLock()
+	defer mach.stateMutex.RUnlock()
+	return mach.Stage
+}
+
+// SetStage updates the current provisioning stage with mutex protection
+func (mach *Machine) SetStage(stage ProvisioningStage) {
+	mach.stateMutex.Lock()
+	defer mach.stateMutex.Unlock()
+	mach.Stage = stage
 }
 
 func (mach *Machine) SetStatusMessage(message string) {

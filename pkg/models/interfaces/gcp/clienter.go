@@ -12,6 +12,7 @@ import (
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 )
 
+//go:generate mockery --name GCPClienter --output ../../../../mocks/gcp --outpkg gcp
 type GCPClienter interface {
 	common_interface.Clienter
 

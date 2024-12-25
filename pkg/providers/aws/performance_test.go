@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package awsprovider
+package aws
 
 import (
 	"context"

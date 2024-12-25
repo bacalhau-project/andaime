@@ -10,8 +10,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/cmd/beta/provision"
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	common_mock "github.com/bacalhau-project/andaime/mocks/common"
-	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	common_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	ssh_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"

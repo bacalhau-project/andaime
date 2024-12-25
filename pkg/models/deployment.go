@@ -9,8 +9,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
-
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
 )
 
 type ServiceState int
@@ -24,17 +23,15 @@ const (
 	ServiceStateUnknown
 )
 
-type ServiceType struct {
-	Name  string
-	State ServiceState
-}
-
+// Use ServiceType from types.go
 var (
-	ServiceTypeSSH          = ServiceType{Name: "SSH", State: ServiceStateNotStarted}
-	ServiceTypeDocker       = ServiceType{Name: "Docker", State: ServiceStateNotStarted}
-	ServiceTypeBacalhau     = ServiceType{Name: "Bacalhau", State: ServiceStateNotStarted}
-	ServiceTypeCorePackages = ServiceType{Name: "CorePackages", State: ServiceStateNotStarted}
-	ServiceTypeScript       = ServiceType{Name: "Script", State: ServiceStateNotStarted}
+	RequiredServices = []ServiceType{
+		ServiceTypeSSH,          // Use existing ServiceType constants from types.go
+		ServiceTypeDocker,
+		ServiceTypeCorePackages,
+		ServiceTypeBacalhau,
+		ServiceTypeScript,
+	}
 )
 
 type MachineResource struct {

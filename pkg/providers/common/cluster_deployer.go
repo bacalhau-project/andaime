@@ -302,7 +302,8 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 
 	if callback == nil {
 		callback = func(status *models.DisplayStatus) {
-			fmt.Printf("\r%s", status.StatusMessage)
+			m := display.GetGlobalModelFunc()
+			m.UpdateDisplay(status)
 		}
 	}
 

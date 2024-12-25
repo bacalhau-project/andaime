@@ -12,6 +12,7 @@ import (
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 )
 
+//go:generate mockery --name AzureClienter --output ../../../../mocks/azure --outpkg azure
 // AzureClienter defines the methods that any Azure client must implement.
 // This abstraction allows for easier testing and flexibility in client implementations.
 type AzureClienter interface {

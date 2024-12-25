@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	ssh_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"

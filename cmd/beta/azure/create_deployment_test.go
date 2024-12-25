@@ -7,7 +7,7 @@ import (
 	"time"
 
 	internal_testutil "github.com/bacalhau-project/andaime/internal/testutil"
-	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
+	azure_mocks "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"

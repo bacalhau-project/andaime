@@ -9,7 +9,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
+	gcp_mocks "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"

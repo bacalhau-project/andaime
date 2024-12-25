@@ -3,7 +3,7 @@ package aws
 import (
 	"context"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
 )
 
 // STSClient implements the STSClienter interface
@@ -12,7 +12,7 @@ type STSClient struct {
 }
 
 // NewSTSClient creates a new STSClient
-func NewSTSClient(client *sts.Client) aws_interface.STSClienter {
+func NewSTSClient(client *sts.Client) types.STSClienter {
 	return &STSClient{
 		client: client,
 	}

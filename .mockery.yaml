@@ -1,32 +1,60 @@
 with-expecter: true
 inpackage: false
-dir: "./mocks/{{.PackagePath}}"
+with-imports: true
+keyed-interfaces: true
 packages:
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types:
+    config:
+      dir: mocks/aws/types
+      outpkg: types
+      filename: "mock_{{.InterfaceName}}.go"
+      all: true
+      recursive: true
+      keyed-interfaces: true
+    interfaces:
+      EC2Client:
+      STSClient:
+      EC2Operations:
+      VPCOperations:
+      NetworkOperations:
+      GatewayOperations:
+      RouteOperations:
+      RegionOperations:
+      IMDSClient:
   github.com/bacalhau-project/andaime/pkg/models/interfaces/aws:
     config:
-      all: true
-      recursive: true
-      dir: "./mocks/aws"
-      inpackage: false
-      with-expecter: true
+      dir: mocks/aws
       outpkg: aws
-  github.com/bacalhau-project/andaime/pkg/models/interfaces/azure:
-    config:
+      filename: "mock_{{.InterfaceName}}.go"
       all: true
       recursive: true
-      dir: "./mocks/azure"
-  github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp:
-    config:
-      all: true
-      recursive: true
-      dir: "./mocks/gcp"
-  github.com/bacalhau-project/andaime/pkg/models/interfaces/common:
-    config:
-      all: true
-      recursive: true
-      dir: "./mocks/common"
+      keyed-interfaces: true
+    interfaces:
+      EC2Clienter:
+      EC2BaseOperations:
+      EC2ContextOperations:
+      RunInstancesAPI:
+      DescribeInstancesAPI:
+      TerminateInstancesAPI:
+      ImageAPI:
+      VPCAPI:
+      SubnetAPI:
+      SecurityGroupAPI:
+      InternetGatewayAPI:
+      RouteTableAPI:
+      RegionAPI:
+      STSClienter:
   github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils:
     config:
+      dir: mocks/sshutils
+      outpkg: sshutils
+      filename: "mock_{{.InterfaceName}}.go"
       all: true
       recursive: true
-      dir: "./mocks/sshutils"
+      keyed-interfaces: true
+    interfaces:
+      SSHSessioner:
+      SSHClienter:
+      SSHClientCreator:
+      SFTPClienter:
+      SFTPClientCreator:

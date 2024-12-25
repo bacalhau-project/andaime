@@ -161,3 +161,11 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace (
+	github.com/bacalhau-project/andaime/mocks/aws => ./mocks/aws
+	github.com/bacalhau-project/andaime/mocks/azure => ./mocks/azure
+	github.com/bacalhau-project/andaime/mocks/common => ./mocks/common
+	github.com/bacalhau-project/andaime/mocks/gcp => ./mocks/gcp
+	github.com/bacalhau-project/andaime/mocks/sshutils => ./mocks/sshutils
+)

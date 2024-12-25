@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
+	gcp_mocks "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"

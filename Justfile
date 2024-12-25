@@ -5,7 +5,7 @@ default:
 # Generate mocks
 genmock:
     @echo "Generating mocks..."
-    @mockery --all --dir=./pkg/providers --outpkg=mocks
+    @mockery --all --dir=./pkg/models/interfaces --recursive --outpkg=mocks
     @echo "Mocks generated successfully."
 
 # Generate cloud data

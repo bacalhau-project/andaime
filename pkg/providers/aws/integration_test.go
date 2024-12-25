@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package awsprovider
+package aws
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	awsmock "github.com/bacalhau-project/andaime/mocks/aws"
+	awsmock "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

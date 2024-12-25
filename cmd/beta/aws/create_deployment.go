@@ -11,9 +11,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 
@@ -197,7 +196,7 @@ func prepareDeployment(
 		m.Deployment.AWS.RegionalResources.VPCs = make(map[string]*models.AWSVPC)
 	}
 	if m.Deployment.AWS.RegionalResources.Clients == nil {
-		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]types.EC2Clienter)
 	}
 	for _, machine := range m.Deployment.GetMachines() {
 		region := machine.GetRegion()
@@ -370,7 +369,7 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 				UpdateData: display.UpdateData{
 					UpdateType:    display.UpdateTypeResource,
 					ResourceType:  "SSH",
-					ResourceState: models.MachineResourceState(models.ServiceTypeSSH.State),
+					ResourceState: models.MachineResourceState(models.ServiceTypeSSH.GetState()),
 				},
 			})
 

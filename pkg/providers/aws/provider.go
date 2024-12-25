@@ -21,7 +21,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
 	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/cenkalti/backoff/v4"
@@ -71,6 +71,7 @@ type AWSProvider struct {
 	EC2Client       aws_interface.EC2Clienter
 	STSClient       aws_interface.STSClienter // Changed from *sts.Client to aws_interface.STSClienter
 	ConfigMutex     sync.RWMutex
+	vpcManager      *RegionalVPCManager
 }
 
 var NewAWSProviderFunc = NewAWSProvider
@@ -102,6 +103,7 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
 		STSClient:       stsClienter,
 		EC2Client:       ec2Clienter,
+		vpcManager:      nil, // VPC manager will be initialized when needed with the deployment
 	}
 
 	return provider, nil
@@ -218,7 +220,7 @@ func (p *AWSProvider) CreateVPCInfrastructure(
 	}
 
 	// Create VPC
-	vpc, err := p.createVPC(ctx, region, ec2Client)
+	vpc, err := p.createVPCInfrastructure(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VPC: %w", err)
 	}

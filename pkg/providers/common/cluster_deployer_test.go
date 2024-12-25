@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	sshutils_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	sshutils_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"

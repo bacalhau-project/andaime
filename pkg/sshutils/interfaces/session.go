@@ -1,4 +1,4 @@
-package sshutils
+package interfaces
 
 import (
 	"io"

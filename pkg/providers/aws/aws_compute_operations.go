@@ -14,7 +14,7 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -433,6 +433,7 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 
 	// Prepare instance input with common configuration
 	params := machine.GetParameters()
+	var runResult *ec2.RunInstancesOutput
 	runInstancesInput := &ec2.RunInstancesInput{
 		ImageId:      aws.String(amiID),
 		InstanceType: ec2_types.InstanceType(machine.GetMachineType()),
@@ -453,53 +454,49 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 	// Configure spot instance if requested
 	if params.Spot {
 		l.Info(fmt.Sprintf("Requesting spot instance for VM %s", machine.GetName()))
-		runInstancesInput.InstanceMarketOptions = &ec2_types.InstanceMarketOptionsRequest{
-			MarketType: ec2_types.MarketTypeSpot,
-			SpotOptions: &ec2_types.SpotMarketOptions{
-				InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
-				MaxPrice:                    aws.String(""), // Empty string means use current spot price
-			},
+		maxRetries := 3
+		var lastErr error
+
+		for i := 0; i < maxRetries; i++ {
+			runInstancesInput.InstanceMarketOptions = &ec2_types.InstanceMarketOptionsRequest{
+				MarketType: ec2_types.MarketTypeSpot,
+				SpotOptions: &ec2_types.SpotMarketOptions{
+					InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
+					MaxPrice:                    aws.String(""), // Empty string means use current spot price
+				},
+			}
+
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err == nil {
+				break
+			}
+
+			lastErr = err
+			l.Warn(fmt.Sprintf("Spot instance request failed (attempt %d/%d): %v", i+1, maxRetries, err))
+
+			// Check if error is related to spot capacity
+			if i < maxRetries-1 {
+				time.Sleep(time.Second * time.Duration(2<<uint(i))) // Exponential backoff
+			}
 		}
-	}
 
-	// Create instance
-	runResult, err := ec2Client.RunInstances(ctx, runInstancesInput)
-	if err != nil {
-		if params.Spot {
-			// If spot instance creation fails, try falling back to on-demand
-			l.Warn(fmt.Sprintf("Failed to create spot instance for %s, falling back to on-demand: %v", machine.GetName(), err))
-
-			// Remove spot market options for fallback
+		if lastErr != nil {
+			// If all spot attempts failed, try falling back to on-demand
+			l.Warn(fmt.Sprintf("All spot instance attempts failed for %s, falling back to on-demand: %v", machine.GetName(), lastErr))
 			runInstancesInput.InstanceMarketOptions = nil
 			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
 			if err != nil {
 				return fmt.Errorf("failed to run instance (both spot and on-demand): %w", err)
 			}
-		} else {
+		}
+	} else {
+		runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+		if err != nil {
 			return fmt.Errorf("failed to run instance: %w", err)
 		}
-||||||| parent of 26862e6 (feat: add spot instance support with fallback to on-demand)
-		return fmt.Errorf("failed to run instance: %w", err)
-=======
-		if params.Spot {
-			// If spot instance creation fails, try falling back to on-demand
-			l.Warn(fmt.Sprintf(
-				"Failed to create spot instance for VM %s, falling back to on-demand: %v",
-				machine.GetName(),
-				err,
-			))
-			runInstancesInput.InstanceMarketOptions = nil
-			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
-			if err != nil {
-				return fmt.Errorf("failed to create fallback on-demand instance: %w", err)
-			}
-		} else {
-			return fmt.Errorf("failed to run instance: %w", err)
-		}
->>>>>>> 26862e6 (feat: add spot instance support with fallback to on-demand)
 	}
 
-	// Wait for instance to be running
+	// Wait for instance to be running with enhanced status checks
 	waiter := ec2.NewInstanceRunningWaiter(ec2Client)
 	if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*runResult.Instances[0].InstanceId},
@@ -507,12 +504,22 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 		return fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 
-	// Get instance details
-	describeResult, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
-		InstanceIds: []string{*runResult.Instances[0].InstanceId},
-	})
+	// Get instance details with retries
+	var describeResult *ec2.DescribeInstancesOutput
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		describeResult, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{*runResult.Instances[0].InstanceId},
+		})
+		if err == nil {
+			break
+		}
+		if i < maxRetries-1 {
+			time.Sleep(time.Second * time.Duration(2<<uint(i)))
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("failed to describe instance: %w", err)
+		return fmt.Errorf("failed to describe instance after %d attempts: %w", maxRetries, err)
 	}
 
 	if len(describeResult.Reservations) == 0 {
@@ -523,6 +530,16 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 	}
 
 	instance := describeResult.Reservations[0].Instances[0]
+
+	// Get instance metadata using IMDS client if available
+	if c, ok := ec2Client.(*LiveEC2Client); ok && c.imdsClient != nil {
+		// Attempt to get additional metadata but don't fail if unavailable
+		if metadata, err := c.imdsClient.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{}); err == nil {
+			l.Debug(fmt.Sprintf("Instance metadata: region=%s, instanceType=%s", metadata.Region, metadata.InstanceType))
+		}
+	}
+	}
+
 	if instance.PublicIpAddress != nil {
 		machine.SetPublicIP(*instance.PublicIpAddress)
 	}
