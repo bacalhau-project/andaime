@@ -1,11 +1,11 @@
-package interfaces
+package sshutils
 
 import (
 	"io"
 	"os"
 )
 
-//go:generate mockery --name SFTPFile --output ../../../mocks/sshutils --outpkg sshutils
+//go:generate mockery --name SFTPFile
 type SFTPFile interface {
 	Write(p []byte) (n int, err error)
 	Close() error

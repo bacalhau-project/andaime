@@ -1,52 +1,29 @@
 with-expecter: true
 inpackage: false
-with-imports: true
-keyed-interfaces: true
+dir: "./mocks/{{.PackagePath}}"
 packages:
-  github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types:
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/aws:
     config:
-      dir: mocks/aws/types
-      outpkg: types
-      filename: "mock_{{.InterfaceName}}.go"
       all: true
       recursive: true
-      keyed-interfaces: true
-    interfaces:
-      EC2Client:
-      STSClient:
-      EC2Operations:
-      VPCOperations:
-      NetworkOperations:
-      GatewayOperations:
-      RouteOperations:
-      RegionOperations:
-      IMDSClient:
-      EC2Clienter:
-      STSClienter:
-      AWSOperations:
-      RunInstancesAPI:
-      DescribeInstancesAPI:
-      TerminateInstancesAPI:
-      ImageAPI:
-      VPCAPI:
-      SubnetAPI:
-      SecurityGroupAPI:
-      InternetGatewayAPI:
-      RouteTableAPI:
-      RegionAPI:
-      EC2ContextOperations:
-
+      dir: "./mocks/aws"
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/azure:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/azure"
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/gcp"
+  github.com/bacalhau-project/andaime/pkg/models/interfaces/common:
+    config:
+      all: true
+      recursive: true
+      dir: "./mocks/common"
   github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils:
     config:
-      dir: mocks/sshutils
-      outpkg: sshutils
-      filename: "mock_{{.InterfaceName}}.go"
       all: true
       recursive: true
-      keyed-interfaces: true
-    interfaces:
-      SSHSessioner:
-      SSHClienter:
-      SSHClientCreator:
-      SFTPClienter:
-      SFTPClientCreator:
+      dir: "./mocks/sshutils"

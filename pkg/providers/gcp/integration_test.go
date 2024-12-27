@@ -12,8 +12,8 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
-	gcp_mocks "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
-	ssh_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
+	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"

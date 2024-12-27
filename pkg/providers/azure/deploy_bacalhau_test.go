@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	ssh_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
@@ -56,9 +56,9 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 	})
 
 	// Create mock SSH client
-	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient := new(ssh_mocks.MockSSHClienter)
 	mockSSHClient.On("Close").Return(nil).Maybe()
-	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mocks.MockSSHSessioner{}, nil).Maybe()
 	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
 	// Define expected behavior
@@ -169,7 +169,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployOrchestrator() {
 	s.NoError(err)
 
 	// Verify expectations
-	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
+	mockSSH.(*ssh_mocks.MockSSHConfiger).AssertExpectations(s.T())
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
@@ -185,9 +185,9 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
 	})
 
 	// Create mock SSH client
-	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient := new(ssh_mocks.MockSSHClienter)
 	mockSSHClient.On("Close").Return(nil).Maybe()
-	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mocks.MockSSHSessioner{}, nil).Maybe()
 	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
 	// Define expected behavior
@@ -298,7 +298,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestDeployWorker() {
 	s.NoError(err)
 
 	// Verify expectations
-	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
+	mockSSH.(*ssh_mocks.MockSSHConfiger).AssertExpectations(s.T())
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata() {
@@ -312,9 +312,9 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata()
 	})
 
 	// Create mock SSH client
-	mockSSHClient := new(ssh_mock.MockSSHClienter)
+	mockSSHClient := new(ssh_mocks.MockSSHClienter)
 	mockSSHClient.On("Close").Return(nil).Maybe()
-	mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&ssh_mocks.MockSSHSessioner{}, nil).Maybe()
 	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
 	// Define expected behavior
@@ -347,7 +347,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestSetupNodeConfigMetadata()
 	s.NoError(err)
 
 	// Verify expectations
-	mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
+	mockSSH.(*ssh_mocks.MockSSHConfiger).AssertExpectations(s.T())
 }
 
 func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment() {
@@ -376,9 +376,9 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment(
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			// Create mock SSH client
-			mockSSHClient := new(ssh_mock.MockSSHClienter)
+			mockSSHClient := new(ssh_mocks.MockSSHClienter)
 			mockSSHClient.On("Close").Return(nil).Maybe()
-			mockSSHClient.On("NewSession").Return(&ssh_mock.MockSSHSessioner{}, nil).Maybe()
+			mockSSHClient.On("NewSession").Return(&ssh_mocks.MockSSHSessioner{}, nil).Maybe()
 			mockSSHClient.On("GetClient").Return(nil).Maybe()
 
 			// Define expected behavior
@@ -411,7 +411,7 @@ func (s *PkgProvidersAzureDeployBacalhauTestSuite) TestVerifyBacalhauDeployment(
 			}
 
 			// Verify expectations
-			mockSSH.(*ssh_mock.MockSSHConfiger).AssertExpectations(s.T())
+			mockSSH.(*ssh_mocks.MockSSHConfiger).AssertExpectations(s.T())
 		})
 	}
 }

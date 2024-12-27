@@ -138,7 +138,7 @@ func (p *Provisioner) ProvisionWithCallback(
 		StatusMessage: stepRegistry.GetStep(common_interface.SSHConnection).RenderStartMessage(),
 	})
 
-	if err := p.SSHConfig.WaitForSSH(ctx, SSHRetryCount); err != nil { //nolint:mnd
+	if err := p.SSHConfig.WaitForSSH(ctx, SSHRetryCount, SSHTimeOut); err != nil { //nolint:mnd
 		progress.CurrentStep.Status = "Failed"
 		progress.CurrentStep.Error = err
 		errMsg := fmt.Sprintf("❌ SSH connection failed: %v", err)

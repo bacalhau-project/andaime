@@ -7,11 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
-	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces"
-	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces/types"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -23,7 +22,7 @@ type SSHConfig struct {
 	User                      string
 	SSHPrivateKeyPath         string
 	PrivateKeyMaterial        []byte
-	TimeoutConfig             sshutils_interfaces.TimeoutConfig
+	TimeoutConfig             TimeoutConfig
 	Logger                    *logger.Logger
 	SSHClient                 *ssh.Client
 	SSHPrivateKeyReader       func(path string) ([]byte, error)
@@ -32,7 +31,7 @@ type SSHConfig struct {
 	sftpClientCreator         sshutils_interfaces.SFTPClientCreator
 	ClientConfig              *ssh.ClientConfig
 	ValidateSSHConnectionFunc func() error
-	timeProvider              interfaces.TimeProvider
+	timeProvider              TimeProvider
 }
 
 // SSHDialer is an interface for creating SSH connections
@@ -289,7 +288,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 	stopOutput, stopErr := c.ExecuteCommand(ctx, fmt.Sprintf("sudo systemctl stop %s", serviceName))
 
 	// Wait a short moment
-	c.timeProvider.Sleep(2 * types.Second)
+	c.timeProvider.Sleep(2 * time.Second)
 
 	// Attempt to start the service
 	startOutput, startErr := c.ExecuteCommand(
@@ -298,7 +297,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 	)
 
 	// Wait another moment
-	c.timeProvider.Sleep(2 * types.Second)
+	c.timeProvider.Sleep(2 * time.Second)
 
 	// Check service status
 	statusOutput, statusErr := c.ExecuteCommand(
@@ -488,7 +487,7 @@ func getSSHClientConfig(user, privateKeyPath string) (*ssh.ClientConfig, error) 
 			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
-		Timeout:         types.Duration(SSHDialTimeout),
+		Timeout:         time.Duration(SSHDialTimeout),
 	}
 
 	return config, nil
@@ -588,10 +587,10 @@ func (c *SSHConfig) SetSSHClient(client *ssh.Client) {
 }
 
 // WaitForSSH waits for SSH connection to be available
-func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int) error {
+func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
 	l := logger.Get()
 	var lastErr error
-	deadline := c.timeProvider.Now().Add(c.TimeoutConfig.WaitTimeout)
+	deadline := c.timeProvider.Now().UnixTime + int64(timeout.Seconds())
 
 	// Try immediately first
 	if _, err := c.clientCreator.NewClient(
@@ -614,7 +613,7 @@ func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int) error {
 		maxRetries = retry
 	}
 
-	for attempts < maxRetries && c.timeProvider.Now().Before(deadline) {
+	for attempts < maxRetries && c.timeProvider.Now().UnixTime < deadline {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("context cancelled while waiting for SSH: %w", lastErr)
@@ -642,7 +641,7 @@ func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int) error {
 		return fmt.Errorf("max retries (%d) exceeded: %w", maxRetries, lastErr)
 	}
 
-	if c.timeProvider.Now().After(deadline) {
+	if c.timeProvider.Now().UnixTime > deadline {
 		return fmt.Errorf("timeout after %v: %w", c.TimeoutConfig.WaitTimeout, lastErr)
 	}
 

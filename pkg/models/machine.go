@@ -89,6 +89,8 @@ type Machiner interface {
 	GetMachineResources() map[string]MachineResource
 	GetMachineResourceState(resourceName string) MachineResourceState
 	SetMachineResourceState(resourceName string, state MachineResourceState)
+	GetProvisioningStage() ProvisioningStage
+	SetProvisioningStage(stage ProvisioningStage)
 	ResourcesComplete() (int, int)
 
 	// Service management
@@ -174,8 +176,9 @@ type Machine struct {
 
 	CustomScriptExecuted bool
 
-	machineResources map[string]MachineResource
-	machineServices  map[string]ServiceType
+	machineResources  map[string]MachineResource
+	ProvisioningStage ProvisioningStage
+	machineServices   map[string]ServiceType
 
 	stateMutex sync.RWMutex
 	done       bool
@@ -994,6 +997,14 @@ func MachineConfigToWrite(machine Machiner) map[string]interface{} {
 		"ScriptInstalled":   scriptInstalled,
 		"Orchestrator":      orchestrator,
 	}
+}
+
+func (mach *Machine) GetProvisioningStage() ProvisioningStage {
+	return mach.ProvisioningStage
+}
+
+func (mach *Machine) SetProvisioningStage(stage ProvisioningStage) {
+	mach.ProvisioningStage = stage
 }
 
 // Ensure that Machine implements Machiner

@@ -8,13 +8,14 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+
 	"golang.org/x/sync/errgroup"
 )
 
@@ -41,7 +42,7 @@ type LiveEC2Client struct {
 }
 
 // NewEC2Client creates a new EC2 client
-func NewEC2Client(ctx context.Context) (aws_interface.EC2Clienter, error) {
+func NewEC2Client(ctx context.Context) (aws_interfaces.EC2Clienter, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -357,7 +358,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 
 func (p *AWSProvider) deployVM(
 	ctx context.Context,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 	machine models.Machiner,
 	vpc *models.AWSVPC,
 ) error {
@@ -448,7 +449,7 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 			},
 		},
 		TagSpecifications: tagSpecs,
-		UserData:         aws.String(encodedUserData),
+		UserData:          aws.String(encodedUserData),
 	}
 
 	// Configure spot instance if requested
@@ -462,7 +463,9 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 				MarketType: ec2_types.MarketTypeSpot,
 				SpotOptions: &ec2_types.SpotMarketOptions{
 					InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
-					MaxPrice:                    aws.String(""), // Empty string means use current spot price
+					MaxPrice: aws.String(
+						"",
+					), // Empty string means use current spot price
 				},
 			}
 
@@ -472,7 +475,14 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 			}
 
 			lastErr = err
-			l.Warn(fmt.Sprintf("Spot instance request failed (attempt %d/%d): %v", i+1, maxRetries, err))
+			l.Warn(
+				fmt.Sprintf(
+					"Spot instance request failed (attempt %d/%d): %v",
+					i+1,
+					maxRetries,
+					err,
+				),
+			)
 
 			// Check if error is related to spot capacity
 			if i < maxRetries-1 {
@@ -482,12 +492,34 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 
 		if lastErr != nil {
 			// If all spot attempts failed, try falling back to on-demand
-			l.Warn(fmt.Sprintf("All spot instance attempts failed for %s, falling back to on-demand: %v", machine.GetName(), lastErr))
+			l.Warn(
+				fmt.Sprintf(
+					"All spot instance attempts failed for %s, falling back to on-demand: %v",
+					machine.GetName(),
+					lastErr,
+				),
+			)
 			runInstancesInput.InstanceMarketOptions = nil
 			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
 			if err != nil {
 				return fmt.Errorf("failed to run instance (both spot and on-demand): %w", err)
 			}
+		} else {
+			return fmt.Errorf("failed to run instance: %w", err)
+		}
+		if params.Spot {
+			// If spot instance creation fails, try falling back to on-demand
+			l.Warn(fmt.Sprintf(
+				"Failed to create spot instance for VM %s, falling back to on-demand: %v",
+				machine.GetName(),
+				err,
+			))
+			runInstancesInput.InstanceMarketOptions = nil
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err != nil {
+				return fmt.Errorf("failed to create fallback on-demand instance: %w", err)
+			}
+		} else {
 		}
 	} else {
 		runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
@@ -535,9 +567,14 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 	if c, ok := ec2Client.(*LiveEC2Client); ok && c.imdsClient != nil {
 		// Attempt to get additional metadata but don't fail if unavailable
 		if metadata, err := c.imdsClient.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{}); err == nil {
-			l.Debug(fmt.Sprintf("Instance metadata: region=%s, instanceType=%s", metadata.Region, metadata.InstanceType))
+			l.Debug(
+				fmt.Sprintf(
+					"Instance metadata: region=%s, instanceType=%s",
+					metadata.Region,
+					metadata.InstanceType,
+				),
+			)
 		}
-	}
 	}
 
 	if instance.PublicIpAddress != nil {
@@ -552,7 +589,7 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 
 func (p *AWSProvider) getLatestAMI(
 	ctx context.Context,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 ) (string, error) {
 	result, err := ec2Client.DescribeImages(ctx, &ec2.DescribeImagesInput{
 		Filters: []ec2_types.Filter{

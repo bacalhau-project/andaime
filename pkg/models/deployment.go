@@ -8,8 +8,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/bacalhau-project/andaime/pkg/logger"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/viper"
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
 )
 
 type ServiceState int
@@ -26,7 +26,7 @@ const (
 // Use ServiceType from types.go
 var (
 	RequiredServices = []ServiceType{
-		ServiceTypeSSH,          // Use existing ServiceType constants from types.go
+		ServiceTypeSSH, // Use existing ServiceType constants from types.go
 		ServiceTypeDocker,
 		ServiceTypeCorePackages,
 		ServiceTypeBacalhau,
@@ -42,9 +42,9 @@ type MachineResource struct {
 }
 
 type Parameters struct {
-	Count        int    `json:"count" yaml:"count"`
-	Type         string `json:"type" yaml:"type"`
-	Orchestrator bool   `json:"orchestrator" yaml:"orchestrator"`
+	Count        int    `json:"count"          yaml:"count"`
+	Type         string `json:"type"           yaml:"type"`
+	Orchestrator bool   `json:"orchestrator"   yaml:"orchestrator"`
 	Spot         bool   `json:"spot,omitempty" yaml:"spot,omitempty"`
 }
 
@@ -154,7 +154,7 @@ func (d *Deployment) InitializeAWSDeployment() *AWSDeployment {
 		d.AWS = &AWSDeployment{}
 		d.AWS.RegionalResources = &RegionalResources{}
 		d.AWS.RegionalResources.VPCs = make(map[string]*AWSVPC)
-		d.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+		d.AWS.RegionalResources.Clients = make(map[string]aws_interfaces.EC2Clienter)
 	}
 
 	return d.AWS
@@ -403,7 +403,7 @@ type AWSConfig struct {
 type RegionalResources struct {
 	mu      sync.RWMutex
 	VPCs    map[string]*AWSVPC // key is region
-	Clients map[string]aws_interface.EC2Clienter
+	Clients map[string]aws_interfaces.EC2Clienter
 }
 
 func (r *RegionalResources) Lock() {
@@ -458,13 +458,13 @@ func (r *RegionalResources) SetVPC(region string, vpc *AWSVPC) {
 	r.VPCs[region] = vpc
 }
 
-func (r *RegionalResources) GetClient(region string) aws_interface.EC2Clienter {
+func (r *RegionalResources) GetClient(region string) aws_interfaces.EC2Clienter {
 	r.RLock()
 	defer r.RUnlock()
 	return r.Clients[region]
 }
 
-func (r *RegionalResources) SetClient(region string, client aws_interface.EC2Clienter) {
+func (r *RegionalResources) SetClient(region string, client aws_interfaces.EC2Clienter) {
 	r.Lock()
 	defer r.Unlock()
 	r.Clients[region] = client

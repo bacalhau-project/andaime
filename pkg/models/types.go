@@ -18,6 +18,7 @@ const (
 	StageVMProvisioning ProvisioningStage = "Provisioning VM"
 	StageVMProvisioned  ProvisioningStage = "VM Provisioned"
 	StageVMFailed       ProvisioningStage = "VM Provisioning Failed"
+	StageVMUnknown      ProvisioningStage = "VM Provisioning Unknown"
 
 	// Spot Instance specific stages
 	StageSpotRequested    ProvisioningStage = "Requesting Spot Instance"
@@ -54,6 +55,8 @@ const (
 	ProviderAbbreviationAzure   ProviderAbbreviation = "AZU"
 	ProviderAbbreviationAWS     ProviderAbbreviation = "AWS"
 	ProviderAbbreviationGCP     ProviderAbbreviation = "GCP"
+	ProviderAbbreviationOracle  ProviderAbbreviation = "ORA"
+	ProviderAbbreviationIBM     ProviderAbbreviation = "IBM"
 	ProviderAbbreviationVirtual ProviderAbbreviation = "VIR"
 	ProviderAbbreviationUnknown ProviderAbbreviation = "UNK"
 )

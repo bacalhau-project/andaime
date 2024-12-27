@@ -301,7 +301,9 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 					)
 				}
 				err = sshConfig.WaitForSSH(ctx,
-					sshutils.SSHRetryAttempts)
+					sshutils.SSHRetryAttempts,
+					sshutils.SSHTimeOut,
+				)
 				if err != nil {
 					m.UpdateStatus(
 						models.NewDisplayStatusWithText(

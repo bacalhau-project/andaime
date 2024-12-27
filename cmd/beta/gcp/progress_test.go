@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	gcp_mocks "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
+	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	gcp_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
+	gcp_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/gcp"
 	gcp_provider "github.com/bacalhau-project/andaime/pkg/providers/gcp"
 	"github.com/stretchr/testify/suite"
 )
@@ -19,7 +20,7 @@ type GCPProgressTestSuite struct {
 	mockGCPClient          *gcp_mocks.MockGCPClienter
 	gcpProvider            *gcp_provider.GCPProvider
 	origGetGlobalModelFunc func() *display.DisplayModel
-	origGetClientFunc      func(ctx context.Context, organizationID string) (gcp_interface.GCPClienter, func(), error)
+	origGetClientFunc      func(ctx context.Context, organizationID string) (gcp_interfaces.GCPClienter, func(), error)
 }
 
 func (suite *GCPProgressTestSuite) SetupTest() {

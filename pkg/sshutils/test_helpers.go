@@ -1,11 +1,11 @@
-package sshutils_test
+package sshutils
 
 import (
 	"context"
 	"strings"
+	"time"
 
-	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces"
-	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces/types"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
 )
@@ -27,13 +27,13 @@ type ExpectedSSHBehavior struct {
 }
 
 type ConnectExpectation struct {
-	Client interfaces.SSHClienter
+	Client sshutils_interfaces.SSHClienter
 	Error  error
 	Times  int
 }
 
 // NewMockSSHConfigWithBehavior creates a new mock SSH config with predefined behavior
-func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) interfaces.SSHConfiger {
+func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) sshutils_interfaces.SSHConfiger {
 	mockSSH := &MockSSHConfiger{}
 
 	// Setup Connect behavior
@@ -211,9 +211,9 @@ type MockSSHConfiger struct {
 	mock.Mock
 }
 
-func (m *MockSSHConfiger) Connect() (interfaces.SSHClienter, error) {
+func (m *MockSSHConfiger) Connect() (sshutils_interfaces.SSHClienter, error) {
 	args := m.Called()
-	return args.Get(0).(interfaces.SSHClienter), args.Error(1)
+	return args.Get(0).(sshutils_interfaces.SSHClienter), args.Error(1)
 }
 
 func (m *MockSSHConfiger) Close() error {
@@ -226,22 +226,41 @@ func (m *MockSSHConfiger) ExecuteCommand(ctx context.Context, cmd string) (strin
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockSSHConfiger) ExecuteCommandWithCallback(ctx context.Context, cmd string, callback func(string)) (string, error) {
+func (m *MockSSHConfiger) ExecuteCommandWithCallback(
+	ctx context.Context,
+	cmd string,
+	callback func(string),
+) (string, error) {
 	args := m.Called(ctx, cmd, callback)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockSSHConfiger) PushFile(ctx context.Context, dst string, content []byte, executable bool) error {
+func (m *MockSSHConfiger) PushFile(
+	ctx context.Context,
+	dst string,
+	content []byte,
+	executable bool,
+) error {
 	args := m.Called(ctx, dst, content, executable)
 	return args.Error(0)
 }
 
-func (m *MockSSHConfiger) PushFileWithCallback(ctx context.Context, dst string, content []byte, executable bool, callback func(int64, int64)) error {
+func (m *MockSSHConfiger) PushFileWithCallback(
+	ctx context.Context,
+	dst string,
+	content []byte,
+	executable bool,
+	callback func(int64, int64),
+) error {
 	args := m.Called(ctx, dst, content, executable, callback)
 	return args.Error(0)
 }
 
-func (m *MockSSHConfiger) InstallSystemdService(ctx context.Context, name string, content string) error {
+func (m *MockSSHConfiger) InstallSystemdService(
+	ctx context.Context,
+	name string,
+	content string,
+) error {
 	args := m.Called(ctx, name, content)
 	return args.Error(0)
 }
@@ -256,7 +275,7 @@ func (m *MockSSHConfiger) StartService(ctx context.Context, name string) (string
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockSSHConfiger) WaitForSSH(ctx context.Context, retry int, timeout types.Duration) error {
+func (m *MockSSHConfiger) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
 	args := m.Called(ctx, retry, timeout)
 	return args.Error(0)
 }
@@ -294,21 +313,23 @@ func (m *MockSSHConfiger) SetValidateSSHConnection(fn func() error) {
 	m.Called(fn)
 }
 
-func (m *MockSSHConfiger) GetSSHClientCreator() interfaces.SSHClientCreator {
+func (m *MockSSHConfiger) GetSSHClientCreator() sshutils_interfaces.SSHClientCreator {
 	args := m.Called()
-	return args.Get(0).(interfaces.SSHClientCreator)
+	return args.Get(0).(sshutils_interfaces.SSHClientCreator)
 }
 
-func (m *MockSSHConfiger) SetSSHClientCreator(clientCreator interfaces.SSHClientCreator) {
+func (m *MockSSHConfiger) SetSSHClientCreator(clientCreator sshutils_interfaces.SSHClientCreator) {
 	m.Called(clientCreator)
 }
 
-func (m *MockSSHConfiger) GetSFTPClientCreator() interfaces.SFTPClientCreator {
+func (m *MockSSHConfiger) GetSFTPClientCreator() sshutils_interfaces.SFTPClientCreator {
 	args := m.Called()
-	return args.Get(0).(interfaces.SFTPClientCreator)
+	return args.Get(0).(sshutils_interfaces.SFTPClientCreator)
 }
 
-func (m *MockSSHConfiger) SetSFTPClientCreator(clientCreator interfaces.SFTPClientCreator) {
+func (m *MockSSHConfiger) SetSFTPClientCreator(
+	clientCreator sshutils_interfaces.SFTPClientCreator,
+) {
 	m.Called(clientCreator)
 }
 
@@ -322,9 +343,9 @@ type MockSSHClienter struct {
 	mock.Mock
 }
 
-func (m *MockSSHClienter) NewSession() (interfaces.SSHSessioner, error) {
+func (m *MockSSHClienter) NewSession() (sshutils_interfaces.SSHSessioner, error) {
 	args := m.Called()
-	return args.Get(0).(interfaces.SSHSessioner), args.Error(1)
+	return args.Get(0).(sshutils_interfaces.SSHSessioner), args.Error(1)
 }
 
 func (m *MockSSHClienter) Close() error {
@@ -337,9 +358,9 @@ func (m *MockSSHClienter) GetClient() *ssh.Client {
 	return args.Get(0).(*ssh.Client)
 }
 
-func (m *MockSSHClienter) Connect() (interfaces.SSHClienter, error) {
+func (m *MockSSHClienter) Connect() (sshutils_interfaces.SSHClienter, error) {
 	args := m.Called()
-	return args.Get(0).(interfaces.SSHClienter), args.Error(1)
+	return args.Get(0).(sshutils_interfaces.SSHClienter), args.Error(1)
 }
 
 func (m *MockSSHClienter) IsConnected() bool {

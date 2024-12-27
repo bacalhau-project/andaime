@@ -11,9 +11,9 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	"github.com/bacalhau-project/andaime/pkg/models/interfaces/aws/types"
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 
 	"github.com/joho/godotenv"
@@ -196,7 +196,7 @@ func prepareDeployment(
 		m.Deployment.AWS.RegionalResources.VPCs = make(map[string]*models.AWSVPC)
 	}
 	if m.Deployment.AWS.RegionalResources.Clients == nil {
-		m.Deployment.AWS.RegionalResources.Clients = make(map[string]types.EC2Clienter)
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interfaces.EC2Clienter)
 	}
 	for _, machine := range m.Deployment.GetMachines() {
 		region := machine.GetRegion()

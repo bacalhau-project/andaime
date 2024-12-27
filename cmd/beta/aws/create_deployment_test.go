@@ -12,19 +12,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	aws_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	sshutils_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
+	sshutils_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,8 +34,9 @@ type CreateDeploymentTestSuite struct {
 	testPrivateKeyPath     string
 	cleanupPublicKey       func()
 	cleanupPrivateKey      func()
-	mockEC2Client          *aws_mock.MockEC2Clienter
-	mockSSHConfig          *sshutils_mock.MockSSHConfiger
+	mockEC2Client          *aws_mocks.MockEC2Clienter
+	mockSTSClient          *aws_mocks.MockSTSClienter
+	mockSSHConfig          *sshutils_mocks.MockSSHConfiger
 	awsProvider            *aws_provider.AWSProvider
 	origGetGlobalModelFunc func() *display.DisplayModel
 }
@@ -53,8 +52,9 @@ func (suite *CreateDeploymentTestSuite) SetupSuite() {
 	suite.testPrivateKeyPath = testPrivateKeyPath
 	suite.cleanupPrivateKey = cleanupPrivateKey
 
-	suite.mockEC2Client = new(aws_mock.MockEC2Clienter)
-	suite.mockSSHConfig = new(sshutils_mock.MockSSHConfiger)
+	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
+	suite.mockSTSClient = new(aws_mocks.MockSTSClienter)
+	suite.mockSSHConfig = new(sshutils_mocks.MockSSHConfiger)
 	suite.origGetGlobalModelFunc = display.GetGlobalModelFunc
 	display.GetGlobalModelFunc = func() *display.DisplayModel {
 		deployment, err := models.NewDeployment()
@@ -75,8 +75,9 @@ func (suite *CreateDeploymentTestSuite) TearDownSuite() {
 func (suite *CreateDeploymentTestSuite) SetupTest() {
 	viper.Reset()
 	suite.setupViper()
-	suite.mockEC2Client = new(aws_mock.MockEC2Clienter)
-	suite.mockSSHConfig = new(sshutils_mock.MockSSHConfiger)
+	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
+	suite.mockSTSClient = new(aws_mocks.MockSTSClienter)
+	suite.mockSSHConfig = new(sshutils_mocks.MockSSHConfiger)
 	var err error
 	suite.awsProvider, err = aws_provider.NewAWSProvider("test-account-id")
 	suite.Require().NoError(err)
@@ -328,7 +329,7 @@ func TestCreateDeploymentSuite(t *testing.T) {
 
 func TestExecuteCreateDeployment(t *testing.T) {
 	// Create mock EC2 client
-	mockEC2Client := new(awsmock.MockEC2Clienter)
+	mockEC2Client := new(aws_mocks.MockEC2Clienter)
 
 	// Mock DescribeAvailabilityZones response
 	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, &ec2.DescribeAvailabilityZonesInput{}).
@@ -353,12 +354,13 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock VPC creation
 	mockEC2Client.On("CreateVpc", mock.Anything, mock.MatchedBy(func(input *ec2.CreateVpcInput) bool {
 		return input.CidrBlock != nil
-	})).Return(&ec2.CreateVpcOutput{
-		Vpc: &types.Vpc{
-			VpcId: aws.String("vpc-test123"),
-			State: types.VpcStateAvailable,
-		},
-	}, nil)
+	})).
+		Return(&ec2.CreateVpcOutput{
+			Vpc: &types.Vpc{
+				VpcId: aws.String("vpc-test123"),
+				State: types.VpcStateAvailable,
+			},
+		}, nil)
 
 	// Mock Internet Gateway creation
 	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.Anything).
@@ -371,9 +373,10 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock Security Group creation
 	mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.MatchedBy(func(input *ec2.CreateSecurityGroupInput) bool {
 		return input.GroupName != nil && input.VpcId != nil
-	})).Return(&ec2.CreateSecurityGroupOutput{
-		GroupId: aws.String("sg-test123"),
-	}, nil)
+	})).
+		Return(&ec2.CreateSecurityGroupOutput{
+			GroupId: aws.String("sg-test123"),
+		}, nil)
 
 	// Mock Security Group rule authorization
 	mockEC2Client.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
@@ -382,26 +385,29 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock Internet Gateway attachment
 	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.MatchedBy(func(input *ec2.AttachInternetGatewayInput) bool {
 		return input.InternetGatewayId != nil && input.VpcId != nil
-	})).Return(&ec2.AttachInternetGatewayOutput{}, nil)
+	})).
+		Return(&ec2.AttachInternetGatewayOutput{}, nil)
 
 	// Mock subnet creation
 	mockEC2Client.On("CreateSubnet", mock.Anything, mock.MatchedBy(func(input *ec2.CreateSubnetInput) bool {
 		return input.VpcId != nil && input.CidrBlock != nil
-	})).Return(&ec2.CreateSubnetOutput{
-		Subnet: &types.Subnet{
-			SubnetId: aws.String("subnet-test123"),
-			State:    types.SubnetStateAvailable,
-		},
-	}, nil)
+	})).
+		Return(&ec2.CreateSubnetOutput{
+			Subnet: &types.Subnet{
+				SubnetId: aws.String("subnet-test123"),
+				State:    types.SubnetStateAvailable,
+			},
+		}, nil)
 
 	// Mock route table creation
 	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.MatchedBy(func(input *ec2.CreateRouteTableInput) bool {
 		return input.VpcId != nil
-	})).Return(&ec2.CreateRouteTableOutput{
-		RouteTable: &types.RouteTable{
-			RouteTableId: aws.String("rtb-test123"),
-		},
-	}, nil)
+	})).
+		Return(&ec2.CreateRouteTableOutput{
+			RouteTable: &types.RouteTable{
+				RouteTableId: aws.String("rtb-test123"),
+			},
+		}, nil)
 
 	// Mock route creation
 	mockEC2Client.On("CreateRoute", mock.Anything, mock.Anything).
@@ -416,50 +422,53 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock DescribeRouteTables for network connectivity check
 	mockEC2Client.On("DescribeRouteTables", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeRouteTablesInput) bool {
 		return len(input.Filters) > 0 && input.Filters[0].Values[0] == "vpc-test123"
-	})).Return(&ec2.DescribeRouteTablesOutput{
-		RouteTables: []types.RouteTable{
-			{
-				RouteTableId: aws.String("rtb-test123"),
-				VpcId:       aws.String("vpc-test123"),
-				Routes: []types.Route{
-					{
-						DestinationCidrBlock: aws.String("0.0.0.0/0"),
-						GatewayId:           aws.String("igw-test123"),
-						State:               types.RouteStateActive,
+	})).
+		Return(&ec2.DescribeRouteTablesOutput{
+			RouteTables: []types.RouteTable{
+				{
+					RouteTableId: aws.String("rtb-test123"),
+					VpcId:        aws.String("vpc-test123"),
+					Routes: []types.Route{
+						{
+							DestinationCidrBlock: aws.String("0.0.0.0/0"),
+							GatewayId:            aws.String("igw-test123"),
+							State:                types.RouteStateActive,
+						},
 					},
 				},
 			},
-		},
-	}, nil)
+		}, nil)
 
 	// Mock DescribeVpcs for network connectivity check
 	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeVpcsInput) bool {
 		return len(input.VpcIds) > 0 && input.VpcIds[0] == "vpc-test123"
-	})).Return(&ec2.DescribeVpcsOutput{
-		Vpcs: []types.Vpc{
-			{
-				VpcId: aws.String("vpc-test123"),
-				State: types.VpcStateAvailable,
+	})).
+		Return(&ec2.DescribeVpcsOutput{
+			Vpcs: []types.Vpc{
+				{
+					VpcId: aws.String("vpc-test123"),
+					State: types.VpcStateAvailable,
+				},
 			},
-		},
-	}, nil)
+		}, nil)
 
 	// Mock DescribeInternetGateways for network connectivity check
 	mockEC2Client.On("DescribeInternetGateways", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInternetGatewaysInput) bool {
 		return len(input.Filters) > 0
-	})).Return(&ec2.DescribeInternetGatewaysOutput{
-		InternetGateways: []types.InternetGateway{
-			{
-				InternetGatewayId: aws.String("igw-test123"),
-				Attachments: []types.InternetGatewayAttachment{
-					{
-						State: types.AttachmentStatusAttached,
-						VpcId: aws.String("vpc-test123"),
+	})).
+		Return(&ec2.DescribeInternetGatewaysOutput{
+			InternetGateways: []types.InternetGateway{
+				{
+					InternetGatewayId: aws.String("igw-test123"),
+					Attachments: []types.InternetGatewayAttachment{
+						{
+							State: types.AttachmentStatusAttached,
+							VpcId: aws.String("vpc-test123"),
+						},
 					},
 				},
 			},
-		},
-	}, nil)
+		}, nil)
 
 	// Mock DescribeImages for AMI lookup
 	mockEC2Client.On("DescribeImages", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeImagesInput) bool {
@@ -470,15 +479,16 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			input.Filters[1].Values[0] == "available" &&
 			len(input.Owners) == 1 &&
 			input.Owners[0] == "amazon"
-	})).Return(&ec2.DescribeImagesOutput{
-		Images: []types.Image{
-			{
-				ImageId: aws.String("ami-test123"),
-				Name:    aws.String("amzn2-ami-hvm-2.0.20231218.0-x86_64-gp2"),
-				State:   types.ImageStateAvailable,
+	})).
+		Return(&ec2.DescribeImagesOutput{
+			Images: []types.Image{
+				{
+					ImageId: aws.String("ami-test123"),
+					Name:    aws.String("amzn2-ami-hvm-2.0.20231218.0-x86_64-gp2"),
+					State:   types.ImageStateAvailable,
+				},
 			},
-		},
-	}, nil)
+		}, nil)
 
 	// Mock RunInstances for spot instances
 	mockEC2Client.On(
@@ -520,9 +530,9 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock DescribeInstances for both spot and on-demand (handles both with and without options)
 	mockEC2Client.On(
 		"DescribeInstances",
-		mock.Anything,  // Use Anything to accept any context implementation
+		mock.Anything, // Use Anything to accept any context implementation
 		mock.AnythingOfType("*ec2.DescribeInstancesInput"),
-		mock.Anything,  // Use Anything to handle variadic options parameter
+		mock.Anything, // Use Anything to handle variadic options parameter
 	).Return(&ec2.DescribeInstancesOutput{
 		Reservations: []types.Reservation{
 			{
@@ -549,7 +559,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 	// Mock DescribeInstances for direct calls (2-arg version)
 	mockEC2Client.On(
 		"DescribeInstances",
-		mock.Anything,  // Use Anything for context to accept any context implementation
+		mock.Anything, // Use Anything for context to accept any context implementation
 		mock.AnythingOfType("*ec2.DescribeInstancesInput"),
 	).Return(&ec2.DescribeInstancesOutput{
 		Reservations: []types.Reservation{
@@ -574,7 +584,7 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		},
 	}, nil)
 	// Create mock STS client
-	mockSTSClient := new(aws_mock.MockSTSClienter)
+	mockSTSClient := new(aws_mocks.MockSTSClienter)
 	mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.Anything).Return(
 		&sts.GetCallerIdentityOutput{
 			Account: aws.String("123456789012"),
@@ -583,13 +593,14 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		}, nil)
 
 	// Create SSH client mock
-	mockSSHClient := new(sshutils_mock.MockSSHConfiger)
-	mockSSHClient.On("Connect").Return(mockSSHClient, nil).Maybe()
-	mockSSHClient.On("IsConnected").Return(true).Maybe()
-	mockSSHClient.On("Close").Return(nil).Maybe()
-	mockSSHClient.On("ExecuteCommand", mock.Anything, mock.Anything).Return("", nil).Maybe()
-	mockSSHClient.On("GetClient").Return(nil).Maybe()
-	mockSSHClient.On("NewSession").Return(nil, nil).Maybe()
+	var mockSSHClient *sshutils_mocks.MockSSHClienter
+	mockSSHClient = &sshutils_mocks.MockSSHClienter{}
+
+	mockSSHClient.On("ExecuteCommand").Return("", nil)
+	mockSSHClient.On("IsConnected").Return(true)
+	mockSSHClient.On("Close").Return(nil)
+	mockSSHClient.On("GetClient").Return(nil)
+	mockSSHClient.On("NewSession").Return(nil, nil)
 
 	originalNewAWSProvider := aws_provider.NewAWSProviderFunc
 	defer func() {
@@ -602,14 +613,15 @@ func TestExecuteCreateDeployment(t *testing.T) {
 		cfg := aws.Config{Region: "us-east-1"} // Create config struct
 		provider := &aws_provider.AWSProvider{
 			AccountID:       accountID,
-			Config:         &cfg,
-			EC2Client:      mockEC2Client,
-			STSClient:      mockSTSClient,
+			Config:          &cfg,
+			EC2Client:       mockEC2Client,
+			STSClient:       mockSTSClient,
 			ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
-			UpdateQueue:     make(chan display.UpdateAction, 1000),
+			UpdateQueue: make(
+				chan display.UpdateAction,
+				1000,
+			), // Use constant value directly as it's not exported
 		}
-		deployer := provider.GetClusterDeployer()
-		deployer.SetSSHClient(mockSSHClient)
 		return provider, nil
 	}
 
@@ -686,15 +698,8 @@ func TestExecuteCreateDeployment(t *testing.T) {
 			err := os.WriteFile(privateKeyPath, []byte(testdata.TestPrivateSSHKeyMaterial), 0600)
 			require.NoError(t, err)
 			err = os.WriteFile(publicKeyPath, []byte(testdata.TestPublicSSHKeyMaterial), 0644)
-			require.NoError(t, err)
+			require.NoError(t, err) // Write test configuration to file
 
-			// Override SSHKeyReader with MockSSHKeyReader during test
-			originalSSHKeyReader := sshutils_interface.SSHKeyReader
-			defer func() {
-				sshutils_interface.SSHKeyReader = originalSSHKeyReader
-			}()
-			sshutils_interface.SSHKeyReader = sshutils_interface.MockSSHKeyReader
-			// Write test configuration to file
 			config := map[string]interface{}{
 				"aws": map[string]interface{}{
 					"account_id":             "123456789012",
@@ -731,10 +736,15 @@ func TestExecuteCreateDeployment(t *testing.T) {
 
 			// Verify spot instance configuration
 			if tc.wantSpot {
-				mockEC2Client.AssertCalled(t, "RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
-					return input.InstanceMarketOptions != nil &&
-						input.InstanceMarketOptions.MarketType == types.MarketTypeSpot
-				}))
+				mockEC2Client.AssertCalled(
+					t,
+					"RunInstances",
+					mock.Anything,
+					mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+						return input.InstanceMarketOptions != nil &&
+							input.InstanceMarketOptions.MarketType == types.MarketTypeSpot
+					}),
+				)
 			} else {
 				mockEC2Client.AssertCalled(t, "RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
 					return input.InstanceMarketOptions == nil

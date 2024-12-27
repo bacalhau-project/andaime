@@ -1,10 +1,18 @@
 package sshutils
 
 import (
-	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	"time"
 )
 
 // DefaultTimeoutConfig returns the default timeout configuration
-func DefaultTimeoutConfig() sshutils_interfaces.TimeoutConfig {
-	return sshutils_interfaces.DefaultTimeoutConfig()
+func DefaultTimeoutConfig() TimeoutConfig {
+	return DefaultTimeoutConfig()
+}
+
+type TimeoutConfig struct {
+	SSHTimeout    time.Duration
+	SFTPTimeout   time.Duration
+	RetryInterval time.Duration
+	MaxRetries    int
+	WaitTimeout   time.Duration
 }

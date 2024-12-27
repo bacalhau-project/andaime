@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	ssh_mock "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"golang.org/x/crypto/ssh"
@@ -17,7 +17,7 @@ type PkgSSHUtilsTestSuite struct {
 	testSSHPrivateKeyPath string
 	cleanupPrivateKey     func()
 	ctx                   context.Context
-	sshConfig             ssh_mock.SSHConfiger
+	sshConfig             *ssh_mocks.MockSSHConfiger
 }
 
 func (s *PkgSSHUtilsTestSuite) SetupSuite() {
@@ -34,14 +34,16 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	sshConfig, err := NewSSHConfigFunc("test-host", 22, "test-user", s.testSSHPrivateKeyPath)
 	s.Require().NoError(err)
-	s.sshConfig = sshConfig
+	mockSSHConfig, ok := sshConfig.(*ssh_mocks.MockSSHConfiger)
+	s.Require().True(ok)
+	s.sshConfig = mockSSHConfig
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	expectedOutput := "command output"
 
 	// Create mock session
-	mockSession := &ssh_mock.MockSSHSessioner{}
+	mockSession := &ssh_mocks.MockSSHSessioner{}
 	mockSession.On("Run", "ls -l").Return(nil)
 	mockSession.On("Close").Return(nil)
 	mockSession.On("SetStdout", mock.MatchedBy(func(w interface{}) bool {
@@ -52,7 +54,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	mockSession.On("SetStderr", mock.Anything).Return()
 
 	// Create mock SSH client
-	mockClient := &ssh_mock.MockSSHClienter{}
+	mockClient := &ssh_mocks.MockSSHClienter{}
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockClient.On("Close").Return(nil)
 	mockClient.On("GetClient").Return(&ssh.Client{}).Maybe()
@@ -60,7 +62,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	mockClient.On("IsConnected").Return(true).Maybe()
 
 	// Create mock client creator
-	mockClientCreator := &ssh_mock.MockSSHClientCreator{}
+	mockClientCreator := &ssh_mocks.MockSSHClientCreator{}
 	mockClientCreator.On("NewClient",
 		"test-host",
 		22,

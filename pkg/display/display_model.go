@@ -283,10 +283,9 @@ func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models
 		l.Debugf("Machine %s not found, skipping service state update", machineName)
 		return
 	}
-
 	// Convert SpotState (ProvisioningStage) to ServiceState
 	var spotServiceState models.ServiceState
-	switch newStatus.SpotState {
+	switch newStatus.Stage {
 	case models.StageSpotRequested:
 		spotServiceState = models.ServiceStateUpdating
 	case models.StageSpotProvisioned:
@@ -299,16 +298,18 @@ func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models
 		spotServiceState = models.ServiceStateUnknown
 	}
 
+	_ = spotServiceState
+
 	// Update stage based on service states and update the corresponding service state
 	switch {
 	// Handle spot instance specific states first
 	case newStatus.SpotInstance:
-		if machine.GetStage() == "" {
+		if newStatus.Stage == models.StageSpotRequested {
 			newStatus.Stage = models.StageSpotRequested
-		} else if machine.GetStage() == models.StageSpotFailed {
+		} else if newStatus.Stage == models.StageSpotFallback {
 			newStatus.Stage = models.StageSpotFallback
 		}
-		machine.SetServiceState(models.ServiceTypeSpot.Name, spotServiceState)
+		machine.SetProvisioningStage(newStatus.Stage)
 
 	case machine.GetPublicIP() != "" &&
 		(machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded ||
@@ -365,9 +366,9 @@ func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models
 	}
 
 	// Update the machine's stage if a new one is set
-	if newStatus.Stage != "" {
-		err := m.Deployment.UpdateMachine(machineName, func(m models.Machiner) {
-			m.SetStage(models.ProvisioningStage(newStatus.Stage))
+	if newStatus.Stage != models.StageVMUnknown {
+		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
+			mach.SetProvisioningStage(newStatus.Stage)
 		})
 		if err != nil {
 			l.Errorf("Error updating machine stage: %v", err)

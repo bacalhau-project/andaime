@@ -123,13 +123,6 @@ func ProcessMachinesConfig(
 			thisVMType = rawMachine.Parameters.Type
 		}
 
-		// Create status for machine type validation
-		status := &models.DisplayStatus{
-			Name:         fmt.Sprintf("machine-%s-%s", thisVMType, rawMachine.Location),
-			StatusMessage: fmt.Sprintf("Validating machine type %s in location %s", thisVMType, rawMachine.Location),
-		}
-		m.UpdateDisplay(status)
-
 		valid, err := validateMachineTypeFn(context.Background(), rawMachine.Location, thisVMType)
 		if !valid || err != nil {
 			allBadMachineLocationCombos = append(
@@ -139,12 +132,8 @@ func ProcessMachinesConfig(
 					vmSize:   thisVMType,
 				},
 			)
-			status.StatusMessage = fmt.Sprintf("❌ Invalid machine type %s in location %s", thisVMType, rawMachine.Location)
-			m.UpdateDisplay(status)
 			continue
 		}
-		status.StatusMessage = fmt.Sprintf("✅ Valid machine type %s in location %s", thisVMType, rawMachine.Location)
-		m.UpdateDisplay(status)
 		diskImageFamily := defaultDiskImageFamily
 		diskImageURL := defaultDiskImageURL
 		if rawMachine.Parameters != (RawMachineParams{}) {

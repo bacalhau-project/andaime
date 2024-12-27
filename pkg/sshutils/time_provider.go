@@ -2,21 +2,28 @@ package sshutils
 
 import (
 	"time"
-	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces"
-	"github.com/bacalhau-project/andaime/pkg/sshutils/interfaces/types"
 )
 
 // DefaultTimeProvider implements the TimeProvider interface using the standard time package
 type DefaultTimeProvider struct{}
 
-func NewDefaultTimeProvider() interfaces.TimeProvider {
+func NewDefaultTimeProvider() TimeProvider {
 	return &DefaultTimeProvider{}
 }
 
-func (p *DefaultTimeProvider) Now() types.Time {
-	return types.Time{UnixTime: time.Now().Unix()}
+func (p *DefaultTimeProvider) Now() Time {
+	return Time{UnixTime: time.Now().Unix()}
 }
 
-func (p *DefaultTimeProvider) Sleep(d types.Duration) {
-	time.Sleep(time.Duration(d))
+func (p *DefaultTimeProvider) Sleep(d time.Duration) {
+	time.Sleep(d)
+}
+
+type TimeProvider interface {
+	Now() Time
+	Sleep(d time.Duration)
+}
+
+type Time struct {
+	UnixTime int64
 }
