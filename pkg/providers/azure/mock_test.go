@@ -3,11 +3,13 @@ package azure
 import (
 	"context"
 	"net/http"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/stretchr/testify/mock"
 )
 
+// MockPoller implements the Pollerer interface for testing
 type MockPoller struct {
 	mock.Mock
 }

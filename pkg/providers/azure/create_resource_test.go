@@ -24,7 +24,7 @@ import (
 type PkgProvidersAzureCreateResourceTestSuite struct {
 	suite.Suite
 	ctx                    context.Context
-	origLogger             *logger.Logger
+	origLogger             logger.Logger
 	testSSHPublicKeyPath   string
 	testSSHPrivateKeyPath  string
 	cleanupPublicKey       func()

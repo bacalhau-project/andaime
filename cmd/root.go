@@ -93,8 +93,7 @@ func parseConfigFlag() error {
 	return nil
 }
 
-func initLogger() *logger.Logger {
-	logger.InitLoggerOutputs()
+func initLogger() logger.Logger {
 	logger.InitProduction()
 	return logger.Get()
 }
@@ -127,7 +126,7 @@ func setupPanicHandling() {
 	}()
 }
 
-func logPanic(l *logger.Logger, r interface{}) {
+func logPanic(l logger.Logger, r interface{}) {
 	debugLog, err := os.OpenFile(
 		"/tmp/andaime.log",
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY,

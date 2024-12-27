@@ -118,7 +118,10 @@ func Initialize(config Config) error {
 	}
 
 	logger := zap.New(core, opts...).Named("andaime")
-	SetGlobalLogger(&ZapLogger{logger.Sugar()})
+	SetGlobalLogger(&ZapLogger{
+		SugaredLogger: logger.Sugar(),
+		verbose:      false,
+	})
 
 	return nil
 }

@@ -37,15 +37,23 @@ type Logger interface {
 	Fatal(args ...interface{})
 	Fatalf(template string, args ...interface{})
 	GetLogs() []string
+	SetVerbose(verbose bool)
+	Sync() error
+	PrintLogs()
 }
 
 // ZapLogger wraps zap.SugaredLogger to implement our Logger interface
 type ZapLogger struct {
 	*zap.SugaredLogger
+	verbose bool
 }
 
 func (l *ZapLogger) GetLogs() []string {
 	return []string{} // Zap logger doesn't store logs
+}
+
+func (l *ZapLogger) SetVerbose(verbose bool) {
+	l.verbose = verbose
 }
 
 func (l *ZapLogger) Fatal(args ...interface{}) {
@@ -56,11 +64,20 @@ func (l *ZapLogger) Fatalf(template string, args ...interface{}) {
 	l.SugaredLogger.Fatalf(template, args...)
 }
 
+func (l *ZapLogger) PrintLogs() {
+	// No-op for ZapLogger
+}
+
+func (l *ZapLogger) Sync() error {
+	return l.SugaredLogger.Sync()
+}
+
 type TestLogger struct {
-	mu    sync.Mutex
-	logs  []string
-	level zapcore.Level
-	t     *testing.T
+	mu      sync.Mutex
+	logs    []string
+	level   zapcore.Level
+	t       *testing.T
+	verbose bool
 }
 
 func NewTestLogger(t *testing.T) *TestLogger {
@@ -87,6 +104,12 @@ func (l *TestLogger) GetLogs() []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return append([]string{}, l.logs...)
+}
+
+func (l *TestLogger) SetVerbose(verbose bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.verbose = verbose
 }
 
 func (l *TestLogger) Debug(args ...interface{}) {
@@ -129,10 +152,34 @@ func (l *TestLogger) Fatalf(template string, args ...interface{}) {
 	l.log(zapcore.FatalLevel, fmt.Sprintf(template, args...))
 }
 
+func (l *TestLogger) PrintLogs() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, log := range l.logs {
+		fmt.Println(log)
+	}
+}
+
+func (l *TestLogger) Sync() error {
+	return nil
+}
+
 var (
 	globalLogger Logger
 	globalMu     sync.RWMutex
 )
+
+// InitProduction initializes the logger in production mode
+func InitProduction() {
+	config := zap.NewProductionConfig()
+	config.EncoderConfig.TimeKey = "time"
+	config.EncoderConfig.EncodeTime = customTimeEncoder
+	logger, _ := config.Build()
+	SetGlobalLogger(&ZapLogger{
+		SugaredLogger: logger.Sugar(),
+		verbose:      false,
+	})
+}
 
 func SetGlobalLogger(l Logger) {
 	globalMu.Lock()
@@ -146,7 +193,10 @@ func Get() Logger {
 	if globalLogger == nil {
 		config := zap.NewDevelopmentConfig()
 		logger, _ := config.Build()
-		globalLogger = &ZapLogger{logger.Sugar()}
+		globalLogger = &ZapLogger{
+			SugaredLogger: logger.Sugar(),
+			verbose:      false,
+		}
 	}
 	return globalLogger
 }

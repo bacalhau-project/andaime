@@ -51,6 +51,27 @@ func (e AzureError) IsNotFound() bool {
 	return e.Code == "ResourceNotFound"
 }
 
+// IsRetriableError checks if the given error is retriable.
+func IsRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check if it's an AzureError
+	var azureErr *AzureError
+	if errors.As(err, &azureErr) {
+		return azureErr.IsNotFound()
+	}
+
+	// Check for context cancellation
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	// Add other retriable error conditions here if needed
+	return false
+}
+
 // getResourceNameFromID extracts the resource name from an Azure resource ID
 func getResourceNameFromID(id string) string {
 	parts := strings.Split(id, "/")

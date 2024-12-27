@@ -26,7 +26,7 @@ type BaseAzureTestSuite struct {
 	MockAzureClient *azure_mocks.MockAzureClienter
 	Ctx             context.Context
 	Deployment      *models.Deployment
-	Logger          logger.Loggerer // Change from Logger to Loggerer
+	Logger          logger.Logger
 }
 
 func (suite *BaseAzureTestSuite) SetupSuite() {
@@ -66,9 +66,6 @@ func (suite *BaseAzureTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 	suite.Deployment = dep
 	m.Deployment = suite.Deployment
-
-	suite.Logger = logger.NewTestLogger(suite.T())
-	logger.SetGlobalLogger(suite.Logger)
 }
 
 func (suite *BaseAzureTestSuite) TearDownSuite() {
@@ -87,8 +84,11 @@ func (suite *BaseAzureTestSuite) SetupTest() {
 	logger.SetGlobalLogger(testLogger)
 
 	// Create context with logger
-	suite.Ctx = logger.InjectLoggerInContext(context.Background(), testLogger)
-	suite.MockAzureClient = (*azure_mocks.MockAzureClienter)(NewMockClient())
+	suite.Ctx = logger.IntoContext(context.Background(), testLogger)
+
+	// Create new mock Azure client
+	mockClient := new(azure_mocks.MockAzureClienter)
+	suite.MockAzureClient = mockClient
 
 	m := display.GetGlobalModelFunc()
 	m.Deployment = suite.Deployment

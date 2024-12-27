@@ -6,25 +6,14 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/stretchr/testify/mock"
 )
-
-// MockClient is a mock implementation of the Client interface
-type MockClient struct {
-	mock.Mock
-}
-
-// NewMockClient creates a new MockClient with common expectations set
-func NewMockClient() *MockClient {
-	mockClient := new(MockClient)
-	// Set up common expectations here
-	return mockClient
-}
 
 // AssertResourceGroupCreated is a helper function to assert that a resource group was created
 func AssertResourceGroupCreated(
 	t *testing.T,
-	mockClient *MockClient,
+	mockClient *azure_mocks.MockAzureClienter,
 	expectedName, expectedLocation string,
 ) {
 	mockClient.AssertCalled(

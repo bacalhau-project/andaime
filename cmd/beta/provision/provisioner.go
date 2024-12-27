@@ -238,7 +238,7 @@ func (p *Provisioner) ProvisionWithCallback(
 }
 
 // handleProvisionError processes and formats provisioning errors
-func handleProvisionError(err error, config *NodeConfig, l *logger.Logger) error {
+func handleProvisionError(err error, config *NodeConfig, l logger.Logger) error {
 	var cmdOutput string
 
 	type outputError interface {
