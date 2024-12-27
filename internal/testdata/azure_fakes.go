@@ -44,8 +44,12 @@ func FakeNetworkInterface() *armnetwork.Interface {
 }
 
 // FakePublicIPAddress returns a fake Azure Public IP Address for testing
-func FakePublicIPAddress(ip string) string {
-	return ip
+func FakePublicIPAddress(ip string) *armnetwork.PublicIPAddress {
+	return &armnetwork.PublicIPAddress{
+		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+			IPAddress: &ip,
+		},
+	}
 }
 
 // FakeResourceGroup returns a fake Azure Resource Group for testing

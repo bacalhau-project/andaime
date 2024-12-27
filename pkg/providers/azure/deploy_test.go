@@ -35,8 +35,8 @@ func (s *AzureDeployTestSuite) SetupTest() {
 }
 
 func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
-	// Initialize test context
-	ctx := context.Background()
+	// Initialize test context with logger
+	baseCtx := logger.InjectLoggerInContext(context.Background(), s.Logger)
 
 	// Create test resources
 	resourceGroup := "test-resource-group"
@@ -52,7 +52,7 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 		expectedRetry   int
 		expectedPublic  string
 		expectedPrivate string
-		setupContext    func() (context.Context, context.CancelFunc)
+		setupContext    func(context.Context) (context.Context, context.CancelFunc)
 		expectedLogs    []string
 	}{
 		{
@@ -65,8 +65,8 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			expectedRetry:   1,
 			expectedPublic:  "1.2.3.4",
 			expectedPrivate: "10.0.0.4",
-			setupContext: func() (context.Context, context.CancelFunc) {
-				return context.WithTimeout(ctx, 10*time.Second)
+			setupContext: func(baseCtx context.Context) (context.Context, context.CancelFunc) {
+				return context.WithTimeout(baseCtx, 10*time.Second)
 			},
 			expectedLogs: []string{
 				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
@@ -87,8 +87,8 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			vmError:       nil,
 			expectedError: "exceeded maximum retries",
 			expectedRetry: 3,
-			setupContext: func() (context.Context, context.CancelFunc) {
-				return context.WithTimeout(ctx, 10*time.Second)
+			setupContext: func(baseCtx context.Context) (context.Context, context.CancelFunc) {
+				return context.WithTimeout(baseCtx, 10*time.Second)
 			},
 			expectedLogs: []string{
 				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
@@ -106,8 +106,8 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			vmError:       &AzureError{Code: "AuthorizationFailed", Message: "Not authorized"},
 			expectedError: "Not authorized",
 			expectedRetry: 0,
-			setupContext: func() (context.Context, context.CancelFunc) {
-				return context.WithTimeout(ctx, 10*time.Second)
+			setupContext: func(baseCtx context.Context) (context.Context, context.CancelFunc) {
+				return context.WithTimeout(baseCtx, 10*time.Second)
 			},
 			expectedLogs: []string{
 				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
@@ -123,8 +123,8 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			vmError:       context.Canceled,
 			expectedError: "context canceled",
 			expectedRetry: 0,
-			setupContext: func() (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithCancel(ctx)
+			setupContext: func(baseCtx context.Context) (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(baseCtx)
 				go func() {
 					time.Sleep(100 * time.Millisecond)
 					cancel()
@@ -142,12 +142,21 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 		s.Run(tc.name, func() {
 			// Set up test context and logger first
 			s.SetupTest()
-			testCtx, cancel := tc.setupContext()
+
+			// Create test context with logger and timeout
+			var testCtx context.Context
+			var cancel context.CancelFunc
+			if tc.setupContext != nil {
+				// Use the base context with logger for custom context setup
+				testCtx, cancel = tc.setupContext(baseCtx)
+			} else {
+				testCtx, cancel = context.WithTimeout(baseCtx, 10*time.Second)
+			}
 			defer cancel()
 
 			// Reset mock expectations and provider
 			s.MockAzureClient = new(azure_mocks.MockAzureClienter)
-			provider, err := NewAzureProvider(s.Ctx, "test-subscription-id")
+			provider, err := NewAzureProvider(testCtx, "test-subscription-id")
 			s.Require().NoError(err)
 			provider.SetAzureClient(s.MockAzureClient)
 			s.provider = provider
@@ -204,8 +213,11 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			// Mock GetPublicIPAddress responses
 			s.MockAzureClient.On("GetPublicIPAddress",
 				mock.Anything, mock.Anything, mock.Anything).
-				Return(tc.expectedPublic, nil).Maybe()
-
+				Return(&armnetwork.PublicIPAddress{
+					Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+						IPAddress: &tc.expectedPublic,
+					},
+				}, nil).Maybe()
 			// Execute test
 			publicIP, privateIP, err := s.provider.GetVMIPAddresses(testCtx, resourceGroup, vmName)
 

@@ -716,110 +716,91 @@ func (p *AzureProvider) PollResources(ctx context.Context) ([]interface{}, error
 
 func (p *AzureProvider) GetVMIPAddresses(
 	ctx context.Context,
-	resourceGroupName, vmName string,
+	resourceGroup string,
+	vmName string,
 ) (string, string, error) {
-	l := logger.Get()
-	maxRetries := 3
-	retryCount := 0
+	l := logger.FromContext(ctx)
+	client := p.GetAzureClient()
 
-	var getIPAddresses func() (string, string, error)
-	getIPAddresses = func() (string, string, error) {
-		if retryCount >= maxRetries {
-			l.Debugf("Exceeded maximum retries (%d) while getting IP addresses", maxRetries)
-			return "", "", fmt.Errorf("exceeded maximum retries (%d) while getting IP addresses", maxRetries)
-		}
+	for attempt := 1; attempt <= ipRetries; attempt++ {
+		l.Infof("Getting IP addresses for VM %s in resource group %s (attempt %d/3)", vmName, resourceGroup, attempt)
 
-		l.Debugf("Getting IP addresses for VM %s in resource group %s (attempt %d/%d)",
-			vmName, resourceGroupName, retryCount+1, maxRetries)
-
-		client := p.GetAzureClient()
-
-		// Get the VM
-		vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)
+		vm, err := client.GetVirtualMachine(ctx, resourceGroup, vmName)
 		if err != nil {
-			if err == context.Canceled {
-				l.Debugf("Context cancelled while waiting")
-				return "", "", err
+			if ctx.Err() == context.Canceled {
+				l.Info("Context cancelled while waiting")
+				return "", "", fmt.Errorf("context canceled")
 			}
-			return "", "", fmt.Errorf("failed to get virtual machine: %w", err)
+			l.Errorf("Failed to get VM %s: %v", vmName, err)
+			return "", "", fmt.Errorf("failed to get VM: %w", err)
 		}
 
-		// Check if the VM has a network profile
-		if vm.Properties.NetworkProfile == nil ||
+		if vm.Properties == nil || vm.Properties.NetworkProfile == nil ||
 			len(vm.Properties.NetworkProfile.NetworkInterfaces) == 0 {
+			l.Error("VM has no network interfaces")
 			return "", "", fmt.Errorf("VM has no network interfaces")
 		}
 
-		// Get the network interface ID
 		nicID := vm.Properties.NetworkProfile.NetworkInterfaces[0].ID
 		if nicID == nil {
+			l.Error("Network interface ID is nil")
 			return "", "", fmt.Errorf("network interface ID is nil")
 		}
 
-		// Parse the network interface ID to get its name
-		nicName, err := parseResourceID(*nicID)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to parse network interface ID: %w", err)
-		}
+		// Extract network interface name from the ID
+		nicName := getResourceNameFromID(*nicID)
+		l.Info("Getting network interface " + nicName)
 
-		l.Debugf("Getting network interface %s", nicName)
-
-		// Get the network interface with circuit breaker protection
-		nic, err := client.GetNetworkInterface(ctx, resourceGroupName, nicName)
+		nic, err := client.GetNetworkInterface(ctx, resourceGroup, nicName)
 		if err != nil {
 			if azureErr, ok := err.(*AzureError); ok && azureErr.Code == "ResourceNotFound" {
-				l.Debugf("Network interface not found (retriable error)")
-				retryCount++
-				return getIPAddresses()
+				l.Info("Network interface not found (retriable error)")
+				if attempt == ipRetries {
+					l.Info("Exceeded maximum retries (3) while getting IP addresses")
+					return "", "", fmt.Errorf("exceeded maximum retries")
+				}
+				time.Sleep(timeBetweenIPRetries)
+				continue
 			}
-			l.Debugf("Non-retriable error getting network interface: %v", err)
+			l.Info("Non-retriable error getting network interface")
 			return "", "", fmt.Errorf("failed to get network interface: %w", err)
 		}
 
-		l.Debugf("Successfully retrieved network interface")
+		l.Info("Successfully retrieved network interface")
 
-		// Check if the network interface has IP configurations
-		if nic.Properties.IPConfigurations == nil {
+		if nic.Properties == nil || len(nic.Properties.IPConfigurations) == 0 {
+			l.Error("Network interface has no IP configurations")
 			return "", "", fmt.Errorf("network interface has no IP configurations")
 		}
 
-		if len(nic.Properties.IPConfigurations) > 1 {
-			l.Warnf("Network interface %s has multiple IP configurations, using the first one", nicName)
+		ipConfig := nic.Properties.IPConfigurations[0]
+		if ipConfig.Properties == nil {
+			l.Error("IP configuration properties are nil")
+			return "", "", fmt.Errorf("IP configuration properties are nil")
 		}
 
-		ipConfig := nic.Properties.IPConfigurations[0]
-
-		// Get public IP address with circuit breaker protection
-		publicIP := ""
-		if ipConfig.Properties.PublicIPAddress != nil {
-			publicIP, err = client.GetPublicIPAddress(
-				ctx,
-				resourceGroupName,
-				ipConfig.Properties.PublicIPAddress,
-			)
+		var publicIP string
+		if ipConfig.Properties.PublicIPAddress != nil && ipConfig.Properties.PublicIPAddress.ID != nil {
+			publicIPAddress, err := client.GetPublicIPAddress(ctx, resourceGroup, getResourceNameFromID(*ipConfig.Properties.PublicIPAddress.ID))
 			if err != nil {
+				l.Errorf("Failed to get public IP address: %v", err)
 				return "", "", fmt.Errorf("failed to get public IP address: %w", err)
+			}
+			if publicIPAddress != nil && publicIPAddress.Properties != nil && publicIPAddress.Properties.IPAddress != nil {
+				publicIP = *publicIPAddress.Properties.IPAddress
 			}
 		}
 
-		privateIP := ""
-		if ipConfig.Properties.PrivateIPAddress != nil {
-			privateIP = *ipConfig.Properties.PrivateIPAddress
+		if ipConfig.Properties.PrivateIPAddress == nil {
+			l.Error("Private IP address is nil")
+			return "", "", fmt.Errorf("private IP address is nil")
 		}
 
-		return publicIP, privateIP, nil
+		return publicIP, *ipConfig.Properties.PrivateIPAddress, nil
 	}
 
-	return getIPAddresses()
-}
-
-func parseResourceID(resourceID string) (string, error) {
-	parts := strings.Split(resourceID, "/")
-	//nolint:mnd
-	if len(parts) < 9 {
-		return "", fmt.Errorf("invalid resource ID format")
-	}
-	return parts[8], nil
+	l.Info("Exceeded maximum retries (3) while getting IP addresses")
+	return "", "", fmt.Errorf("exceeded maximum retries")
 }
 
 // UpdateCallback is a function type for status updates during deployment

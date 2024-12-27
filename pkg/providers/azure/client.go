@@ -51,6 +51,15 @@ func (e AzureError) IsNotFound() bool {
 	return e.Code == "ResourceNotFound"
 }
 
+// getResourceNameFromID extracts the resource name from an Azure resource ID
+func getResourceNameFromID(id string) string {
+	parts := strings.Split(id, "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
 // LiveAzureClient implements the AzureClienter interface using the Azure SDK.
 type LiveAzureClient struct {
 	subscriptionID       string
@@ -343,27 +352,22 @@ func (c *LiveAzureClient) GetNetworkInterface(
 	}
 }
 
-// GetPublicIPAddress retrieves a public IP address.
+// GetPublicIPAddress retrieves a public IP address by name.
 func (c *LiveAzureClient) GetPublicIPAddress(
 	ctx context.Context,
 	resourceGroupName string,
-	publicIPAddress *armnetwork.PublicIPAddress,
-) (string, error) {
-	publicID, err := arm.ParseResourceID(*publicIPAddress.ID)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse public IP address ID: %w", err)
-	}
-
+	publicIPAddressName string,
+) (*armnetwork.PublicIPAddress, error) {
 	publicIPResponse, err := c.publicIPClient.Get(
 		ctx,
-		publicID.ResourceGroupName,
-		publicID.Name,
+		resourceGroupName,
+		publicIPAddressName,
 		&armnetwork.PublicIPAddressesClientGetOptions{Expand: nil},
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to get public IP address: %w", err)
+		return nil, fmt.Errorf("failed to get public IP address: %w", err)
 	}
-	return *publicIPResponse.Properties.IPAddress, nil
+	return &publicIPResponse.PublicIPAddress, nil
 }
 
 // GetSKUsByLocation retrieves SKUs available in a specific location.
@@ -502,15 +506,16 @@ func (c *LiveAzureClient) GetVMExternalIP(
 	publicIP, err := c.GetPublicIPAddress(
 		ctx,
 		parsedPublicIP.ResourceGroupName,
-		&armnetwork.PublicIPAddress{
-			ID: publicIPID,
-		},
+		parsedPublicIP.Name,
 	)
 	if err != nil {
 		return "", err
 	}
 
-	return publicIP, nil
+	if publicIP != nil && publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
+		return *publicIP.Properties.IPAddress, nil
+	}
+	return "", fmt.Errorf("public IP address is not available")
 }
 
 func (c *LiveAzureClient) DestroyResourceGroup(

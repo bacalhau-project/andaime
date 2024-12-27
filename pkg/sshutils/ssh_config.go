@@ -23,7 +23,7 @@ type SSHConfig struct {
 	SSHPrivateKeyPath         string
 	PrivateKeyMaterial        []byte
 	Timeout                   time.Duration
-	Logger                    *logger.Logger
+	Logger                    logger.Logger
 	SSHClient                 *ssh.Client
 	SSHPrivateKeyReader       func(path string) ([]byte, error)
 	SSHPublicKeyReader        func(path string) ([]byte, error)
