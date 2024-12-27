@@ -58,9 +58,9 @@ type Logger struct {
 type TestLogger struct {
 	*Logger
 	t       *testing.T
-	logs    []string // Change to pointer
-	logLock *sync.Mutex
-	buffer  *LogBuffer
+	logs    []string    // Store raw messages for test matching
+	logLock sync.Mutex
+	buffer  *LogBuffer  // Buffer for GetLastLines functionality
 }
 
 type levelEnabler struct{}
@@ -202,22 +202,28 @@ func (l *Logger) syncIfNeeded() {
 }
 
 func (l *Logger) log(level zapcore.Level, msg string) {
-	formattedMsg := formatMessage(msg)
-	switch level {
-	case zapcore.DebugLevel:
-		l.Logger.Debug(formattedMsg)
-	case zapcore.InfoLevel:
-		l.Logger.Info(formattedMsg)
-	case zapcore.WarnLevel:
-		l.Logger.Warn(formattedMsg)
-	case zapcore.ErrorLevel:
-		l.Logger.Error(formattedMsg)
-	case zapcore.FatalLevel:
-		l.Logger.Fatal(formattedMsg)
+	// First check if this is a TestLogger
+	if tl, ok := interface{}(l).(*TestLogger); ok {
+		tl.logLock.Lock()
+		// Store the raw message without any formatting
+		tl.logs = append(tl.logs, msg)
+		if tl.buffer != nil {
+			tl.buffer.AddLine(msg)
+		}
+		if tl.t != nil {
+			tl.t.Log(msg)
+		}
+		tl.logLock.Unlock()
 		return
 	}
-	globalLogBuffer.AddLine(formattedMsg)
-	l.syncIfNeeded()
+
+	// Regular logging path for non-test loggers
+	if l.Logger != nil && l.Logger.Core().Enabled(level) {
+		if ce := l.Logger.Check(level, msg); ce != nil {
+			ce.Write()
+		}
+		l.syncIfNeeded()
+	}
 }
 
 func (l *Logger) Debug(msg string) {
@@ -266,18 +272,37 @@ func (l *Logger) Fatalf(
 
 // Field logging methods
 func (l *Logger) DebugWithFields(msg string, fields ...zap.Field) {
+	if tl, ok := interface{}(l).(*TestLogger); ok {
+		tl.Debug(msg)
+		return
+	}
 	l.Logger.Debug(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
+
 func (l *Logger) InfoWithFields(msg string, fields ...zap.Field) {
+	if tl, ok := interface{}(l).(*TestLogger); ok {
+		tl.Info(msg)
+		return
+	}
 	l.Logger.Info(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
+
 func (l *Logger) WarnWithFields(msg string, fields ...zap.Field) {
+	if tl, ok := interface{}(l).(*TestLogger); ok {
+		tl.Warn(msg)
+		return
+	}
 	l.Logger.Warn(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
+
 func (l *Logger) ErrorWithFields(msg string, fields ...zap.Field) {
+	if tl, ok := interface{}(l).(*TestLogger); ok {
+		tl.Error(msg)
+		return
+	}
 	l.Logger.Error(formatMessage(msg), fields...)
 	l.syncIfNeeded()
 }
@@ -291,31 +316,19 @@ func (tl *TestLogger) GetLogs() []string {
 
 // Test logger methods with capture
 func (tl *TestLogger) Debug(msg string) {
-	tl.logLock.Lock()
-	tl.logs = append(tl.logs, msg)
-	tl.logLock.Unlock()
-	tl.Logger.Debug(msg)
+	tl.log(zapcore.DebugLevel, msg)
 }
 
 func (tl *TestLogger) Info(msg string) {
-	tl.logLock.Lock()
-	tl.logs = append(tl.logs, msg)
-	tl.logLock.Unlock()
-	tl.Logger.Info(msg)
+	tl.log(zapcore.InfoLevel, msg)
 }
 
 func (tl *TestLogger) Warn(msg string) {
-	tl.logLock.Lock()
-	tl.logs = append(tl.logs, msg)
-	tl.logLock.Unlock()
-	tl.Logger.Warn(msg)
+	tl.log(zapcore.WarnLevel, msg)
 }
 
 func (tl *TestLogger) Error(msg string) {
-	tl.logLock.Lock()
-	tl.logs = append(tl.logs, msg)
-	tl.logLock.Unlock()
-	tl.Logger.Error(msg)
+	tl.log(zapcore.ErrorLevel, msg)
 }
 
 // Utility functions
@@ -360,7 +373,7 @@ func SetGlobalLogger(logger interface{}) {
 	case *Logger:
 		globalLogger = l.Logger
 	case *TestLogger:
-		globalLogger = l.Logger.Logger
+		globalLogger = nil // Test logger doesn't use zap logger
 	default:
 		panic("unsupported logger type")
 	}
@@ -374,20 +387,15 @@ func NewTestLogger(tb zaptest.TestingT) *TestLogger {
 	} else {
 		panic("tb does not implement *testing.T")
 	}
-	core := zapcore.NewCore(
-		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
-		zapcore.AddSync(&testingWriter{tb: tb}),
-		levelEnabler{},
-	)
-	logs := make([]string, 0)
 	return &TestLogger{
 		Logger: &Logger{
-			Logger:  zap.New(core),
+			Logger:  nil, // No zap logger for test loggers
 			verbose: true,
 		},
 		t:       t,
-		logs:    logs,
-		logLock: &sync.Mutex{},
+		logs:    make([]string, 0),
+		logLock: sync.Mutex{},
+		buffer:  NewLogBuffer(LastLogLines),
 	}
 }
 
@@ -470,8 +478,10 @@ func GetLastLines(n int) []string {
 	return globalLogBuffer.GetLastLines(n)
 }
 
-// Update test logger methods to use buffer
 func (tl *TestLogger) GetLastLines(n int) []string {
+	if tl.buffer == nil {
+		return []string{}
+	}
 	return tl.buffer.GetLastLines(n)
 }
 
@@ -512,13 +522,15 @@ type Loggerer interface {
 	With(fields ...zap.Field) Loggerer
 }
 
-// Update TestLogger's With method
 func (tl *TestLogger) With(fields ...zap.Field) Loggerer {
 	return &TestLogger{
-		Logger:  tl.Logger.With(fields...).(*Logger),
+		Logger: &Logger{
+			Logger:  nil, // No zap logger for test loggers
+			verbose: true,
+		},
 		t:       tl.t,
 		logs:    tl.logs,
-		logLock: tl.logLock, // Reuse the existing mutex
+		logLock: sync.Mutex{},
 		buffer:  tl.buffer,
 	}
 }

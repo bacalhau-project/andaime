@@ -87,6 +87,7 @@ func (suite *BaseAzureTestSuite) SetupTest() {
 	m := display.GetGlobalModelFunc()
 	m.Deployment = suite.Deployment
 
+	// Create a new test logger for each test
 	suite.Logger = logger.NewTestLogger(suite.T())
 	logger.SetGlobalLogger(suite.Logger)
 }

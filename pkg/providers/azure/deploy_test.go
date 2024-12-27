@@ -11,6 +11,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/bacalhau-project/andaime/pkg/logger"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -67,8 +69,10 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 				return context.WithTimeout(ctx, 10*time.Second)
 			},
 			expectedLogs: []string{
-				"Getting network interface",
+				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
+				"Getting network interface test-network-interface",
 				"Network interface not found (retriable error)",
+				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 2/3)",
 				"Successfully retrieved network interface",
 			},
 		},
@@ -87,9 +91,11 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 				return context.WithTimeout(ctx, 10*time.Second)
 			},
 			expectedLogs: []string{
-				"Getting network interface",
+				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
+				"Getting network interface test-network-interface",
 				"Network interface not found (retriable error)",
-				"Exceeded maximum retries",
+				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 2/3)",
+				"Exceeded maximum retries (3) while getting IP addresses",
 			},
 		},
 		{
@@ -104,7 +110,8 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 				return context.WithTimeout(ctx, 10*time.Second)
 			},
 			expectedLogs: []string{
-				"Getting network interface",
+				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
+				"Getting network interface test-network-interface",
 				"Non-retriable error getting network interface",
 			},
 		},
@@ -125,7 +132,7 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 				return ctx, cancel
 			},
 			expectedLogs: []string{
-				"Getting network interface",
+				"Getting IP addresses for VM test-vm in resource group test-resource-group (attempt 1/3)",
 				"Context cancelled while waiting",
 			},
 		},
@@ -133,24 +140,38 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			// Set up test context
+			// Set up test context and logger first
+			s.SetupTest()
 			testCtx, cancel := tc.setupContext()
 			defer cancel()
 
+			// Reset mock expectations and provider
+			s.MockAzureClient = new(azure_mocks.MockAzureClienter)
+			provider, err := NewAzureProvider(s.Ctx, "test-subscription-id")
+			s.Require().NoError(err)
+			provider.SetAzureClient(s.MockAzureClient)
+			s.provider = provider
+
 			// Mock GetVirtualMachine to return a VM with a network interface
-			s.MockAzureClient.On("GetVirtualMachine",
-				mock.Anything, resourceGroup, vmName).
-				Return(&armcompute.VirtualMachine{
-					Properties: &armcompute.VirtualMachineProperties{
-						NetworkProfile: &armcompute.NetworkProfile{
-							NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-								{
-									ID: to.Ptr(networkInterfaceID),
+			if tc.vmError != nil {
+				s.MockAzureClient.On("GetVirtualMachine",
+					mock.Anything, resourceGroup, vmName).
+					Return(nil, tc.vmError).Once()
+			} else {
+				s.MockAzureClient.On("GetVirtualMachine",
+					mock.Anything, resourceGroup, vmName).
+					Return(&armcompute.VirtualMachine{
+						Properties: &armcompute.VirtualMachineProperties{
+							NetworkProfile: &armcompute.NetworkProfile{
+								NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
+									{
+										ID: to.Ptr(networkInterfaceID),
+									},
 								},
 							},
 						},
-					},
-				}, tc.vmError).Once()
+					}, nil).Times(tc.expectedRetry + 1)
+			}
 
 			// Mock network interface responses
 			currentError := 0
@@ -202,10 +223,11 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			s.Equal(tc.expectedRetry, currentError)
 
 			// Verify logs
-			logs := s.GetLogs()
+			logs := s.Logger.GetLogs()
 			for _, expectedLog := range tc.expectedLogs {
 				found := false
 				for _, log := range logs {
+					// Compare raw messages directly
 					if strings.Contains(log, expectedLog) {
 						found = true
 						break
