@@ -583,6 +583,23 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				machine.GetName(),
 			)
 			if err != nil {
+				// Check for specific error types
+				if strings.Contains(err.Error(), "exceeded maximum retries") {
+					l.Errorf("Failed to get IP addresses: exceeded maximum retries for network interface operations: %v", err)
+					displayStatus := models.NewDisplayStatusWithText(
+						machine.GetName(),
+						models.AzureResourceTypeVM,
+						models.ResourceStateFailed,
+						fmt.Sprintf("Network interface error: %v", err),
+					)
+					m.UpdateStatus(displayStatus)
+					m.Deployment.Machines[machine.GetName()].SetStatusMessage(
+						fmt.Sprintf("Failed to get IP addresses: %v", err),
+					)
+					return fmt.Errorf("failed to get IP addresses for VM %s: exceeded maximum retries: %w",
+						machine.GetName(), err)
+				}
+
 				if i == ipRetries-1 {
 					l.Errorf(
 						"Failed to get IP addresses for VM %s after %d retries: %v",
@@ -591,8 +608,10 @@ func (p *AzureProvider) deployTemplateWithRetry(
 						err,
 					)
 					m.Deployment.Machines[machine.GetName()].SetStatusMessage("Failed to get IP addresses")
-					return fmt.Errorf("failed to get IP addresses for VM %s: %v", machine.GetName(), err)
+					return fmt.Errorf("failed to get IP addresses for VM %s: %w", machine.GetName(), err)
 				}
+
+				// Handle transient errors with retry
 				time.Sleep(timeBetweenIPRetries)
 				displayStatus := models.NewDisplayStatusWithText(
 					machine.GetName(),
@@ -602,9 +621,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 				)
 				displayStatus.PublicIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
 				displayStatus.PrivateIP = fmt.Sprintf("Retry: %d/%d", i+1, ipRetries)
-				m.UpdateStatus(
-					displayStatus,
-				)
+				m.UpdateStatus(displayStatus)
 				continue
 			}
 
@@ -702,69 +719,94 @@ func (p *AzureProvider) GetVMIPAddresses(
 	resourceGroupName, vmName string,
 ) (string, string, error) {
 	l := logger.Get()
-	l.Debugf("Getting IP addresses for VM %s in resource group %s", vmName, resourceGroupName)
-	client := p.GetAzureClient()
+	maxRetries := 3
+	retryCount := 0
 
-	// Get the VM
-	vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get virtual machine: %w", err)
-	}
-
-	// Check if the VM has a network profile
-	if vm.Properties.NetworkProfile == nil ||
-		len(vm.Properties.NetworkProfile.NetworkInterfaces) == 0 {
-		return "", "", fmt.Errorf("VM has no network interfaces")
-	}
-
-	// Get the network interface ID
-	nicID := vm.Properties.NetworkProfile.NetworkInterfaces[0].ID
-	if nicID == nil {
-		return "", "", fmt.Errorf("network interface ID is nil")
-	}
-
-	// Parse the network interface ID to get its name
-	nicName, err := parseResourceID(*nicID)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse network interface ID: %w", err)
-	}
-
-	// Get the network interface
-	nic, err := client.GetNetworkInterface(ctx, resourceGroupName, nicName)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get network interface: %w", err)
-	}
-
-	// Check if the network interface has IP configurations
-	if nic.Properties.IPConfigurations == nil {
-		return "", "", fmt.Errorf("network interface has no IP configurations")
-	}
-
-	if len(nic.Properties.IPConfigurations) > 1 {
-		l.Warnf("Network interface %s has multiple IP configurations, using the first one", nicName)
-	}
-
-	ipConfig := nic.Properties.IPConfigurations[0]
-
-	// Get public IP address
-	publicIP := ""
-	if ipConfig.Properties.PublicIPAddress != nil {
-		publicIP, err = client.GetPublicIPAddress(
-			ctx,
-			resourceGroupName,
-			ipConfig.Properties.PublicIPAddress,
-		)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to get public IP address: %w", err)
+	var getIPAddresses func() (string, string, error)
+	getIPAddresses = func() (string, string, error) {
+		if retryCount >= maxRetries {
+			return "", "", fmt.Errorf("exceeded maximum retries (%d) while getting IP addresses", maxRetries)
 		}
+		retryCount++
+
+		l.Debugf("Getting IP addresses for VM %s in resource group %s (attempt %d/%d)",
+			vmName, resourceGroupName, retryCount, maxRetries)
+
+		client := p.GetAzureClient()
+
+		// Get the VM
+		vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get virtual machine: %w", err)
+		}
+
+		// Check if the VM has a network profile
+		if vm.Properties.NetworkProfile == nil ||
+			len(vm.Properties.NetworkProfile.NetworkInterfaces) == 0 {
+			return "", "", fmt.Errorf("VM has no network interfaces")
+		}
+
+		// Get the network interface ID
+		nicID := vm.Properties.NetworkProfile.NetworkInterfaces[0].ID
+		if nicID == nil {
+			return "", "", fmt.Errorf("network interface ID is nil")
+		}
+
+		// Parse the network interface ID to get its name
+		nicName, err := parseResourceID(*nicID)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to parse network interface ID: %w", err)
+		}
+
+		// Get the network interface with circuit breaker protection
+		nic, err := client.GetNetworkInterface(ctx, resourceGroupName, nicName)
+		if err != nil {
+			if retryCount < maxRetries {
+				l.Debugf("Failed to get network interface, retrying (attempt %d/%d): %v",
+					retryCount, maxRetries, err)
+				return getIPAddresses()
+			}
+			return "", "", fmt.Errorf("failed to get network interface: %w", err)
+		}
+
+		// Check if the network interface has IP configurations
+		if nic.Properties.IPConfigurations == nil {
+			return "", "", fmt.Errorf("network interface has no IP configurations")
+		}
+
+		if len(nic.Properties.IPConfigurations) > 1 {
+			l.Warnf("Network interface %s has multiple IP configurations, using the first one", nicName)
+		}
+
+		ipConfig := nic.Properties.IPConfigurations[0]
+
+		// Get public IP address with circuit breaker protection
+		publicIP := ""
+		if ipConfig.Properties.PublicIPAddress != nil {
+			publicIP, err = client.GetPublicIPAddress(
+				ctx,
+				resourceGroupName,
+				ipConfig.Properties.PublicIPAddress,
+			)
+			if err != nil {
+				if retryCount < maxRetries {
+					l.Debugf("Failed to get public IP address, retrying (attempt %d/%d): %v",
+						retryCount, maxRetries, err)
+					return getIPAddresses()
+				}
+				return "", "", fmt.Errorf("failed to get public IP address: %w", err)
+			}
+		}
+
+		privateIP := ""
+		if ipConfig.Properties.PrivateIPAddress != nil {
+			privateIP = *ipConfig.Properties.PrivateIPAddress
+		}
+
+		return publicIP, privateIP, nil
 	}
 
-	privateIP := ""
-	if ipConfig.Properties.PrivateIPAddress != nil {
-		privateIP = *ipConfig.Properties.PrivateIPAddress
-	}
-
-	return publicIP, privateIP, nil
+	return getIPAddresses()
 }
 
 func parseResourceID(resourceID string) (string, error) {

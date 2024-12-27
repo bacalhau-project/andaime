@@ -3,9 +3,11 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -293,11 +295,52 @@ func (c *LiveAzureClient) GetNetworkInterface(
 	resourceGroupName string,
 	networkInterfaceName string,
 ) (*armnetwork.Interface, error) {
-	resp, err := c.networkClient.Get(ctx, resourceGroupName, networkInterfaceName, nil)
-	if err != nil {
-		return nil, err
+	l := logger.Get()
+	l.Debugf("Getting network interface %s in resource group %s", networkInterfaceName, resourceGroupName)
+	backoff := time.Second
+	maxBackoff := 8 * time.Second
+	maxRetries := 3
+	retryCount := 0
+
+	for {
+		l.Debugf("Attempting to get network interface (attempt %d/%d)", retryCount+1, maxRetries)
+		resp, err := c.networkClient.Get(ctx, resourceGroupName, networkInterfaceName, nil)
+		if err == nil {
+			l.Debugf("Successfully retrieved network interface %s", networkInterfaceName)
+			return &resp.Interface, nil
+		}
+
+		// Check if it's a ResourceNotFound error
+		var azureErr AzureError
+		if errors.As(err, &azureErr) {
+			if !azureErr.IsNotFound() {
+				l.Errorf("Non-retriable error getting network interface %s: %v", networkInterfaceName, err)
+				return nil, err
+			}
+			l.Debugf("Network interface %s not found (retriable error): %v", networkInterfaceName, err)
+		} else {
+			l.Debugf("Unknown error getting network interface %s (treating as retriable): %v", networkInterfaceName, err)
+		}
+
+		retryCount++
+		if retryCount >= maxRetries || backoff > maxBackoff {
+			l.Errorf("Exceeded maximum retries (%d) or backoff (%v) while getting network interface %s",
+				maxRetries, maxBackoff, networkInterfaceName)
+			return nil, fmt.Errorf("exceeded maximum retries (%d) or backoff (%v) while getting network interface: %w",
+				maxRetries, maxBackoff, err)
+		}
+
+		l.Debugf("Network interface %s not found, retrying in %v (attempt %d/%d)",
+			networkInterfaceName, backoff, retryCount, maxRetries)
+
+		select {
+		case <-ctx.Done():
+			l.Debugf("Context cancelled while waiting to retry getting network interface %s", networkInterfaceName)
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2
+		}
 	}
-	return &resp.Interface, nil
 }
 
 // GetPublicIPAddress retrieves a public IP address.
