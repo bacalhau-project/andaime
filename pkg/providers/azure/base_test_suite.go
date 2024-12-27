@@ -6,24 +6,27 @@ import (
 	"sync"
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
-	"github.com/bacalhau-project/andaime/internal/testutil"
+	internal_testutil "github.com/bacalhau-project/andaime/internal/testutil"
+	pkg_testutil "github.com/bacalhau-project/andaime/pkg/testutil"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
-	pkg_testutil "github.com/bacalhau-project/andaime/pkg/testutil"
+	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/suite"
 )
 
 var cleanupFunctions []func()
 var cleanupMutex sync.Mutex
+var testLogs []string
 
 type BaseAzureTestSuite struct {
 	suite.Suite
 	MockAzureClient *azure_mocks.MockAzureClienter
 	Ctx             context.Context
 	Deployment      *models.Deployment
+	Logger          *logger.TestLogger
 }
 
 func (suite *BaseAzureTestSuite) SetupSuite() {
@@ -34,7 +37,6 @@ func (suite *BaseAzureTestSuite) SetupSuite() {
 		_ = os.Remove(tempConfigFile.Name())
 	})
 
-	// Copy the content of the internal/testdata/config/gcp.yaml file to the temporary file
 	content, err := testdata.ReadTestGCPConfig()
 	suite.Require().NoError(err)
 	err = os.WriteFile(tempConfigFile.Name(), []byte(content), 0o600) //nolint:mnd
@@ -45,7 +47,7 @@ func (suite *BaseAzureTestSuite) SetupSuite() {
 	testSSHPublicKeyPath,
 		testCleanupPublicKey,
 		testSSHPrivateKeyPath,
-		testCleanupPrivateKey := testutil.CreateSSHPublicPrivateKeyPairOnDisk()
+		testCleanupPrivateKey := internal_testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 
 	cleanupMutex.Lock()
 	cleanupFunctions = append(cleanupFunctions, testCleanupPublicKey, testCleanupPrivateKey)
@@ -64,6 +66,9 @@ func (suite *BaseAzureTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 	suite.Deployment = dep
 	m.Deployment = suite.Deployment
+
+	suite.Logger = logger.NewTestLogger(suite.T())
+	logger.SetGlobalLogger(suite.Logger)
 }
 
 func (suite *BaseAzureTestSuite) TearDownSuite() {
@@ -81,4 +86,11 @@ func (suite *BaseAzureTestSuite) SetupTest() {
 
 	m := display.GetGlobalModelFunc()
 	m.Deployment = suite.Deployment
+
+	suite.Logger = logger.NewTestLogger(suite.T())
+	logger.SetGlobalLogger(suite.Logger)
+}
+
+func (suite *BaseAzureTestSuite) GetLogs() []string {
+	return suite.Logger.GetLogs()
 }

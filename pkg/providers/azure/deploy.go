@@ -725,18 +725,22 @@ func (p *AzureProvider) GetVMIPAddresses(
 	var getIPAddresses func() (string, string, error)
 	getIPAddresses = func() (string, string, error) {
 		if retryCount >= maxRetries {
+			l.Debugf("Exceeded maximum retries (%d) while getting IP addresses", maxRetries)
 			return "", "", fmt.Errorf("exceeded maximum retries (%d) while getting IP addresses", maxRetries)
 		}
-		retryCount++
 
 		l.Debugf("Getting IP addresses for VM %s in resource group %s (attempt %d/%d)",
-			vmName, resourceGroupName, retryCount, maxRetries)
+			vmName, resourceGroupName, retryCount+1, maxRetries)
 
 		client := p.GetAzureClient()
 
 		// Get the VM
 		vm, err := client.GetVirtualMachine(ctx, resourceGroupName, vmName)
 		if err != nil {
+			if err == context.Canceled {
+				l.Debugf("Context cancelled while waiting")
+				return "", "", err
+			}
 			return "", "", fmt.Errorf("failed to get virtual machine: %w", err)
 		}
 
@@ -758,16 +762,21 @@ func (p *AzureProvider) GetVMIPAddresses(
 			return "", "", fmt.Errorf("failed to parse network interface ID: %w", err)
 		}
 
+		l.Debugf("Getting network interface %s", nicName)
+
 		// Get the network interface with circuit breaker protection
 		nic, err := client.GetNetworkInterface(ctx, resourceGroupName, nicName)
 		if err != nil {
-			if retryCount < maxRetries {
-				l.Debugf("Failed to get network interface, retrying (attempt %d/%d): %v",
-					retryCount, maxRetries, err)
+			if azureErr, ok := err.(*AzureError); ok && azureErr.Code == "ResourceNotFound" {
+				l.Debugf("Network interface not found (retriable error)")
+				retryCount++
 				return getIPAddresses()
 			}
+			l.Debugf("Non-retriable error getting network interface: %v", err)
 			return "", "", fmt.Errorf("failed to get network interface: %w", err)
 		}
+
+		l.Debugf("Successfully retrieved network interface")
 
 		// Check if the network interface has IP configurations
 		if nic.Properties.IPConfigurations == nil {
@@ -789,11 +798,6 @@ func (p *AzureProvider) GetVMIPAddresses(
 				ipConfig.Properties.PublicIPAddress,
 			)
 			if err != nil {
-				if retryCount < maxRetries {
-					l.Debugf("Failed to get public IP address, retrying (attempt %d/%d): %v",
-						retryCount, maxRetries, err)
-					return getIPAddresses()
-				}
 				return "", "", fmt.Errorf("failed to get public IP address: %w", err)
 			}
 		}

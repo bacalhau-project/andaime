@@ -7,45 +7,45 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/stretchr/testify/assert"
+	"github.com/bacalhau-project/andaime/internal/testdata"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/bacalhau-project/andaime/pkg/logger"
-	"github.com/bacalhau-project/andaime/pkg/models"
 )
 
 type AzureDeployTestSuite struct {
-	suite.Suite
+	BaseAzureTestSuite
 	provider *AzureProvider
-	client   *LiveAzureClient
-}
-
-func (s *AzureDeployTestSuite) SetupTest() {
-	s.client = &LiveAzureClient{}
-	s.provider = &AzureProvider{
-		client: s.client,
-	}
 }
 
 func TestAzureDeploySuite(t *testing.T) {
 	suite.Run(t, new(AzureDeployTestSuite))
 }
 
+func (s *AzureDeployTestSuite) SetupTest() {
+	s.BaseAzureTestSuite.SetupTest()
+	provider, err := NewAzureProvider(s.Ctx, "test-subscription-id")
+	s.Require().NoError(err)
+	provider.SetAzureClient(s.MockAzureClient)
+	s.provider = provider
+}
+
 func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
-	// Initialize test context and logger
+	// Initialize test context
 	ctx := context.Background()
-	l := logger.Get()
 
 	// Create test resources
 	resourceGroup := "test-resource-group"
 	vmName := "test-vm"
+	networkInterfaceID := "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test-resource-group/providers/Microsoft.Network/networkInterfaces/test-network-interface"
 
 	// Test cases
 	testCases := []struct {
 		name            string
 		networkErrors   []error
+		vmError         error
 		expectedError   string
 		expectedRetry   int
 		expectedPublic  string
@@ -59,6 +59,7 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 				&AzureError{Code: "ResourceNotFound", Message: "Network interface not found"},
 				nil,
 			},
+			vmError:         nil,
 			expectedRetry:   1,
 			expectedPublic:  "1.2.3.4",
 			expectedPrivate: "10.0.0.4",
@@ -79,6 +80,7 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 				&AzureError{Code: "ResourceNotFound", Message: "Network interface not found"},
 				&AzureError{Code: "ResourceNotFound", Message: "Network interface not found"},
 			},
+			vmError:       nil,
 			expectedError: "exceeded maximum retries",
 			expectedRetry: 3,
 			setupContext: func() (context.Context, context.CancelFunc) {
@@ -95,6 +97,7 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			networkErrors: []error{
 				&AzureError{Code: "AuthorizationFailed", Message: "Not authorized"},
 			},
+			vmError:       &AzureError{Code: "AuthorizationFailed", Message: "Not authorized"},
 			expectedError: "Not authorized",
 			expectedRetry: 0,
 			setupContext: func() (context.Context, context.CancelFunc) {
@@ -110,6 +113,7 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			networkErrors: []error{
 				&AzureError{Code: "ResourceNotFound", Message: "Network interface not found"},
 			},
+			vmError:       context.Canceled,
 			expectedError: "context canceled",
 			expectedRetry: 0,
 			setupContext: func() (context.Context, context.CancelFunc) {
@@ -133,42 +137,53 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			testCtx, cancel := tc.setupContext()
 			defer cancel()
 
-			// Create log observer
-			logObserver := logger.NewTestLogObserver()
-			logger.SetLogger(logObserver)
-			defer logger.SetLogger(l)
+			// Mock GetVirtualMachine to return a VM with a network interface
+			s.MockAzureClient.On("GetVirtualMachine",
+				mock.Anything, resourceGroup, vmName).
+				Return(&armcompute.VirtualMachine{
+					Properties: &armcompute.VirtualMachineProperties{
+						NetworkProfile: &armcompute.NetworkProfile{
+							NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
+								{
+									ID: to.Ptr(networkInterfaceID),
+								},
+							},
+						},
+					},
+				}, tc.vmError).Once()
 
 			// Mock network interface responses
 			currentError := 0
-			s.client.networkClient = &mockNetworkClient{
-				getFunc: func(ctx context.Context, resourceGroup, name string) (armnetwork.InterfacesClientGetResponse, error) {
+			s.MockAzureClient.On("GetNetworkInterface",
+				mock.Anything, mock.Anything, mock.Anything).
+				Return(func(ctx context.Context, rg, name string) (*armnetwork.Interface, error) {
 					if currentError >= len(tc.networkErrors) {
 						s.Fail("Too many network client calls")
-						return armnetwork.InterfacesClientGetResponse{}, fmt.Errorf("unexpected call")
+						return nil, fmt.Errorf("unexpected call")
 					}
 					err := tc.networkErrors[currentError]
 					currentError++
 					if err != nil {
-						return armnetwork.InterfacesClientGetResponse{}, err
+						return nil, err
 					}
-					return armnetwork.InterfacesClientGetResponse{
-						Interface: armnetwork.Interface{
-							Properties: &armnetwork.InterfacePropertiesFormat{
-								IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
-									{
-										Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
-											PrivateIPAddress: &tc.expectedPrivate,
-											PublicIPAddress: &armnetwork.PublicIPAddress{
-												ID: &tc.expectedPublic,
-											},
-										},
-									},
-								},
-							},
-						},
-					}, nil
-				},
-			}
+					// Use testdata.FakeNetworkInterface for consistent test data
+					fakeInterface := testdata.FakeNetworkInterface()
+					// Update IP addresses to match test case expectations
+					if len(fakeInterface.Properties.IPConfigurations) > 0 {
+						fakeInterface.Properties.IPConfigurations[0].Properties.PrivateIPAddress = &tc.expectedPrivate
+						if fakeInterface.Properties.IPConfigurations[0].Properties.PublicIPAddress != nil {
+							fakeInterface.Properties.IPConfigurations[0].Properties.PublicIPAddress.Properties = &armnetwork.PublicIPAddressPropertiesFormat{
+								IPAddress: &tc.expectedPublic,
+							}
+						}
+					}
+					return fakeInterface, nil
+				}).Maybe()
+
+			// Mock GetPublicIPAddress responses
+			s.MockAzureClient.On("GetPublicIPAddress",
+				mock.Anything, mock.Anything, mock.Anything).
+				Return(tc.expectedPublic, nil).Maybe()
 
 			// Execute test
 			publicIP, privateIP, err := s.provider.GetVMIPAddresses(testCtx, resourceGroup, vmName)
@@ -184,10 +199,10 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			}
 
 			// Verify retry count
-			s.Equal(tc.expectedRetry, currentError-1)
+			s.Equal(tc.expectedRetry, currentError)
 
 			// Verify logs
-			logs := logObserver.GetLogs()
+			logs := s.GetLogs()
 			for _, expectedLog := range tc.expectedLogs {
 				found := false
 				for _, log := range logs {
@@ -200,13 +215,4 @@ func (s *AzureDeployTestSuite) TestGetVMIPAddressesWithRetries() {
 			}
 		})
 	}
-}
-
-// Mock network client for testing
-type mockNetworkClient struct {
-	getFunc func(ctx context.Context, resourceGroup, name string) (armnetwork.InterfacesClientGetResponse, error)
-}
-
-func (m *mockNetworkClient) Get(ctx context.Context, resourceGroup, name string, options *armnetwork.InterfacesClientGetOptions) (armnetwork.InterfacesClientGetResponse, error) {
-	return m.getFunc(ctx, resourceGroup, name)
 }
