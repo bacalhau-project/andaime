@@ -22,7 +22,7 @@ type SSHConfig struct {
 	User                      string
 	SSHPrivateKeyPath         string
 	PrivateKeyMaterial        []byte
-	Timeout                   time.Duration
+	TimeoutConfig             TimeoutConfig
 	Logger                    *logger.Logger
 	SSHClient                 *ssh.Client
 	SSHPrivateKeyReader       func(path string) ([]byte, error)
@@ -31,6 +31,7 @@ type SSHConfig struct {
 	sftpClientCreator         sshutils_interfaces.SFTPClientCreator
 	ClientConfig              *ssh.ClientConfig
 	ValidateSSHConnectionFunc func() error
+	timeProvider              TimeProvider
 }
 
 // SSHDialer is an interface for creating SSH connections
@@ -213,7 +214,7 @@ func (c *SSHConfig) InstallSystemdService(
 	defer sftpClient.Close()
 
 	// Create temporary directory with timestamp
-	timestamp := time.Now().Unix()
+	timestamp := c.timeProvider.Now().UnixTime
 	tempDir := fmt.Sprintf("/tmp/andaime-%d", timestamp)
 	if err := sftpClient.MkdirAll(tempDir); err != nil {
 		return fmt.Errorf("failed to create temporary directory: %w", err)
@@ -287,7 +288,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 	stopOutput, stopErr := c.ExecuteCommand(ctx, fmt.Sprintf("sudo systemctl stop %s", serviceName))
 
 	// Wait a short moment
-	time.Sleep(2 * time.Second)
+	c.timeProvider.Sleep(2 * time.Second)
 
 	// Attempt to start the service
 	startOutput, startErr := c.ExecuteCommand(
@@ -296,7 +297,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 	)
 
 	// Wait another moment
-	time.Sleep(2 * time.Second)
+	c.timeProvider.Sleep(2 * time.Second)
 
 	// Check service status
 	statusOutput, statusErr := c.ExecuteCommand(
@@ -352,6 +353,8 @@ func NewSSHConfig(
 		Logger:            logger.Get(),
 		clientCreator:     DefaultSSHClientCreatorInstance,
 		sftpClientCreator: DefaultSFTPClientCreator,
+		TimeoutConfig:     DefaultTimeoutConfig(),
+		timeProvider:      NewDefaultTimeProvider(),
 		ValidateSSHConnectionFunc: func() error {
 			if host == "" {
 				return fmt.Errorf("host cannot be empty")
@@ -367,7 +370,6 @@ func NewSSHConfig(
 			}
 			return nil
 		},
-		Timeout: SSHDialTimeout,
 	}
 
 	clientConfig, err := getSSHClientConfig(user, privateKeyPath)
@@ -485,7 +487,7 @@ func getSSHClientConfig(user, privateKeyPath string) (*ssh.ClientConfig, error) 
 			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
-		Timeout:         SSHDialTimeout,
+		Timeout:         time.Duration(SSHDialTimeout),
 	}
 
 	return config, nil
@@ -588,7 +590,7 @@ func (c *SSHConfig) SetSSHClient(client *ssh.Client) {
 func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Duration) error {
 	l := logger.Get()
 	var lastErr error
-	deadline := time.Now().Add(timeout)
+	deadline := c.timeProvider.Now().UnixTime + int64(timeout.Seconds())
 
 	// Try immediately first
 	if _, err := c.clientCreator.NewClient(
@@ -602,20 +604,21 @@ func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Dura
 	} else {
 		lastErr = err
 		l.Infof("Could not connect to (%s): %v\nRetrying in %v seconds...\n",
-			c.Host, err, SSHRetryDelay.Seconds())
+			c.Host, err, c.TimeoutConfig.RetryInterval.Seconds())
 	}
 
-	// If first attempt fails, start retrying with backoff
-	ticker := time.NewTicker(SSHRetryDelay)
-	defer ticker.Stop()
-
 	attempts := 1
+	maxRetries := c.TimeoutConfig.MaxRetries
+	if retry > 0 {
+		maxRetries = retry
+	}
 
-	for attempts < retry && time.Now().Before(deadline) {
+	for attempts < maxRetries && c.timeProvider.Now().UnixTime < deadline {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("context cancelled while waiting for SSH: %w", lastErr)
-		case <-ticker.C:
+		default:
+			c.timeProvider.Sleep(c.TimeoutConfig.RetryInterval)
 			// Try to connect
 			if _, err := c.clientCreator.NewClient(
 				c.Host,
@@ -629,17 +632,17 @@ func (c *SSHConfig) WaitForSSH(ctx context.Context, retry int, timeout time.Dura
 				lastErr = err
 				attempts++
 				l.Infof("Could not connect to (%s): %v\nRetrying in %v seconds... (attempt %d/%d)\n",
-					c.Host, err, SSHRetryDelay.Seconds(), attempts, retry)
+					c.Host, err, c.TimeoutConfig.RetryInterval.Seconds(), attempts, maxRetries)
 			}
 		}
 	}
 
-	if attempts >= retry {
-		return fmt.Errorf("max retries (%d) exceeded: %w", retry, lastErr)
+	if attempts >= maxRetries {
+		return fmt.Errorf("max retries (%d) exceeded: %w", maxRetries, lastErr)
 	}
 
-	if time.Now().After(deadline) {
-		return fmt.Errorf("timeout after %v: %w", timeout, lastErr)
+	if c.timeProvider.Now().UnixTime > deadline {
+		return fmt.Errorf("timeout after %v: %w", c.TimeoutConfig.WaitTimeout, lastErr)
 	}
 
 	return lastErr

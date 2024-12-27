@@ -8,12 +8,14 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+
 	"golang.org/x/sync/errgroup"
 )
 
@@ -35,16 +37,20 @@ const (
 
 // LiveEC2Client implements the EC2Clienter interface
 type LiveEC2Client struct {
-	client *ec2.Client
+	client     *ec2.Client
+	imdsClient *imds.Client
 }
 
 // NewEC2Client creates a new EC2 client
-func NewEC2Client(ctx context.Context) (aws_interface.EC2Clienter, error) {
+func NewEC2Client(ctx context.Context) (aws_interfaces.EC2Clienter, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
+	return &LiveEC2Client{
+		client:     ec2.NewFromConfig(cfg),
+		imdsClient: imds.NewFromConfig(cfg),
+	}, nil
 }
 
 func (c *LiveEC2Client) RunInstances(
@@ -352,7 +358,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 
 func (p *AWSProvider) deployVM(
 	ctx context.Context,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 	machine models.Machiner,
 	vpc *models.AWSVPC,
 ) error {
@@ -383,6 +389,7 @@ func (p *AWSProvider) deployVM(
 	subnetID := vpc.PublicSubnetIDs[0]
 	l.Debug(fmt.Sprintf("Using subnet %s for VM %s", subnetID, machine.GetName()))
 
+	// Prepare tag specifications
 	var tagSpecs []ec2_types.TagSpecification
 	for k, v := range m.Deployment.Tags {
 		tagSpecs = append(tagSpecs, ec2_types.TagSpecification{
@@ -395,9 +402,12 @@ func (p *AWSProvider) deployVM(
 		ResourceType: ec2_types.ResourceTypeInstance,
 		Tags: []ec2_types.Tag{
 			{Key: aws.String("Name"), Value: aws.String(machine.GetName())},
+			{Key: aws.String("AndaimeMachineID"), Value: aws.String(machine.GetID())},
+			{Key: aws.String("AndaimeDeployment"), Value: aws.String("AndaimeDeployment")},
 		},
 	})
 
+	// Prepare user data script
 	userData := fmt.Sprintf(`#!/bin/bash
 SSH_USERNAME=%s
 SSH_PUBLIC_KEY_MATERIAL=%q
@@ -422,26 +432,12 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 	// Encode the script in base64
 	encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
 
-	// runResult, err := c.ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
-	// 	ImageId:      aws.String(c.cfg.ImageID),
-	// 	InstanceType: types.InstanceType(quote.InstanceType.Name),
-	// 	MinCount:     aws.Int32(1),
-	// 	MaxCount:     aws.Int32(1),
-	// 	SubnetId:     aws.String(c.cfg.SubnetID),
-	// 	KeyName:      aws.String(c.cfg.SSHKeyName),
-	// 	InstanceMarketOptions: &types.InstanceMarketOptionsRequest{
-	// 		MarketType: types.MarketTypeSpot,
-	// 		SpotOptions: &types.SpotMarketOptions{
-	// 			InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-	// 			SpotInstanceType:             types.SpotInstanceTypeOneTime,
-	// 		},
-	// 	},
-	// 	UserData: aws.String(encodedUserData),
-
-	// Create instance
-	runResult, err := ec2Client.RunInstances(ctx, &ec2.RunInstancesInput{
+	// Prepare instance input with common configuration
+	params := machine.GetParameters()
+	var runResult *ec2.RunInstancesOutput
+	runInstancesInput := &ec2.RunInstancesInput{
 		ImageId:      aws.String(amiID),
-		InstanceType: ec2_types.InstanceTypeT2Medium,
+		InstanceType: ec2_types.InstanceType(machine.GetMachineType()),
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
 		NetworkInterfaces: []ec2_types.InstanceNetworkInterfaceSpecification{
@@ -454,12 +450,85 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 		},
 		TagSpecifications: tagSpecs,
 		UserData:          aws.String(encodedUserData),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to run instance: %w", err)
 	}
 
-	// Wait for instance to be running
+	// Configure spot instance if requested
+	if params.Spot {
+		l.Info(fmt.Sprintf("Requesting spot instance for VM %s", machine.GetName()))
+		maxRetries := 3
+		var lastErr error
+
+		for i := 0; i < maxRetries; i++ {
+			runInstancesInput.InstanceMarketOptions = &ec2_types.InstanceMarketOptionsRequest{
+				MarketType: ec2_types.MarketTypeSpot,
+				SpotOptions: &ec2_types.SpotMarketOptions{
+					InstanceInterruptionBehavior: ec2_types.InstanceInterruptionBehaviorTerminate,
+					MaxPrice: aws.String(
+						"",
+					), // Empty string means use current spot price
+				},
+			}
+
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err == nil {
+				break
+			}
+
+			lastErr = err
+			l.Warn(
+				fmt.Sprintf(
+					"Spot instance request failed (attempt %d/%d): %v",
+					i+1,
+					maxRetries,
+					err,
+				),
+			)
+
+			// Check if error is related to spot capacity
+			if i < maxRetries-1 {
+				time.Sleep(time.Second * time.Duration(2<<uint(i))) // Exponential backoff
+			}
+		}
+
+		if lastErr != nil {
+			// If all spot attempts failed, try falling back to on-demand
+			l.Warn(
+				fmt.Sprintf(
+					"All spot instance attempts failed for %s, falling back to on-demand: %v",
+					machine.GetName(),
+					lastErr,
+				),
+			)
+			runInstancesInput.InstanceMarketOptions = nil
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err != nil {
+				return fmt.Errorf("failed to run instance (both spot and on-demand): %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to run instance: %w", err)
+		}
+		if params.Spot {
+			// If spot instance creation fails, try falling back to on-demand
+			l.Warn(fmt.Sprintf(
+				"Failed to create spot instance for VM %s, falling back to on-demand: %v",
+				machine.GetName(),
+				err,
+			))
+			runInstancesInput.InstanceMarketOptions = nil
+			runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+			if err != nil {
+				return fmt.Errorf("failed to create fallback on-demand instance: %w", err)
+			}
+		} else {
+		}
+	} else {
+		runResult, err = ec2Client.RunInstances(ctx, runInstancesInput)
+		if err != nil {
+			return fmt.Errorf("failed to run instance: %w", err)
+		}
+	}
+
+	// Wait for instance to be running with enhanced status checks
 	waiter := ec2.NewInstanceRunningWaiter(ec2Client)
 	if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*runResult.Instances[0].InstanceId},
@@ -467,24 +536,60 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 		return fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 
-	// Get instance details
-	describeResult, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
-		InstanceIds: []string{*runResult.Instances[0].InstanceId},
-	})
+	// Get instance details with retries
+	var describeResult *ec2.DescribeInstancesOutput
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		describeResult, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{*runResult.Instances[0].InstanceId},
+		})
+		if err == nil {
+			break
+		}
+		if i < maxRetries-1 {
+			time.Sleep(time.Second * time.Duration(2<<uint(i)))
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("failed to describe instance: %w", err)
+		return fmt.Errorf("failed to describe instance after %d attempts: %w", maxRetries, err)
+	}
+
+	if len(describeResult.Reservations) == 0 {
+		return fmt.Errorf("no reservations found for instance")
+	}
+	if len(describeResult.Reservations[0].Instances) == 0 {
+		return fmt.Errorf("no instances found in reservation")
 	}
 
 	instance := describeResult.Reservations[0].Instances[0]
-	machine.SetPublicIP(*instance.PublicIpAddress)
-	machine.SetPrivateIP(*instance.PrivateIpAddress)
+
+	// Get instance metadata using IMDS client if available
+	if c, ok := ec2Client.(*LiveEC2Client); ok && c.imdsClient != nil {
+		// Attempt to get additional metadata but don't fail if unavailable
+		if metadata, err := c.imdsClient.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{}); err == nil {
+			l.Debug(
+				fmt.Sprintf(
+					"Instance metadata: region=%s, instanceType=%s",
+					metadata.Region,
+					metadata.InstanceType,
+				),
+			)
+		}
+	}
+
+	if instance.PublicIpAddress != nil {
+		machine.SetPublicIP(*instance.PublicIpAddress)
+	}
+	if instance.PrivateIpAddress != nil {
+		machine.SetPrivateIP(*instance.PrivateIpAddress)
+	}
 
 	return nil
 }
 
 func (p *AWSProvider) getLatestAMI(
 	ctx context.Context,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 ) (string, error) {
 	result, err := ec2Client.DescribeImages(ctx, &ec2.DescribeImagesInput{
 		Filters: []ec2_types.Filter{
@@ -603,4 +708,9 @@ func (p *AWSProvider) validateRegionZones(ctx context.Context, region string) er
 		availableAZs,
 	))
 	return nil
+}
+
+// GetIMDSConfig returns the IMDS client for EC2 instance metadata
+func (c *LiveEC2Client) GetIMDSConfig() *imds.Client {
+	return c.imdsClient
 }

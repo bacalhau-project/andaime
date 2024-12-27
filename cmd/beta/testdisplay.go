@@ -58,6 +58,7 @@ func runTestDisplay() error {
 			newDisplayStatus := models.NewDisplayVMStatus(
 				fmt.Sprintf("testVM%d", i+1),
 				models.ConvertFromAzureStringToResourceState("Not Started"),
+				false, // Test display doesn't use spot instances
 			)
 			newDisplayStatus.Location = testutil.RandomRegion()
 			newDisplayStatus.StatusMessage = "Initializing"

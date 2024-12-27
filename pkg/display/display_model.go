@@ -277,47 +277,107 @@ func (m *DisplayModel) updateOrchestratorStatus(
 }
 
 func (m *DisplayModel) updateServiceStates(machineName string, newStatus *models.DisplayStatus) {
+	l := logger.Get()
 	machine := m.Deployment.Machines[machineName]
 	if machine == nil {
+		l.Debugf("Machine %s not found, skipping service state update", machineName)
 		return
 	}
+	// Convert SpotState (ProvisioningStage) to ServiceState
+	var spotServiceState models.ServiceState
+	switch newStatus.Stage {
+	case models.StageSpotRequested:
+		spotServiceState = models.ServiceStateUpdating
+	case models.StageSpotProvisioned:
+		spotServiceState = models.ServiceStateSucceeded
+	case models.StageSpotFailed:
+		spotServiceState = models.ServiceStateFailed
+	case models.StageSpotFallback:
+		spotServiceState = models.ServiceStateUpdating // Transitioning to on-demand
+	default:
+		spotServiceState = models.ServiceStateUnknown
+	}
 
-	// Update SSH state if we have a public IP and the VM is running
-	if machine.GetPublicIP() != "" &&
-		machine.GetMachineResourceState(
-			"compute.googleapis.com/Instance",
-		) == models.ResourceStateSucceeded {
-		machine.SetServiceState(
-			models.ServiceTypeSSH.Name,
-			models.ServiceStateSucceeded,
-		)
+	_ = spotServiceState
+
+	// Update stage based on service states and update the corresponding service state
+	switch {
+	// Handle spot instance specific states first
+	case newStatus.SpotInstance:
+		if newStatus.Stage == models.StageSpotRequested {
+			newStatus.Stage = models.StageSpotRequested
+		} else if newStatus.Stage == models.StageSpotFallback {
+			newStatus.Stage = models.StageSpotFallback
+		}
+		machine.SetProvisioningStage(newStatus.Stage)
+
+	case machine.GetPublicIP() != "" &&
+		(machine.GetMachineResourceState("compute.googleapis.com/Instance") == models.ResourceStateSucceeded ||
+			machine.GetMachineResourceState("aws.compute/Instance") == models.ResourceStateSucceeded):
+		if newStatus.SpotInstance {
+			newStatus.Stage = models.StageSpotProvisioned
+		} else {
+			newStatus.Stage = models.StageVMProvisioned
+		}
+		machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateSucceeded)
+
+	case newStatus.SSH != models.ServiceStateUnknown:
+		if newStatus.SSH == models.ServiceStateSucceeded {
+			newStatus.Stage = models.StageSSHConfigured
+		} else if newStatus.SSH == models.ServiceStateFailed {
+			newStatus.Stage = models.StageSSHFailed
+		} else {
+			newStatus.Stage = models.StageSSHConfiguring
+		}
+		machine.SetServiceState(models.ServiceTypeSSH.Name, newStatus.SSH)
+
+	case newStatus.Docker != models.ServiceStateUnknown:
+		if newStatus.Docker == models.ServiceStateSucceeded {
+			newStatus.Stage = models.StageDockerInstalled
+		} else if newStatus.Docker == models.ServiceStateFailed {
+			newStatus.Stage = models.StageDockerFailed
+		} else {
+			newStatus.Stage = models.StageDockerInstalling
+		}
+		machine.SetServiceState(models.ServiceTypeDocker.Name, newStatus.Docker)
+
+	case newStatus.CorePackages != models.ServiceStateUnknown:
+		machine.SetServiceState(models.ServiceTypeCorePackages.Name, newStatus.CorePackages)
+
+	case newStatus.Bacalhau != models.ServiceStateUnknown:
+		if newStatus.Bacalhau == models.ServiceStateSucceeded {
+			newStatus.Stage = models.StageBacalhauInstalled
+		} else if newStatus.Bacalhau == models.ServiceStateFailed {
+			newStatus.Stage = models.StageBacalhauFailed
+		} else {
+			newStatus.Stage = models.StageBacalhauInstalling
+		}
+		machine.SetServiceState(models.ServiceTypeBacalhau.Name, newStatus.Bacalhau)
+
+	case newStatus.CustomScript != models.ServiceStateUnknown:
+		if newStatus.CustomScript == models.ServiceStateSucceeded {
+			newStatus.Stage = models.StageScriptCompleted
+		} else if newStatus.CustomScript == models.ServiceStateFailed {
+			newStatus.Stage = models.StageScriptFailed
+		} else {
+			newStatus.Stage = models.StageScriptExecuting
+		}
+		machine.SetServiceState(models.ServiceTypeScript.Name, newStatus.CustomScript)
 	}
-	if newStatus.Docker != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState(
-			models.ServiceTypeDocker.Name,
-		) < newStatus.Docker {
-		m.Deployment.Machines[machineName].SetServiceState(
-			models.ServiceTypeDocker.Name,
-			newStatus.Docker,
-		)
+
+	// Update the machine's stage if a new one is set
+	if newStatus.Stage != models.StageVMUnknown {
+		err := m.Deployment.UpdateMachine(machineName, func(mach models.Machiner) {
+			mach.SetProvisioningStage(newStatus.Stage)
+		})
+		if err != nil {
+			l.Errorf("Error updating machine stage: %v", err)
+		}
 	}
-	if newStatus.CorePackages != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState(
-			models.ServiceTypeCorePackages.Name,
-		) != newStatus.CorePackages {
-		m.Deployment.Machines[machineName].SetServiceState(
-			models.ServiceTypeCorePackages.Name,
-			newStatus.CorePackages,
-		)
-	}
-	if newStatus.Bacalhau != models.ServiceStateUnknown &&
-		m.Deployment.Machines[machineName].GetServiceState(
-			models.ServiceTypeBacalhau.Name,
-		) < newStatus.Bacalhau {
-		m.Deployment.Machines[machineName].SetServiceState(
-			models.ServiceTypeBacalhau.Name,
-			newStatus.Bacalhau,
-		)
+
+	// Update status message with spot instance prefix if needed
+	if newStatus.SpotInstance {
+		newStatus.StatusMessage = fmt.Sprintf("[Spot] %s", newStatus.StatusMessage)
 	}
 }
 

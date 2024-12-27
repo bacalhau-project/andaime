@@ -1,9 +1,11 @@
 package sshutils
 
-import "time"
+import (
+	"time"
+)
 
 var (
-	TimeInBetweenSSHRetries = 2 * time.Second
+	TimeInBetweenSSHRetries = 2 * time.Minute
 	SSHTimeOut              = 1 * time.Minute
 	SSHRetryAttempts        = 3
 	SSHDialTimeout          = 10 * time.Second

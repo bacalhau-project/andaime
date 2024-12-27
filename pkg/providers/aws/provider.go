@@ -21,8 +21,8 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	common_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	common_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/common"
 	"github.com/bacalhau-project/andaime/pkg/providers/common"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
@@ -66,11 +66,12 @@ func (d DeploymentInfo) String() string {
 type AWSProvider struct {
 	AccountID       string
 	Config          *aws.Config
-	ClusterDeployer common_interface.ClusterDeployerer
+	ClusterDeployer common_interfaces.ClusterDeployerer
 	UpdateQueue     chan display.UpdateAction
-	EC2Client       aws_interface.EC2Clienter
-	STSClient       *sts.Client
+	EC2Client       aws_interfaces.EC2Clienter
+	STSClient       aws_interfaces.STSClienter
 	ConfigMutex     sync.RWMutex
+	vpcManager      *RegionalVPCManager
 }
 
 var NewAWSProviderFunc = NewAWSProvider
@@ -91,13 +92,18 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 	ec2Client := ec2.NewFromConfig(awsConfig)
 	ec2Clienter := &LiveEC2Client{client: ec2Client}
 
+	// Initialize STS client with interface wrapper
+	stsClient := sts.NewFromConfig(awsConfig)
+	stsClienter := NewSTSClient(stsClient)
+
 	provider := &AWSProvider{
 		AccountID:       accountID,
 		Config:          &awsConfig,
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
-		STSClient:       sts.NewFromConfig(awsConfig),
+		STSClient:       stsClienter,
 		EC2Client:       ec2Clienter,
+		vpcManager:      nil, // VPC manager will be initialized when needed with the deployment
 	}
 
 	return provider, nil
@@ -107,7 +113,12 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 func (p *AWSProvider) GetOrCreateEC2Client(
 	ctx context.Context,
 	region string,
-) (aws_interface.EC2Clienter, error) {
+) (aws_interfaces.EC2Clienter, error) {
+	// If we already have an EC2 client set, use it (this is primarily for testing)
+	if p.EC2Client != nil {
+		return p.EC2Client, nil
+	}
+
 	// If no global model, create a temporary EC2 client
 	if display.GetGlobalModelFunc() == nil {
 		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
@@ -125,13 +136,13 @@ func (p *AWSProvider) GetOrCreateEC2Client(
 	if m.Deployment.AWS == nil {
 		m.Deployment.AWS = &models.AWSDeployment{
 			RegionalResources: &models.RegionalResources{
-				Clients: make(map[string]aws_interface.EC2Clienter),
+				Clients: make(map[string]aws_interfaces.EC2Clienter),
 			},
 		}
 	}
 
 	if m.Deployment.AWS.RegionalResources.Clients == nil {
-		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interfaces.EC2Clienter)
 	}
 
 	if client := m.Deployment.AWS.RegionalResources.GetClient(region); client != nil {
@@ -143,7 +154,7 @@ func (p *AWSProvider) GetOrCreateEC2Client(
 		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
 	}
 
-	var ec2Client aws_interface.EC2Clienter
+	var ec2Client aws_interfaces.EC2Clienter
 	p.ConfigMutex.Lock()
 	if client := m.Deployment.AWS.RegionalResources.GetClient(region); client != nil {
 		ec2Client = client
@@ -167,9 +178,14 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
-	// If machines are not set, return an error
-	if deployment.Machines == nil {
-		return fmt.Errorf("no machines configuration found")
+	// Get AWS account ID if not already set
+	if deployment.AWS.AccountID == "" {
+		// Use the STSClient interface method
+		identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			return fmt.Errorf("failed to get AWS account ID: %w", err)
+		}
+		deployment.AWS.AccountID = *identity.Account
 	}
 
 	// Initialize regional resources
@@ -204,7 +220,7 @@ func (p *AWSProvider) CreateVPCInfrastructure(
 	}
 
 	// Create VPC
-	vpc, err := p.createVPC(ctx, region, ec2Client)
+	vpc, err := p.CreateVPCInfrastructure(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VPC: %w", err)
 	}
@@ -239,49 +255,11 @@ func (p *AWSProvider) CreateVPCInfrastructure(
 	return vpc, nil
 }
 
-// createVPC creates a new VPC with the specified CIDR block
-func (p *AWSProvider) createVPC(
-	ctx context.Context,
-	region string,
-	ec2Client aws_interface.EC2Clienter,
-) (*models.AWSVPC, error) {
-	vpcResult, err := ec2Client.CreateVpc(ctx, &ec2.CreateVpcInput{
-		CidrBlock: aws.String(VPCCidrBlock),
-		TagSpecifications: []ec2_types.TagSpecification{
-			{
-				ResourceType: ec2_types.ResourceTypeVpc,
-				Tags: []ec2_types.Tag{
-					{
-						Key:   aws.String("Name"),
-						Value: aws.String(fmt.Sprintf("andaime-vpc-%s", region)),
-					},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create VPC: %w", err)
-	}
-
-	// Enable DNS hostnames
-	_, err = ec2Client.ModifyVpcAttribute(ctx, &ec2.ModifyVpcAttributeInput{
-		VpcId:              vpcResult.Vpc.VpcId,
-		EnableDnsHostnames: &ec2_types.AttributeBooleanValue{Value: aws.Bool(true)},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to enable DNS hostnames: %w", err)
-	}
-
-	return &models.AWSVPC{
-		VPCID: *vpcResult.Vpc.VpcId,
-	}, nil
-}
-
 // createAndAttachInternetGateway creates an Internet Gateway and attaches it to the VPC
 func (p *AWSProvider) createAndAttachInternetGateway(
 	ctx context.Context,
 	region, vpcID string,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 ) (string, error) {
 	// Create Internet Gateway
 	igwResult, err := ec2Client.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{
@@ -318,7 +296,7 @@ func (p *AWSProvider) createVPCSubnets(
 	ctx context.Context,
 	region string,
 	vpc *models.AWSVPC,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 ) error {
 	// Get available AZs
 	azResult, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
@@ -390,7 +368,7 @@ func (p *AWSProvider) configureVPCRouting(
 	ctx context.Context,
 	region string,
 	vpc *models.AWSVPC,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 ) error {
 	// Create route table
 	rtResult, err := ec2Client.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{
@@ -440,7 +418,7 @@ func (p *AWSProvider) configureVPCRouting(
 func (p *AWSProvider) createSecurityGroup(
 	ctx context.Context,
 	region, vpcID string,
-	ec2Client aws_interface.EC2Clienter,
+	ec2Client aws_interfaces.EC2Clienter,
 ) (string, error) {
 	m := display.GetGlobalModelFunc()
 	if m == nil || m.Deployment == nil {
@@ -1053,7 +1031,7 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 	if m.Deployment.AWS.RegionalResources == nil {
 		m.Deployment.AWS.RegionalResources = &models.RegionalResources{
 			VPCs:    make(map[string]*models.AWSVPC),
-			Clients: make(map[string]aws_interface.EC2Clienter),
+			Clients: make(map[string]aws_interfaces.EC2Clienter),
 		}
 	}
 
@@ -1906,11 +1884,11 @@ func (p *AWSProvider) cleanupAbandonedVPCs(ctx context.Context, region string) e
 	return nil
 }
 
-func (p *AWSProvider) GetClusterDeployer() common_interface.ClusterDeployerer {
+func (p *AWSProvider) GetClusterDeployer() common_interfaces.ClusterDeployerer {
 	return p.ClusterDeployer
 }
 
-func (p *AWSProvider) SetClusterDeployer(deployer common_interface.ClusterDeployerer) {
+func (p *AWSProvider) SetClusterDeployer(deployer common_interfaces.ClusterDeployerer) {
 	p.ClusterDeployer = deployer
 }
 
@@ -2144,6 +2122,22 @@ func (p *AWSProvider) WaitUntilInstanceRunning(
 
 	l.Info("Instance is now running")
 	return nil
+}
+
+func (p *AWSProvider) SetEC2Client(client aws_interfaces.EC2Clienter) {
+	p.EC2Client = client
+}
+
+func (p *AWSProvider) GetEC2Client() aws_interfaces.EC2Clienter {
+	return p.EC2Client
+}
+
+func (p *AWSProvider) SetSTSClient(client aws_interfaces.STSClienter) {
+	p.STSClient = client
+}
+
+func (p *AWSProvider) GetSTSClient() aws_interfaces.STSClienter {
+	return p.STSClient
 }
 
 func (p *AWSProvider) GetPrimaryRegion() string {

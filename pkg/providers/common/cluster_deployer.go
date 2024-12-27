@@ -300,12 +300,6 @@ func (cd *ClusterDeployer) ProvisionBacalhauNodeWithCallback(
 	stepRegistry := common_interface.NewStepRegistry()
 	machine.SetServiceState(models.ServiceTypeBacalhau.Name, models.ServiceStateUpdating)
 
-	if callback == nil {
-		callback = func(status *models.DisplayStatus) {
-			fmt.Printf("\r%s", status.StatusMessage)
-		}
-	}
-
 	// Initial validation
 	if machine.GetNodeType() != models.BacalhauNodeTypeCompute &&
 		machine.GetNodeType() != models.BacalhauNodeTypeOrchestrator {

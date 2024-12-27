@@ -110,6 +110,7 @@ func CreateRandomStatus() *models.DisplayStatus {
 	newDisplayStatus := models.NewDisplayVMStatus(
 		id,
 		models.ResourceStatePending,
+		false, // Not a spot instance by default in tests
 	)
 	newDisplayStatus.Location = RandomZone()
 	newDisplayStatus.StatusMessage = "Initializing"

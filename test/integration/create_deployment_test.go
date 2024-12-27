@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/spf13/cobra"
@@ -30,16 +31,15 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testdata"
 
-	common_mock "github.com/bacalhau-project/andaime/mocks/common"
+	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
+	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
+	common_mocks "github.com/bacalhau-project/andaime/mocks/common"
+	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 
-	aws_mock "github.com/bacalhau-project/andaime/mocks/aws"
-	azure_mock "github.com/bacalhau-project/andaime/mocks/azure"
-	gcp_mock "github.com/bacalhau-project/andaime/mocks/gcp"
-	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
-
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	azure_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
-	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	azure_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	azure_provider "github.com/bacalhau-project/andaime/pkg/providers/azure"
@@ -63,8 +63,8 @@ type IntegrationTestSuite struct {
 	testSSHUser           string
 	testSSHPublicKeyPath  string
 	testSSHPrivateKeyPath string
-	mockClusterDeployer   *common_mock.MockClusterDeployerer
-	mockSSHConfig         *ssh_mock.MockSSHConfiger
+	mockClusterDeployer   *common_mocks.MockClusterDeployerer
+	mockSSHConfig         *ssh_mocks.MockSSHConfiger
 	azureProvider         *azure_provider.AzureProvider
 	gcpProvider           *gcp_provider.GCPProvider
 	awsProvider           *aws_provider.AWSProvider
@@ -98,8 +98,8 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		cleanupPrivateKey()
 	}
 
-	s.mockClusterDeployer = new(common_mock.MockClusterDeployerer)
-	s.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
+	s.mockClusterDeployer = new(common_mocks.MockClusterDeployerer)
+	s.mockSSHConfig = new(ssh_mocks.MockSSHConfiger)
 }
 
 func (s *IntegrationTestSuite) TearDownSuite() {
@@ -259,7 +259,7 @@ func (s *IntegrationTestSuite) setupDeploymentModel(
 			AccountID: "123456789012",
 			RegionalResources: &models.RegionalResources{
 				VPCs:    make(map[string]*models.AWSVPC),
-				Clients: make(map[string]aws_interface.EC2Clienter),
+				Clients: make(map[string]aws_interfaces.EC2Clienter),
 			},
 		}
 		// Initialize VPC maps for each region
@@ -293,61 +293,142 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 	// Initialize deployment model first
 	s.setupDeploymentModel("aws-test", models.DeploymentTypeAWS)
 
-	var err error
-	s.awsProvider, err = aws_provider.NewAWSProvider("123456789012")
-	if err != nil {
-		return nil, err
+	// Create mock EC2 client
+	mockEC2Client := new(aws_mocks.MockEC2Clienter)
+
+	// Create mock STS client
+	mockSTSClient := new(aws_mocks.MockSTSClienter)
+	mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.Anything).
+		Return(testdata.FakeSTSGetCallerIdentityOutput(), nil)
+
+	// Create AWS config with static credentials
+	cfg := aws.Config{
+		Region: "us-east-1",
+		Credentials: credentials.NewStaticCredentialsProvider(
+			"AKIAIOSFODNN7EXAMPLE",
+			"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+			"",
+		),
 	}
 
-	// Create and configure mock EC2 client
-	mockEC2Client := new(aws_mock.MockEC2Clienter)
+	// Initialize AWS provider with mocked clients and config
+	s.awsProvider = &aws_provider.AWSProvider{
+		AccountID:       "123456789012",
+		Config:          &cfg,
+		EC2Client:       mockEC2Client,
+		STSClient:       mockSTSClient,
+		ClusterDeployer: s.mockClusterDeployer,
+		UpdateQueue:     make(chan display.UpdateAction, 1000),
+	}
+
+	// Make sure your AWS provider is initialized with both EC2 and STS clients
+	s.awsProvider.SetSTSClient(mockSTSClient)
+
+	// Setup mock resources
 	s.setupMockAWSResources(mockEC2Client)
 
-	// Set up the provider in the command
+	// Override provider creation function
 	aws_provider.NewAWSProviderFunc = func(accountID string) (*aws_provider.AWSProvider, error) {
 		return s.awsProvider, nil
-	}
-
-	// Initialize the deployment model with AWS-specific configuration
-	m := display.GetGlobalModelFunc()
-	if m.Deployment != nil && m.Deployment.AWS != nil {
-		// Initialize VPCs map with required regions
-		m.Deployment.AWS.RegionalResources.VPCs = map[string]*models.AWSVPC{
-			"us-west-2": {
-				VPCID:           "vpc-12345",
-				SecurityGroupID: "sg-1234567890abcdef0",
-			},
-			"us-east-1": {
-				VPCID:           "vpc-12345",
-				SecurityGroupID: "sg-1234567890abcdef0",
-			},
-		}
-		// Set up EC2 clients for each region
-		for region := range m.Deployment.AWS.RegionalResources.VPCs {
-			m.Deployment.AWS.RegionalResources.Clients[region] = mockEC2Client
-		}
 	}
 
 	return cmd, nil
 }
 
-func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mock.MockEC2Clienter) {
-	// Region mocks
-	mockEC2Client.On("DescribeRegions", mock.Anything, mock.AnythingOfType("*ec2.DescribeRegionsInput")).
-		Return(&ec2.DescribeRegionsOutput{
-			Regions: []types.Region{
-				{
-					RegionName: aws.String("us-west-2"),
-					Endpoint:   aws.String("ec2.us-west-2.amazonaws.com"),
-				},
-				{
-					RegionName: aws.String("us-east-1"),
-					Endpoint:   aws.String("ec2.us-east-1.amazonaws.com"),
-				},
+func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mocks.MockEC2Clienter) {
+	// Mock VPC operations with specific parameter matching
+	mockEC2Client.On("CreateVpc", mock.Anything, mock.MatchedBy(func(input *ec2.CreateVpcInput) bool {
+		if input == nil || input.CidrBlock == nil || *input.CidrBlock != "10.0.0.0/16" {
+			return false
+		}
+		if len(input.TagSpecifications) == 0 ||
+			input.TagSpecifications[0].ResourceType != types.ResourceTypeVpc ||
+			len(input.TagSpecifications[0].Tags) < 4 {
+			return false
+		}
+		hasRequiredTags := false
+		for _, tag := range input.TagSpecifications[0].Tags {
+			if tag.Key != nil && *tag.Key == "andaime" {
+				hasRequiredTags = true
+				break
+			}
+		}
+		return hasRequiredTags
+	})).
+		Return(&ec2.CreateVpcOutput{
+			Vpc: &types.Vpc{
+				VpcId: aws.String("vpc-12345"),
+				State: types.VpcStateAvailable,
 			},
-		}, nil)
-	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
-		Return(&ec2.DescribeAvailabilityZonesOutput{
+		}, nil).
+		Maybe()
+
+	// VPC and Networking mocks
+	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
+		Return(testdata.FakeEC2DescribeVpcsOutput(), nil).Maybe()
+	mockEC2Client.On("ModifyVpcAttribute", mock.Anything, mock.AnythingOfType("*ec2.ModifyVpcAttributeInput")).
+		Return(testdata.FakeEC2ModifyVpcAttributeOutput(), nil).
+		Maybe()
+	mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
+		Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil).
+		Maybe()
+	mockEC2Client.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.AnythingOfType("*ec2.AuthorizeSecurityGroupIngressInput")).
+		Return(testdata.FakeAuthorizeSecurityGroupIngressOutput(), nil).
+		Maybe()
+
+	// Routing mocks
+	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
+		Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil).
+		Maybe()
+	mockEC2Client.On("DescribeInternetGateways", mock.Anything, mock.AnythingOfType("*ec2.DescribeInternetGatewaysInput")).
+		Return(testdata.FakeEC2DescribeInternetGatewaysOutput(), nil).
+		Maybe()
+	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
+		Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil).
+		Maybe()
+	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
+		Return(testdata.FakeEC2CreateRouteTableOutput(), nil).
+		Maybe()
+	mockEC2Client.On("CreateRoute", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteInput")).
+		Return(testdata.FakeEC2CreateRouteOutput(), nil).Maybe()
+	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.AssociateRouteTableInput")).
+		Return(testdata.FakeEC2AssociateRouteTableOutput(), nil).
+		Maybe()
+	mockEC2Client.On("DescribeRouteTables", mock.Anything, mock.AnythingOfType("*ec2.DescribeRouteTablesInput")).
+		Return(testdata.FakeEC2DescribeRouteTablesOutput(), nil).
+		Maybe()
+
+	// Instance mocks
+	mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
+		Return(testdata.FakeEC2RunInstancesOutput(), nil).Maybe()
+	mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
+		Return(testdata.FakeEC2DescribeInstancesOutput(), nil).
+		Maybe()
+	mockEC2Client.On("DescribeImages", mock.Anything, mock.AnythingOfType("*ec2.DescribeImagesInput")).
+		Return(testdata.FakeEC2DescribeImagesOutput(), nil).
+		Maybe()
+	mockEC2Client.On("CreateTags", mock.Anything, mock.AnythingOfType("*ec2.CreateTagsInput")).
+		Return(&ec2.CreateTagsOutput{}, nil).Maybe()
+
+	// Subnet mocks
+	mockEC2Client.On("CreateSubnet", mock.Anything, mock.AnythingOfType("*ec2.CreateSubnetInput")).
+		Return(testdata.FakeEC2CreateSubnetOutput(), nil).Maybe()
+	mockEC2Client.On("DescribeSubnets", mock.Anything, mock.AnythingOfType("*ec2.DescribeSubnetsInput")).
+		Return(testdata.FakeEC2DescribeSubnetsOutput(), nil).
+		Maybe()
+
+	// Region and AZ mocks
+	mockEC2Client.On("DescribeRegions", mock.Anything, mock.Anything).Return(
+		&ec2.DescribeRegionsOutput{
+			Regions: []types.Region{
+				{RegionName: aws.String("us-west-2")},
+				{RegionName: aws.String("us-east-1")},
+			},
+		}, nil,
+	).Maybe()
+
+	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).Return(
+		&ec2.DescribeAvailabilityZonesOutput{
 			AvailabilityZones: []types.AvailabilityZone{
 				{
 					ZoneName:   aws.String("us-west-2a"),
@@ -370,53 +451,8 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mock.Moc
 					RegionName: aws.String("us-east-1"),
 				},
 			},
-		}, nil)
-
-	// VPC and Networking mocks
-	mockEC2Client.On("CreateVpc", mock.Anything, mock.AnythingOfType("*ec2.CreateVpcInput")).
-		Return(testdata.FakeEC2CreateVpcOutput(), nil)
-	mockEC2Client.On("DescribeVpcs", mock.Anything, mock.AnythingOfType("*ec2.DescribeVpcsInput")).
-		Return(testdata.FakeEC2DescribeVpcsOutput(), nil)
-	mockEC2Client.On("ModifyVpcAttribute", mock.Anything, mock.AnythingOfType("*ec2.ModifyVpcAttributeInput")).
-		Return(testdata.FakeEC2ModifyVpcAttributeOutput(), nil)
-	mockEC2Client.On("CreateSecurityGroup", mock.Anything, mock.AnythingOfType("*ec2.CreateSecurityGroupInput")).
-		Return(testdata.FakeEC2CreateSecurityGroupOutput(), nil)
-	mockEC2Client.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.AnythingOfType("*ec2.AuthorizeSecurityGroupIngressInput")).
-		Return(testdata.FakeAuthorizeSecurityGroupIngressOutput(), nil)
-
-	// Routing mocks
-	mockEC2Client.On("CreateInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.CreateInternetGatewayInput")).
-		Return(testdata.FakeEC2CreateInternetGatewayOutput(), nil)
-	mockEC2Client.On("DescribeInternetGateways", mock.Anything, mock.AnythingOfType("*ec2.DescribeInternetGatewaysInput")).
-		Return(testdata.FakeEC2DescribeInternetGatewaysOutput(), nil)
-	mockEC2Client.On("AttachInternetGateway", mock.Anything, mock.AnythingOfType("*ec2.AttachInternetGatewayInput")).
-		Return(testdata.FakeEC2AttachInternetGatewayOutput(), nil)
-	mockEC2Client.On("CreateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteTableInput")).
-		Return(testdata.FakeEC2CreateRouteTableOutput(), nil)
-	mockEC2Client.On("CreateRoute", mock.Anything, mock.AnythingOfType("*ec2.CreateRouteInput")).
-		Return(testdata.FakeEC2CreateRouteOutput(), nil)
-	mockEC2Client.On("AssociateRouteTable", mock.Anything, mock.AnythingOfType("*ec2.AssociateRouteTableInput")).
-		Return(testdata.FakeEC2AssociateRouteTableOutput(), nil)
-	mockEC2Client.On("DescribeRouteTables", mock.Anything, mock.AnythingOfType("*ec2.DescribeRouteTablesInput")).
-		Return(testdata.FakeEC2DescribeRouteTablesOutput(), nil)
-
-	// Instance mocks
-	mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
-		Return(testdata.FakeEC2RunInstancesOutput(), nil)
-	mockEC2Client.On("DescribeInstances", mock.Anything,
-		mock.AnythingOfType("*ec2.DescribeInstancesInput"),
-		mock.Anything).
-		Return(testdata.FakeEC2DescribeInstancesOutput(), nil)
-	mockEC2Client.On("DescribeImages", mock.Anything, mock.AnythingOfType("*ec2.DescribeImagesInput")).
-		Return(testdata.FakeEC2DescribeImagesOutput(), nil)
-	mockEC2Client.On("CreateTags", mock.Anything, mock.AnythingOfType("*ec2.CreateTagsInput")).
-		Return(&ec2.CreateTagsOutput{}, nil)
-
-	// Subnet mocks
-	mockEC2Client.On("CreateSubnet", mock.Anything, mock.AnythingOfType("*ec2.CreateSubnetInput")).
-		Return(testdata.FakeEC2CreateSubnetOutput(), nil)
-	mockEC2Client.On("DescribeSubnets", mock.Anything, mock.AnythingOfType("*ec2.DescribeSubnetsInput")).
-		Return(testdata.FakeEC2DescribeSubnetsOutput(), nil)
+		}, nil,
+	).Maybe()
 }
 
 func (s *IntegrationTestSuite) setupMockClusterDeployer() {
@@ -463,7 +499,7 @@ func (s *IntegrationTestSuite) setupMockSSHConfig() {
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,
-		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 		return s.mockSSHConfig, nil
 	}
 }
@@ -522,14 +558,14 @@ func (s *IntegrationTestSuite) setupAzureTest() (*cobra.Command, error) {
 	}
 
 	mockPoller := new(MockPoller)
-	mockAzureClient := new(azure_mock.MockAzureClienter)
+	mockAzureClient := new(azure_mocks.MockAzureClienter)
 	s.setupAzureMocks(mockAzureClient, mockPoller)
 
 	azure_provider.NewAzureProviderFunc = func(ctx context.Context, subscriptionID string) (*azure_provider.AzureProvider, error) {
 		return s.azureProvider, nil
 	}
 
-	azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interface.AzureClienter, error) {
+	azure_provider.NewAzureClientFunc = func(subscriptionID string) (azure_interfaces.AzureClienter, error) {
 		return mockAzureClient, nil
 	}
 
@@ -537,7 +573,7 @@ func (s *IntegrationTestSuite) setupAzureTest() (*cobra.Command, error) {
 }
 
 func (s *IntegrationTestSuite) setupAzureMocks(
-	mockAzureClient *azure_mock.MockAzureClienter,
+	mockAzureClient *azure_mocks.MockAzureClienter,
 	mockPoller *MockPoller,
 ) {
 	mockPoller.On("PollUntilDone", mock.Anything, mock.Anything).
@@ -572,7 +608,7 @@ func (s *IntegrationTestSuite) setupGCPTest() (*cobra.Command, error) {
 	cmd := gcp.GetGCPCreateDeploymentCmd()
 	cmd.SetContext(context.Background())
 
-	mockGCPClient := new(gcp_mock.MockGCPClienter)
+	mockGCPClient := new(gcp_mocks.MockGCPClienter)
 	s.setupGCPMocks(mockGCPClient)
 
 	var err error
@@ -594,7 +630,7 @@ func (s *IntegrationTestSuite) setupGCPTest() (*cobra.Command, error) {
 	return cmd, nil
 }
 
-func (s *IntegrationTestSuite) setupGCPMocks(mockGCPClient *gcp_mock.MockGCPClienter) {
+func (s *IntegrationTestSuite) setupGCPMocks(mockGCPClient *gcp_mocks.MockGCPClienter) {
 	mockGCPClient.On("IsAPIEnabled", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil)
 	mockGCPClient.On("ValidateMachineType", mock.Anything, mock.Anything, mock.Anything).

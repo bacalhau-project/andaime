@@ -5,6 +5,10 @@ acceptnetworkedjobs
 accesskey
 accesspolicypath
 advertisedaddress
+AIDATEST
+AIDXXXXXXXXXXXXXXXXX
+AKIAIOSFODNN
+AKID
 Alloc
 allocatedcapacity
 allowlistedlocalpaths
@@ -188,6 +192,8 @@ htmltemplate
 iface
 ignorephysicalresourcelimits
 igws
+imds
+IMDS
 ineffassign
 Infof
 infoupdatefrequency
@@ -267,6 +273,7 @@ nproc
 NSGID
 nsgs
 olekukonko
+ondemand
 onsi
 optup
 orchestratorip
@@ -333,6 +340,7 @@ Skus
 SNET
 southcentralus
 southeastasia
+spotinstance
 sprops
 sqlserver
 sshbehavior
@@ -406,6 +414,7 @@ Warnf
 webui
 westeurope
 westus
+wJalrXUtnFEM
 workercount
 YYMMDDHHMM
 zaptest

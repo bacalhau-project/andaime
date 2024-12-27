@@ -12,7 +12,7 @@ import (
 	"github.com/bacalhau-project/andaime/internal/clouds/general"
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
-	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -34,7 +34,7 @@ type PkgProvidersAzureIntegrationTest struct {
 	origGetGlobalModelFunc func() *display.DisplayModel
 	testDisplayModel       *display.DisplayModel
 	mockAzureClient        *azure_mocks.MockAzureClienter
-	mockSSHConfig          *ssh_mock.MockSSHConfiger
+	mockSSHConfig          *ssh_mocks.MockSSHConfiger
 	cleanup                func()
 }
 
@@ -331,7 +331,7 @@ func (s *PkgProvidersAzureIntegrationTest) SetupTest() {
 		},
 	}
 
-	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior).(*ssh_mock.MockSSHConfiger)
+	s.mockSSHConfig = sshutils.NewMockSSHConfigWithBehavior(sshBehavior).(*ssh_mocks.MockSSHConfiger)
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,

@@ -9,14 +9,86 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/utils"
 )
 
+// ProvisioningStage represents different stages of machine provisioning
+type ProvisioningStage string
+
+const (
+	// VM provisioning stages
+	StageVMRequested    ProvisioningStage = "Requesting VM"
+	StageVMProvisioning ProvisioningStage = "Provisioning VM"
+	StageVMProvisioned  ProvisioningStage = "VM Provisioned"
+	StageVMFailed       ProvisioningStage = "VM Provisioning Failed"
+	StageVMUnknown      ProvisioningStage = "VM Provisioning Unknown"
+
+	// Spot Instance specific stages
+	StageSpotRequested    ProvisioningStage = "Requesting Spot Instance"
+	StageSpotBidding      ProvisioningStage = "Spot Instance Bid Pending"
+	StageSpotProvisioning ProvisioningStage = "Spot Instance Provisioning"
+	StageSpotProvisioned  ProvisioningStage = "Spot Instance Provisioned"
+	StageSpotFailed       ProvisioningStage = "Spot Instance Failed"
+	StageSpotFallback     ProvisioningStage = "Falling Back to On-Demand"
+
+	// SSH provisioning stages
+	StageSSHConfiguring ProvisioningStage = "Configuring SSH"
+	StageSSHConfigured  ProvisioningStage = "SSH Configured"
+	StageSSHFailed      ProvisioningStage = "SSH Configuration Failed"
+
+	// Docker installation stages
+	StageDockerInstalling ProvisioningStage = "Installing Docker"
+	StageDockerInstalled  ProvisioningStage = "Docker Installed"
+	StageDockerFailed     ProvisioningStage = "Docker Installation Failed"
+
+	// Bacalhau installation stages
+	StageBacalhauInstalling ProvisioningStage = "Installing Bacalhau"
+	StageBacalhauInstalled  ProvisioningStage = "Bacalhau Installed"
+	StageBacalhauFailed     ProvisioningStage = "Bacalhau Installation Failed"
+
+	// Script execution stages
+	StageScriptExecuting ProvisioningStage = "Executing Script"
+	StageScriptCompleted ProvisioningStage = "Script Completed"
+	StageScriptFailed    ProvisioningStage = "Script Execution Failed"
+)
+
 type ProviderAbbreviation string
 
 const (
 	ProviderAbbreviationAzure   ProviderAbbreviation = "AZU"
 	ProviderAbbreviationAWS     ProviderAbbreviation = "AWS"
 	ProviderAbbreviationGCP     ProviderAbbreviation = "GCP"
+	ProviderAbbreviationOracle  ProviderAbbreviation = "ORA"
+	ProviderAbbreviationIBM     ProviderAbbreviation = "IBM"
 	ProviderAbbreviationVirtual ProviderAbbreviation = "VIR"
 	ProviderAbbreviationUnknown ProviderAbbreviation = "UNK"
+)
+
+// ServiceType represents the type of service being used
+type ServiceType struct {
+	Name  string
+	state ServiceState
+}
+
+// NewServiceType creates a new ServiceType with initial state
+func NewServiceType(name string, state ServiceState) ServiceType {
+	return ServiceType{Name: name, state: state}
+}
+
+// GetState returns the current state of the service
+func (s *ServiceType) GetState() ServiceState {
+	return s.state
+}
+
+// SetState updates the state of the service
+func (s *ServiceType) SetState(state ServiceState) {
+	s.state = state
+}
+
+var (
+	ServiceTypeSpot         = ServiceType{Name: "spot"}
+	ServiceTypeSSH          = ServiceType{Name: "ssh"}
+	ServiceTypeDocker       = ServiceType{Name: "docker"}
+	ServiceTypeCorePackages = ServiceType{Name: "core-packages"}
+	ServiceTypeBacalhau     = ServiceType{Name: "bacalhau"}
+	ServiceTypeScript       = ServiceType{Name: "script"}
 )
 
 type DisplayStatus struct {
@@ -34,6 +106,9 @@ type DisplayStatus struct {
 	Name            string
 	Progress        int
 	Orchestrator    bool
+	Stage           ProvisioningStage
+	SpotInstance    bool
+	SpotState       ProvisioningStage
 	SSH             ServiceState
 	Docker          ServiceState
 	CorePackages    ServiceState
@@ -98,15 +173,40 @@ func NewDisplayStatusWithText(
 	}
 }
 
-// NewDisplayVMStatus creates a new DisplayStatus for a VM
-// - machineName is the name of the machine (the start of the row - should be unique, something like ABCDEF-vm)
-// - resourceType is the type of the resource (e.g. AzureResourceTypeNIC)
-// - state is the state of the resource (e.g. AzureResourceStateSucceeded)
 func NewDisplayVMStatus(
 	machineName string,
 	state MachineResourceState,
+	spotInstance bool,
 ) *DisplayStatus {
-	return NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
+	// Map resource state to appropriate VM stage
+	stage := StageVMRequested
+	if spotInstance {
+		stage = StageSpotRequested
+		switch state {
+		case ResourceStatePending:
+			stage = StageSpotBidding
+		case ResourceStateRunning:
+			stage = StageSpotProvisioning
+		case ResourceStateSucceeded:
+			stage = StageSpotProvisioned
+		case ResourceStateFailed:
+			stage = StageSpotFailed
+		}
+	} else {
+		switch state {
+		case ResourceStatePending:
+			stage = StageVMProvisioning
+		case ResourceStateRunning, ResourceStateSucceeded:
+			stage = StageVMProvisioned
+		case ResourceStateFailed:
+			stage = StageVMFailed
+		}
+	}
+
+	status := NewDisplayStatus(machineName, machineName, AzureResourceTypeVM, state)
+	status.Stage = stage
+	status.SpotInstance = spotInstance
+	return status
 }
 
 // NewDisplayStatus creates a new DisplayStatus
@@ -131,14 +231,17 @@ func NewDisplayStatus(
 		state,
 	)
 	return &DisplayStatus{
-		ID:   machineName,
-		Name: machineName,
-		Type: resourceType,
-		StatusMessage: CreateStateMessage(
-			resourceType,
-			state,
-			resourceID,
-		),
+		ID:            machineName,
+		Name:          machineName,
+		Type:          resourceType,
+		StatusMessage: CreateStateMessage(resourceType, state, resourceID),
+		Stage:         StageVMRequested,
+		SpotInstance:  false,
+		SSH:           ServiceStateUnknown,
+		Docker:        ServiceStateUnknown,
+		CorePackages:  ServiceStateUnknown,
+		Bacalhau:      ServiceStateUnknown,
+		CustomScript:  ServiceStateUnknown,
 	}
 }
 
@@ -329,13 +432,6 @@ func GetMachineNameFromResourceName(id string) string {
 	return ""
 }
 
-var RequiredServices = []ServiceType{
-	ServiceTypeSSH,
-	ServiceTypeDocker,
-	ServiceTypeBacalhau,
-	ServiceTypeScript,
-}
-
 func machineNeedsUpdating(
 	deployment *Deployment,
 	machineName string,
@@ -427,6 +523,23 @@ func UpdateOnlyChangedStatus(
 	}
 
 	status.ElapsedTime = newStatus.ElapsedTime
+
+	// Update stage and format status message accordingly
+	if newStatus.Stage != "" {
+		status.Stage = newStatus.Stage
+		// Format status message to include stage information
+		if !strings.Contains(status.StatusMessage, string(status.Stage)) {
+			status.StatusMessage = fmt.Sprintf("[%s] %s",
+				string(status.Stage),
+				status.StatusMessage)
+		}
+	}
+
+	// Update spot instance status and prefix message if needed
+	status.SpotInstance = newStatus.SpotInstance
+	if status.SpotInstance && !strings.HasPrefix(status.StatusMessage, "[Spot]") {
+		status.StatusMessage = fmt.Sprintf("[Spot] %s", status.StatusMessage)
+	}
 
 	return status
 }

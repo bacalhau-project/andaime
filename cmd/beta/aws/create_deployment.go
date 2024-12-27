@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
-	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
-
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 
 	"github.com/joho/godotenv"
@@ -30,6 +31,10 @@ var createAWSDeploymentCmd = &cobra.Command{
 	Short: "Create a deployment in AWS",
 	Long:  `Create a deployment in AWS using the configuration specified in the config file.`,
 	RunE:  ExecuteCreateDeployment,
+}
+
+func NewCreateDeploymentCmd() *cobra.Command {
+	return createAWSDeploymentCmd
 }
 
 func GetAwsCreateDeploymentCmd() *cobra.Command {
@@ -104,6 +109,16 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 	// Write the VPC ID to config as soon as it's created
 	if err := writeVPCIDToConfig(deployment); err != nil {
 		return fmt.Errorf("failed to write VPC ID to config: %w", err)
+	}
+
+	// Ensure EC2 client is initialized
+	ec2Client := awsProvider.GetEC2Client()
+	if ec2Client == nil {
+		ec2Client = aws_provider.NewEC2ClientWrapper(
+			ec2.NewFromConfig(*awsProvider.GetConfig()),
+			imds.NewFromConfig(*awsProvider.GetConfig()),
+		)
+		awsProvider.SetEC2Client(ec2Client)
 	}
 
 	m := display.NewDisplayModel(deployment)
@@ -181,7 +196,7 @@ func prepareDeployment(
 		m.Deployment.AWS.RegionalResources.VPCs = make(map[string]*models.AWSVPC)
 	}
 	if m.Deployment.AWS.RegionalResources.Clients == nil {
-		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interface.EC2Clienter)
+		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interfaces.EC2Clienter)
 	}
 	for _, machine := range m.Deployment.GetMachines() {
 		region := machine.GetRegion()
@@ -354,7 +369,7 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 				UpdateData: display.UpdateData{
 					UpdateType:    display.UpdateTypeResource,
 					ResourceType:  "SSH",
-					ResourceState: models.MachineResourceState(models.ServiceTypeSSH.State),
+					ResourceState: models.MachineResourceState(models.ServiceTypeSSH.GetState()),
 				},
 			})
 
