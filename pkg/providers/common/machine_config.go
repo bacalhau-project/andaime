@@ -123,7 +123,6 @@ func ProcessMachinesConfig(
 			thisVMType = rawMachine.Parameters.Type
 		}
 
-		fmt.Printf("Validating machine type %s in location %s...", thisVMType, rawMachine.Location)
 		valid, err := validateMachineTypeFn(context.Background(), rawMachine.Location, thisVMType)
 		if !valid || err != nil {
 			allBadMachineLocationCombos = append(
@@ -133,11 +132,8 @@ func ProcessMachinesConfig(
 					vmSize:   thisVMType,
 				},
 			)
-			fmt.Println("❌")
 			continue
 		}
-		fmt.Println("✅")
-
 		diskImageFamily := defaultDiskImageFamily
 		diskImageURL := defaultDiskImageURL
 		if rawMachine.Parameters != (RawMachineParams{}) {

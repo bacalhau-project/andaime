@@ -7,6 +7,7 @@ type RawMachineParams struct {
 	DiskSizeGB      int    `yaml:"disk_size_gb,omitempty"`
 	DiskImageURL    string `yaml:"disk_image_url,omitempty"`
 	DiskImageFamily string `yaml:"disk_image_family,omitempty"`
+	Spot            bool   `yaml:"spot,omitempty"`
 }
 
 type RawMachine struct {

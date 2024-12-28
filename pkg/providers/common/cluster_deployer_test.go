@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	sshutils_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	sshutils_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -133,9 +133,9 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) SetupTest() {
 // }
 
 func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluster() {
-	mockSSHClient := new(sshutils_mock.MockSSHClienter)
+	mockSSHClient := new(sshutils_mocks.MockSSHClienter)
 	mockSSHClient.On("Close").Return(nil).Maybe()
-	mockSSHClient.On("NewSession").Return(&sshutils_mock.MockSSHSessioner{}, nil).Maybe()
+	mockSSHClient.On("NewSession").Return(&sshutils_mocks.MockSSHSessioner{}, nil).Maybe()
 	mockSSHClient.On("GetClient").Return(&ssh.Client{}).Maybe()
 
 	sshBehavior := sshutils.ExpectedSSHBehavior{
@@ -210,7 +210,7 @@ func (s *PkgProvidersCommonClusterDeployerTestSuite) TestProvisionBacalhauCluste
 	sshutils.NewSSHConfigFunc = func(host string,
 		port int,
 		user string,
-		sshPrivateKeyPath string) (sshutils_interface.SSHConfiger, error) {
+		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
 		return sshutils.NewMockSSHConfigWithBehavior(sshBehavior), nil
 	}
 
@@ -578,7 +578,7 @@ func TestApplyBacalhauConfigs(t *testing.T) {
 			}
 
 			// Verify that all expected commands were executed
-			mockSSHConfig.(*sshutils_mock.MockSSHConfiger).AssertExpectations(t)
+			mockSSHConfig.(*sshutils_mocks.MockSSHConfiger).AssertExpectations(t)
 		})
 	}
 }

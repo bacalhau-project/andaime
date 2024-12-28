@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 func FakeEC2DescribeAvailabilityZonesOutput(region string) *ec2.DescribeAvailabilityZonesOutput {
@@ -273,4 +274,12 @@ func FakeEC2DescribeVpcAttributeOutput() *ec2.DescribeVpcAttributeOutput {
 
 func FakeEC2ModifyVpcAttributeOutput() *ec2.ModifyVpcAttributeOutput {
 	return &ec2.ModifyVpcAttributeOutput{}
+}
+
+func FakeSTSGetCallerIdentityOutput() *sts.GetCallerIdentityOutput {
+	return &sts.GetCallerIdentityOutput{
+		Account: aws.String("123456789012"),
+		Arn:     aws.String("arn:aws:iam::123456789012:user/test-user"),
+		UserId:  aws.String("AIDXXXXXXXXXXXXXXXXX"),
+	}
 }

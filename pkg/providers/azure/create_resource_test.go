@@ -9,7 +9,7 @@ import (
 	"github.com/bacalhau-project/andaime/internal/testdata"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	azure_mocks "github.com/bacalhau-project/andaime/mocks/azure"
-	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
@@ -33,7 +33,7 @@ type PkgProvidersAzureCreateResourceTestSuite struct {
 	azureProvider          *AzureProvider
 	origGetGlobalModelFunc func() *display.DisplayModel
 	origNewSSHConfigFunc   func(string, int, string, string) (sshutils_interface.SSHConfiger, error)
-	mockSSHConfig          *ssh_mock.MockSSHConfiger
+	mockSSHConfig          *ssh_mocks.MockSSHConfiger
 	deployment             *models.Deployment // Add deployment as suite field
 }
 
@@ -67,7 +67,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) SetupTest() {
 
 	// Create fresh mocks for each test
 	suite.mockAzureClient = new(azure_mocks.MockAzureClienter)
-	suite.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
+	suite.mockSSHConfig = new(ssh_mocks.MockSSHConfiger)
 
 	// Create fresh provider for each test
 	suite.azureProvider = &AzureProvider{}
@@ -138,7 +138,7 @@ func (suite *PkgProvidersAzureCreateResourceTestSuite) TestCreateResources() {
 		suite.Run(tt.name, func() {
 			// Reset everything for each test
 			suite.mockAzureClient = new(azure_mocks.MockAzureClienter)
-			suite.mockSSHConfig = new(ssh_mock.MockSSHConfiger)
+			suite.mockSSHConfig = new(ssh_mocks.MockSSHConfiger)
 			suite.azureProvider = &AzureProvider{} // Create fresh provider
 			suite.azureProvider.SetAzureClient(suite.mockAzureClient)
 

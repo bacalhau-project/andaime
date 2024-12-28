@@ -194,7 +194,7 @@ func (c *LiveGCPClient) UpdateResourceState(
 						)
 					} else {
 						// Test SSH connectivity
-						err = sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout())
+						err = sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.SSHTimeOut)
 						if err != nil {
 							l.Errorf("Failed to connect to machine %s via SSH: %v", machine.GetName(), err)
 							machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)

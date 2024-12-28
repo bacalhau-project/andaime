@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
-	ssh_mock "github.com/bacalhau-project/andaime/mocks/sshutils"
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -42,7 +42,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	expectedOutput := "command output"
 
 	// Create mock session
-	mockSession := &ssh_mock.MockSSHSessioner{}
+	mockSession := &ssh_mocks.MockSSHSessioner{}
 	mockSession.On("Run", "ls -l").Return(nil)
 	mockSession.On("Close").Return(nil)
 	mockSession.On("SetStdout", mock.MatchedBy(func(w interface{}) bool {
@@ -53,7 +53,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	mockSession.On("SetStderr", mock.Anything).Return()
 
 	// Create mock SSH client
-	mockClient := &ssh_mock.MockSSHClienter{}
+	mockClient := &ssh_mocks.MockSSHClienter{}
 	mockClient.On("NewSession").Return(mockSession, nil)
 	mockClient.On("Close").Return(nil)
 	mockClient.On("GetClient").Return(&ssh.Client{}).Maybe()
@@ -61,7 +61,7 @@ func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {
 	mockClient.On("IsConnected").Return(true).Maybe()
 
 	// Create mock client creator
-	mockClientCreator := &ssh_mock.MockSSHClientCreator{}
+	mockClientCreator := &ssh_mocks.MockSSHClientCreator{}
 	mockClientCreator.On("NewClient",
 		"test-host",
 		22,

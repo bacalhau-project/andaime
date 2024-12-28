@@ -115,6 +115,7 @@ func (p *AzureProvider) PrepareResourceGroup(
 			models.NewDisplayVMStatus(
 				machine.GetName(),
 				models.ResourceStatePending,
+				false, // Azure doesn't support spot instances in this implementation
 			),
 		)
 	}
@@ -231,6 +232,7 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 					models.NewDisplayVMStatus(
 						machine.GetName(),
 						models.ResourceStatePending,
+						false, // Azure doesn't support spot instances in this implementation
 					),
 				)
 				err := p.deployMachine(ctx, machine, map[string]*string{})
@@ -301,7 +303,8 @@ func (p *AzureProvider) CreateResources(ctx context.Context) error {
 				}
 				err = sshConfig.WaitForSSH(ctx,
 					sshutils.SSHRetryAttempts,
-					sshutils.GetAggregateSSHTimeout())
+					sshutils.SSHTimeOut,
+				)
 				if err != nil {
 					m.UpdateStatus(
 						models.NewDisplayStatusWithText(
@@ -488,6 +491,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 		models.NewDisplayVMStatus(
 			machine.GetName(),
 			models.ResourceStatePending,
+			false, // Azure doesn't support spot instances in this implementation
 		),
 	)
 
@@ -538,6 +542,7 @@ func (p *AzureProvider) deployTemplateWithRetry(
 			dispStatus := models.NewDisplayVMStatus(
 				machine.GetName(),
 				models.ResourceStatePending,
+				false, // Azure doesn't support spot instances in this implementation
 			)
 			dispStatus.StatusMessage = fmt.Sprintf(
 				"DNS Conflict - Retrying... %d/%d",

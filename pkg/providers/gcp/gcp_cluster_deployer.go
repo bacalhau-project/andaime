@@ -170,7 +170,7 @@ func (p *GCPProvider) setupSSH(ctx context.Context, machine models.Machiner) err
 		"Provisioning SSH",
 	))
 
-	if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.GetAggregateSSHTimeout()); err != nil {
+	if err := sshConfig.WaitForSSH(ctx, sshutils.SSHRetryAttempts, sshutils.SSHTimeOut); err != nil {
 		l.Errorf("Failed to provision SSH: %v", err)
 		machine.SetServiceState(models.ServiceTypeSSH.Name, models.ServiceStateFailed)
 		m.UpdateStatus(models.NewDisplayStatusWithText(
