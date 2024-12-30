@@ -71,8 +71,9 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 	viper.Reset()
 	suite.setupViper()
 
-	// Initialize mock state
+	// Initialize mock and verification state
 	aws.SetAllRegionsMocked(false)
+	aws.SetVerificationPassed(false)
 
 	// Initialize all mock objects
 	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
