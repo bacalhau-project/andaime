@@ -2,7 +2,6 @@
 package testutil
 
 import (
-	"github.com/bacalhau-project/andaime/mocks/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/models"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -30,20 +29,32 @@ func (b *SSHBehaviorBuilder) WithWaitForSSH(count int) *SSHBehaviorBuilder {
 
 // WithPushFile adds a file push expectation
 func (b *SSHBehaviorBuilder) WithPushFile(dst string, executable bool, times int) *SSHBehaviorBuilder {
+	return b.WithPushFileWithCallback(dst, executable, times, nil)
+}
+
+// WithPushFileWithCallback adds a file push expectation with progress callback
+func (b *SSHBehaviorBuilder) WithPushFileWithCallback(dst string, executable bool, times int, callback func(int64, int64)) *SSHBehaviorBuilder {
 	b.behavior.PushFileExpectations = append(b.behavior.PushFileExpectations, sshutils.PushFileExpectation{
-		Dst:        dst,
-		Executable: executable,
-		Times:      times,
+		Dst:              dst,
+		Executable:       executable,
+		Times:           times,
+		ProgressCallback: callback,
 	})
 	return b
 }
 
 // WithCommand adds a command execution expectation
 func (b *SSHBehaviorBuilder) WithCommand(cmd string, output string, times int) *SSHBehaviorBuilder {
+	return b.WithCommandWithCallback(cmd, output, times, nil)
+}
+
+// WithCommandWithCallback adds a command execution expectation with progress callback
+func (b *SSHBehaviorBuilder) WithCommandWithCallback(cmd string, output string, times int, callback func(int64, int64)) *SSHBehaviorBuilder {
 	b.behavior.ExecuteCommandExpectations = append(b.behavior.ExecuteCommandExpectations, sshutils.ExecuteCommandExpectation{
-		Cmd:    cmd,
-		Output: output,
-		Times:  times,
+		Cmd:              cmd,
+		Output:          output,
+		Times:           times,
+		ProgressCallback: callback,
 	})
 	return b
 }
@@ -64,12 +75,53 @@ func (b *SSHBehaviorBuilder) WithServiceRestart(times int) *SSHBehaviorBuilder {
 	return b
 }
 
+// WithConnect adds connect expectation
+func (b *SSHBehaviorBuilder) WithConnect(client sshutils_interfaces.SSHClienter, times int) *SSHBehaviorBuilder {
+	b.behavior.ConnectExpectation = &sshutils.ConnectExpectation{
+		Client: client,
+		Times:  times,
+	}
+	return b
+}
+
+// WithCustomScript adds custom script expectations
+func (b *SSHBehaviorBuilder) WithCustomScript(scriptPath string, times int) *SSHBehaviorBuilder {
+	b.WithPushFile("/tmp/custom_script.sh", true, times)
+	b.WithCommand("sudo /tmp/custom_script.sh", "", times)
+	return b
+}
+
 // Build creates a new SSHConfiger with the configured behavior
 func (b *SSHBehaviorBuilder) Build() sshutils_interfaces.SSHConfiger {
 	return sshutils.NewMockSSHConfigWithBehavior(b.behavior)
 }
 
 // Common SSH behavior patterns
+
+// BuildCloudProviderSSHBehavior creates a standard SSH behavior configuration for cloud providers
+func BuildCloudProviderSSHBehavior(times int, withCustomScript bool) sshutils.ExpectedSSHBehavior {
+	builder := NewSSHBehaviorBuilder().
+		WithWaitForSSH(times).
+		WithPushFile("/tmp/get-node-config-metadata.sh", true, times).
+		WithPushFile("/tmp/install-docker.sh", true, times).
+		WithPushFile("/tmp/install-core-packages.sh", true, times).
+		WithPushFile("/tmp/install-bacalhau.sh", true, times).
+		WithPushFile("/tmp/install-run-bacalhau.sh", true, times).
+		WithCommand("sudo /tmp/get-node-config-metadata.sh", "", times).
+		WithCommand("sudo /tmp/install-docker.sh", "", times).
+		WithCommand(models.ExpectedDockerHelloWorldCommand, models.ExpectedDockerOutput, times).
+		WithCommand("sudo /tmp/install-core-packages.sh", "", times).
+		WithCommand("sudo /tmp/install-bacalhau.sh", "", times).
+		WithCommand("sudo /tmp/install-run-bacalhau.sh", "", times).
+		WithSystemdService(times).
+		WithServiceRestart(times * 2)
+
+	if withCustomScript {
+		builder.WithCustomScript("/tmp/custom_script.sh", times)
+	}
+
+	return builder.behavior
+}
 
 // BuildDefaultSSHBehavior creates a standard SSH behavior configuration
 func BuildDefaultSSHBehavior(times int) sshutils.ExpectedSSHBehavior {
