@@ -71,6 +71,9 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 	viper.Reset()
 	suite.setupViper()
 
+	// Initialize mock state
+	aws.SetAllRegionsMocked(false)
+
 	// Initialize all mock objects
 	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
 	suite.mockSTSClient = new(aws_mocks.MockSTSClienter)
@@ -142,6 +145,9 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 		suite.awsProvider.SetEC2ClientForRegion(region, mockEC2ClientForRegion)
 	}
 	suite.awsProvider.SetEC2Client(suite.mockEC2Client)
+	
+	// All regions have been mocked
+	aws.SetAllRegionsMocked(true)
 }
 func (suite *CreateDeploymentTestSuite) setupViper() {
 	// Create a temporary config file

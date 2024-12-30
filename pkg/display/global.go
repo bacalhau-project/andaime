@@ -42,6 +42,7 @@ func GetGlobalProgram() GlobalProgammer {
 func (gp *GlobalProgram) InitProgram(m *DisplayModel) error {
 	gp.Program = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	SetGlobalModel(m)
+	SetDisplayModelInitialized(true)
 	return nil
 }
 
