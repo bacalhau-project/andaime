@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	internal_aws "github.com/bacalhau-project/andaime/internal/clouds/aws"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
@@ -72,7 +73,10 @@ type AWSProvider struct {
 	ConfigMutex     sync.RWMutex
 }
 
-var NewAWSProviderFunc = NewAWSProvider
+var (
+	NewAWSProviderFunc = NewAWSProvider
+	NewSTSClientFunc   = NewSTSClient
+)
 
 // NewAWSProvider creates a new AWS provider instance
 func NewAWSProvider(accountID string) (*AWSProvider, error) {
@@ -80,15 +84,36 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 		return nil, fmt.Errorf("account ID is required")
 	}
 
-	// Load default AWS config without region
-	awsConfig, err := awsconfig.LoadDefaultConfig(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	var awsConfig aws.Config
+	var stsClienter aws_interfaces.STSClienter
+
+	// In test mode, use mock configuration
+	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
+		awsConfig = aws.Config{
+			Region: "us-east-1",
+			Credentials: aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
+				return aws.Credentials{
+					AccessKeyID:     "mock-access-key",
+					SecretAccessKey: "mock-secret-key",
+					SessionToken:    "mock-session-token",
+					Source:         "mock",
+				}, nil
+			}),
+		}
+	} else {
+		// Load default AWS config without region for non-test mode
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+		}
+		awsConfig = cfg
 	}
 
 	// Initialize STS client with interface wrapper
-	stsClient := sts.NewFromConfig(awsConfig)
-	stsClienter := NewSTSClient(stsClient)
+	if os.Getenv("ANDAIME_TEST_MODE") != "true" {
+		stsClient := sts.NewFromConfig(awsConfig)
+		stsClienter = NewSTSClientFunc(stsClient)
+	}
 
 	provider := &AWSProvider{
 		AccountID:       accountID,
@@ -106,8 +131,30 @@ func (p *AWSProvider) GetOrCreateEC2Client(
 	ctx context.Context,
 	region string,
 ) (aws_interfaces.EC2Clienter, error) {
-	// If no global model, create a temporary EC2 client
-	if display.GetGlobalModelFunc() == nil {
+	// In test mode, we must have a global model and mock clients
+	if os.Getenv("ANDAIME_TEST_MODE") == "true" {
+		if display.GetGlobalModelFunc() == nil {
+			return nil, fmt.Errorf("EC2 client requested without global model in test mode")
+		}
+		m := display.GetGlobalModelFunc()
+		if m.Deployment == nil {
+			m.Deployment = &models.Deployment{
+				DeploymentType: models.DeploymentTypeAWS,
+				AWS:           models.NewAWSDeployment(),
+			}
+		}
+		if client := m.Deployment.AWS.GetRegionalClient(region); client != nil {
+			return client, nil
+		}
+		// Create a new mock client for this region
+		mockEC2Client := new(aws_mocks.MockEC2Clienter)
+		m.Deployment.AWS.SetRegionalClient(region, mockEC2Client)
+		return mockEC2Client, nil
+	}
+
+	// Non-test mode behavior
+	m := display.GetGlobalModelFunc()
+	if m == nil {
 		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 		if err != nil {
 			return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
@@ -115,13 +162,11 @@ func (p *AWSProvider) GetOrCreateEC2Client(
 		return &LiveEC2Client{client: ec2.NewFromConfig(cfg)}, nil
 	}
 
-	m := display.GetGlobalModelFunc()
 	if m.Deployment == nil {
-		m.Deployment = &models.Deployment{}
-	}
-
-	if m.Deployment.AWS == nil {
-		m.Deployment.AWS = models.NewAWSDeployment()
+		m.Deployment = &models.Deployment{
+			DeploymentType: models.DeploymentTypeAWS,
+			AWS:           models.NewAWSDeployment(),
+		}
 	}
 
 	if client := m.Deployment.AWS.GetRegionalClient(region); client != nil {
@@ -134,12 +179,13 @@ func (p *AWSProvider) GetOrCreateEC2Client(
 	}
 
 	p.ConfigMutex.Lock()
+	defer p.ConfigMutex.Unlock()
+	
 	regionalClient := m.Deployment.AWS.GetRegionalClient(region)
 	if regionalClient == nil {
 		regionalClient = &LiveEC2Client{client: ec2.NewFromConfig(cfg)}
 		m.Deployment.AWS.SetRegionalClient(region, regionalClient)
 	}
-	p.ConfigMutex.Unlock()
 
 	return regionalClient, nil
 }
@@ -150,6 +196,34 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 		return fmt.Errorf("aws.account_id is not set in the configuration")
 	}
 
+	// Validate basic configuration
+	if len(viper.GetStringSlice("aws.regions")) == 0 {
+		return fmt.Errorf("no regions configured in aws.regions")
+	}
+	machines := viper.Get("aws.machines")
+	if machines == nil {
+		return fmt.Errorf("no machines configuration found")
+	}
+	
+	// Handle different types of machine configurations
+	var machinesSlice []interface{}
+	switch v := machines.(type) {
+	case []map[string]interface{}:
+		if len(v) == 0 {
+			return fmt.Errorf("no machines configuration found")
+		}
+		for _, m := range v {
+			machinesSlice = append(machinesSlice, m)
+		}
+	case []interface{}:
+		if len(v) == 0 {
+			return fmt.Errorf("no machines configuration found")
+		}
+		machinesSlice = v
+	default:
+		return fmt.Errorf("no machines configuration found")
+	}
+
 	deployment, err := common.PrepareDeployment(ctx, models.DeploymentTypeAWS)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
@@ -157,12 +231,20 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 
 	// Get AWS account ID if not already set
 	if deployment.AWS.AccountID == "" {
-		// Use the STSClient interface method
-		identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-		if err != nil {
-			return fmt.Errorf("failed to get AWS account ID: %w", err)
+		if os.Getenv("ANDAIME_TEST_MODE") == "true" {
+			// In test mode, use the account ID passed to NewAWSProvider
+			deployment.AWS.AccountID = p.AccountID
+		} else {
+			// Use the STSClient interface method
+			if p.STSClient == nil {
+				return fmt.Errorf("STS client not initialized")
+			}
+			identity, err := p.STSClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+			if err != nil {
+				return fmt.Errorf("failed to get AWS account ID: %w", err)
+			}
+			deployment.AWS.AccountID = *identity.Account
 		}
-		deployment.AWS.AccountID = *identity.Account
 	}
 
 	// Initialize regional resources

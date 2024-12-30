@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	common_mocks "github.com/bacalhau-project/andaime/mocks/common"
@@ -66,15 +67,81 @@ func (suite *CreateDeploymentTestSuite) TearDownSuite() {
 	}
 }
 func (suite *CreateDeploymentTestSuite) SetupTest() {
+	// Reset and setup viper configuration
 	viper.Reset()
 	suite.setupViper()
+
+	// Initialize all mock objects
 	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
 	suite.mockSTSClient = new(aws_mocks.MockSTSClienter)
 	suite.mockSSHConfig = new(sshutils_mocks.MockSSHConfiger)
+	suite.mockClusterDeployer = new(common_mocks.MockClusterDeployerer)
+
+	// Set up STS mock expectations
+	suite.mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.AnythingOfType("*sts.GetCallerIdentityInput")).
+		Return(&sts.GetCallerIdentityOutput{
+			Account: aws.String("123456789012"),
+			Arn:     aws.String("arn:aws:iam::123456789012:user/test-user"),
+			UserId:  aws.String("AIDACKCEVSQ6C2EXAMPLE"),
+		}, nil)
+
+	// Initialize deployment with AWS configuration
+	suite.deployment = &models.Deployment{
+		AWS: models.NewAWSDeployment(),
+	}
+	suite.deployment.AWS.RegionalResources = &models.RegionalResources{
+		VPCs: make(map[string]*models.AWSVPC),
+	}
+
+	// Initialize and configure AWS provider
 	var err error
-	suite.awsProvider, err = aws_provider.NewAWSProvider("test-account-id")
+	suite.awsProvider, err = aws_provider.NewAWSProvider("123456789012")
 	suite.Require().NoError(err)
 	suite.Require().NotNil(suite.awsProvider)
+	
+	// Set mock clients in provider
+	suite.awsProvider.SetSTSClient(suite.mockSTSClient)
+	
+	// Initialize EC2 clients for each region
+	regions := []string{"us-west-2", "us-east-1", "us-west-1"}
+	for _, region := range regions {
+		mockEC2ClientForRegion := new(aws_mocks.MockEC2Clienter)
+		
+		// Set up expectations for DescribeAvailabilityZones
+		mockEC2ClientForRegion.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
+			Return(&ec2.DescribeAvailabilityZonesOutput{
+				AvailabilityZones: []types.AvailabilityZone{
+					{
+						ZoneName:   aws.String(region + "a"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String(region),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String(region + "b"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String(region),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+				},
+			}, nil)
+
+		// Set up expectations for DescribeInstanceTypes
+		mockEC2ClientForRegion.On("DescribeInstanceTypes", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstanceTypesInput")).
+			Return(&ec2.DescribeInstanceTypesOutput{
+				InstanceTypes: []types.InstanceTypeInfo{
+					{
+						InstanceType: types.InstanceTypeT2Micro,
+					},
+					{
+						InstanceType: types.InstanceTypeT2Small,
+					},
+				},
+			}, nil)
+
+		suite.awsProvider.SetEC2ClientForRegion(region, mockEC2ClientForRegion)
+	}
+	suite.awsProvider.SetEC2Client(suite.mockEC2Client)
 }
 func (suite *CreateDeploymentTestSuite) setupViper() {
 	// Create a temporary config file
@@ -87,6 +154,7 @@ func (suite *CreateDeploymentTestSuite) setupViper() {
 	viper.Set("aws.default_count_per_zone", 1)
 	viper.Set("aws.default_machine_type", "t2.micro")
 	viper.Set("aws.default_disk_size_gb", 10)
+	viper.Set("aws.regions", []string{"us-west-1"})  // Align with TestPrepareDeployment mock expectations
 	viper.Set("general.ssh_private_key_path", suite.testPrivateKeyPath)
 	viper.Set("general.ssh_public_key_path", suite.testSSHPublicKeyPath)
 	viper.Set("aws.machines", []map[string]interface{}{
@@ -316,32 +384,444 @@ func TestCreateDeploymentSuite(t *testing.T) {
 	suite.Run(t, new(CreateDeploymentTestSuite))
 }
 
-func (cdts *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.DeploymentType) {
-	// Initialize a fresh mock for each test
-	mockEC2Client := new(aws_mocks.MockEC2Clienter)
+func (s *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.DeploymentType) {
+	// Reset mock expectations for each test
+	s.mockEC2Client.ExpectedCalls = nil
+	s.mockSTSClient.ExpectedCalls = nil
+	s.mockSSHConfig.ExpectedCalls = nil
+	s.mockClusterDeployer.ExpectedCalls = nil
 
-	// Get the model and ensure AWS deployment is initialized
-	m := display.GetGlobalModelFunc()
-	if m.Deployment.AWS == nil {
-		m.Deployment.AWS = models.NewAWSDeployment()
-	}
+	// Re-establish base STS mock expectations
+	s.mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.AnythingOfType("*sts.GetCallerIdentityInput")).
+		Return(&sts.GetCallerIdentityOutput{
+			Account: aws.String("123456789012"),
+			Arn:     aws.String("arn:aws:iam::123456789012:user/test-user"),
+			UserId:  aws.String("AIDACKCEVSQ6C2EXAMPLE"),
+		}, nil)
+		
+	// Re-establish EC2 client expectations for each region
+	regions := []string{"us-west-2", "us-east-1", "us-west-1"}
+	for _, region := range regions {
+		mockEC2ClientForRegion := new(aws_mocks.MockEC2Clienter)
+		
+		// Set up expectations for DescribeAvailabilityZones
+		mockEC2ClientForRegion.On("DescribeAvailabilityZones", mock.Anything, mock.AnythingOfType("*ec2.DescribeAvailabilityZonesInput")).
+			Return(&ec2.DescribeAvailabilityZonesOutput{
+				AvailabilityZones: []types.AvailabilityZone{
+					{
+						ZoneName:   aws.String(region + "a"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String(region),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String(region + "b"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String(region),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+				},
+			}, nil)
 
-	// Initialize RegionalResources if not already done
-	if m.Deployment.AWS.RegionalResources == nil {
-		m.Deployment.AWS.RegionalResources = &models.RegionalResources{
-			VPCs: make(map[string]*models.AWSVPC),
-		}
+		// Set up expectations for DescribeInstanceTypes
+		mockEC2ClientForRegion.On("DescribeInstanceTypes", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstanceTypesInput")).
+			Return(&ec2.DescribeInstanceTypesOutput{
+				InstanceTypes: []types.InstanceTypeInfo{
+					{
+						InstanceType: types.InstanceTypeT2Micro,
+					},
+					{
+						InstanceType: types.InstanceTypeT2Small,
+					},
+				},
+			}, nil)
+
+		s.awsProvider.SetEC2ClientForRegion(region, mockEC2ClientForRegion)
 	}
 
 	// Pre-initialize VPCs for all regions we're testing with
-	regions := []string{"us-west-2", "us-east-1"}
+	regions := []string{"us-west-2", "us-east-1", "us-west-1"}
 	for _, region := range regions {
+		// Create a new mock EC2 client for each region
+		mockEC2ClientForRegion := new(aws_mocks.MockEC2Clienter)
+		
+		// Set up expectations for DescribeAvailabilityZones
+		mockEC2ClientForRegion.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeAvailabilityZonesOutput{
+				AvailabilityZones: []types.AvailabilityZone{
+					{
+						ZoneName:   aws.String(region + "a"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String(region),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName:   aws.String(region + "b"),
+						ZoneType:   aws.String("availability-zone"),
+						RegionName: aws.String(region),
+						State:      types.AvailabilityZoneStateAvailable,
+					},
+				},
+			}, nil).Maybe()
+
+		// Set up spot instance expectations for each region
+		mockEC2ClientForRegion.On("RequestSpotInstances", mock.Anything, mock.Anything).
+			Return(&ec2.RequestSpotInstancesOutput{
+				SpotInstanceRequests: []types.SpotInstanceRequest{
+					{
+						SpotInstanceRequestId: aws.String(fmt.Sprintf("sir-%s-test123", region)),
+						State:                types.SpotInstanceStateActive,
+						InstanceId:           aws.String(fmt.Sprintf("i-%s-test123", region)),
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeSpotInstanceRequests", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeSpotInstanceRequestsOutput{
+				SpotInstanceRequests: []types.SpotInstanceRequest{
+					{
+						SpotInstanceRequestId: aws.String(fmt.Sprintf("sir-%s-test123", region)),
+						State:                types.SpotInstanceStateActive,
+						InstanceId:           aws.String(fmt.Sprintf("i-%s-test123", region)),
+					},
+				},
+			}, nil).Maybe()
+
+		// Set up RunInstances expectations for both spot and on-demand instances
+		mockEC2ClientForRegion.On("RunInstances", mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+			return input != nil && input.InstanceMarketOptions != nil && 
+				input.InstanceMarketOptions.MarketType == types.MarketTypeSpot
+		}), mock.Anything).Return(&ec2.RunInstancesOutput{
+			Instances: []types.Instance{
+				{
+					InstanceId:   aws.String(fmt.Sprintf("i-%s-spot123", region)),
+					InstanceType: types.InstanceTypeT2Micro,
+					State: &types.InstanceState{
+						Name: types.InstanceStateNameRunning,
+					},
+					PublicIpAddress: aws.String("1.2.3.4"),
+				},
+			},
+		}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("RunInstances", mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+			return input != nil && (input.InstanceMarketOptions == nil || 
+				input.InstanceMarketOptions.MarketType != types.MarketTypeSpot)
+		}), mock.Anything).Return(&ec2.RunInstancesOutput{
+			Instances: []types.Instance{
+				{
+					InstanceId:   aws.String(fmt.Sprintf("i-%s-test123", region)),
+					InstanceType: types.InstanceTypeT2Micro,
+					State: &types.InstanceState{
+						Name: types.InstanceStateNameRunning,
+					},
+					PublicIpAddress: aws.String("1.2.3.4"),
+				},
+			},
+		}, nil).Maybe()
+
+		// Mock DescribeInstances for both spot and on-demand instances
+		mockEC2ClientForRegion.On("DescribeInstances", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeInstancesOutput{
+				Reservations: []types.Reservation{
+					{
+						Instances: []types.Instance{
+							{
+								InstanceId:      aws.String(fmt.Sprintf("i-%s-test123", region)),
+								InstanceType:    types.InstanceTypeT2Micro,
+								PublicIpAddress: aws.String("1.2.3.4"),
+								State: &types.InstanceState{
+									Name: types.InstanceStateNameRunning,
+								},
+							},
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		// Mock DescribeInstanceStatus
+		mockEC2ClientForRegion.On("DescribeInstanceStatus", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeInstanceStatusOutput{
+				InstanceStatuses: []types.InstanceStatus{
+					{
+						InstanceId: aws.String(fmt.Sprintf("i-%s-test123", region)),
+						InstanceState: &types.InstanceState{
+							Name: types.InstanceStateNameRunning,
+						},
+						InstanceStatus: &types.InstanceStatusSummary{
+							Status: types.SummaryStatusOk,
+						},
+						SystemStatus: &types.InstanceStatusSummary{
+							Status: types.SummaryStatusOk,
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		// Mock VPC-related operations
+		mockEC2ClientForRegion.On("CreateVpc", mock.Anything, mock.Anything).
+			Return(&ec2.CreateVpcOutput{
+				Vpc: &types.Vpc{
+					VpcId: aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+					State: types.VpcStateAvailable,
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("CreateSubnet", mock.Anything, mock.Anything).
+			Return(&ec2.CreateSubnetOutput{
+				Subnet: &types.Subnet{
+					SubnetId: aws.String(fmt.Sprintf("subnet-%s-test123", region)),
+					State:    types.SubnetStateAvailable,
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("CreateSecurityGroup", mock.Anything, mock.Anything).
+			Return(&ec2.CreateSecurityGroupOutput{
+				GroupId: aws.String(fmt.Sprintf("sg-%s-test123", region)),
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
+			Return(&ec2.AuthorizeSecurityGroupIngressOutput{}, nil).Maybe()
+
+		// Mock VPC networking operations
+		mockEC2ClientForRegion.On("DescribeVpcs", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeVpcsOutput{
+				Vpcs: []types.Vpc{
+					{
+						VpcId: aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+						State: types.VpcStateAvailable,
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("CreateInternetGateway", mock.Anything, mock.Anything).
+			Return(&ec2.CreateInternetGatewayOutput{
+				InternetGateway: &types.InternetGateway{
+					InternetGatewayId: aws.String(fmt.Sprintf("igw-%s-test123", region)),
+					Attachments: []types.InternetGatewayAttachment{
+						{
+							State: types.AttachmentStatusAttached,
+							VpcId: aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("AttachInternetGateway", mock.Anything, mock.Anything).
+			Return(&ec2.AttachInternetGatewayOutput{}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeInternetGateways", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeInternetGatewaysOutput{
+				InternetGateways: []types.InternetGateway{
+					{
+						InternetGatewayId: aws.String(fmt.Sprintf("igw-%s-test123", region)),
+						Attachments: []types.InternetGatewayAttachment{
+							{
+								State: types.AttachmentStatusAttached,
+								VpcId: aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+							},
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("CreateRouteTable", mock.Anything, mock.Anything).
+			Return(&ec2.CreateRouteTableOutput{
+				RouteTable: &types.RouteTable{
+					RouteTableId: aws.String(fmt.Sprintf("rtb-%s-test123", region)),
+					VpcId:       aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeRouteTables", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeRouteTablesOutput{
+				RouteTables: []types.RouteTable{
+					{
+						RouteTableId: aws.String(fmt.Sprintf("rtb-%s-test123", region)),
+						VpcId:       aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+						Routes: []types.Route{
+							{
+								DestinationCidrBlock: aws.String("0.0.0.0/0"),
+								GatewayId:           aws.String(fmt.Sprintf("igw-%s-test123", region)),
+							},
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("CreateRoute", mock.Anything, mock.Anything).
+			Return(&ec2.CreateRouteOutput{}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("AssociateRouteTable", mock.Anything, mock.Anything).
+			Return(&ec2.AssociateRouteTableOutput{
+				AssociationId: aws.String(fmt.Sprintf("rtbassoc-%s-test123", region)),
+			}, nil).Maybe()
+
+		// Mock availability zones and subnet operations
+		mockEC2ClientForRegion.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeAvailabilityZonesOutput{
+				AvailabilityZones: []types.AvailabilityZone{
+					{
+						ZoneName: aws.String(fmt.Sprintf("%sa", region)),
+						State:    types.AvailabilityZoneStateAvailable,
+					},
+					{
+						ZoneName: aws.String(fmt.Sprintf("%sb", region)),
+						State:    types.AvailabilityZoneStateAvailable,
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("CreateSubnet", mock.Anything, mock.MatchedBy(func(input *ec2.CreateSubnetInput) bool {
+			return input.VpcId != nil && strings.HasPrefix(*input.VpcId, "vpc-")
+		})).Return(&ec2.CreateSubnetOutput{
+			Subnet: &types.Subnet{
+				SubnetId: aws.String(fmt.Sprintf("subnet-%s-test123", region)),
+				VpcId:    aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+				State:    types.SubnetStateAvailable,
+			},
+		}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeSubnets", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeSubnetsOutput{
+				Subnets: []types.Subnet{
+					{
+						SubnetId: aws.String(fmt.Sprintf("subnet-%s-test123", region)),
+						VpcId:    aws.String(fmt.Sprintf("vpc-%s-test123", region)),
+						State:    types.SubnetStateAvailable,
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("ModifySubnetAttribute", mock.Anything, mock.Anything).
+			Return(&ec2.ModifySubnetAttributeOutput{}, nil).Maybe()
+
+		// Mock EC2 instance operations
+		mockEC2ClientForRegion.On("RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+			return input.MaxCount != nil && *input.MaxCount == 1
+		})).Return(&ec2.RunInstancesOutput{
+			Instances: []types.Instance{
+				{
+					InstanceId:   aws.String(fmt.Sprintf("i-%s-test123", region)),
+					InstanceType: types.InstanceTypeT2Micro,
+					State: &types.InstanceState{
+						Name: types.InstanceStateNameRunning,
+						Code: aws.Int32(16),
+					},
+					PublicIpAddress: aws.String("1.2.3.4"),
+				},
+			},
+		}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeInstances", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeInstancesOutput{
+				Reservations: []types.Reservation{
+					{
+						Instances: []types.Instance{
+							{
+								InstanceId:   aws.String(fmt.Sprintf("i-%s-test123", region)),
+								InstanceType: types.InstanceTypeT2Micro,
+								State: &types.InstanceState{
+									Name: types.InstanceStateNameRunning,
+									Code: aws.Int32(16),
+								},
+								PublicIpAddress: aws.String("1.2.3.4"),
+							},
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("RequestSpotInstances", mock.Anything, mock.Anything).
+			Return(&ec2.RequestSpotInstancesOutput{
+				SpotInstanceRequests: []types.SpotInstanceRequest{
+					{
+						SpotInstanceRequestId: aws.String(fmt.Sprintf("sir-%s-test123", region)),
+						State:                 types.SpotInstanceStateOpen,
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeSpotInstanceRequests", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeSpotInstanceRequestsOutput{
+				SpotInstanceRequests: []types.SpotInstanceRequest{
+					{
+						SpotInstanceRequestId: aws.String(fmt.Sprintf("sir-%s-test123", region)),
+						State:                 types.SpotInstanceStateActive,
+						InstanceId:           aws.String(fmt.Sprintf("i-%s-test123", region)),
+					},
+				},
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("WaitUntilInstanceRunning", mock.Anything, mock.Anything).
+			Return(nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeInstanceStatus", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeInstanceStatusOutput{
+				InstanceStatuses: []types.InstanceStatus{
+					{
+						InstanceId: aws.String(fmt.Sprintf("i-%s-test123", region)),
+						InstanceState: &types.InstanceState{
+							Name: types.InstanceStateNameRunning,
+							Code: aws.Int32(16),
+						},
+						InstanceStatus: &types.InstanceStatusSummary{
+							Status: types.SummaryStatusOk,
+						},
+						SystemStatus: &types.InstanceStatusSummary{
+							Status: types.SummaryStatusOk,
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		// Mock SSH key pair operations
+		mockEC2ClientForRegion.On("ImportKeyPair", mock.Anything, mock.Anything).
+			Return(&ec2.ImportKeyPairOutput{
+				KeyName:        aws.String("andaime-test-key"),
+				KeyFingerprint: aws.String("12:34:56:78:90:ab:cd:ef"),
+			}, nil).Maybe()
+
+		mockEC2ClientForRegion.On("DescribeKeyPairs", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeKeyPairsOutput{
+				KeyPairs: []types.KeyPairInfo{
+					{
+						KeyName:        aws.String("andaime-test-key"),
+						KeyFingerprint: aws.String("12:34:56:78:90:ab:cd:ef"),
+					},
+				},
+			}, nil).Maybe()
+
+		// Mock network connectivity check
+		mockEC2ClientForRegion.On("DescribeNetworkInterfaces", mock.Anything, mock.Anything).
+			Return(&ec2.DescribeNetworkInterfacesOutput{
+				NetworkInterfaces: []types.NetworkInterface{
+					{
+						NetworkInterfaceId: aws.String(fmt.Sprintf("eni-%s-test123", region)),
+						Status:            types.NetworkInterfaceStatusInUse,
+						Association: &types.NetworkInterfaceAssociation{
+							PublicIp: aws.String("1.2.3.4"),
+						},
+					},
+				},
+			}, nil).Maybe()
+
+		// Mock STS client operations
+		mockSTSClient := new(aws_mocks.MockSTSClienter)
+		mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.Anything).
+			Return(&sts.GetCallerIdentityOutput{
+				Account: aws.String("123456789012"),
+				Arn:     aws.String("arn:aws:iam::123456789012:user/test-user"),
+				UserId:  aws.String("AIDATEST123TEST456TEST"),
+			}, nil).Maybe()
+		s.awsProvider.SetSTSClient(mockSTSClient)
+
 		// Set the mock EC2 client for each region
-		m.Deployment.AWS.SetRegionalClient(region, mockEC2Client)
+		s.deployment.AWS.SetRegionalClient(region, mockEC2ClientForRegion)
 
 		// Pre-initialize VPC for each region
-		if _, exists := m.Deployment.AWS.RegionalResources.VPCs[region]; !exists {
-			m.Deployment.AWS.RegionalResources.VPCs[region] = &models.AWSVPC{
+		if _, exists := s.deployment.AWS.RegionalResources.VPCs[region]; !exists {
+			s.deployment.AWS.RegionalResources.VPCs[region] = &models.AWSVPC{
 				VPCID:           fmt.Sprintf("vpc-%s-initial", region),
 				SecurityGroupID: fmt.Sprintf("sg-%s-initial", region),
 			}
@@ -491,20 +971,73 @@ func (cdts *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.
 				{ImageId: aws.String("ami-test123")},
 			},
 		}, nil).Maybe()
-	mockEC2Client.On("RunInstances", mock.Anything, mock.Anything).
-		Return(&ec2.RunInstancesOutput{
-			Instances: []types.Instance{
-				{InstanceId: aws.String("i-test123")},
+	// Mock RunInstances for both spot and on-demand instances
+	mockEC2Client.On("RunInstances", mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+		// Match spot instance requests
+		return input != nil && input.InstanceMarketOptions != nil && 
+			input.InstanceMarketOptions.MarketType == types.MarketTypeSpot
+	}), mock.Anything).Return(&ec2.RunInstancesOutput{
+		Instances: []types.Instance{
+			{
+				InstanceId: aws.String("i-spot123"),
+				InstanceType: types.InstanceTypeT2Micro,
+				State: &types.InstanceState{
+					Name: types.InstanceStateNameRunning,
+				},
+			},
+		},
+	}, nil).Maybe()
+
+	// Mock RunInstances for on-demand instances
+	mockEC2Client.On("RunInstances", mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+		// Match on-demand instance requests
+		return input != nil && (input.InstanceMarketOptions == nil || 
+			input.InstanceMarketOptions.MarketType != types.MarketTypeSpot)
+	}), mock.Anything).Return(&ec2.RunInstancesOutput{
+		Instances: []types.Instance{
+			{
+				InstanceId: aws.String("i-test123"),
+				InstanceType: types.InstanceTypeT2Micro,
+				State: &types.InstanceState{
+					Name: types.InstanceStateNameRunning,
+				},
+			},
+		},
+	}, nil).Maybe()
+
+	// Mock DescribeInstances
+	// Mock RequestSpotInstances
+	mockEC2Client.On("RequestSpotInstances", mock.Anything, mock.Anything).
+		Return(&ec2.RequestSpotInstancesOutput{
+			SpotInstanceRequests: []types.SpotInstanceRequest{
+				{
+					SpotInstanceRequestId: aws.String("sir-test123"),
+					State:                types.SpotInstanceStateActive,
+					InstanceId:           aws.String("i-test123"),
+				},
 			},
 		}, nil).Maybe()
 
-	// Mock DescribeInstances
-	mockEC2Client.On("DescribeInstances", mock.Anything, mock.Anything, mock.Anything).
-		Return(&ec2.DescribeInstancesOutput{
-			Reservations: []types.Reservation{
-				{Instances: []types.Instance{
-					{
-						InstanceId: aws.String("i-test123"),
+	// Mock DescribeSpotInstanceRequests
+	mockEC2Client.On("DescribeSpotInstanceRequests", mock.Anything, mock.Anything).
+		Return(&ec2.DescribeSpotInstanceRequestsOutput{
+			SpotInstanceRequests: []types.SpotInstanceRequest{
+				{
+					SpotInstanceRequestId: aws.String("sir-test123"),
+					State:                types.SpotInstanceStateActive,
+					InstanceId:           aws.String("i-test123"),
+				},
+			},
+		}, nil).Maybe()
+
+	mockEC2Client.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
+		// Match any instance ID (both spot and on-demand)
+		return input != nil && len(input.InstanceIds) > 0
+	}), mock.Anything).Return(&ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{
+			{Instances: []types.Instance{
+				{
+					InstanceId: aws.String("i-test123"),
 						State: &types.InstanceState{
 							Name: types.InstanceStateNameRunning,
 						},
@@ -515,22 +1048,19 @@ func (cdts *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.
 			},
 		}, nil).Maybe()
 
-	for _, region := range regions {
-		// make a copy of the mock client
-		mockEC2ClientCopy := mockEC2Client
-
-		// Store the mock client for verification in tests
-		m.Deployment.AWS.SetRegionalClient(region, mockEC2ClientCopy)
-	}
+	// Regional clients are already set up with proper expectations in the earlier loop
+	// No need to overwrite them with copies of the original mock client
 
 	// Create new mocks for each test
-	cdts.mockSSHConfig = new(sshutils_mocks.MockSSHConfiger)
-	cdts.mockClusterDeployer = new(common_mocks.MockClusterDeployerer)
+	s.mockSSHConfig = new(sshutils_mocks.MockSSHConfiger)
+	s.mockClusterDeployer = new(common_mocks.MockClusterDeployerer)
 
 	// Create mock SSH client
 	mockSSHClient := new(sshutils_mocks.MockSSHClienter)
 	mockSSHClient.On("Close").Return(nil).Maybe()
 	mockSSHClient.On("NewSession").Return(&sshutils_mocks.MockSSHSessioner{}, nil).Maybe()
+
+	// AWS provider and STS client are already set up in SetupTest
 	mockSSHClient.On("GetClient").Return(nil).Maybe()
 
 	// Set up the mock SSH config function
@@ -538,27 +1068,27 @@ func (cdts *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.
 		port int,
 		user string,
 		sshPrivateKeyPath string) (sshutils_interfaces.SSHConfiger, error) {
-		return cdts.mockSSHConfig, nil
+		return s.mockSSHConfig, nil
 	}
 
 	// Set up Connect and Close expectations
-	cdts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
-	cdts.mockSSHConfig.On("Close").Return(nil).Maybe()
+	s.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
+	s.mockSSHConfig.On("Close").Return(nil).Maybe()
 
 	// Set up Connect and Close expectations
-	cdts.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
-	cdts.mockSSHConfig.On("Close").Return(nil).Maybe()
+	s.mockSSHConfig.On("Connect").Return(mockSSHClient, nil).Maybe()
+	s.mockSSHConfig.On("Close").Return(nil).Maybe()
 
 	// Set up default expectations with .Maybe() to make them optional
-	cdts.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
+	s.mockSSHConfig.On("WaitForSSH", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
 		Maybe()
-	cdts.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	s.mockSSHConfig.On("PushFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
 		Maybe()
 
 	// Set up specific Docker command expectation first
-	cdts.mockSSHConfig.On("ExecuteCommand",
+	s.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		models.ExpectedDockerHelloWorldCommand,
 	).
@@ -566,7 +1096,7 @@ func (cdts *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.
 		Maybe()
 
 	// Then set up the catch-all for other commands
-	cdts.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(func(cmd string) bool {
+	s.mockSSHConfig.On("ExecuteCommand", mock.Anything, mock.MatchedBy(func(cmd string) bool {
 		// Exclude specific commands we want to handle separately
 		return cmd != models.ExpectedDockerHelloWorldCommand &&
 			!strings.Contains(cmd, "bacalhau node list") &&
@@ -576,52 +1106,52 @@ func (cdts *CreateDeploymentTestSuite) setupTestWithMocks(deploymentType models.
 		Maybe()
 
 	// Add our specific expectation first
-	cdts.mockSSHConfig.On("ExecuteCommand",
+	s.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		models.ExpectedDockerHelloWorldCommand,
 	).Return(models.ExpectedDockerOutput, nil).Once()
-	cdts.mockSSHConfig.On("ExecuteCommand",
+	s.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"bacalhau node list --output json --api-host 0.0.0.0",
 	).Return(`[{"id":"1234567890"}]`, nil).Once()
-	cdts.mockSSHConfig.On("ExecuteCommand",
+	s.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"bacalhau node list --output json --api-host 1.2.3.4",
 	).Return(`[{"id":"1234567890"}]`, nil).Maybe()
-	cdts.mockSSHConfig.On("ExecuteCommand",
+	s.mockSSHConfig.On("ExecuteCommand",
 		mock.Anything,
 		"sudo bacalhau config list --output json",
 	).Return(`[]`, nil).Once()
 
-	cdts.mockSSHConfig.On("InstallSystemdService",
+	s.mockSSHConfig.On("InstallSystemdService",
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
 	).
 		Return(nil).
 		Maybe()
-	cdts.mockSSHConfig.On("RestartService",
+	s.mockSSHConfig.On("RestartService",
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
 	).
 		Return("", nil).
 		Maybe()
-	cdts.mockSSHConfig.On("InstallBacalhau",
+	s.mockSSHConfig.On("InstallBacalhau",
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
 	).
 		Return(nil).
 		Maybe()
-	cdts.mockSSHConfig.On("InstallDocker",
+	s.mockSSHConfig.On("InstallDocker",
 		mock.Anything,
 		mock.Anything,
 	).
 		Return(nil).
 		Maybe()
 
-	cdts.mockClusterDeployer.On("ProvisionBacalhauNode",
+	s.mockClusterDeployer.On("ProvisionBacalhauNode",
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,

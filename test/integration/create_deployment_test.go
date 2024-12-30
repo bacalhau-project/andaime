@@ -13,9 +13,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
@@ -289,19 +290,31 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 	// Create mock EC2 client
 	mockEC2Client := new(aws_mocks.MockEC2Clienter)
 
-	// Create mock STS client
+	// Create and configure mock STS client
 	mockSTSClient := new(aws_mocks.MockSTSClienter)
-	mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.Anything).
-		Return(testdata.FakeSTSGetCallerIdentityOutput(), nil)
+	mockSTSClient.On("GetCallerIdentity", mock.Anything, mock.AnythingOfType("*sts.GetCallerIdentityInput")).
+		Return(&sts.GetCallerIdentityOutput{
+			Account: aws.String("123456789012"),
+			Arn:     aws.String("arn:aws:iam::123456789012:user/test-user"),
+			UserId:  aws.String("AIDACKCEVSQ6C2EXAMPLE"),
+		}, nil)
 
-	// Create AWS config with static credentials
+	// Override the NewSTSClient function to return our mock
+	aws_provider.NewSTSClientFunc = func(client *sts.Client) aws_interfaces.STSClienter {
+		return mockSTSClient
+	}
+
+	// Create AWS config with mock credentials
 	cfg := aws.Config{
 		Region: "us-east-1",
-		Credentials: credentials.NewStaticCredentialsProvider(
-			"AKIAIOSFODNN7EXAMPLE",
-			"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-			"",
-		),
+		Credentials: aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
+			return aws.Credentials{
+				AccessKeyID:     "mock-access-key",
+				SecretAccessKey: "mock-secret-key",
+				SessionToken:    "mock-session-token",
+				Source:         "mock",
+			}, nil
+		}),
 	}
 
 	// Initialize AWS provider with mocked clients and config
@@ -313,11 +326,32 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 		UpdateQueue:     make(chan display.UpdateAction, 1000),
 	}
 
+	// Ensure the STS client is properly set
+	aws_provider.NewSTSClientFunc = func(client *sts.Client) aws_interfaces.STSClienter {
+		return mockSTSClient
+	}
+
 	// Make sure your AWS provider is initialized with both EC2 and STS clients
 	s.awsProvider.SetSTSClient(mockSTSClient)
 
 	// Setup mock resources
 	s.setupMockAWSResources(mockEC2Client)
+
+	// Initialize display model and set mock EC2 clients for each region
+	m := display.GetGlobalModelFunc()
+	if m.Deployment == nil {
+		m.Deployment = &models.Deployment{
+			DeploymentType: models.DeploymentTypeAWS,
+			AWS:           models.NewAWSDeployment(),
+		}
+	}
+	
+	// Configure AWS regions and ensure mock EC2 clients are set
+	regions := []string{"us-west-2", "us-east-1"}
+	viper.Set("aws.regions", regions)
+	for _, region := range regions {
+		m.Deployment.AWS.SetRegionalClient(region, mockEC2Client)
+	}
 
 	// Override provider creation function
 	aws_provider.NewAWSProviderFunc = func(accountID string) (*aws_provider.AWSProvider, error) {
@@ -328,13 +362,14 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 }
 
 func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mocks.MockEC2Clienter) {
+	// VPC operations with specific parameter matching
 	// Mock VPC operations with specific parameter matching
 	mockEC2Client.On("CreateVpc", mock.Anything, mock.MatchedBy(func(input *ec2.CreateVpcInput) bool {
 		if input == nil || input.CidrBlock == nil || *input.CidrBlock != "10.0.0.0/16" {
 			return false
 		}
 		if len(input.TagSpecifications) == 0 ||
-			input.TagSpecifications[0].ResourceType != types.ResourceTypeVpc ||
+			input.TagSpecifications[0].ResourceType != ec2_types.ResourceTypeVpc ||
 			len(input.TagSpecifications[0].Tags) < 4 {
 			return false
 		}
@@ -348,9 +383,9 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mocks.Mo
 		return hasRequiredTags
 	})).
 		Return(&ec2.CreateVpcOutput{
-			Vpc: &types.Vpc{
+			Vpc: &ec2_types.Vpc{
 				VpcId: aws.String("vpc-12345"),
-				State: types.VpcStateAvailable,
+				State: ec2_types.VpcStateAvailable,
 			},
 		}, nil).
 		Maybe()
@@ -412,7 +447,7 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mocks.Mo
 	// Region and AZ mocks
 	mockEC2Client.On("DescribeRegions", mock.Anything, mock.Anything).Return(
 		&ec2.DescribeRegionsOutput{
-			Regions: []types.Region{
+			Regions: []ec2_types.Region{
 				{RegionName: aws.String("us-west-2")},
 				{RegionName: aws.String("us-east-1")},
 			},
@@ -421,25 +456,25 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mocks.Mo
 
 	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).Return(
 		&ec2.DescribeAvailabilityZonesOutput{
-			AvailabilityZones: []types.AvailabilityZone{
+			AvailabilityZones: []ec2_types.AvailabilityZone{
 				{
 					ZoneName:   aws.String("us-west-2a"),
-					State:      types.AvailabilityZoneStateAvailable,
+					State:      ec2_types.AvailabilityZoneStateAvailable,
 					RegionName: aws.String("us-west-2"),
 				},
 				{
 					ZoneName:   aws.String("us-west-2b"),
-					State:      types.AvailabilityZoneStateAvailable,
+					State:      ec2_types.AvailabilityZoneStateAvailable,
 					RegionName: aws.String("us-west-2"),
 				},
 				{
 					ZoneName:   aws.String("us-east-1a"),
-					State:      types.AvailabilityZoneStateAvailable,
+					State:      ec2_types.AvailabilityZoneStateAvailable,
 					RegionName: aws.String("us-east-1"),
 				},
 				{
 					ZoneName:   aws.String("us-east-1b"),
-					State:      types.AvailabilityZoneStateAvailable,
+					State:      ec2_types.AvailabilityZoneStateAvailable,
 					RegionName: aws.String("us-east-1"),
 				},
 			},
