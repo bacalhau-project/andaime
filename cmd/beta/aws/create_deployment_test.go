@@ -81,8 +81,8 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 	suite.Require().NotNil(display.GetGlobalModel(), "Display model must not be nil after initialization")
 
 	// Initialize mock and verification state
-	aws.SetAllRegionsMocked(false)
-	aws.SetVerificationPassed(false)
+	aws_provider.SetAllRegionsMocked(false)
+	aws_provider.SetVerificationPassed(false)
 
 	// Initialize all mock objects
 	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
@@ -157,7 +157,7 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 	suite.awsProvider.SetEC2Client(suite.mockEC2Client)
 	
 	// All regions have been mocked
-	aws.SetAllRegionsMocked(true)
+	aws_provider.SetAllRegionsMocked(true)
 }
 func (suite *CreateDeploymentTestSuite) setupViper() {
 	// Create a temporary config file
