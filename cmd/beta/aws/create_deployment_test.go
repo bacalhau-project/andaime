@@ -77,6 +77,9 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 	display.SetGlobalModel(model)
 	display.SetDisplayModelInitialized(true)
 
+	// Verify display model is properly initialized
+	suite.Require().NotNil(display.GetGlobalModel(), "Display model must not be nil after initialization")
+
 	// Initialize mock and verification state
 	aws.SetAllRegionsMocked(false)
 	aws.SetVerificationPassed(false)
