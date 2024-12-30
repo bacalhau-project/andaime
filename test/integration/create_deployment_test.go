@@ -428,7 +428,7 @@ func (s *IntegrationTestSuite) setupMockAWSResources(mockEC2Client *aws_mocks.Mo
 	// Instance mocks
 	mockEC2Client.On("RunInstances", mock.Anything, mock.AnythingOfType("*ec2.RunInstancesInput")).
 		Return(testdata.FakeEC2RunInstancesOutput(), nil).Maybe()
-	mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput")).
+	mockEC2Client.On("DescribeInstances", mock.Anything, mock.AnythingOfType("*ec2.DescribeInstancesInput"), mock.AnythingOfType("func(*ec2.Options)")).
 		Return(testdata.FakeEC2DescribeInstancesOutput(), nil).
 		Maybe()
 	mockEC2Client.On("DescribeImages", mock.Anything, mock.AnythingOfType("*ec2.DescribeImagesInput")).

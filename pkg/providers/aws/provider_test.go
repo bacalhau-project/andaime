@@ -197,7 +197,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 	// Mock DescribeInstances for spot instances
 	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
 		return len(input.InstanceIds) > 0 && input.InstanceIds[0] == "i-spotinstance123"
-	})).
+	}), mock.AnythingOfType("func(*ec2.Options)")).
 		Return(&ec2.DescribeInstancesOutput{
 			Reservations: []types.Reservation{{
 				Instances: []types.Instance{{
@@ -219,7 +219,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 	// Mock DescribeInstances for on-demand instances
 	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
 		return len(input.InstanceIds) > 0 && input.InstanceIds[0] == "i-ondemand123"
-	})).
+	}), mock.AnythingOfType("func(*ec2.Options)")).
 		Return(&ec2.DescribeInstancesOutput{
 			Reservations: []types.Reservation{{
 				Instances: []types.Instance{{
@@ -239,7 +239,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		Maybe()
 
 	// Default DescribeInstances mock for other cases
-	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.Anything).
+	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.Anything, mock.AnythingOfType("func(*ec2.Options)")).
 		Return(&ec2.DescribeInstancesOutput{
 			Reservations: []types.Reservation{},
 		}, nil).

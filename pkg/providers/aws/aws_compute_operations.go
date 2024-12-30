@@ -544,7 +544,7 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 	for i := 0; i < maxRetries; i++ {
 		describeResult, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 			InstanceIds: []string{*runResult.Instances[0].InstanceId},
-		})
+		}, func(o *ec2.Options) {})
 		if err == nil {
 			break
 		}

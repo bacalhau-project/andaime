@@ -21,3 +21,6 @@ type SSHClientCreator interface {
 		config *ssh.ClientConfig,
 	) (SSHClienter, error)
 }
+
+// NewSSHConfigFunc is a function type for creating SSH configurations
+type NewSSHConfigFunc func(host string, port int, user string, sshPrivateKeyPath string) (SSHConfiger, error)

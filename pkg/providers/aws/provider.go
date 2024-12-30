@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -70,6 +69,7 @@ type AWSProvider struct {
 	ClusterDeployer common_interfaces.ClusterDeployerer
 	UpdateQueue     chan display.UpdateAction
 	STSClient       aws_interfaces.STSClienter
+	ec2Client       aws_interfaces.EC2Clienter
 	ConfigMutex     sync.RWMutex
 }
 
@@ -77,6 +77,25 @@ var (
 	NewAWSProviderFunc = NewAWSProvider
 	NewSTSClientFunc   = NewSTSClient
 )
+
+// SetEC2Client sets the EC2 client for testing
+func (p *AWSProvider) SetEC2Client(client aws_interfaces.EC2Clienter) {
+	p.ec2Client = client
+}
+
+// SetEC2ClientForRegion sets the EC2 client for a specific region for testing
+func (p *AWSProvider) SetEC2ClientForRegion(region string, client aws_interfaces.EC2Clienter) {
+	if display.GetGlobalModelFunc() != nil {
+		m := display.GetGlobalModelFunc()
+		if m.Deployment == nil {
+			m.Deployment = &models.Deployment{
+				DeploymentType: models.DeploymentTypeAWS,
+				AWS:           models.NewAWSDeployment(),
+			}
+		}
+		m.Deployment.AWS.SetRegionalClient(region, client)
+	}
+}
 
 // NewAWSProvider creates a new AWS provider instance
 func NewAWSProvider(accountID string) (*AWSProvider, error) {
@@ -1174,28 +1193,18 @@ func (p *AWSProvider) getRegionAvailabilityZones(
 		l.Debugf("Resolved EC2 endpoint addresses: %v", addrs)
 	}
 
-	// Create a regional EC2 client with extended timeout and retry configuration
-	regionalCfg, err := awsconfig.LoadDefaultConfig(
-		ctx,
-		awsconfig.WithRegion(region),
-		awsconfig.WithHTTPClient(&http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				IdleConnTimeout:     30 * time.Second,
-				DisableCompression:  true,
-				TLSHandshakeTimeout: 10 * time.Second,
-			},
-		}),
-	)
+	// Get or create EC2 client for this region
+	regionalClient, err := p.GetOrCreateEC2Client(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to load AWS config for region %s: detailed network diagnostics - %w",
+			"failed to get EC2 client for region %s: %w",
 			region,
 			err,
 		)
 	}
-	regionalClient := ec2.NewFromConfig(regionalCfg)
+
+	// Convert interface to concrete type if needed
+	var ec2Client aws_interfaces.EC2Clienter = regionalClient
 
 	azInput := &ec2.DescribeAvailabilityZonesInput{
 		Filters: []ec2_types.Filter{
@@ -1217,7 +1226,7 @@ func (p *AWSProvider) getRegionAvailabilityZones(
 	var azOutput *ec2.DescribeAvailabilityZonesOutput
 	err = backoff.Retry(func() error {
 		var retryErr error
-		azOutput, retryErr = regionalClient.DescribeAvailabilityZones(ctx, azInput)
+		azOutput, retryErr = ec2Client.DescribeAvailabilityZones(ctx, azInput)
 		if retryErr != nil {
 			l.Warnf("Retrying availability zones lookup for %s: %v", region, retryErr)
 			return retryErr
