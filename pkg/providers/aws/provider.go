@@ -68,10 +68,8 @@ type AWSProvider struct {
 	Config          *aws.Config
 	ClusterDeployer common_interfaces.ClusterDeployerer
 	UpdateQueue     chan display.UpdateAction
-	EC2Client       aws_interfaces.EC2Clienter
 	STSClient       aws_interfaces.STSClienter
 	ConfigMutex     sync.RWMutex
-	vpcManager      *RegionalVPCManager
 }
 
 var NewAWSProviderFunc = NewAWSProvider
@@ -88,10 +86,6 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	// Initialize a default EC2 client
-	ec2Client := ec2.NewFromConfig(awsConfig)
-	ec2Clienter := &LiveEC2Client{client: ec2Client}
-
 	// Initialize STS client with interface wrapper
 	stsClient := sts.NewFromConfig(awsConfig)
 	stsClienter := NewSTSClient(stsClient)
@@ -102,8 +96,6 @@ func NewAWSProvider(accountID string) (*AWSProvider, error) {
 		ClusterDeployer: common.NewClusterDeployer(models.DeploymentTypeAWS),
 		UpdateQueue:     make(chan display.UpdateAction, UpdateQueueSize),
 		STSClient:       stsClienter,
-		EC2Client:       ec2Clienter,
-		vpcManager:      nil, // VPC manager will be initialized when needed with the deployment
 	}
 
 	return provider, nil
@@ -190,55 +182,55 @@ func (p *AWSProvider) PrepareDeployment(ctx context.Context) error {
 	return nil
 }
 
-// CreateVPCInfrastructure creates a complete VPC infrastructure in a given region
-func (p *AWSProvider) CreateVPCInfrastructure(
-	ctx context.Context,
-	region string,
-) (*models.AWSVPC, error) {
-	l := logger.Get()
-	l.Infof("Creating VPC infrastructure in region %s", region)
+// // CreateVPCInfrastructure creates a complete VPC infrastructure in a given region
+// func (p *AWSProvider) CreateVPCInfrastructure(
+// 	ctx context.Context,
+// 	region string,
+// ) (*models.AWSVPC, error) {
+// 	l := logger.Get()
+// 	l.Infof("Creating VPC infrastructure in region %s", region)
 
-	// Create EC2 client for region
-	ec2Client, err := p.GetOrCreateEC2Client(ctx, region)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
-	}
+// 	// Create EC2 client for region
+// 	ec2Client, err := p.GetOrCreateEC2Client(ctx, region)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+// 	}
 
-	// Create VPC
-	vpc, err := p.CreateVPCInfrastructure(ctx, region)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create VPC: %w", err)
-	}
+// 	// Create VPC
+// 	vpc, err := p.CreateVPCInfrastructure(ctx, region)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create VPC: %w", err)
+// 	}
 
-	// Create Internet Gateway and attach to VPC
-	igwID, err := p.createAndAttachInternetGateway(ctx, region, vpc.VPCID, ec2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create and attach internet gateway: %w", err)
-	}
-	vpc.InternetGatewayID = igwID
+// 	// Create Internet Gateway and attach to VPC
+// 	igwID, err := p.createAndAttachInternetGateway(ctx, region, vpc.VPCID, ec2Client)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create and attach internet gateway: %w", err)
+// 	}
+// 	vpc.InternetGatewayID = igwID
 
-	// Create subnets
-	err = p.createVPCSubnets(ctx, region, vpc, ec2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create subnets: %w", err)
-	}
+// 	// Create subnets
+// 	err = p.createVPCSubnets(ctx, region, vpc, ec2Client)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create subnets: %w", err)
+// 	}
 
-	// Create and configure route table
-	err = p.configureVPCRouting(ctx, region, vpc, ec2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to configure routing: %w", err)
-	}
+// 	// Create and configure route table
+// 	err = p.configureVPCRouting(ctx, region, vpc, ec2Client)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to configure routing: %w", err)
+// 	}
 
-	// Create security group
-	sgID, err := p.createSecurityGroup(ctx, region, vpc.VPCID, ec2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create security group: %w", err)
-	}
-	vpc.SecurityGroupID = sgID
+// 	// Create security group
+// 	sgID, err := p.createSecurityGroup(ctx, region, vpc.VPCID, ec2Client)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create security group: %w", err)
+// 	}
+// 	vpc.SecurityGroupID = sgID
 
-	l.Infof("Successfully created VPC infrastructure in region %s", region)
-	return vpc, nil
-}
+// 	l.Infof("Successfully created VPC infrastructure in region %s", region)
+// 	return vpc, nil
+// }
 
 // createAndAttachInternetGateway creates an Internet Gateway and attaches it to the VPC
 func (p *AWSProvider) createAndAttachInternetGateway(
@@ -540,6 +532,7 @@ func (p *AWSProvider) createVPCInfrastructure(
 	vpc := &models.AWSVPC{
 		VPCID: *vpcOut.Vpc.VpcId,
 	}
+	m.Deployment.AWS.RegionalResources.SetVPC(region, vpc)
 
 	// Create security group
 	sgResult, err := regionalClient.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{
@@ -996,7 +989,7 @@ func (p *AWSProvider) CreateRegionalResources(
 		}
 		mu.Unlock()
 
-		return fmt.Errorf("failed to deploy VMs in parallel: %w", combinedErr)
+		return fmt.Errorf("failed to deploy VMs in parallel for AWS: %w", combinedErr)
 	}
 
 	return nil
@@ -1044,14 +1037,7 @@ func (p *AWSProvider) setupRegionalInfrastructure(ctx context.Context, region st
 	l.Debugf("VPC state after creation for region %s: %+v", region, vpc)
 
 	if vpc == nil {
-		l.Error("VPC is nil after creation!")
-		// Attempt to retrieve VPC from regional resources
-		vpc = m.Deployment.AWS.RegionalResources.GetVPC(region)
-		if vpc == nil {
-			l.Errorf("Could not find VPC in regional resources for region %s", region)
-			return fmt.Errorf("VPC not found for region %s", region)
-		}
-		l.Infof("Retrieved VPC %s from regional resources", vpc.VPCID)
+		return fmt.Errorf("VPC not found for region during setup: %s", region)
 	}
 
 	// Ensure regional client is initialized
@@ -1208,7 +1194,7 @@ func (p *AWSProvider) createRegionalSubnets(
 	vpc := m.Deployment.AWS.RegionalResources.GetVPC(region)
 
 	if vpc == nil {
-		return fmt.Errorf("VPC not found for region %s", region)
+		return fmt.Errorf("VPC not found for region during subnet creation: %s", region)
 	}
 
 	l.Debugf("Creating subnets in VPC %s", vpc.VPCID)
@@ -1541,7 +1527,9 @@ func (p *AWSProvider) saveInfrastructureToConfig() error {
 
 	basePath := m.Deployment.ViperPath
 	for region, vpc := range m.Deployment.AWS.RegionalResources.VPCs {
-		viper.Set(fmt.Sprintf("%s.regions.%s.vpc_id", basePath, region), vpc.VPCID)
+		if vpc != nil {
+			viper.Set(fmt.Sprintf("%s.regions.%s.vpc_id", basePath, region), vpc.VPCID)
+		}
 	}
 
 	return viper.WriteConfig()
@@ -1556,7 +1544,11 @@ func (p *AWSProvider) WaitForNetworkConnectivity(ctx context.Context) error {
 	var eg errgroup.Group
 	for region := range m.Deployment.AWS.RegionalResources.VPCs {
 		region := region
-		vpcID := m.Deployment.AWS.RegionalResources.VPCs[region].VPCID
+		vpc := m.Deployment.AWS.RegionalResources.GetVPC(region)
+		if vpc == nil {
+			return fmt.Errorf("VPC not found for region %s", region)
+		}
+		vpcID := vpc.VPCID
 
 		eg.Go(func() error {
 			l := logger.Get()
@@ -2146,14 +2138,6 @@ func (p *AWSProvider) WaitUntilInstanceRunning(
 
 	l.Info("Instance is now running")
 	return nil
-}
-
-func (p *AWSProvider) SetEC2Client(client aws_interfaces.EC2Clienter) {
-	p.EC2Client = client
-}
-
-func (p *AWSProvider) GetEC2Client() aws_interfaces.EC2Clienter {
-	return p.EC2Client
 }
 
 func (p *AWSProvider) SetSTSClient(client aws_interfaces.STSClienter) {

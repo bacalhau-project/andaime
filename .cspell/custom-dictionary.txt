@@ -61,6 +61,7 @@ BUHJ
 burkina
 cafile
 cbpts
+cdts
 cenkalti
 centralus
 certfile

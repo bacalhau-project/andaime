@@ -444,7 +444,7 @@ func (r *RegionalResources) UpdateVPC(
 ) error {
 	vpc := r.GetVPC(region)
 	if vpc == nil {
-		return fmt.Errorf("VPC not found for region %s", region)
+		return fmt.Errorf("VPC not found for region during update: %s", region)
 	}
 	return updateFn(vpc)
 }

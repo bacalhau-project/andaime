@@ -308,7 +308,6 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 	s.awsProvider = &aws_provider.AWSProvider{
 		AccountID:       "123456789012",
 		Config:          &cfg,
-		EC2Client:       mockEC2Client,
 		STSClient:       mockSTSClient,
 		ClusterDeployer: s.mockClusterDeployer,
 		UpdateQueue:     make(chan display.UpdateAction, 1000),
@@ -683,13 +682,11 @@ func (s *IntegrationTestSuite) verifyDeploymentResult(provider models.Deployment
 		for region, vpc := range m.Deployment.AWS.RegionalResources.VPCs {
 			s.NotEmpty(
 				vpc.VPCID,
-				"VPC ID should not be empty for region %s",
-				region,
+				fmt.Sprintf("VPC ID is empty for region %s", region),
 			)
 			s.NotEmpty(
 				vpc.SecurityGroupID,
-				"Security Group ID should not be empty for region %s",
-				region,
+				fmt.Sprintf("Security Group ID is empty for region %s", region),
 			)
 		}
 	}

@@ -324,7 +324,7 @@ func (p *AWSProvider) DeployVMsInParallel(
 	for region, machines := range machinesByRegion {
 		vpc := m.Deployment.AWS.RegionalResources.GetVPC(region)
 		if vpc == nil {
-			return fmt.Errorf("VPC not found for region %s", region)
+			return fmt.Errorf("VPC not found for region during deployment: %s", region)
 		}
 
 		// Create EC2 client for the region
@@ -530,9 +530,11 @@ echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`,
 
 	// Wait for instance to be running with enhanced status checks
 	waiter := ec2.NewInstanceRunningWaiter(ec2Client)
-	if err := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
+	describeInput := &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*runResult.Instances[0].InstanceId},
-	}, TimeToWaitForInstance); err != nil {
+	}
+	err = waiter.Wait(ctx, describeInput, TimeToWaitForInstance)
+	if err != nil {
 		return fmt.Errorf("failed waiting for instance to be running: %w", err)
 	}
 
