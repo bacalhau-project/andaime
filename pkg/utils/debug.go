@@ -17,8 +17,8 @@ func DumpGoroutines() {
 	l.Debugf("Number of goroutines: %d", numGoroutines)
 
 	// Dump goroutine information
-	_, _ = fmt.Fprintf(&logger.GlobalLoggedBuffer, "Goroutine dump:\n")
-	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLoggedBuffer, 1)
+	_, _ = fmt.Fprintf(&logger.GlobalLogBuffer, "Goroutine dump:\n")
+	_ = pprof.Lookup("goroutine").WriteTo(&logger.GlobalLogBuffer, 1)
 
 	// Log stack traces for all goroutines
 	const debugBufferSize = 1 << 20

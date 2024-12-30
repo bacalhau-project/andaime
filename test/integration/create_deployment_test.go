@@ -37,7 +37,6 @@ import (
 	gcp_mocks "github.com/bacalhau-project/andaime/mocks/gcp"
 	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 
-	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	azure_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/azure"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 
@@ -255,14 +254,8 @@ func (s *IntegrationTestSuite) setupDeploymentModel(
 	// Initialize provider-specific structures
 	switch provider {
 	case models.DeploymentTypeAWS:
-		m.Deployment.AWS = &models.AWSDeployment{
-			AccountID: "123456789012",
-			RegionalResources: &models.RegionalResources{
-				VPCs:    make(map[string]*models.AWSVPC),
-				Clients: make(map[string]aws_interfaces.EC2Clienter),
-			},
-		}
-		// Initialize VPC maps for each region
+		m.Deployment.AWS = models.NewAWSDeployment()
+		m.Deployment.AWS.AccountID = "123456789012" // Initialize VPC maps for each region
 		regions := []string{"us-west-2", "us-east-1"}
 		for _, region := range regions {
 			m.Deployment.AWS.RegionalResources.SetVPC(region, &models.AWSVPC{
@@ -315,7 +308,6 @@ func (s *IntegrationTestSuite) setupAWSTest() (*cobra.Command, error) {
 	s.awsProvider = &aws_provider.AWSProvider{
 		AccountID:       "123456789012",
 		Config:          &cfg,
-		EC2Client:       mockEC2Client,
 		STSClient:       mockSTSClient,
 		ClusterDeployer: s.mockClusterDeployer,
 		UpdateQueue:     make(chan display.UpdateAction, 1000),
@@ -690,13 +682,11 @@ func (s *IntegrationTestSuite) verifyDeploymentResult(provider models.Deployment
 		for region, vpc := range m.Deployment.AWS.RegionalResources.VPCs {
 			s.NotEmpty(
 				vpc.VPCID,
-				"VPC ID should not be empty for region %s",
-				region,
+				fmt.Sprintf("VPC ID is empty for region %s", region),
 			)
 			s.NotEmpty(
 				vpc.SecurityGroupID,
-				"Security Group ID should not be empty for region %s",
-				region,
+				fmt.Sprintf("Security Group ID is empty for region %s", region),
 			)
 		}
 	}

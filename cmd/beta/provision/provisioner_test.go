@@ -448,7 +448,9 @@ func (cbpts *CmdBetaProvisionTestSuite) TestProvisionerLowLevelFailure() {
 	cbpts.Contains(errString, "permission denied")
 
 	// Print captured logs for debugging
-	logCapture.PrintLogs(cbpts.T())
+	for _, log := range logCapture.GetLogs() {
+		fmt.Println(log)
+	}
 
 	// Verify all mock expectations were met
 	mockSSH.AssertExpectations(cbpts.T())

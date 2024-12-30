@@ -154,7 +154,7 @@ func (d *Deployment) InitializeAWSDeployment() *AWSDeployment {
 		d.AWS = &AWSDeployment{}
 		d.AWS.RegionalResources = &RegionalResources{}
 		d.AWS.RegionalResources.VPCs = make(map[string]*AWSVPC)
-		d.AWS.RegionalResources.Clients = make(map[string]aws_interfaces.EC2Clienter)
+		d.AWS.RegionalResources.clients = make(map[string]aws_interfaces.EC2Clienter)
 	}
 
 	return d.AWS
@@ -403,7 +403,7 @@ type AWSConfig struct {
 type RegionalResources struct {
 	mu      sync.RWMutex
 	VPCs    map[string]*AWSVPC // key is region
-	Clients map[string]aws_interfaces.EC2Clienter
+	clients map[string]aws_interfaces.EC2Clienter
 }
 
 func (r *RegionalResources) Lock() {
@@ -444,7 +444,7 @@ func (r *RegionalResources) UpdateVPC(
 ) error {
 	vpc := r.GetVPC(region)
 	if vpc == nil {
-		return fmt.Errorf("VPC not found for region %s", region)
+		return fmt.Errorf("VPC not found for region during update: %s", region)
 	}
 	return updateFn(vpc)
 }
@@ -456,18 +456,6 @@ func (r *RegionalResources) SetVPC(region string, vpc *AWSVPC) {
 		r.VPCs = make(map[string]*AWSVPC)
 	}
 	r.VPCs[region] = vpc
-}
-
-func (r *RegionalResources) GetClient(region string) aws_interfaces.EC2Clienter {
-	r.RLock()
-	defer r.RUnlock()
-	return r.Clients[region]
-}
-
-func (r *RegionalResources) SetClient(region string, client aws_interfaces.EC2Clienter) {
-	r.Lock()
-	defer r.Unlock()
-	r.Clients[region] = client
 }
 
 func (r *RegionalResources) SetSGID(region string, sgID string) {

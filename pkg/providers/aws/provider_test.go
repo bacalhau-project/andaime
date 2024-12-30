@@ -19,7 +19,6 @@ import (
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	sshutils_interface "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
 	pkg_testutil "github.com/bacalhau-project/andaime/pkg/testutil"
@@ -47,7 +46,6 @@ type PkgProvidersAWSProviderSuite struct {
 	testSSHPrivateKeyPath  string
 	cleanupPublicKey       func()
 	cleanupPrivateKey      func()
-	mockEC2Client          *aws_mocks.MockEC2Clienter
 	awsProvider            *AWSProvider
 	awsConfig              aws.Config
 	deployment             *models.Deployment
@@ -57,20 +55,22 @@ type PkgProvidersAWSProviderSuite struct {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) SetupSuite() {
+	l := logger.Get()
+	l.Info("Starting SetupSuite")
 	suite.ctx = context.Background()
 	suite.testSSHPublicKeyPath,
 		suite.cleanupPublicKey,
 		suite.testSSHPrivateKeyPath,
 		suite.cleanupPrivateKey = testutil.CreateSSHPublicPrivateKeyPairOnDisk()
 
-	suite.origLogger = logger.Get()
+	suite.origLogger = &l
 	logger.SetGlobalLogger(logger.NewTestLogger(suite.T()))
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TearDownSuite() {
 	suite.cleanupPublicKey()
 	suite.cleanupPrivateKey()
-	logger.SetGlobalLogger(suite.origLogger)
+	logger.SetGlobalLogger(*suite.origLogger)
 }
 
 func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
@@ -95,8 +95,7 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	// Initialize AWS deployment structure
 	deployment.AWS = &models.AWSDeployment{
 		RegionalResources: &models.RegionalResources{
-			VPCs:    make(map[string]*models.AWSVPC),
-			Clients: make(map[string]aws_interface.EC2Clienter),
+			VPCs: make(map[string]*models.AWSVPC),
 		},
 	}
 
@@ -112,20 +111,16 @@ func (suite *PkgProvidersAWSProviderSuite) SetupTest() {
 	provider, err := NewAWSProviderFunc(FAKE_ACCOUNT_ID)
 	require.NoError(suite.T(), err)
 
-	// Set the mock client and ensure it's used for all regions
-	suite.mockEC2Client = new(aws_mocks.MockEC2Clienter)
-	provider.SetEC2Client(suite.mockEC2Client)
-
 	// Configure mock client to return static credentials
-	suite.mockEC2Client.On("Config").Return(&cfg).Maybe()
+	mockEC2Client := new(aws_mocks.MockEC2Clienter)
+	mockEC2Client.On("Config").Return(&cfg).Maybe()
+	deployment.AWS.SetRegionalClient(FAKE_REGION, mockEC2Client)
 
 	// Initialize regional resources for the test region
 	deployment.AWS.RegionalResources.VPCs[FAKE_REGION] = &models.AWSVPC{
 		VPCID: FAKE_VPC_ID,
 	}
 
-	mockEC2Client := new(aws_mocks.MockEC2Clienter)
-	deployment.AWS.RegionalResources.Clients[FAKE_REGION] = mockEC2Client
 	suite.deployment = deployment
 
 	// Mock all AWS API calls
@@ -158,10 +153,12 @@ func (suite *PkgProvidersAWSProviderSuite) TearDownTest() {
 func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 	// Mock IMDS configuration and token request
 	imdsClient := imds.NewFromConfig(suite.awsConfig)
-	suite.mockEC2Client.On("GetIMDSConfig").Return(imdsClient).Maybe()
+	rc := suite.deployment.AWS.GetRegionalClient(FAKE_REGION)
+	mockRegionalClient := rc.(*aws_mocks.MockEC2Clienter)
+	mockRegionalClient.On("GetIMDSConfig").Return(imdsClient).Maybe()
 
 	// Mock RunInstances for spot and on-demand instances
-	suite.mockEC2Client.On("RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+	mockRegionalClient.On("RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
 		return input.InstanceMarketOptions != nil // Spot instance request
 	})).
 		Return(&ec2.RunInstancesOutput{
@@ -179,7 +176,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		}, nil).
 		Maybe()
 
-	suite.mockEC2Client.On("RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
+	mockRegionalClient.On("RunInstances", mock.Anything, mock.MatchedBy(func(input *ec2.RunInstancesInput) bool {
 		return input.InstanceMarketOptions == nil // On-demand instance request
 	})).
 		Return(&ec2.RunInstancesOutput{
@@ -198,7 +195,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		Maybe()
 
 	// Mock DescribeInstances for spot instances
-	suite.mockEC2Client.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
+	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
 		return len(input.InstanceIds) > 0 && input.InstanceIds[0] == "i-spotinstance123"
 	})).
 		Return(&ec2.DescribeInstancesOutput{
@@ -220,7 +217,7 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		Maybe()
 
 	// Mock DescribeInstances for on-demand instances
-	suite.mockEC2Client.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
+	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.MatchedBy(func(input *ec2.DescribeInstancesInput) bool {
 		return len(input.InstanceIds) > 0 && input.InstanceIds[0] == "i-ondemand123"
 	})).
 		Return(&ec2.DescribeInstancesOutput{
@@ -242,13 +239,12 @@ func (suite *PkgProvidersAWSProviderSuite) setupAWSMocks() {
 		Maybe()
 
 	// Default DescribeInstances mock for other cases
-	suite.mockEC2Client.On("DescribeInstances", mock.Anything, mock.Anything).
+	mockRegionalClient.On("DescribeInstances", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeInstancesOutput{
 			Reservations: []types.Reservation{},
 		}, nil).
 		Maybe()
-	// Mock DescribeRegions
-	mockRegionalClient := suite.deployment.AWS.RegionalResources.Clients[FAKE_REGION].(*aws_mocks.MockEC2Clienter)
+
 	mockRegionalClient.On("DescribeRegions", mock.Anything, mock.Anything).
 		Return(&ec2.DescribeRegionsOutput{
 			Regions: []types.Region{
@@ -405,6 +401,22 @@ func (suite *PkgProvidersAWSProviderSuite) TestCreateInfrastructure() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestCreateVpc() {
+	l := logger.Get()
+	l.Info("Starting TestCreateVpc")
+	rc := suite.deployment.AWS.GetRegionalClient(FAKE_REGION)
+	mockRegionalClient := rc.(*aws_mocks.MockEC2Clienter)
+	mockRegionalClient.On("CreateVpc", mock.Anything, mock.Anything).
+		Return(&ec2.CreateVpcOutput{
+			Vpc: &types.Vpc{VpcId: aws.String(FAKE_VPC_ID)},
+		}, nil)
+	mockRegionalClient.On("CreateSecurityGroup", mock.Anything, mock.Anything).
+		Return(&ec2.CreateSecurityGroupOutput{
+			GroupId: aws.String("sg-12345"),
+		}, nil)
+	mockRegionalClient.On("AuthorizeSecurityGroupIngress", mock.Anything, mock.Anything).
+		Return(&ec2.AuthorizeSecurityGroupIngressOutput{}, nil)
+	mockRegionalClient.On("ModifyVpcAttribute", mock.Anything, mock.Anything).
+		Return(&ec2.ModifyVpcAttributeOutput{}, nil)
 	err := suite.awsProvider.CreateVpc(suite.ctx, FAKE_REGION)
 	suite.Require().NoError(err)
 }
@@ -434,10 +446,9 @@ func (suite *PkgProvidersAWSProviderSuite) TestProcessMachinesConfig() {
 }
 
 func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
-	// Mock setup for spot and on-demand instances
-	mockRegionalClient := suite.deployment.AWS.RegionalResources.Clients[FAKE_REGION].(*aws_mocks.MockEC2Clienter)
-
 	// Mock spot instance response
+	rc := suite.deployment.AWS.GetRegionalClient(FAKE_REGION)
+	mockRegionalClient := rc.(*aws_mocks.MockEC2Clienter)
 	mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{"i-spotinstance123"},
 	}).Return(&ec2.DescribeInstancesOutput{
@@ -450,6 +461,8 @@ func (suite *PkgProvidersAWSProviderSuite) TestGetVMExternalIP() {
 	}, nil).Once()
 
 	// Mock on-demand instance response
+	rc = suite.deployment.AWS.GetRegionalClient(FAKE_REGION)
+	mockRegionalClient = rc.(*aws_mocks.MockEC2Clienter)
 	mockRegionalClient.On("DescribeInstances", mock.Anything, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{"i-ondemand123"},
 	}).Return(&ec2.DescribeInstancesOutput{

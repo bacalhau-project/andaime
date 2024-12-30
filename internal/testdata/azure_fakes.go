@@ -26,11 +26,17 @@ func FakeNetworkInterface() *armnetwork.Interface {
 	privateIPAddress := "10.0.0.4"
 	publicIPAddressID := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1"
 	return &armnetwork.Interface{
+		ID: to.Ptr("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/networkInterfaces/nic1"),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{{
 				Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 					PrivateIPAddress: &privateIPAddress,
-					PublicIPAddress:  &armnetwork.PublicIPAddress{ID: &publicIPAddressID},
+					PublicIPAddress: &armnetwork.PublicIPAddress{
+						Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+							IPAddress: to.Ptr("1.2.3.4"),
+						},
+						ID: &publicIPAddressID,
+					},
 				},
 			}},
 		},
@@ -38,8 +44,12 @@ func FakeNetworkInterface() *armnetwork.Interface {
 }
 
 // FakePublicIPAddress returns a fake Azure Public IP Address for testing
-func FakePublicIPAddress(ip string) string {
-	return ip
+func FakePublicIPAddress(ip string) *armnetwork.PublicIPAddress {
+	return &armnetwork.PublicIPAddress{
+		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+			IPAddress: &ip,
+		},
+	}
 }
 
 // FakeResourceGroup returns a fake Azure Resource Group for testing

@@ -83,12 +83,12 @@ type AzureClienter interface {
 		networkInterfaceName string,
 	) (*armnetwork.Interface, error)
 
-	// GetPublicIPAddress retrieves the public IP address associated with a network interface.
+	// GetPublicIPAddress retrieves the public IP address by name.
 	GetPublicIPAddress(
 		ctx context.Context,
 		resourceGroupName string,
-		publicIPAddress *armnetwork.PublicIPAddress,
-	) (string, error)
+		publicIPAddressName string,
+	) (*armnetwork.PublicIPAddress, error)
 
 	// GetSKUsByLocation retrieves available SKUs in a specific location.
 	GetSKUsByLocation(ctx context.Context, location string) ([]armcompute.ResourceSKU, error)

@@ -58,6 +58,7 @@ func (c *SSHConfig) ExecuteCommandWithCallback(
 	command string,
 	callback func(string),
 ) (string, error) {
+	l := logger.Get()
 	// Create a new connection specifically for this command
 	client, err := c.clientCreator.NewClient(
 		c.Host,
@@ -67,14 +68,14 @@ func (c *SSHConfig) ExecuteCommandWithCallback(
 		c.ClientConfig,
 	)
 	if err != nil {
-		c.Logger.Errorf("Failed to create SSH connection for command %s: %v", command, err)
+		l.Errorf("Failed to create SSH connection for command %s: %v", command, err)
 		return "", fmt.Errorf("SSH connection failed: %w", err)
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		c.Logger.Errorf("Failed to create session for command %s: %v", command, err)
+		l.Errorf("Failed to create session for command %s: %v", command, err)
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
 	defer session.Close()
@@ -85,7 +86,7 @@ func (c *SSHConfig) ExecuteCommandWithCallback(
 	session.SetStderr(&output)
 
 	if err := session.Run(command); err != nil {
-		c.Logger.Errorf("Failed to run command %s: %v", command, err)
+		l.Errorf("Failed to run command %s: %v", command, err)
 		return output.String(), fmt.Errorf("command execution failed: %w", err)
 	}
 
@@ -101,6 +102,7 @@ func (c *SSHConfig) PushFileWithCallback(
 	executable bool,
 	callback func(int64, int64),
 ) error {
+	l := logger.Get()
 	// Use existing client if available, otherwise create new one
 	var sshClient sshutils_interfaces.SSHClienter
 	var err error
@@ -116,7 +118,7 @@ func (c *SSHConfig) PushFileWithCallback(
 			c.ClientConfig,
 		)
 		if err != nil {
-			c.Logger.Errorf("Failed to create SSH connection for file push to %s: %v", remotePath, err)
+			l.Errorf("Failed to create SSH connection for file push to %s: %v", remotePath, err)
 			return fmt.Errorf("SSH connection failed: %w", err)
 		}
 		defer sshClient.Close()
@@ -130,7 +132,7 @@ func (c *SSHConfig) PushFileWithCallback(
 	// Create SFTP client
 	sftpClient, err := c.GetSFTPClientCreator().NewSFTPClient(sshClient)
 	if err != nil {
-		c.Logger.Errorf("Failed to create SFTP client: %v", err)
+		l.Errorf("Failed to create SFTP client: %v", err)
 		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
 	defer sftpClient.Close()
@@ -138,14 +140,14 @@ func (c *SSHConfig) PushFileWithCallback(
 	// Create parent directory if it doesn't exist
 	parentDir := filepath.Dir(remotePath)
 	if err := sftpClient.MkdirAll(parentDir); err != nil {
-		c.Logger.Errorf("Failed to create parent directory %s: %v", parentDir, err)
+		l.Errorf("Failed to create parent directory %s: %v", parentDir, err)
 		return fmt.Errorf("failed to create parent directory: %w", err)
 	}
-
+	l.Debugf("Created parent directory %s", parentDir)
 	// Create or overwrite the file
 	file, err := sftpClient.Create(remotePath)
 	if err != nil {
-		c.Logger.Errorf("Failed to create remote file %s: %v", remotePath, err)
+		l.Errorf("Failed to create remote file %s: %v", remotePath, err)
 		return fmt.Errorf("failed to create remote file: %w", err)
 	}
 	defer file.Close()
@@ -153,7 +155,7 @@ func (c *SSHConfig) PushFileWithCallback(
 	// Write content to file
 	n, err := file.Write(content)
 	if err != nil {
-		c.Logger.Errorf("Failed to write content to %s: %v", remotePath, err)
+		l.Errorf("Failed to write content to %s: %v", remotePath, err)
 		return fmt.Errorf("failed to write to remote file: %w", err)
 	}
 	callback(int64(n), int64(len(content)))
@@ -161,7 +163,7 @@ func (c *SSHConfig) PushFileWithCallback(
 	// Set file permissions if executable
 	if executable {
 		if err := sftpClient.Chmod(remotePath, 0755); err != nil { //nolint:mnd
-			c.Logger.Errorf("Failed to set executable permissions on %s: %v", remotePath, err)
+			l.Errorf("Failed to set executable permissions on %s: %v", remotePath, err)
 			return fmt.Errorf("failed to set executable permissions: %w", err)
 		}
 	}
@@ -169,22 +171,22 @@ func (c *SSHConfig) PushFileWithCallback(
 	// Verify file exists and is executable
 	fileInfo, err := sftpClient.Stat(remotePath)
 	if err != nil {
-		c.Logger.Errorf("Failed to stat file %s after transfer: %v", remotePath, err)
+		l.Errorf("Failed to stat file %s after transfer: %v", remotePath, err)
 		return fmt.Errorf("failed to verify file after transfer: %w", err)
 	}
 
-	c.Logger.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v, mode: %v)",
+	l.Debugf("Successfully pushed file to %s (size: %d bytes, executable: %v, mode: %v)",
 		remotePath, len(content), executable, fileInfo.Mode())
 
 	// Additional verification: list directory contents
 	parentDir = filepath.Dir(remotePath)
 	files, err := sftpClient.ReadDir(parentDir)
 	if err != nil {
-		c.Logger.Errorf("Failed to list directory contents for %s: %v", parentDir, err)
+		l.Errorf("Failed to list directory contents for %s: %v", parentDir, err)
 	} else {
-		c.Logger.Debugf("Files in %s:", parentDir)
+		l.Debugf("Files in %s:", parentDir)
 		for _, f := range files {
-			c.Logger.Debugf("- %s (mode: %v)", f.Name(), f.Mode())
+			l.Debugf("- %s (mode: %v)", f.Name(), f.Mode())
 		}
 	}
 
@@ -196,6 +198,7 @@ func (c *SSHConfig) InstallSystemdService(
 	serviceName string,
 	serviceContent string,
 ) error {
+	l := logger.Get()
 	// Create SFTP client
 	newConn, err := c.clientCreator.NewClient(
 		c.Host,
@@ -209,6 +212,7 @@ func (c *SSHConfig) InstallSystemdService(
 	}
 	sftpClient, err := currentSFTPClientCreator(newConn)
 	if err != nil {
+		l.Errorf("failed to create SFTP client: %v", err)
 		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
 	defer sftpClient.Close()
@@ -221,7 +225,7 @@ func (c *SSHConfig) InstallSystemdService(
 	}
 	defer func() {
 		if out, err := c.ExecuteCommand(ctx, fmt.Sprintf("rm -rf %s", tempDir)); err != nil {
-			c.Logger.Errorf(
+			l.Errorf(
 				"Failed to cleanup temporary directory %s: %v (output: %s)",
 				tempDir,
 				err,
@@ -265,14 +269,14 @@ func (c *SSHConfig) InstallSystemdService(
 	if out, err := c.ExecuteCommand(ctx, "sudo systemctl daemon-reload"); err != nil {
 		return fmt.Errorf("failed to reload systemd daemon: %w (output: %s)", err, out)
 	} else {
-		c.Logger.Infof("systemctl daemon-reload output: %s", out)
+		l.Infof("systemctl daemon-reload output: %s", out)
 	}
 
 	// Enable service with sudo
 	if out, err := c.ExecuteCommand(ctx, fmt.Sprintf("sudo systemctl enable %s", serviceName)); err != nil {
 		return fmt.Errorf("failed to enable service: %w (output: %s)", err, out)
 	} else {
-		c.Logger.Infof("systemctl enable %s output: %s", serviceName, out)
+		l.Infof("systemctl enable %s output: %s", serviceName, out)
 	}
 
 	return nil
@@ -284,6 +288,7 @@ func (c *SSHConfig) StartService(ctx context.Context, serviceName string) (strin
 }
 
 func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (string, error) {
+	l := logger.Get()
 	// Attempt to stop the service
 	stopOutput, stopErr := c.ExecuteCommand(ctx, fmt.Sprintf("sudo systemctl stop %s", serviceName))
 
@@ -331,7 +336,7 @@ func (c *SSHConfig) RestartService(ctx context.Context, serviceName string) (str
 
 	// Log the full details for debugging
 	if finalErr != nil {
-		c.Logger.Errorf("Service restart failed for %s. Details: %s. Error: %v",
+		l.Errorf("Service restart failed for %s. Details: %s. Error: %v",
 			serviceName, combinedOutput, finalErr)
 	}
 
@@ -350,7 +355,6 @@ func NewSSHConfig(
 		Port:              port,
 		User:              user,
 		SSHPrivateKeyPath: privateKeyPath,
-		Logger:            logger.Get(),
 		clientCreator:     DefaultSSHClientCreatorInstance,
 		sftpClientCreator: DefaultSFTPClientCreator,
 		TimeoutConfig:     DefaultTimeoutConfig(),
@@ -414,6 +418,7 @@ func (c *SSHConfig) SetSSHClientCreator(creator sshutils_interfaces.SSHClientCre
 }
 
 func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string, error) {
+	l := logger.Get()
 	// Create a new connection specifically for this command
 	client, err := c.clientCreator.NewClient(
 		c.Host,
@@ -423,14 +428,14 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 		c.ClientConfig,
 	)
 	if err != nil {
-		c.Logger.Errorf("Failed to create SSH connection for command %s: %v", command, err)
+		l.Errorf("Failed to create SSH connection for command %s: %v", command, err)
 		return "", fmt.Errorf("SSH connection failed: %w", err)
 	}
 	defer client.Close()
 
 	session, err := client.NewSession()
 	if err != nil {
-		c.Logger.Errorf("Failed to create session for command %s: %v", command, err)
+		l.Errorf("Failed to create session for command %s: %v", command, err)
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
 	defer session.Close()
@@ -440,7 +445,7 @@ func (c *SSHConfig) ExecuteCommand(ctx context.Context, command string) (string,
 	session.SetStderr(&output)
 
 	if err := session.Run(command); err != nil {
-		c.Logger.Errorf("Failed to run command %s: %v", command, err)
+		l.Errorf("Failed to run command %s: %v", command, err)
 		return output.String(), fmt.Errorf("command execution failed: %w", err)
 	}
 

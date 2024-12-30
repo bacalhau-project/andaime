@@ -3,9 +3,11 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -47,6 +49,36 @@ func (e AzureError) Error() string {
 // IsNotFound checks if the error indicates that a resource was not found.
 func (e AzureError) IsNotFound() bool {
 	return e.Code == "ResourceNotFound"
+}
+
+// IsRetriableError checks if the given error is retriable.
+func IsRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check if it's an AzureError
+	var azureErr *AzureError
+	if errors.As(err, &azureErr) {
+		return azureErr.IsNotFound()
+	}
+
+	// Check for context cancellation
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	// Add other retriable error conditions here if needed
+	return false
+}
+
+// getResourceNameFromID extracts the resource name from an Azure resource ID
+func getResourceNameFromID(id string) string {
+	parts := strings.Split(id, "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-1]
 }
 
 // LiveAzureClient implements the AzureClienter interface using the Azure SDK.
@@ -293,34 +325,70 @@ func (c *LiveAzureClient) GetNetworkInterface(
 	resourceGroupName string,
 	networkInterfaceName string,
 ) (*armnetwork.Interface, error) {
-	resp, err := c.networkClient.Get(ctx, resourceGroupName, networkInterfaceName, nil)
-	if err != nil {
-		return nil, err
+	l := logger.Get()
+	l.Debugf("Getting network interface %s in resource group %s", networkInterfaceName, resourceGroupName)
+	backoff := time.Second
+	maxBackoff := 8 * time.Second
+	maxRetries := 3
+	retryCount := 0
+
+	for {
+		l.Debugf("Attempting to get network interface (attempt %d/%d)", retryCount+1, maxRetries)
+		resp, err := c.networkClient.Get(ctx, resourceGroupName, networkInterfaceName, nil)
+		if err == nil {
+			l.Debugf("Successfully retrieved network interface %s", networkInterfaceName)
+			return &resp.Interface, nil
+		}
+
+		// Check if it's a ResourceNotFound error
+		var azureErr AzureError
+		if errors.As(err, &azureErr) {
+			if !azureErr.IsNotFound() {
+				l.Errorf("Non-retriable error getting network interface %s: %v", networkInterfaceName, err)
+				return nil, err
+			}
+			l.Debugf("Network interface %s not found (retriable error): %v", networkInterfaceName, err)
+		} else {
+			l.Debugf("Unknown error getting network interface %s (treating as retriable): %v", networkInterfaceName, err)
+		}
+
+		retryCount++
+		if retryCount >= maxRetries || backoff > maxBackoff {
+			l.Errorf("Exceeded maximum retries (%d) or backoff (%v) while getting network interface %s",
+				maxRetries, maxBackoff, networkInterfaceName)
+			return nil, fmt.Errorf("exceeded maximum retries (%d) or backoff (%v) while getting network interface: %w",
+				maxRetries, maxBackoff, err)
+		}
+
+		l.Debugf("Network interface %s not found, retrying in %v (attempt %d/%d)",
+			networkInterfaceName, backoff, retryCount, maxRetries)
+
+		select {
+		case <-ctx.Done():
+			l.Debugf("Context cancelled while waiting to retry getting network interface %s", networkInterfaceName)
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2
+		}
 	}
-	return &resp.Interface, nil
 }
 
-// GetPublicIPAddress retrieves a public IP address.
+// GetPublicIPAddress retrieves a public IP address by name.
 func (c *LiveAzureClient) GetPublicIPAddress(
 	ctx context.Context,
 	resourceGroupName string,
-	publicIPAddress *armnetwork.PublicIPAddress,
-) (string, error) {
-	publicID, err := arm.ParseResourceID(*publicIPAddress.ID)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse public IP address ID: %w", err)
-	}
-
+	publicIPAddressName string,
+) (*armnetwork.PublicIPAddress, error) {
 	publicIPResponse, err := c.publicIPClient.Get(
 		ctx,
-		publicID.ResourceGroupName,
-		publicID.Name,
+		resourceGroupName,
+		publicIPAddressName,
 		&armnetwork.PublicIPAddressesClientGetOptions{Expand: nil},
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to get public IP address: %w", err)
+		return nil, fmt.Errorf("failed to get public IP address: %w", err)
 	}
-	return *publicIPResponse.Properties.IPAddress, nil
+	return &publicIPResponse.PublicIPAddress, nil
 }
 
 // GetSKUsByLocation retrieves SKUs available in a specific location.
@@ -459,15 +527,16 @@ func (c *LiveAzureClient) GetVMExternalIP(
 	publicIP, err := c.GetPublicIPAddress(
 		ctx,
 		parsedPublicIP.ResourceGroupName,
-		&armnetwork.PublicIPAddress{
-			ID: publicIPID,
-		},
+		parsedPublicIP.Name,
 	)
 	if err != nil {
 		return "", err
 	}
 
-	return publicIP, nil
+	if publicIP != nil && publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
+		return *publicIP.Properties.IPAddress, nil
+	}
+	return "", fmt.Errorf("public IP address is not available")
 }
 
 func (c *LiveAzureClient) DestroyResourceGroup(

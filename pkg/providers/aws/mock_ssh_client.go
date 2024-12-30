@@ -5,9 +5,9 @@ import (
 	"io"
 	"time"
 
-	"golang.org/x/crypto/ssh"
-	"github.com/stretchr/testify/mock"
 	"github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
+	"github.com/stretchr/testify/mock"
+	"golang.org/x/crypto/ssh"
 )
 
 // MockSSHSession implements the SSHSessioner interface for testing
@@ -98,10 +98,10 @@ func (m *MockSSHClient) GetClient() *ssh.Client {
 }
 
 // Configuration getters
-func (m *MockSSHClient) GetHost() string                { return m.host }
-func (m *MockSSHClient) GetPort() int                   { return m.port }
-func (m *MockSSHClient) GetUser() string                { return m.user }
-func (m *MockSSHClient) GetPrivateKeyMaterial() []byte  { return m.privateKeyMaterial }
+func (m *MockSSHClient) GetHost() string               { return m.host }
+func (m *MockSSHClient) GetPort() int                  { return m.port }
+func (m *MockSSHClient) GetUser() string               { return m.user }
+func (m *MockSSHClient) GetPrivateKeyMaterial() []byte { return m.privateKeyMaterial }
 
 // Remote operations
 func (m *MockSSHClient) ExecuteCommand(ctx context.Context, command string) (string, error) {
@@ -118,7 +118,12 @@ func (m *MockSSHClient) ExecuteCommandWithCallback(
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockSSHClient) PushFile(ctx context.Context, remotePath string, content []byte, executable bool) error {
+func (m *MockSSHClient) PushFile(
+	ctx context.Context,
+	remotePath string,
+	content []byte,
+	executable bool,
+) error {
 	args := m.Called(ctx, remotePath, content, executable)
 	return args.Error(0)
 }
@@ -135,7 +140,10 @@ func (m *MockSSHClient) PushFileWithCallback(
 }
 
 // Service management
-func (m *MockSSHClient) InstallSystemdService(ctx context.Context, serviceName, serviceContent string) error {
+func (m *MockSSHClient) InstallSystemdService(
+	ctx context.Context,
+	serviceName, serviceContent string,
+) error {
 	args := m.Called(ctx, serviceName, serviceContent)
 	return args.Error(0)
 }

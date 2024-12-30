@@ -7,6 +7,7 @@ import (
 
 	"github.com/bacalhau-project/andaime/internal/testutil"
 	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
+	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"golang.org/x/crypto/ssh"
@@ -17,7 +18,7 @@ type PkgSSHUtilsTestSuite struct {
 	testSSHPrivateKeyPath string
 	cleanupPrivateKey     func()
 	ctx                   context.Context
-	sshConfig             *ssh_mocks.MockSSHConfiger
+	sshConfig             sshutils_interfaces.SSHConfiger
 }
 
 func (s *PkgSSHUtilsTestSuite) SetupSuite() {
@@ -34,9 +35,7 @@ func (s *PkgSSHUtilsTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	sshConfig, err := NewSSHConfigFunc("test-host", 22, "test-user", s.testSSHPrivateKeyPath)
 	s.Require().NoError(err)
-	mockSSHConfig, ok := sshConfig.(*ssh_mocks.MockSSHConfiger)
-	s.Require().True(ok)
-	s.sshConfig = mockSSHConfig
+	s.sshConfig = sshConfig
 }
 
 func (s *PkgSSHUtilsTestSuite) TestExecuteCommand() {

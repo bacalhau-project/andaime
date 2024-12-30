@@ -243,7 +243,7 @@ func (cd *ClusterDeployer) ProvisionBacalhauNode(
 		sshConfig,
 		machine,
 		bacalhauSettings,
-		nil,
+		func(ds *models.DisplayStatus) {},
 	)
 }
 

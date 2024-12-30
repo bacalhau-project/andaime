@@ -6,7 +6,13 @@ import (
 
 // DefaultTimeoutConfig returns the default timeout configuration
 func DefaultTimeoutConfig() TimeoutConfig {
-	return DefaultTimeoutConfig()
+	return TimeoutConfig{
+		SSHTimeout:    SSHTimeOut,
+		SFTPTimeout:   SSHRetryDelay,
+		RetryInterval: TimeInBetweenSSHRetries,
+		MaxRetries:    SSHRetryAttempts,
+		WaitTimeout:   SSHRetryDelay * time.Duration(SSHRetryAttempts),
+	}
 }
 
 type TimeoutConfig struct {

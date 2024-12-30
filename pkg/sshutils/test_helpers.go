@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	ssh_mocks "github.com/bacalhau-project/andaime/mocks/sshutils"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/ssh"
@@ -34,7 +35,7 @@ type ConnectExpectation struct {
 
 // NewMockSSHConfigWithBehavior creates a new mock SSH config with predefined behavior
 func NewMockSSHConfigWithBehavior(behavior ExpectedSSHBehavior) sshutils_interfaces.SSHConfiger {
-	mockSSH := &MockSSHConfiger{}
+	mockSSH := &ssh_mocks.MockSSHConfiger{}
 
 	// Setup Connect behavior
 	if behavior.ConnectExpectation != nil {

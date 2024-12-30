@@ -11,16 +11,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	awsmock "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
+	aws_mocks "github.com/bacalhau-project/andaime/mocks/aws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 // setupMockEC2Client creates and configures a mock EC2 client for testing
-func setupMockEC2Client() *awsmock.MockEC2Clienter {
+func setupMockEC2Client() *aws_mocks.MockEC2Clienter {
 	// Mock EC2 client setup
-	mockEC2Client := new(awsmock.MockEC2Clienter)
+	mockEC2Client := new(aws_mocks.MockEC2Clienter)
 
 	// Mock DescribeAvailabilityZones response
 	mockEC2Client.On("DescribeAvailabilityZones", mock.Anything, mock.Anything).Return(

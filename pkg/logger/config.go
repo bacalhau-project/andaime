@@ -3,7 +3,6 @@ package logger
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -31,6 +30,7 @@ func Initialize(config Config) error {
 
 	if config.BufferSize > 0 {
 		GlobalLoggedBufferSize = config.BufferSize
+		GlobalLogBuffer.size = config.BufferSize
 	}
 
 	if config.FilePath != "" {
@@ -40,7 +40,7 @@ func Initialize(config Config) error {
 	// Set log level
 	logLevel := config.Level
 	if logLevel == "" {
-		logLevel = InfoLogLevel
+		logLevel = GlobalLogLevel
 	}
 	GlobalLogLevel = logLevel
 
@@ -63,18 +63,10 @@ func Initialize(config Config) error {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	// Console-specific encoder config for better readability
-	consoleEncoderConfig := encoderConfig
-	consoleEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	consoleEncoderConfig.EncodeCaller = nil // Don't show caller in console output
-	consoleEncoderConfig.EncodeTime = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-		enc.AppendString(t.Format("15:04:05"))
-	}
-
 	// Console logging
 	if config.EnableConsole {
 		consoleCore := zapcore.NewCore(
-			zapcore.NewConsoleEncoder(consoleEncoderConfig),
+			zapcore.NewConsoleEncoder(encoderConfig),
 			zapcore.AddSync(os.Stdout),
 			level,
 		)
@@ -83,16 +75,6 @@ func Initialize(config Config) error {
 
 	// File logging
 	if config.FilePath != "" {
-		var encoder zapcore.Encoder
-		if config.Format == "json" {
-			encoder = zapcore.NewJSONEncoder(encoderConfig)
-		} else {
-			// Use simplified text format for file logging
-			textEncoderConfig := encoderConfig
-			textEncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder // No colors in file
-			encoder = zapcore.NewConsoleEncoder(textEncoderConfig)
-		}
-
 		file, err := os.OpenFile(
 			config.FilePath,
 			os.O_APPEND|os.O_CREATE|os.O_WRONLY,
@@ -103,6 +85,13 @@ func Initialize(config Config) error {
 		}
 		GlobalLogFile = file
 
+		var encoder zapcore.Encoder
+		if config.Format == "json" {
+			encoder = zapcore.NewJSONEncoder(encoderConfig)
+		} else {
+			encoder = zapcore.NewConsoleEncoder(encoderConfig)
+		}
+
 		fileCore := zapcore.NewCore(
 			encoder,
 			zapcore.AddSync(file),
@@ -111,13 +100,11 @@ func Initialize(config Config) error {
 		cores = append(cores, fileCore)
 	}
 
-	// Buffer logging with simplified format
+	// Buffer logging
 	if config.EnableBuffer {
-		bufferEncoderConfig := encoderConfig
-		bufferEncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 		bufferCore := zapcore.NewCore(
-			zapcore.NewConsoleEncoder(bufferEncoderConfig),
-			zapcore.AddSync(&GlobalLoggedBuffer),
+			zapcore.NewConsoleEncoder(encoderConfig),
+			zapcore.AddSync(&GlobalLogBuffer),
 			level,
 		)
 		cores = append(cores, bufferCore)
@@ -131,7 +118,10 @@ func Initialize(config Config) error {
 	}
 
 	logger := zap.New(core, opts...).Named("andaime")
-	SetGlobalLogger(&Logger{Logger: logger, verbose: false})
+	SetGlobalLogger(&ZapLogger{
+		SugaredLogger: logger.Sugar(),
+		verbose:      false,
+	})
 
 	return nil
 }

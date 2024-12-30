@@ -6,12 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/bacalhau-project/andaime/pkg/display"
 	"github.com/bacalhau-project/andaime/pkg/logger"
 	"github.com/bacalhau-project/andaime/pkg/models"
-	aws_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/aws"
 	sshutils_interfaces "github.com/bacalhau-project/andaime/pkg/models/interfaces/sshutils"
 	aws_provider "github.com/bacalhau-project/andaime/pkg/providers/aws"
 	"github.com/bacalhau-project/andaime/pkg/sshutils"
@@ -106,20 +103,7 @@ func ExecuteCreateDeployment(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to prepare deployment: %w", err)
 	}
 
-	// Write the VPC ID to config as soon as it's created
-	if err := writeVPCIDToConfig(deployment); err != nil {
-		return fmt.Errorf("failed to write VPC ID to config: %w", err)
-	}
-
-	// Ensure EC2 client is initialized
-	ec2Client := awsProvider.GetEC2Client()
-	if ec2Client == nil {
-		ec2Client = aws_provider.NewEC2ClientWrapper(
-			ec2.NewFromConfig(*awsProvider.GetConfig()),
-			imds.NewFromConfig(*awsProvider.GetConfig()),
-		)
-		awsProvider.SetEC2Client(ec2Client)
-	}
+	deployment.DeploymentType = models.DeploymentTypeAWS
 
 	m := display.NewDisplayModel(deployment)
 	prog := display.GetGlobalProgramFunc()
@@ -192,18 +176,9 @@ func prepareDeployment(
 	m.Deployment.SetMachines(machines)
 	m.Deployment.SetLocations(locations)
 
-	if m.Deployment.AWS.RegionalResources.VPCs == nil {
-		m.Deployment.AWS.RegionalResources.VPCs = make(map[string]*models.AWSVPC)
-	}
-	if m.Deployment.AWS.RegionalResources.Clients == nil {
-		m.Deployment.AWS.RegionalResources.Clients = make(map[string]aws_interfaces.EC2Clienter)
-	}
+	// Set VPCs to nil to start - we peg off of the VPCs in the model
 	for _, machine := range m.Deployment.GetMachines() {
-		region := machine.GetRegion()
-		if _, exists := m.Deployment.AWS.RegionalResources.VPCs[region]; !exists {
-			m.Deployment.AWS.RegionalResources.SetVPC(region, &models.AWSVPC{})
-			m.Deployment.AWS.RegionalResources.SetClient(region, nil)
-		}
+		m.Deployment.AWS.RegionalResources.SetVPC(machine.GetRegion(), nil)
 	}
 
 	return m.Deployment, nil
@@ -310,7 +285,7 @@ func runDeployment(ctx context.Context, awsProvider *aws_provider.AWSProvider) e
 	l.Info("Network connectivity confirmed")
 
 	if err := awsProvider.DeployVMsInParallel(ctx); err != nil {
-		return fmt.Errorf("failed to deploy VMs in parallel: %w", err)
+		return fmt.Errorf("failed to deploy VMs in parallel for AWS CMD: %w", err)
 	}
 
 	// Wait for all VMs to be accessible via SSH
