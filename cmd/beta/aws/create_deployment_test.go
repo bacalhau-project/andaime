@@ -71,6 +71,12 @@ func (suite *CreateDeploymentTestSuite) SetupTest() {
 	viper.Reset()
 	suite.setupViper()
 
+	// Set test mode and initialize display model
+	os.Setenv("ANDAIME_TEST_MODE", "true")
+	model := display.NewDisplayModel(&models.Deployment{})
+	display.SetGlobalModel(model)
+	display.SetDisplayModelInitialized(true)
+
 	// Initialize mock and verification state
 	aws.SetAllRegionsMocked(false)
 	aws.SetVerificationPassed(false)
