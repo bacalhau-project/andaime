@@ -494,7 +494,7 @@ urllib3==2.2.3
     #   botocore
     #   mixpanel
     #   requests
-uv==0.4.26
+uv==0.5.13
 watchfiles==1.0.0
     # via aider-chat
 wcwidth==0.2.13
