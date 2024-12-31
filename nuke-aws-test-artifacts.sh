@@ -252,18 +252,34 @@ delete_vpc_resources() {
         echo "No route tables found in VPC $vpc_id ($region)"
     fi
     
-    # Delete VPC
+    # Delete VPC with retry logic
     echo "Deleting VPC $vpc_id ($region)..."
-    aws ec2 delete-vpc --region $region --vpc-id $vpc_id
-    echo "VPC $vpc_id deleted successfully"
+    MAX_RETRIES=3
+    RETRY_COUNT=0
+    
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if aws ec2 delete-vpc --region $region --vpc-id $vpc_id; then
+            echo "VPC $vpc_id deleted successfully"
+            break
+        else
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            echo "Failed to delete VPC $vpc_id, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+            sleep 5
+        fi
+    done
+    
+    if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+        echo "ERROR: Failed to delete VPC $vpc_id after $MAX_RETRIES attempts"
+        exit 1
+    fi
 }
 
 # Main script
 echo "=== Listing all VPCs matching 'andaime-vpc*' ==="
 for REGION in $REGIONS; do
-    # Search for VPCs with either Name tag or project tag
+    # Search for VPCs with Name tag or andaime=true tag
     VPCS=$(aws ec2 describe-vpcs --region $REGION \
-        --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:project,Values=andaime \
+        --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:andaime,Values=true \
         --query "Vpcs[].VpcId" --output text)
     
     if [ -n "$VPCS" ]; then
@@ -284,9 +300,9 @@ read -p "Are you sure you want to delete all these VPCs and their resources? (y/
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     for REGION in $REGIONS; do
-        # Search for VPCs with either Name tag or project tag
+        # Search for VPCs with Name tag or andaime=true tag
         VPCS=$(aws ec2 describe-vpcs --region $REGION \
-            --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:project,Values=andaime \
+            --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:andaime,Values=true \
             --query "Vpcs[].VpcId" --output text)
         
         if [ -n "$VPCS" ]; then
