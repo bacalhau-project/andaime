@@ -326,18 +326,21 @@ for REGION in $REGIONS; do
         --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:andaime,Values=true \
         --query "Vpcs[].VpcId" --output text)
     
-    if [ -n "$VPCS" ]; then
-        for VPC in $VPCS; do
-            # Get all tags for debugging
-            TAGS=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
-                --query "Vpcs[0].Tags" --output text)
-            VPC_NAME=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
-                --query "Vpcs[0].Tags[?Key=='Name'].Value" --output text)
-            echo "Found VPC: $VPC ($VPC_NAME) in region $REGION"
-            echo "Tags: $TAGS"
-            list_vpc_resources $REGION $VPC
-        done
+    if [ -z "$VPCS" ]; then
+        echo "No matching VPCs found in region $REGION"
+        continue
     fi
+    
+    for VPC in $VPCS; do
+        # Get all tags for debugging
+        TAGS=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
+            --query "Vpcs[0].Tags" --output text)
+        VPC_NAME=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
+            --query "Vpcs[0].Tags[?Key=='Name'].Value" --output text)
+        echo "Found VPC: $VPC ($VPC_NAME) in region $REGION"
+        echo "Tags: $TAGS"
+        list_vpc_resources $REGION $VPC
+    done
 done
 
 read -p "Are you sure you want to delete all these VPCs and their resources? (y/N) " -n 1 -r
@@ -349,18 +352,21 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
             --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:andaime,Values=true \
             --query "Vpcs[].VpcId" --output text)
         
-        if [ -n "$VPCS" ]; then
-            for VPC in $VPCS; do
-                # Get all tags for debugging
-                TAGS=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
-                    --query "Vpcs[0].Tags" --output text)
-                VPC_NAME=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
-                    --query "Vpcs[0].Tags[?Key=='Name'].Value" --output text)
-                echo "Processing VPC: $VPC ($VPC_NAME) in region $REGION"
-                echo "Tags: $TAGS"
-                delete_vpc_resources $REGION $VPC
-            done
+        if [ -z "$VPCS" ]; then
+            echo "No matching VPCs found in region $REGION"
+            continue
         fi
+        
+        for VPC in $VPCS; do
+            # Get all tags for debugging
+            TAGS=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
+                --query "Vpcs[0].Tags" --output text)
+            VPC_NAME=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
+                --query "Vpcs[0].Tags[?Key=='Name'].Value" --output text)
+            echo "Processing VPC: $VPC ($VPC_NAME) in region $REGION"
+            echo "Tags: $TAGS"
+            delete_vpc_resources $REGION $VPC
+        done
     done
     echo "Cleanup complete!"
 else
