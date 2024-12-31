@@ -261,14 +261,20 @@ delete_vpc_resources() {
 # Main script
 echo "=== Listing all VPCs matching 'andaime-vpc*' ==="
 for REGION in $REGIONS; do
-    VPCS=$(aws ec2 describe-vpcs --region $REGION --filters Name=tag:Name,Values="andaime-vpc*" \
+    # Search for VPCs with either Name tag or project tag
+    VPCS=$(aws ec2 describe-vpcs --region $REGION \
+        --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:project,Values=andaime \
         --query "Vpcs[].VpcId" --output text)
     
     if [ -n "$VPCS" ]; then
         for VPC in $VPCS; do
+            # Get all tags for debugging
+            TAGS=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
+                --query "Vpcs[0].Tags" --output text)
             VPC_NAME=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
                 --query "Vpcs[0].Tags[?Key=='Name'].Value" --output text)
             echo "Found VPC: $VPC ($VPC_NAME) in region $REGION"
+            echo "Tags: $TAGS"
             list_vpc_resources $REGION $VPC
         done
     fi
@@ -278,14 +284,20 @@ read -p "Are you sure you want to delete all these VPCs and their resources? (y/
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     for REGION in $REGIONS; do
-        VPCS=$(aws ec2 describe-vpcs --region $REGION --filters Name=tag:Name,Values="andaime-vpc*" \
+        # Search for VPCs with either Name tag or project tag
+        VPCS=$(aws ec2 describe-vpcs --region $REGION \
+            --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:project,Values=andaime \
             --query "Vpcs[].VpcId" --output text)
         
         if [ -n "$VPCS" ]; then
             for VPC in $VPCS; do
+                # Get all tags for debugging
+                TAGS=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
+                    --query "Vpcs[0].Tags" --output text)
                 VPC_NAME=$(aws ec2 describe-vpcs --region $REGION --vpc-ids $VPC \
                     --query "Vpcs[0].Tags[?Key=='Name'].Value" --output text)
                 echo "Processing VPC: $VPC ($VPC_NAME) in region $REGION"
+                echo "Tags: $TAGS"
                 delete_vpc_resources $REGION $VPC
             done
         fi
