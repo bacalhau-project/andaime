@@ -177,8 +177,13 @@ delete_vpc_resources() {
         --query "Reservations[].Instances[].InstanceId" --output text)
     if [ -n "$INSTANCES" ]; then
         echo "Terminating instances in VPC $vpc_id ($region)..."
+        echo "Found instances: $INSTANCES"
         aws ec2 terminate-instances --region $region --instance-ids $INSTANCES
+        echo "Waiting for instances to terminate..."
         aws ec2 wait instance-terminated --region $region --instance-ids $INSTANCES
+        echo "All instances terminated successfully"
+    else
+        echo "No instances found in VPC $vpc_id ($region)"
     fi
     
     # Delete security groups (except default)
@@ -186,9 +191,15 @@ delete_vpc_resources() {
         --query "SecurityGroups[?GroupName!='default'].GroupId" --output text)
     if [ -n "$SGS" ]; then
         echo "Deleting security groups in VPC $vpc_id ($region)..."
+        echo "Found security groups: $SGS"
         for SG in $SGS; do
+            echo "Deleting security group: $SG"
             aws ec2 delete-security-group --region $region --group-id $SG
+            echo "Security group $SG deleted"
         done
+        echo "All security groups deleted successfully"
+    else
+        echo "No security groups found in VPC $vpc_id ($region)"
     fi
     
     # Delete subnets
@@ -196,9 +207,15 @@ delete_vpc_resources() {
         --query "Subnets[].SubnetId" --output text)
     if [ -n "$SUBNETS" ]; then
         echo "Deleting subnets in VPC $vpc_id ($region)..."
+        echo "Found subnets: $SUBNETS"
         for SUBNET in $SUBNETS; do
+            echo "Deleting subnet: $SUBNET"
             aws ec2 delete-subnet --region $region --subnet-id $SUBNET
+            echo "Subnet $SUBNET deleted"
         done
+        echo "All subnets deleted successfully"
+    else
+        echo "No subnets found in VPC $vpc_id ($region)"
     fi
     
     # Detach and delete internet gateways
@@ -206,10 +223,17 @@ delete_vpc_resources() {
         --query "InternetGateways[].InternetGatewayId" --output text)
     if [ -n "$IGWS" ]; then
         echo "Deleting internet gateways in VPC $vpc_id ($region)..."
+        echo "Found internet gateways: $IGWS"
         for IGW in $IGWS; do
+            echo "Detaching internet gateway: $IGW"
             aws ec2 detach-internet-gateway --region $region --internet-gateway-id $IGW --vpc-id $vpc_id
+            echo "Deleting internet gateway: $IGW"
             aws ec2 delete-internet-gateway --region $region --internet-gateway-id $IGW
+            echo "Internet gateway $IGW deleted"
         done
+        echo "All internet gateways deleted successfully"
+    else
+        echo "No internet gateways found in VPC $vpc_id ($region)"
     fi
     
     # Delete route tables (except main)
@@ -217,14 +241,21 @@ delete_vpc_resources() {
         --query "RouteTables[?Associations[?Main!=true]].RouteTableId" --output text)
     if [ -n "$RTS" ]; then
         echo "Deleting route tables in VPC $vpc_id ($region)..."
+        echo "Found route tables: $RTS"
         for RT in $RTS; do
+            echo "Deleting route table: $RT"
             aws ec2 delete-route-table --region $region --route-table-id $RT
+            echo "Route table $RT deleted"
         done
+        echo "All route tables deleted successfully"
+    else
+        echo "No route tables found in VPC $vpc_id ($region)"
     fi
     
     # Delete VPC
     echo "Deleting VPC $vpc_id ($region)..."
     aws ec2 delete-vpc --region $region --vpc-id $vpc_id
+    echo "VPC $vpc_id deleted successfully"
 }
 
 # Main script
