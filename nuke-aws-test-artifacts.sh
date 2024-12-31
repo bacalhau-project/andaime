@@ -9,10 +9,20 @@ list_resources() {
     local region=$1
     echo "=== Resources in $region ==="
     
-    # List VPCs
+    # List VPCs with detailed tag info
     echo "VPCs:"
-    aws ec2 describe-vpcs --region $region --filters Name=tag:project,Values=andaime \
-        --query "Vpcs[].VpcId" --output text | xargs -n1 echo "  -"
+    VPCS=$(aws ec2 describe-vpcs --region $region \
+        --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:andaime,Values=true \
+        --query "Vpcs[].[VpcId, Tags[?Key=='Name'].Value | [0], Tags[?Key=='andaime'].Value | [0]]" \
+        --output text)
+    
+    if [ -n "$VPCS" ]; then
+        echo "$VPCS" | while read -r vpc_id vpc_name andaime_value; do
+            echo "  - $vpc_id (Name: $vpc_name, andaime: $andaime_value)"
+        done
+    else
+        echo "  - No matching VPCs found"
+    fi
     
     # List Subnets
     echo "Subnets:"
@@ -100,14 +110,48 @@ delete_resources() {
         done
     fi
     
-    # Delete VPCs
-    VPCS=$(aws ec2 describe-vpcs --region $region --filters Name=tag:project,Values=andaime \
+    # Delete VPCs with detailed logging
+    VPCS=$(aws ec2 describe-vpcs --region $region \
+        --filters Name=tag:Name,Values="andaime-vpc*" Name=tag:andaime,Values=true \
         --query "Vpcs[].VpcId" --output text)
+    
     if [ -n "$VPCS" ]; then
         echo "Deleting VPCs in $region..."
         for VPC in $VPCS; do
-            aws ec2 delete-vpc --region $region --vpc-id $VPC
+            echo "  Processing VPC $VPC"
+            
+            # Check for dependencies
+            echo "    Checking for dependencies..."
+            DEPENDENCIES=$(aws ec2 describe-vpc-attribute --region $region --vpc-id $VPC --attribute enableDnsSupport \
+                --query "EnableDnsSupport.Value" --output text)
+            echo "    DNS Support: $DEPENDENCIES"
+            
+            # Attempt deletion with retries
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                echo "    Attempting to delete VPC (attempt $((RETRY_COUNT+1))/$MAX_RETRIES)..."
+                if aws ec2 delete-vpc --region $region --vpc-id $VPC; then
+                    echo "    VPC $VPC deleted successfully"
+                    break
+                else
+                    RETRY_COUNT=$((RETRY_COUNT+1))
+                    echo "    Failed to delete VPC, retrying in 5 seconds..."
+                    sleep 5
+                fi
+            done
+            
+            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "    ERROR: Failed to delete VPC $VPC after $MAX_RETRIES attempts"
+                echo "    Checking for remaining resources..."
+                aws ec2 describe-subnets --region $region --filters Name=vpc-id,Values=$VPC --output json
+                aws ec2 describe-network-interfaces --region $region --filters Name=vpc-id,Values=$VPC --output json
+                aws ec2 describe-nat-gateways --region $region --filters Name=vpc-id,Values=$VPC --output json
+                exit 1
+            fi
         done
+    else
+        echo "  No VPCs to delete in $region"
     fi
 }
 
